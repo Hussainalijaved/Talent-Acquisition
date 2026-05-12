@@ -351,7 +351,7 @@
         "sendTo": "={{ $json.candidate_email }}",
         "subject": "=Your application \u2014 assessment Phase {{ $json.session_phase }}/{{ $json.config.max_questions }}",
         "emailType": "text",
-        "message": "=Dear candidate,\\n\\nCV screening score: {{ $json.score }}/100.\\n\\nPhase {{ $json.session_phase }} of {{ $json.config.max_questions }} \u2014 technical drill-down. Reply to this thread with your answer only.\\n\\n{{ $json.phase_1_question }}\\n\\nAssessment status: {{ $json.assessment_status }}\\n\\nTalent team: {{ $json.config.talent_alias }}.\\n\\nRegards,\\n{{ $json.config.organization_name }}\\nTalent Acquisition",
+        "message": "=Your CV has been successfully screened with a score of {{ $json.score }}/100.\\n\\nTo proceed to the next stage, please complete our interactive technical assessment. You will have 5 phases of drill-down questions, each with a 2-minute timer.\\n\\n[Start Your Assessment Here]\\nhttps://talent-acquisition-six.vercel.app/?session={{ $json.gmail_thread_id }}&email={{ $json.candidate_email }}\\n\\nRegards,\\nTalent Acquisition Team",
         "options": {}
       },
       "id": "1a9cd40f-8d73-41b9-a1de-172dd0286156",

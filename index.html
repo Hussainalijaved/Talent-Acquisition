@@ -341,7 +341,7 @@
                 setIsLoading(true);
                 try {
                     // Use query parameter instead of path for executionId (More compatible with n8n)
-                    const baseUrl = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook-test/wait-for-answer';
+                    const baseUrl = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook-test/answer';
                     const targetUrl = executionId ? `${baseUrl}?executionId=${executionId}` : baseUrl;
 
                     const response = await fetch(targetUrl, {

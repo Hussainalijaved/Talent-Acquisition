@@ -49,6 +49,35 @@
             box-shadow: 0 15px 30px -10px rgba(99, 102, 241, 0.6);
         }
 
+        /* Security: Disable selection */
+        .no-select {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        .instruction-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1.5rem;
+            padding: 2rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .rule-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 1rem;
+            margin-bottom: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
         .input-field {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -94,13 +123,12 @@
     </style>
 </head>
 
-<body>
+<body class="no-select">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // Sub-components
         const LoginView = ({ sessionId, setSessionId, setView }) => (
             <div className="min-h-screen flex items-center justify-center p-6 fade-in relative">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-600/10 blur-[120px] rounded-full floating"></div>
@@ -112,13 +140,27 @@
                         <h1 className="text-3xl font-bold mb-3 tracking-tight">System Login</h1>
                         <p className="text-gray-400">Please enter your <b>Secure Session ID</b> to begin.</p>
                     </div>
-                    <form onSubmit={(e) => { e.preventDefault(); if (sessionId.length > 5) setView('assessment'); }} className="space-y-6">
+                    <form onSubmit={(e) => { e.preventDefault(); if (sessionId.length > 5) setView('instructions'); }} className="space-y-6">
                         <input required className="input-field w-full px-6 py-4 rounded-2xl outline-none text-lg font-medium" placeholder="Paste Session ID here..." value={sessionId} onChange={(e) => setSessionId(e.target.value)} />
                         <button className="btn-primary w-full py-5 rounded-2xl font-bold text-lg">Initialize Session</button>
                     </form>
                     <div className="mt-8 pt-6 border-t border-white/5 text-center">
                         <button onClick={() => setView('admin')} className="text-sm text-gray-500 hover:text-indigo-400 transition-colors underline">Recruiter? Post New Job</button>
                     </div>
+                </div>
+            </div>
+        );
+
+        const InstructionsView = ({ onStart }) => (
+            <div className="min-h-screen flex items-center justify-center p-6 fade-in">
+                <div className="glass max-w-2xl w-full p-12 rounded-[3rem]">
+                    <h2 className="text-3xl font-bold mb-6">Assessment Rules</h2>
+                    <div className="space-y-3 mb-8">
+                        {['Global 20-minute timer for all tasks.', 'No tab switching permitted.', 'Copy/Paste is disabled.', 'AI monitors all input streams.'].map((rule, i) => (
+                            <div key={i} className="rule-item text-sm">✨ {rule}</div>
+                        ))}
+                    </div>
+                    <button onClick={onStart} className="btn-primary w-full py-5 rounded-2xl font-bold text-lg">Start Assessment</button>
                 </div>
             </div>
         );
@@ -133,7 +175,6 @@
                 e.preventDefault();
                 setIsCreating(true);
                 try {
-                    // Ye webhook n8n mein 'job-create' ke naam se banana hoga
                     const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook/job-create', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
@@ -261,14 +302,25 @@
             const [isLoading, setIsLoading] = useState(false);
             const [currentStep, setCurrentStep] = useState(1);
             const [totalSteps, setTotalSteps] = useState(5);
-            const [timeLeft, setTimeLeft] = useState(120);
+            const [timeLeft, setTimeLeft] = useState(1200);
             const [question, setQuestion] = useState("Loading your first technical challenge...");
             const [answer, setAnswer] = useState("");
             const [result, setResult] = useState(null);
             const [feedback, setFeedback] = useState("");
             const [tabSwitchCount, setTabSwitchCount] = useState(0);
 
-            // Tab Switch Detection (Anti-Cheating)
+            useEffect(() => {
+                const preventActions = (e) => e.preventDefault();
+                document.addEventListener('copy', preventActions);
+                document.addEventListener('paste', preventActions);
+                document.addEventListener('contextmenu', preventActions);
+                return () => {
+                    document.removeEventListener('copy', preventActions);
+                    document.removeEventListener('paste', preventActions);
+                    document.removeEventListener('contextmenu', preventActions);
+                };
+            }, []);
+
             useEffect(() => {
                 const handleVisibilityChange = () => {
                     if (document.visibilityState === 'hidden' && view === 'assessment') {
@@ -276,7 +328,6 @@
                         alert("⚠️ SECURITY WARNING: Tab switching is monitored. This incident has been logged.");
                     }
                 };
-
                 document.addEventListener('visibilitychange', handleVisibilityChange);
                 return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
             }, [view]);
@@ -291,16 +342,10 @@
                 }
             }, []);
 
-            useEffect(() => {
-                if (view === 'assessment' && question === "Loading your first technical challenge...") {
-                    fetchInitialQuestion();
-                }
-            }, [view]);
-
-            const fetchInitialQuestion = async () => {
+            const handleStartAssessment = async () => {
+                setView('assessment');
                 setIsLoading(true);
                 try {
-                    // Production Mode
                     const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook/assessment-start', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
@@ -308,43 +353,20 @@
                     });
                     
                     let textData = await response.text();
-                    console.log("Raw Response:", textData);
-
-                    // Sanitize: Remove leading '=' or other common prefix junk
                     let sanitizedText = textData.trim();
-                    if (sanitizedText.startsWith('=')) {
-                        sanitizedText = sanitizedText.substring(1).trim();
-                    }
+                    if (sanitizedText.startsWith('=')) sanitizedText = sanitizedText.substring(1).trim();
 
                     let data;
-                    try {
-                        data = JSON.parse(sanitizedText);
-                    } catch (e) {
-                        console.warn("JSON Parse failed, using raw text", e);
-                        data = { question: sanitizedText };
-                    }
+                    try { data = JSON.parse(sanitizedText); } catch (e) { data = { question: sanitizedText }; }
                     
-                    console.log("Assessment Response:", data);
-
-                    // Robust parsing: if data is a string, try to parse it
-                    if (typeof data === 'string') {
-                        try { data = JSON.parse(data); } catch(e) {}
-                    }
-
-                    // Extract question from any possible field
-                    let nextQ = data.question || data.nextQuestion || data.feedback || data.output || data.text;
-                    
-                    // If nextQ is still an object, extract from it
-                    if (typeof nextQ === 'object' && nextQ !== null) {
-                        nextQ = nextQ.question || nextQ.nextQuestion || nextQ.text || JSON.stringify(nextQ);
-                    }
-
-                    if (nextQ) {
-                        setQuestion(nextQ);
+                    let q = data.question || data.nextQuestion || data.output || data.text;
+                    if (q) {
+                        setQuestion(q);
                         setTotalSteps(data.totalPhases || 5);
                     }
                 } catch (e) {
                     console.error("Init Error", e);
+                    setQuestion("Error loading challenge. Please refresh.");
                 } finally {
                     setIsLoading(false);
                 }
@@ -364,7 +386,6 @@
                 if (!answer.trim()) return;
                 setIsLoading(true);
                 try {
-                    // Production Mode
                     const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook/assessment-answer', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
@@ -378,42 +399,22 @@
                     });
 
                     let textData = await response.text();
-                    console.log("Raw Response:", textData);
-
-                    // Sanitize
                     let sanitizedText = textData.trim();
-                    if (sanitizedText.startsWith('=')) {
-                        sanitizedText = sanitizedText.substring(1).trim();
-                    }
+                    if (sanitizedText.startsWith('=')) sanitizedText = sanitizedText.substring(1).trim();
 
                     let data;
-                    try {
-                        data = JSON.parse(sanitizedText);
-                    } catch (e) {
-                        console.warn("JSON Parse failed, using raw text", e);
-                        data = { question: sanitizedText };
-                    }
-                    
-                    console.log("Assessment Response:", data);
-
-                    if (typeof data === 'string') {
-                        try { data = JSON.parse(data); } catch(e) {}
-                    }
+                    try { data = JSON.parse(sanitizedText); } catch (e) { data = { question: sanitizedText }; }
 
                     if (data.isFinal || data.result || currentStep >= totalSteps) {
                         setView('finished');
                         setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));
                         setFeedback(data.feedback || "Assessment completed successfully.");
                     } else {
-                        let nextQ = data.nextQuestion || data.question || "";
-
+                        let nextQ = data.nextQuestion || data.question || data.output || "";
                         if (nextQ) {
                             setQuestion(nextQ);
                             setCurrentStep(prev => prev + 1);
                             setAnswer("");
-                            setTimeLeft(120);
-                        } else {
-                            setQuestion("Analyzing response... please wait.");
                         }
                     }
                 } catch (e) {
@@ -424,13 +425,19 @@
             const renderView = () => {
                 switch (view) {
                     case 'login': return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} />;
+                    case 'instructions': return <InstructionsView onStart={handleStartAssessment} />;
                     case 'assessment': return <AssessmentView currentStep={currentStep} totalSteps={totalSteps} timeLeft={timeLeft} question={question} answer={answer} setAnswer={setAnswer} handleAssessmentSubmit={handleAssessmentSubmit} isLoading={isLoading} sessionId={sessionId} />;
                     case 'finished': return <FinishedView result={result} feedback={feedback} />;
                     case 'admin': return <AdminView setView={setView} />;
                     default: return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} />;
                 }
             };
-            return renderView();
+
+            return (
+                <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-indigo-500/30">
+                    {renderView()}
+                </div>
+            );
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));

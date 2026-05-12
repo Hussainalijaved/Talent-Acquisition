@@ -300,8 +300,8 @@
             const fetchInitialQuestion = async () => {
                 setIsLoading(true);
                 try {
-                    // Manual Test Mode (webhook-test)
-                    const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook-test/assessment-start', {
+                    // Production Mode
+                    const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook/assessment-start', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
                         body: JSON.stringify({ sessionId, email: candidateEmail })
@@ -340,8 +340,8 @@
                 if (!answer.trim()) return;
                 setIsLoading(true);
                 try {
-                    // Manual Test Mode (webhook-test)
-                    const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook-test/assessment-answer', {
+                    // Production Mode
+                    const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook/assessment-answer', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
                         body: JSON.stringify({

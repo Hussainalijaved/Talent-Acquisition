@@ -11,7 +11,7 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [
-        0,
+        100,
         200
       ]
     },
@@ -26,62 +26,27 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [
-        0,
+        100,
         600
       ]
     },
     {
       "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "job_title",
-              "value": "Full Stack .NET & AI Automation Engineer"
-            },
-            {
-              "name": "job_requirements",
-              "value": "Mandatory: C#, ASP.NET Core (.NET 6/8), React, AI Automation, Docker, Azure Container Apps."
-            }
-          ]
-        }
+        "jsCode": "const data = $input.first().json.body;\nreturn { sessionId: data.sessionId, email: data.email };"
       },
-      "id": "cfg-node",
-      "name": "CFG - Config",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.2,
+      "id": "init-start",
+      "name": "Init Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        200,
+        300,
         200
       ]
     },
     {
       "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "job_title",
-              "value": "Full Stack .NET & AI Automation Engineer"
-            },
-            {
-              "name": "job_requirements",
-              "value": "Mandatory: C#, ASP.NET Core (.NET 6/8), React, AI Automation, Docker, Azure Container Apps."
-            }
-          ]
-        }
-      },
-      "id": "cfg-node-2",
-      "name": "CFG - Config 2",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.2,
-      "position": [
-        200,
-        600
-      ]
-    },
-    {
-      "parameters": {
         "method": "GET",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/assessment_sessions?id=eq.{{ $node[\"Webhook - Start\"].json.body.sessionId }}&select=*",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/assessment_sessions?id=eq.{{ $node[\"Init Start\"].json.sessionId }}&select=*",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -101,14 +66,14 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
-        400,
+        500,
         200
       ]
     },
     {
       "parameters": {
         "options": {
-          "systemMessage": "=You are a Technical Recruiter Agent. \nJob Title: {{ $node[\"CFG - Config\"].json.job_title }}\nRequirements: {{ $node[\"CFG - Config\"].json.job_requirements }}\n\nTask: Generate the FIRST surgical technical question for this role. \nReturn ONLY the question text in JSON format: { \"question\": \"...\" }"
+          "systemMessage": "=You are a Technical Recruiter Agent. \nTask: Generate the FIRST surgical technical question for this candidate based on their profile.\nReturn ONLY the question text in JSON format: { \"question\": \"...\" }"
         }
       },
       "id": "agent-start",
@@ -116,7 +81,7 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [
-        650,
+        750,
         200
       ]
     },
@@ -129,7 +94,7 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
       "typeVersion": 1,
       "position": [
-        550,
+        650,
         350
       ]
     },
@@ -144,14 +109,14 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        900,
+        1000,
         200
       ]
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/assessment_sessions?id=eq.{{ $node[\"Webhook - Answer\"].json.body.sessionId }}&select=*",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/assessment_sessions?id=eq.{{ $input.first().json.body.sessionId }}&select=*",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -171,14 +136,14 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
-        400,
+        300,
         600
       ]
     },
     {
       "parameters": {
         "options": {
-          "systemMessage": "=You are an Expert Technical Interviewer.\nJob Title: {{ $node[\"CFG - Config 2\"].json.job_title }}\nRequirements: {{ $node[\"CFG - Config 2\"].json.job_requirements }}\n\nRules:\n1. Review the candidate's latest answer: {{ $node[\"Webhook - Answer\"].json.body.answer }}\n2. If less than 5 questions have been asked, provide the NEXT challenging technical question.\n3. If 5 questions are completed, provide a final summary with a SCORE (0-100) and RESULT (PASS/FAIL).\n\nOutput Format (JSON ONLY):\n{\n  \"nextQuestion\": \"...\",\n  \"feedback\": \"...\",\n  \"isFinal\": false,\n  \"score\": 0,\n  \"result\": \"\"\n}"
+          "systemMessage": "=You are an Expert Technical Interviewer.\nRules:\n1. Review the candidate's latest answer: {{ $node[\"Webhook - Answer\"].json.body.answer }}\n2. If less than 5 questions have been asked, provide the NEXT challenging technical question.\n3. If 5 questions are completed, provide a final summary with a SCORE (0-100) and RESULT (PASS/FAIL).\n\nOutput Format (JSON ONLY):\n{\n  \"nextQuestion\": \"...\",\n  \"feedback\": \"...\",\n  \"isFinal\": false,\n  \"score\": 0,\n  \"result\": \"\"\n}"
         }
       },
       "id": "agent-answer",
@@ -186,7 +151,7 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [
-        650,
+        600,
         600
       ]
     },
@@ -199,7 +164,7 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
       "typeVersion": 1,
       "position": [
-        550,
+        500,
         750
       ]
     },
@@ -214,7 +179,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        900,
+        850,
         600
       ]
     }
@@ -224,14 +189,14 @@
       "main": [
         [
           {
-            "node": "CFG - Config",
+            "node": "Init Start",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "CFG - Config": {
+    "Init Start": {
       "main": [
         [
           {
@@ -276,17 +241,6 @@
       ]
     },
     "Webhook - Answer": {
-      "main": [
-        [
-          {
-            "node": "CFG - Config 2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "CFG - Config 2": {
       "main": [
         [
           {

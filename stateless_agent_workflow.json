@@ -27,7 +27,7 @@
       "typeVersion": 1,
       "position": [
         100,
-        500
+        600
       ]
     },
     {
@@ -73,7 +73,7 @@
     {
       "parameters": {
         "options": {
-          "systemMessage": "=You are a Technical Recruiter Agent. \nJD: {{ $node[\"Fetch CV & JD\"].json[0].jobs.description }}\nCandidate CV: {{ $node[\"Fetch CV & JD\"].json[0].cv_plaintext }}\n\nTask: Generate the FIRST surgical technical question for this candidate. \nReturn ONLY the question text."
+          "systemMessage": "=You are a Technical Recruiter Agent. \nJD: {{ $node[\"Fetch CV & JD\"].json[0].jobs.description }}\nCandidate CV: {{ $node[\"Fetch CV & JD\"].json[0].cv_plaintext }}\n\nTask: Generate the FIRST surgical technical question for this candidate. \nReturn ONLY the question text in JSON format: { \"question\": \"...\" }"
         }
       },
       "id": "agent-start",
@@ -81,14 +81,27 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [
-        700,
+        750,
         200
       ]
     },
     {
       "parameters": {
+        "model": "llama-3.3-70b-versatile"
+      },
+      "id": "groq-model-1",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        650,
+        350
+      ]
+    },
+    {
+      "parameters": {
         "respondWith": "json",
-        "responseBody": "={\n  \"question\": \"{{ $node[\"AI Agent - Start\"].json.output }}\",\n  \"totalPhases\": 5\n}",
+        "responseBody": "={{ $node[\"AI Agent - Start\"].json.output }}",
         "options": {}
       },
       "id": "respond-start",
@@ -96,7 +109,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        950,
+        1000,
         200
       ]
     },
@@ -124,13 +137,13 @@
       "typeVersion": 4.1,
       "position": [
         300,
-        500
+        600
       ]
     },
     {
       "parameters": {
         "options": {
-          "systemMessage": "=You are an Expert Technical Interviewer.\nJD: {{ $node[\"Fetch History\"].json[0].jobs.description }}\nCandidate CV: {{ $node[\"Fetch History\"].json[0].cv_plaintext }}\n\nRules:\n1. Review the previous history and the latest answer provided by the candidate.\n2. If less than 5 questions have been asked, provide the NEXT challenging technical question.\n3. If 5 questions are completed, provide a final summary with a SCORE (0-100) and RESULT (PASS/FAIL).\n\nOutput Format (JSON):\n{\n  \"nextQuestion\": \"...\",\n  \"feedback\": \"...\",\n  \"isFinal\": false,\n  \"score\": 0,\n  \"result\": \"\"\n}"
+          "systemMessage": "=You are an Expert Technical Interviewer.\nJD: {{ $node[\"Fetch History\"].json[0].jobs.description }}\nCandidate CV: {{ $node[\"Fetch History\"].json[0].cv_plaintext }}\nHistory: {{ JSON.stringify($node[\"Fetch History\"].json[0].history) }}\n\nRules:\n1. Review the candidate's latest answer: {{ $node[\"Webhook - Answer\"].json.body.answer }}\n2. If less than 5 questions have been asked, provide the NEXT challenging technical question.\n3. If 5 questions are completed, provide a final summary with a SCORE (0-100) and RESULT (PASS/FAIL).\n\nOutput Format (JSON ONLY):\n{\n  \"nextQuestion\": \"...\",\n  \"feedback\": \"...\",\n  \"isFinal\": false,\n  \"score\": 0,\n  \"result\": \"\"\n}"
         }
       },
       "id": "agent-answer",
@@ -138,8 +151,21 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1,
       "position": [
-        550,
-        500
+        600,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile"
+      },
+      "id": "groq-model-2",
+      "name": "Groq Chat Model 2",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        500,
+        750
       ]
     },
     {
@@ -153,8 +179,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        800,
-        500
+        850,
+        600
       ]
     }
   ],
@@ -203,6 +229,17 @@
         ]
       ]
     },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Start",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Webhook - Answer": {
       "main": [
         [
@@ -231,6 +268,17 @@
           {
             "node": "Respond Answer",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model 2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Answer",
+            "type": "ai_languageModel",
             "index": 0
           }
         ]

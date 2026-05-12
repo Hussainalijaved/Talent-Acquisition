@@ -302,19 +302,22 @@
             const fetchInitialQuestion = async () => {
                 setIsLoading(true);
                 try {
-                    // Start the sequential execution (Using webhook-test for debugging)
-                    const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook-test/assessment-start', {
+                    // Switching to Production Webhook (Ensure workflow is ACTIVE in n8n)
+                    const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook/assessment-start', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
                         body: JSON.stringify({ sessionId, email: candidateEmail })
                     });
-                    const data = await response.json();
+                    let data = await response.json();
                     
+                    if (typeof data === 'string') {
+                        try { data = JSON.parse(data); } catch(e) {}
+                    }
+                    
+                    console.log("Session Started:", data);
                     if (data.executionId) setExecutionId(data.executionId);
 
-                    // The backend now returns the first question and potentially a resume token
                     let initialQ = data.question || data.nextQuestion || data.next_question || data.description;
-
                     if (initialQ) {
                         setQuestion(initialQ);
                         setTotalSteps(data.totalPhases || 5);
@@ -340,8 +343,8 @@
                 if (!answer.trim()) return;
                 setIsLoading(true);
                 try {
-                    // Reverting to path-based ID as it's more standard for n8n WAIT nodes
-                    const baseUrl = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook-test';
+                    // Production resume URL (using path-based executionId)
+                    const baseUrl = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
                     const targetUrl = executionId ? `${baseUrl}/${executionId}/answer` : `${baseUrl}/answer`;
                     console.log("Resuming execution:", targetUrl);
 
@@ -357,7 +360,10 @@
                         })
                     });
 
-                    const data = await response.json();
+                    let data = await response.json();
+                    if (typeof data === 'string') {
+                        try { data = JSON.parse(data); } catch(e) {}
+                    }
 
                     if (data.status === 'finished' || currentStep >= totalSteps) {
                         setView('finished');

@@ -306,7 +306,24 @@
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
                         body: JSON.stringify({ sessionId, email: candidateEmail })
                     });
-                    let data = await response.json();
+                    
+                    let textData = await response.text();
+                    console.log("Raw Response:", textData);
+
+                    // Sanitize: Remove leading '=' or other common prefix junk
+                    let sanitizedText = textData.trim();
+                    if (sanitizedText.startsWith('=')) {
+                        sanitizedText = sanitizedText.substring(1).trim();
+                    }
+
+                    let data;
+                    try {
+                        data = JSON.parse(sanitizedText);
+                    } catch (e) {
+                        console.warn("JSON Parse failed, using raw text", e);
+                        data = { question: sanitizedText };
+                    }
+                    
                     console.log("Assessment Response:", data);
 
                     // Robust parsing: if data is a string, try to parse it
@@ -360,7 +377,25 @@
                         })
                     });
 
-                    let data = await response.json();
+                    let textData = await response.text();
+                    console.log("Raw Response:", textData);
+
+                    // Sanitize
+                    let sanitizedText = textData.trim();
+                    if (sanitizedText.startsWith('=')) {
+                        sanitizedText = sanitizedText.substring(1).trim();
+                    }
+
+                    let data;
+                    try {
+                        data = JSON.parse(sanitizedText);
+                    } catch (e) {
+                        console.warn("JSON Parse failed, using raw text", e);
+                        data = { question: sanitizedText };
+                    }
+                    
+                    console.log("Assessment Response:", data);
+
                     if (typeof data === 'string') {
                         try { data = JSON.parse(data); } catch(e) {}
                     }

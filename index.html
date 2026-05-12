@@ -307,16 +307,23 @@
                         body: JSON.stringify({ sessionId, email: candidateEmail })
                     });
                     let data = await response.json();
-                    
+                    console.log("Assessment Response:", data);
+
+                    // Robust parsing: if data is a string, try to parse it
                     if (typeof data === 'string') {
                         try { data = JSON.parse(data); } catch(e) {}
                     }
-                    
-                    console.log("Session Started:", data);
 
-                    let initialQ = data.question || data.nextQuestion || data.description;
-                    if (initialQ) {
-                        setQuestion(initialQ);
+                    // Extract question from any possible field
+                    let nextQ = data.question || data.nextQuestion || data.feedback || data.output || data.text;
+                    
+                    // If nextQ is still an object, extract from it
+                    if (typeof nextQ === 'object' && nextQ !== null) {
+                        nextQ = nextQ.question || nextQ.nextQuestion || nextQ.text || JSON.stringify(nextQ);
+                    }
+
+                    if (nextQ) {
+                        setQuestion(nextQ);
                         setTotalSteps(data.totalPhases || 5);
                     }
                 } catch (e) {

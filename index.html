@@ -340,9 +340,9 @@
                 if (!answer.trim()) return;
                 setIsLoading(true);
                 try {
-                    // Use dynamic executionId if available to resume the correct sequence
-                    const baseUrl = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook-test';
-                    const targetUrl = executionId ? `${baseUrl}/${executionId}/wait-for-answer` : `${baseUrl}/wait-for-answer`;
+                    // Use query parameter instead of path for executionId (More compatible with n8n)
+                    const baseUrl = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook-test/wait-for-answer';
+                    const targetUrl = executionId ? `${baseUrl}?executionId=${executionId}` : baseUrl;
 
                     const response = await fetch(targetUrl, {
                         method: 'POST',

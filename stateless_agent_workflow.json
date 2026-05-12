@@ -1,0 +1,240 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "assessment-start",
+        "options": {}
+      },
+      "id": "start-webhook",
+      "name": "Webhook - Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "assessment-answer",
+        "options": {}
+      },
+      "id": "answer-webhook",
+      "name": "Webhook - Answer",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json.body;\nreturn { sessionId: data.sessionId, email: data.email };"
+      },
+      "id": "init-start",
+      "name": "Init Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sessions?id=eq.{{ $node[\"Init Start\"].json.sessionId }}&select=*,jobs(*)",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-data-start",
+      "name": "Fetch CV & JD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        500,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "=You are a Technical Recruiter Agent. \nJD: {{ $node[\"Fetch CV & JD\"].json[0].jobs.description }}\nCandidate CV: {{ $node[\"Fetch CV & JD\"].json[0].cv_plaintext }}\n\nTask: Generate the FIRST surgical technical question for this candidate. \nReturn ONLY the question text."
+        }
+      },
+      "id": "agent-start",
+      "name": "AI Agent - Start",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [
+        700,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"question\": \"{{ $node[\"AI Agent - Start\"].json.output }}\",\n  \"totalPhases\": 5\n}",
+        "options": {}
+      },
+      "id": "respond-start",
+      "name": "Respond Start",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        950,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sessions?id=eq.{{ $input.first().json.body.sessionId }}&select=*,jobs(*)",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-history",
+      "name": "Fetch History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        300,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "=You are an Expert Technical Interviewer.\nJD: {{ $node[\"Fetch History\"].json[0].jobs.description }}\nCandidate CV: {{ $node[\"Fetch History\"].json[0].cv_plaintext }}\n\nRules:\n1. Review the previous history and the latest answer provided by the candidate.\n2. If less than 5 questions have been asked, provide the NEXT challenging technical question.\n3. If 5 questions are completed, provide a final summary with a SCORE (0-100) and RESULT (PASS/FAIL).\n\nOutput Format (JSON):\n{\n  \"nextQuestion\": \"...\",\n  \"feedback\": \"...\",\n  \"isFinal\": false,\n  \"score\": 0,\n  \"result\": \"\"\n}"
+        }
+      },
+      "id": "agent-answer",
+      "name": "AI Agent - Answer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1,
+      "position": [
+        550,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $node[\"AI Agent - Answer\"].json.output }}",
+        "options": {}
+      },
+      "id": "respond-answer",
+      "name": "Respond Answer",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        800,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Start": {
+      "main": [
+        [
+          {
+            "node": "Init Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Start": {
+      "main": [
+        [
+          {
+            "node": "Fetch CV & JD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch CV & JD": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Start": {
+      "main": [
+        [
+          {
+            "node": "Respond Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Answer": {
+      "main": [
+        [
+          {
+            "node": "Fetch History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch History": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Answer": {
+      "main": [
+        [
+          {
+            "node": "Respond Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

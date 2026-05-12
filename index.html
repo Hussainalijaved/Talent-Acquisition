@@ -151,19 +151,30 @@
             </div>
         );
 
-        const InstructionsView = ({ onStart }) => (
-            <div className="min-h-screen flex items-center justify-center p-6 fade-in">
-                <div className="glass max-w-2xl w-full p-12 rounded-[3rem]">
-                    <h2 className="text-3xl font-bold mb-6">Assessment Rules</h2>
-                    <div className="space-y-3 mb-8">
-                        {['Global 20-minute timer for all tasks.', 'No tab switching permitted.', 'Copy/Paste is disabled.', 'AI monitors all input streams.'].map((rule, i) => (
-                            <div key={i} className="rule-item text-sm">✨ {rule}</div>
-                        ))}
+        const InstructionsView = ({ onStart }) => {
+            const [agreed, setAgreed] = React.useState(false);
+            return (
+                <div className="min-h-screen flex items-center justify-center p-6 fade-in">
+                    <div className="glass max-w-2xl w-full p-12 rounded-[3rem]">
+                        <h2 className="text-3xl font-bold mb-6">Assessment Rules</h2>
+                        <div className="space-y-3 mb-8">
+                            {['Global 20-minute timer for all tasks.', 'No tab switching permitted.', 'Copy/Paste is disabled.', 'AI monitors all input streams.'].map((rule, i) => (
+                                <div key={i} className="rule-item text-sm">✨ {rule}</div>
+                            ))}
+                        </div>
+                        
+                        <label className="flex items-center gap-4 mb-8 cursor-pointer group">
+                            <input type="checkbox" className="w-6 h-6 rounded border-white/10 bg-white/5 accent-indigo-500" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+                            <span className="text-gray-400 group-hover:text-white transition-colors text-sm">I have read and agree to follow the assessment rules.</span>
+                        </label>
+
+                        <button onClick={onStart} disabled={!agreed} className="btn-primary w-full py-5 rounded-2xl font-bold text-lg disabled:opacity-30 disabled:cursor-not-allowed">
+                            Start Assessment
+                        </button>
                     </div>
-                    <button onClick={onStart} className="btn-primary w-full py-5 rounded-2xl font-bold text-lg">Start Assessment</button>
                 </div>
-            </div>
-        );
+            );
+        };
 
         const AdminView = ({ setView }) => {
             const [jobTitle, setJobTitle] = useState('');

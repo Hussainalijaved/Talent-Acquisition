@@ -46,7 +46,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sessions?id=eq.{{ $node[\"Init Start\"].json.sessionId }}&select=*,jobs(*)",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/assessment_sessions?id=eq.{{ $node[\"Init Start\"].json.sessionId }}&select=*",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -62,7 +62,7 @@
         }
       },
       "id": "fetch-data-start",
-      "name": "Fetch CV & JD",
+      "name": "Fetch Session Data",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
@@ -73,7 +73,7 @@
     {
       "parameters": {
         "options": {
-          "systemMessage": "=You are a Technical Recruiter Agent. \nJD: {{ $node[\"Fetch CV & JD\"].json[0].jobs.description }}\nCandidate CV: {{ $node[\"Fetch CV & JD\"].json[0].cv_plaintext }}\n\nTask: Generate the FIRST surgical technical question for this candidate. \nReturn ONLY the question text in JSON format: { \"question\": \"...\" }"
+          "systemMessage": "=You are a Technical Recruiter Agent. \nTask: Generate the FIRST surgical technical question for this candidate based on their profile.\nReturn ONLY the question text in JSON format: { \"question\": \"...\" }"
         }
       },
       "id": "agent-start",
@@ -116,7 +116,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sessions?id=eq.{{ $input.first().json.body.sessionId }}&select=*,jobs(*)",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/assessment_sessions?id=eq.{{ $input.first().json.body.sessionId }}&select=*",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -143,7 +143,7 @@
     {
       "parameters": {
         "options": {
-          "systemMessage": "=You are an Expert Technical Interviewer.\nJD: {{ $node[\"Fetch History\"].json[0].jobs.description }}\nCandidate CV: {{ $node[\"Fetch History\"].json[0].cv_plaintext }}\nHistory: {{ JSON.stringify($node[\"Fetch History\"].json[0].history) }}\n\nRules:\n1. Review the candidate's latest answer: {{ $node[\"Webhook - Answer\"].json.body.answer }}\n2. If less than 5 questions have been asked, provide the NEXT challenging technical question.\n3. If 5 questions are completed, provide a final summary with a SCORE (0-100) and RESULT (PASS/FAIL).\n\nOutput Format (JSON ONLY):\n{\n  \"nextQuestion\": \"...\",\n  \"feedback\": \"...\",\n  \"isFinal\": false,\n  \"score\": 0,\n  \"result\": \"\"\n}"
+          "systemMessage": "=You are an Expert Technical Interviewer.\nRules:\n1. Review the candidate's latest answer: {{ $node[\"Webhook - Answer\"].json.body.answer }}\n2. If less than 5 questions have been asked, provide the NEXT challenging technical question.\n3. If 5 questions are completed, provide a final summary with a SCORE (0-100) and RESULT (PASS/FAIL).\n\nOutput Format (JSON ONLY):\n{\n  \"nextQuestion\": \"...\",\n  \"feedback\": \"...\",\n  \"isFinal\": false,\n  \"score\": 0,\n  \"result\": \"\"\n}"
         }
       },
       "id": "agent-answer",
@@ -200,14 +200,14 @@
       "main": [
         [
           {
-            "node": "Fetch CV & JD",
+            "node": "Fetch Session Data",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Fetch CV & JD": {
+    "Fetch Session Data": {
       "main": [
         [
           {

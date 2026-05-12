@@ -1,0 +1,97 @@
+{
+  "name": "AI Assessment Portal - Standalone",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "assessment-init",
+        "options": {}
+      },
+      "id": "6a0333a1-c75c-430d-a65d-a77b587964ed",
+      "name": "TRG - Webhook Assessment Init",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 240]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "assessment-submit",
+        "options": {}
+      },
+      "id": "1",
+      "name": "TRG - Webhook Assessment Submit",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 440]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nreturn [{ json: { sessionId: body.sessionId, email: body.email, reply_text: body.answer || '' } }];"
+      },
+      "id": "2",
+      "name": "CODE - Normalize Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 340]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/assessment_sessions?id=eq.{{ $json.sessionId }}&select=*",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+          ]
+        }
+      },
+      "id": "3",
+      "name": "HTTP - Fetch Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.GROQ_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"You are a Technical Recruiter AI. Evaluate the candidate's answer based on their CV. If no answer is provided, it is Phase 1, so generate the FIRST question based on their CV projects. Otherwise, score the answer (0-100) and provide the next question. If phase >= 5, provide a final decision (PASS/FAIL) and feedback. Output JSON: { \\\"status\\\": \\\"in_progress|finished\\\", \\\"nextQuestion\\\": \\\"...\\\", \\\"result\\\": \\\"PASS|FAIL|null\\\", \\\"feedback\\\": \\\"...\\\" }\" },\n    { \"role\": \"user\", \"content\": \"CV: {{ $json[0].cv_plaintext }}\\nAnswer: {{ $node[\\\"CODE - Normalize Data\\\"].json.reply_text }}\\nPhase: {{ $json[0].current_phase || 1 }}\" }\n  ],\n  \"response_format\": { \"type\": \"json_object\" }\n}"
+      },
+      "id": "4",
+      "name": "Groq - AI Evaluator & Detection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 340]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.choices[0].message.content }}",
+        "options": {}
+      },
+      "id": "5",
+      "name": "Respond to Portal",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [880, 340]
+    }
+  ],
+  "connections": {
+    "TRG - Webhook Assessment Init": { "main": [[{ "node": "CODE - Normalize Data", "type": "main", "index": 0 }]] },
+    "TRG - Webhook Assessment Submit": { "main": [[{ "node": "CODE - Normalize Data", "type": "main", "index": 0 }]] },
+    "CODE - Normalize Data": { "main": [[{ "node": "HTTP - Fetch Session", "type": "main", "index": 0 }]] },
+    "HTTP - Fetch Session": { "main": [[{ "node": "Groq - AI Evaluator & Detection", "type": "main", "index": 0 }]] },
+    "Groq - AI Evaluator & Detection": { "main": [[{ "node": "Respond to Portal", "type": "main", "index": 0 }]] }
+  }
+}

@@ -1,0 +1,283 @@
+{
+  "name": "AI Assessment Portal - Sequential Loop",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "assessment-start",
+        "options": {}
+      },
+      "id": "29c8b699-d2c6-45ab-a5b2-52cebb487331",
+      "name": "Webhook - Start Session",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        100,
+        300
+      ],
+      "webhookId": "assessment-start"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/assessment_sessions?id=eq.{{ $json.body.sessionId }}&select=*,jobs(*)",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "dcda2bdb-d4d1-4929-aeff-99b5c6633117",
+      "name": "HTTP - Fetch CV & JD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst data = $input.first().json[0];\nconst cv = data.cv_plaintext || 'No CV text found';\nconst jd = data.jobs?.description || data.jobs?.jd_text || 'Standard Engineering Role';\nconst title = data.jobs?.title || 'Engineer';\n\nreturn [{ json: { cv, jd, title, sessionId: data.id, currentPhase: 1, maxPhases: 5, history: [] } }];\n"
+      },
+      "id": "c87c74ad-1dac-45c2-998a-315b00b3e288",
+      "name": "CODE - Initialize Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// This node acts as our Loop Head\nconst ctx = $input.first().json;\nreturn [{ json: ctx }];\n"
+      },
+      "id": "5b732807-23d0-4978-8c03-ef9229cb4f28",
+      "name": "Loop Head",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst ctx = $input.first().json;\nconst isFinal = ctx.currentPhase > ctx.maxPhases;\n\nconst sys = isFinal \n? `You are the Final Scorer. Review the CV, JD, and all Q&A history. \n   JD: ${ctx.jd}\n   CV: ${ctx.cv}\n   History: ${JSON.stringify(ctx.history)}\n   Provide final score (0-100), result (PASS/FAIL), and feedback.`\n: `You are a Technical Interviewer. \n   Role: ${ctx.title}\n   JD Requirements: ${ctx.jd}\n   Candidate CV: ${ctx.cv}\n   Phase: ${ctx.currentPhase} of ${ctx.maxPhases}\n   History: ${JSON.stringify(ctx.history)}\n   \n   Task: Generate a surgical technical question that tests the candidate's fit for this SPECIFIC JD based on their CV. \n   If they claim a skill in CV that JD needs, drill down. If they miss a skill JD needs, ask how they would handle it.`;\n\nconst body = {\n    model: \"llama-3.3-70b-versatile\",\n    messages: [{ role: \"system\", content: sys }],\n    temperature: 0.2,\n    response_format: { type: \"json_object\" }\n};\nreturn [{ json: { ...ctx, groq_request: body, isFinal } }];\n"
+      },
+      "id": "cc67c336-5baf-411e-a1eb-71323e0899a0",
+      "name": "CODE - Prepare AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.groq_request }}"
+      },
+      "id": "ffc6b4fc-7c57-4048-8f5d-affa7411f71e",
+      "name": "Groq - AI Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst api = $input.first().json;\nconst content = JSON.parse(api.choices[0].message.content);\nconst ctx = $('CODE - Prepare AI Prompt').first().json;\n\nreturn [{ json: { ...ctx, ai_response: content } }];\n"
+      },
+      "id": "a574806e-646c-45c0-98ac-c65fbf1d0541",
+      "name": "CODE - Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.ai_response }}",
+        "options": {}
+      },
+      "id": "41b38e00-ad50-4ecd-8370-0a1fae89f958",
+      "name": "Respond to Portal",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {
+          "webhookSuffix": "answer"
+        }
+      },
+      "id": "c6f1b54f-02c0-45ce-ab43-00b92aef2bb4",
+      "name": "WAIT - For Candidate Answer",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1500,
+        400
+      ],
+      "webhookId": "wait-for-answer"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst prevCtx = $('CODE - Parse AI Response').first().json;\nconst answerData = $input.first().json.body;\n\nconst newHistory = [...prevCtx.history, {\n    phase: prevCtx.currentPhase,\n    question: prevCtx.ai_response.nextQuestion || 'Final Review',\n    answer: answerData.answer\n}];\n\nreturn [{ \n    json: { \n        ...prevCtx, \n        history: newHistory, \n        currentPhase: prevCtx.currentPhase + 1 \n    } \n}];\n"
+      },
+      "id": "231e3035-dc12-43e4-90bd-be83bdf3ddc5",
+      "name": "CODE - Update History",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Start Session": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Fetch CV & JD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Fetch CV & JD": {
+      "main": [
+        [
+          {
+            "node": "CODE - Initialize Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Initialize Context": {
+      "main": [
+        [
+          {
+            "node": "Loop Head",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Head": {
+      "main": [
+        [
+          {
+            "node": "CODE - Prepare AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Prepare AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Groq - AI Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq - AI Engine": {
+      "main": [
+        [
+          {
+            "node": "CODE - Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Portal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WAIT - For Candidate Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WAIT - For Candidate Answer": {
+      "main": [
+        [
+          {
+            "node": "CODE - Update History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Update History": {
+      "main": [
+        [
+          {
+            "node": "Loop Head",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

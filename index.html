@@ -340,9 +340,10 @@
                 if (!answer.trim()) return;
                 setIsLoading(true);
                 try {
-                    // Use query parameter instead of path for executionId (More compatible with n8n)
-                    const baseUrl = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook-test/answer';
-                    const targetUrl = executionId ? `${baseUrl}?executionId=${executionId}` : baseUrl;
+                    // Reverting to path-based ID as it's more standard for n8n WAIT nodes
+                    const baseUrl = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook-test';
+                    const targetUrl = executionId ? `${baseUrl}/${executionId}/answer` : `${baseUrl}/answer`;
+                    console.log("Resuming execution:", targetUrl);
 
                     const response = await fetch(targetUrl, {
                         method: 'POST',

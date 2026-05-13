@@ -280,7 +280,7 @@
             </div>
         );
 
-        const FinishedView = ({ result, feedback }) => (
+        const FinishedView = ({ result, feedback, onReview }) => (
             <div className="min-h-screen flex items-center justify-center p-6 fade-in">
                 <div className="glass max-w-3xl w-full p-20 rounded-[4rem] text-center">
                     <div className={`w-24 h-24 ${result === 'PASS' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} rounded-[2rem] flex items-center justify-center mx-auto mb-10 rotate-12`}>
@@ -291,17 +291,71 @@
                         )}
                     </div>
                     <h1 className="text-5xl font-bold mb-6 tracking-tight">{result === 'PASS' ? 'Assessment Passed' : 'Assessment Completed'}</h1>
-                    <p className="text-xl text-gray-400 mb-6 leading-relaxed">
+                    <p className="text-xl text-gray-400 mb-8 leading-relaxed">
                         {result === 'PASS'
                             ? "Great work! Your technical depth matches our requirements. Our talent team will contact you for the next steps."
                             : "Thank you for your time. Your assessment is complete and our team will review the results."}
                     </p>
-                    {feedback && (
-                        <div className="glass-dark p-6 rounded-2xl text-left border border-white/5">
-                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">AI Feedback Summary</p>
-                            <p className="text-gray-300 italic">"{feedback}"</p>
+                    
+                    <div className="space-y-6">
+                        {feedback && (
+                            <div className="glass-dark p-6 rounded-2xl text-left border border-white/5 mb-8">
+                                <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">AI Feedback Summary</p>
+                                <p className="text-gray-300 italic">"{feedback}"</p>
+                            </div>
+                        )}
+                        
+                        <button onClick={onReview} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-5 rounded-2xl shadow-xl shadow-indigo-500/20 transition-all transform hover:scale-[1.02] flex items-center justify-center gap-3">
+                            <i className="fas fa-graduation-cap"></i> Review My Answers & Learn
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const ReviewView = ({ history, onBack }) => (
+            <div className="min-h-screen p-6 md:p-12 fade-in max-w-6xl mx-auto">
+                <div className="flex items-center justify-between mb-12 sticky top-0 bg-[#050505]/80 backdrop-blur-md py-4 z-50">
+                    <div>
+                        <h2 className="text-4xl font-bold gradient-text">Learning & Review</h2>
+                        <p className="text-gray-500 mt-2">See how you performed and read suggested improvements.</p>
+                    </div>
+                    <button onClick={onBack} className="glass px-6 py-3 rounded-xl hover:bg-white/5 transition-all">Back</button>
+                </div>
+
+                <div className="space-y-8">
+                    {history.map((item, index) => (
+                        <div key={index} className="glass rounded-[2.5rem] p-8 md:p-12 relative overflow-hidden border-l-4 border-l-indigo-500">
+                            <div className="flex items-center gap-4 mb-6">
+                                <span className="bg-indigo-500/10 text-indigo-400 px-4 py-1.5 rounded-full text-xs font-bold">PHASE {item.phase}</span>
+                            </div>
+                            <h3 className="text-2xl font-semibold mb-8 text-gray-100">Q: {item.question_text}</h3>
+                            
+                            <div className="grid md:grid-cols-2 gap-8">
+                                <div className="space-y-3">
+                                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-500 flex items-center gap-2">
+                                        <i className="fas fa-user text-indigo-400"></i> Your Response
+                                    </h4>
+                                    <div className="p-6 rounded-2xl bg-white/5 border border-white/5 text-gray-300 italic leading-relaxed">
+                                        "{item.answer_text || 'No answer provided'}"
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 flex items-center gap-2">
+                                        <i className="fas fa-magic"></i> Suggested Better Answer
+                                    </h4>
+                                    <div className="p-6 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 text-indigo-50 font-medium leading-relaxed">
+                                        {item.suggested_answer || "Great answer! Our AI couldn't suggest any major improvements for this specific response."}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    )}
+                    ))}
+                </div>
+                
+                <div className="text-center py-20">
+                    <p className="text-gray-500 mb-6">This completes your learning review.</p>
+                    <button onClick={() => window.location.reload()} className="btn-primary px-12 py-4 rounded-2xl font-bold">Exit Portal</button>
                 </div>
             </div>
         );
@@ -319,6 +373,7 @@
             const [result, setResult] = useState(null);
             const [feedback, setFeedback] = useState("");
             const [tabSwitchCount, setTabSwitchCount] = useState(0);
+            const [assessmentHistory, setAssessmentHistory] = useState([]);
 
             useEffect(() => {
                 const preventActions = (e) => e.preventDefault();
@@ -450,12 +505,33 @@
                 } finally { setIsLoading(false); }
             };
 
+            const fetchAndShowReview = async () => {
+                setIsLoading(true);
+                try {
+                    // This assumes window.supabase is initialized correctly
+                    const { data, error } = await window.supabase
+                        .from('assessment_questions')
+                        .select('*')
+                        .eq('session_id', sessionId)
+                        .order('phase', { ascending: true });
+
+                    if (error) throw error;
+                    setAssessmentHistory(data || []);
+                    setView('review');
+                } catch (e) {
+                    alert("Error fetching assessment history. Make sure you are connected to the database.");
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
             const renderView = () => {
                 switch (view) {
                     case 'login': return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} />;
                     case 'instructions': return <InstructionsView onStart={handleStartAssessment} />;
                     case 'assessment': return <AssessmentView currentStep={currentStep} totalSteps={totalSteps} timeLeft={timeLeft} question={question} answer={answer} setAnswer={setAnswer} handleAssessmentSubmit={handleAssessmentSubmit} isLoading={isLoading} sessionId={sessionId} />;
-                    case 'finished': return <FinishedView result={result} feedback={feedback} />;
+                    case 'finished': return <FinishedView result={result} feedback={feedback} onReview={fetchAndShowReview} />;
+                    case 'review': return <ReviewView history={assessmentHistory} onBack={() => setView('finished')} />;
                     case 'admin': return <AdminView setView={setView} />;
                     default: return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} />;
                 }

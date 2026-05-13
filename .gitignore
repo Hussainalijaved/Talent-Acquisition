@@ -1,0 +1,9 @@
+node_modules/
+.env
+credentials.json
+google_service_account.json
+*.pem
+*.key
+__pycache__/
+*.pyc
+.n8n/

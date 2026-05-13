@@ -371,6 +371,9 @@
                     try { data = JSON.parse(sanitizedText); } catch (e) { data = { question: sanitizedText }; }
                     
                     let q = data.question || data.nextQuestion || data.output || data.text;
+                    if (typeof q === 'object') {
+                        q = q.text || q.message || q.content || JSON.stringify(q);
+                    }
                     if (q) {
                         setQuestion(q);
                         setTotalSteps(data.totalPhases || 5);
@@ -422,6 +425,9 @@
                         setFeedback(data.feedback || "Assessment completed successfully.");
                     } else {
                         let nextQ = data.nextQuestion || data.question || data.output || "";
+                        if (typeof nextQ === 'object') {
+                            nextQ = nextQ.text || nextQ.message || nextQ.content || JSON.stringify(nextQ);
+                        }
                         if (nextQ) {
                             setQuestion(nextQ);
                             setCurrentStep(prev => prev + 1);

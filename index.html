@@ -244,27 +244,27 @@
             );
         };
 
-        const AssessmentView = ({ currentStep, totalSteps, timeLeft, question, answer, setAnswer, handleAssessmentSubmit, isLoading, sessionId }) => (
+        const AssessmentView = ({ currentStep, timeLeft, question, answer, setAnswer, handleAssessmentSubmit, isLoading, sessionId }) => (
             <div className="min-h-screen flex flex-col items-center justify-center p-6 fade-in">
                 <div className="max-w-5xl w-full flex justify-between items-end mb-10 px-4 text-left">
                     <div>
-                        <span className="text-xs font-bold text-indigo-400 uppercase tracking-[0.2em] mb-3 block">Real-time AI Assessment</span>
-                        <h1 className="text-4xl font-bold">Phase <span className="gradient-text">{currentStep}</span> <span className="text-gray-600 font-light text-3xl ml-2">/ {totalSteps}</span></h1>
+                        <span className="text-xs font-bold text-indigo-400 uppercase tracking-[0.2em] mb-3 block">Adaptive AI Assessment</span>
+                        <h1 className="text-4xl font-bold">Phase <span className="gradient-text">{String(currentStep).padStart(2, '0')}</span> <span className="text-gray-500 font-light text-sm ml-2 uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full border border-white/10">Dynamic</span></h1>
                     </div>
                     <div className={`glass px-8 py-4 rounded-3xl flex items-center gap-4 ${timeLeft < 30 ? 'text-red-400 border-red-500/30' : 'text-indigo-300'}`}>
                         <div className="text-right">
-                            <p className="text-[10px] uppercase font-bold tracking-widest opacity-50 mb-1">Time Remaining</p>
+                            <p className="text-[10px] uppercase font-bold tracking-widest opacity-50 mb-1">Phase Time</p>
                             <p className="text-2xl font-mono font-bold leading-none">{Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</p>
                         </div>
                     </div>
                 </div>
                 <div className="max-w-5xl w-full h-2 bg-white/5 rounded-full mb-12 overflow-hidden mx-4">
-                    <div className="h-full btn-primary transition-all duration-700 ease-out" style={{ width: `${(currentStep / totalSteps) * 100}%` }}></div>
+                    <div className="h-full btn-primary transition-all duration-700 ease-out" style={{ width: `${Math.min((currentStep / 10) * 100, 100)}%` }}></div>
                 </div>
                 <main className="max-w-5xl w-full glass rounded-[3rem] p-12 md:p-20 relative overflow-hidden text-left">
                     {isLoading && <div className="absolute inset-0 bg-black/40 backdrop-blur-md z-50 flex flex-col items-center justify-center"><div className="w-16 h-16 border-4 border-white/5 border-t-indigo-500 rounded-full animate-spin mb-6"></div><p className="text-lg font-medium tracking-wide">AI Analyzing Response & Scoring...</p></div>}
                     <div className="mb-12">
-                        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-widest mb-6"><span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>Dynamic Technical Question</div>
+                        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-widest mb-6"><span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>Technical Challenge</div>
                         <h3 className="text-3xl md:text-4xl font-semibold leading-tight text-gray-100 italic">"{question}"</h3>
                     </div>
                     <textarea className="input-field w-full px-8 py-8 rounded-[2rem] h-64 outline-none text-xl leading-relaxed mb-10 placeholder:text-gray-700 resize-none" placeholder="Detail your technical strategy and reasoning..." value={answer} onChange={(e) => setAnswer(e.target.value)}></textarea>
@@ -274,7 +274,7 @@
                             <div className="w-px h-8 bg-white/10"></div>
                             <div><p className="text-[10px] uppercase font-bold text-gray-500 tracking-tighter mb-1">AI Detection</p><p className="text-xs font-bold text-green-500 uppercase tracking-tighter">Active</p></div>
                         </div>
-                        <button onClick={handleAssessmentSubmit} disabled={answer.length < 5 || isLoading} className="btn-primary px-12 py-5 rounded-[1.5rem] font-bold text-xl flex items-center gap-4 disabled:opacity-30 disabled:grayscale">{currentStep === totalSteps ? 'Finalize & Score' : 'Commit & Next'}<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg></button>
+                        <button onClick={handleAssessmentSubmit} disabled={answer.length < 5 || isLoading} className="btn-primary px-12 py-5 rounded-[1.5rem] font-bold text-xl flex items-center gap-4 disabled:opacity-30 disabled:grayscale">Submit Response <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg></button>
                     </div>
                 </main>
             </div>
@@ -312,8 +312,8 @@
             const [candidateEmail, setCandidateEmail] = useState('');
             const [isLoading, setIsLoading] = useState(false);
             const [currentStep, setCurrentStep] = useState(1);
-            const [totalSteps, setTotalSteps] = useState(5);
-            const [timeLeft, setTimeLeft] = useState(1200);
+            const [totalSteps, setTotalSteps] = useState(10);
+            const [timeLeft, setTimeLeft] = useState(180);
             const [question, setQuestion] = useState("Loading your first technical challenge...");
             const [answer, setAnswer] = useState("");
             const [result, setResult] = useState(null);
@@ -370,13 +370,18 @@
                     let data;
                     try { data = JSON.parse(sanitizedText); } catch (e) { data = { question: sanitizedText }; }
                     
-                    let q = data.question || data.nextQuestion || data.output || data.text;
-                    if (typeof q === 'object') {
-                        q = q.text || q.message || q.content || JSON.stringify(q);
+                    let q = data.question || data.nextQuestion || data.output || data.text || sanitizedText;
+                    if (typeof q === 'string' && q.trim().startsWith('{')) {
+                        try { let parsed = JSON.parse(q); q = parsed.question || parsed.text || parsed.message || parsed.content || q; } catch(e) {}
                     }
+                    if (typeof q === 'object') {
+                        q = q.question || q.text || q.message || q.content || JSON.stringify(q);
+                    }
+                    if (typeof q === 'string') q = q.replace(/^"|"$/g, '').trim();
+
                     if (q) {
                         setQuestion(q);
-                        setTotalSteps(data.totalPhases || 5);
+                        setTimeLeft(180);
                     }
                 } catch (e) {
                     console.error("Init Error", e);
@@ -425,12 +430,18 @@
                         setFeedback(data.feedback || "Assessment completed successfully.");
                     } else {
                         let nextQ = data.nextQuestion || data.question || data.output || "";
-                        if (typeof nextQ === 'object') {
-                            nextQ = nextQ.text || nextQ.message || nextQ.content || JSON.stringify(nextQ);
+                        if (typeof nextQ === 'string' && nextQ.trim().startsWith('{')) {
+                            try { let parsed = JSON.parse(nextQ); nextQ = parsed.question || parsed.text || parsed.message || parsed.content || nextQ; } catch(e) {}
                         }
+                        if (typeof nextQ === 'object') {
+                            nextQ = nextQ.question || nextQ.text || nextQ.message || nextQ.content || JSON.stringify(nextQ);
+                        }
+                        if (typeof nextQ === 'string') nextQ = nextQ.replace(/^"|"$/g, '').trim();
+
                         if (nextQ) {
                             setQuestion(nextQ);
                             setCurrentStep(prev => prev + 1);
+                            setTimeLeft(180);
                             setAnswer("");
                         }
                     }

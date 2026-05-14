@@ -800,40 +800,32 @@
             const fetchAndShowReview = async () => {
                 setIsLoading(true);
                 try {
-                    console.log('Fetching history for session:', sessionId);
+                    console.log('Fetching history via n8n proxy for session:', sessionId);
                     
-                    // Standard Supabase SDK Call
-                    const { data, error } = await supabase
-                        .from('assessment_questions')
-                        .select('*')
-                        .eq('session_id', sessionId)
-                        .order('phase', { ascending: true });
-
-                    if (error) {
-                        console.warn('SDK fetch failed, attempting manual fetch...');
-                        const resp = await fetch(`${supabaseUrl}/rest/v1/assessment_questions?session_id=eq.${sessionId}&select=*&order=phase.asc`, {
-                            method: 'GET',
-                            headers: {
-                                'apikey': supabaseKey,
-                                'Authorization': `Bearer ${supabaseKey}`,
-                                'Content-Type': 'application/json'
-                            }
-                        });
+                    // Using n8n as a proxy to bypass CORS/Adblock issues
+                    // Make sure you have a GET webhook at /get-history in n8n
+                    const n8nBaseUrl = 'https://n8n.theasol.com/webhook/779c467a-1153-4330-819a-5e16f3162002';
+                    const response = await fetch(`${n8nBaseUrl}/get-history?sessionId=${sessionId}`);
+                    
+                    if (!response.ok) {
+                        console.warn('n8n proxy failed, attempting direct Supabase SDK as last resort...');
+                        const { data, error } = await supabase
+                            .from('assessment_questions')
+                            .select('*')
+                            .eq('session_id', sessionId)
+                            .order('phase', { ascending: true });
                         
-                        if (!resp.ok) {
-                            const errTxt = await resp.text();
-                            throw new Error(`HTTP ${resp.status}: ${errTxt}`);
-                        }
-                        const fallbackData = await resp.json();
-                        setAssessmentHistory(fallbackData);
+                        if (error) throw error;
+                        setAssessmentHistory(data || []);
                     } else {
+                        const data = await response.json();
                         setAssessmentHistory(data || []);
                     }
 
                     setView('review');
                 } catch (e) {
                     console.error('Final Fetch Error:', e);
-                    alert(`Fetch Failed: ${e.message}. Please check if Supabase URL/Key is still valid in your Dashboard.`);
+                    alert(`Could not load history. Please ensure your n8n /get-history webhook is active. Error: ${e.message}`);
                 } finally {
                     setIsLoading(false);
                 }

@@ -4,176 +4,205 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enterprise AI Talent Portal | Unified Assessment & Hiring</title>
+    <title>Talent assessment portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        surface: { DEFAULT: '#14181f', elevated: '#1b212b', border: '#2a3341' },
+                        accent: { DEFAULT: '#3b82f6', hover: '#2563eb', muted: 'rgba(59, 130, 246, 0.12)' },
+                    },
+                },
+            },
+        };
+    </script>
     <style>
         body {
-            font-family: 'Outfit', sans-serif;
-            background: #08080a;
-            color: #fff;
-            overflow-x: hidden;
+            font-family: 'Inter', system-ui, sans-serif;
+            background: #0c0f14;
+            color: #e8eaed;
         }
 
-        .glass {
-            background: rgba(255, 255, 255, 0.02);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }
-
-        .glass-dark {
-            background: rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .gradient-text {
-            background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #4f46e5 0%, #9333ea 100%);
-            transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-3px) scale(1.02);
-            box-shadow: 0 15px 30px -10px rgba(99, 102, 241, 0.6);
-        }
-
-        /* Security: Disable selection */
-        .no-select {
-            -webkit-touch-callout: none;
-            -webkit-user-select: none;
-            -khtml-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-        }
-
-        .instruction-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 1.5rem;
-            padding: 2rem;
-            backdrop-filter: blur(10px);
-        }
-
-        .rule-item {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 1rem;
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 1rem;
-            margin-bottom: 0.75rem;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+        .panel {
+            background: #14181f;
+            border: 1px solid #2a3341;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
         }
 
         .input-field {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all 0.3s ease;
+            background: #1b212b;
+            border: 1px solid #2a3341;
+            color: #e8eaed;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .input-field::placeholder {
+            color: #64748b;
         }
 
         .input-field:focus {
-            border-color: #6366f1;
-            background: rgba(255, 255, 255, 0.05);
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
         }
 
-        .floating {
-            animation: floating 6s ease-in-out infinite;
+        .btn-primary {
+            background: #3b82f6;
+            color: #fff;
+            font-weight: 600;
+            transition: background 0.15s ease;
         }
 
-        @keyframes floating {
+        .btn-primary:hover:not(:disabled) {
+            background: #2563eb;
+        }
 
-            0%,
-            100% {
-                transform: translateY(0);
-            }
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid #2a3341;
+            color: #94a3b8;
+            font-weight: 500;
+            transition: border-color 0.15s ease, color 0.15s ease;
+        }
 
-            50% {
-                transform: translateY(-20px);
-            }
+        .btn-secondary:hover:not(:disabled) {
+            border-color: #475569;
+            color: #e8eaed;
         }
 
         .fade-in {
-            animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            animation: fadeIn 0.35s ease-out;
         }
 
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .assessment-lock {
+            -webkit-user-select: none;
+            user-select: none;
         }
     </style>
 </head>
 
-<body class="no-select">
+<body>
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        const LoginView = ({ sessionId, setSessionId, setView }) => (
-            <div className="min-h-screen flex items-center justify-center p-6 fade-in relative">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-600/10 blur-[120px] rounded-full floating"></div>
-                <div className="glass max-w-lg w-full p-12 rounded-[2.5rem] relative z-10">
-                    <div className="text-center mb-10">
-                        <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-indigo-500/20">
-                            <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-3.04l.567-.567a2 2 0 012.828 0L14 22m0 0l-1-1m1 1l-1-1M14 22l1-1m1 1l-1-1m-7.5-3.5L12 11M12 11l7.5 3.5M12 11L4.5 14.5"></path></svg>
+        const WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
+
+        const Shell = ({ children, subtitle }) => (
+            <div className="min-h-screen flex flex-col">
+                <header className="border-b border-surface-border bg-surface/80 backdrop-blur-sm">
+                    <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center">
+                                <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-white leading-tight">Talent assessment</p>
+                                {subtitle && <p className="text-xs text-slate-500 leading-tight">{subtitle}</p>}
+                            </div>
                         </div>
-                        <h1 className="text-3xl font-bold mb-3 tracking-tight">System Login</h1>
-                        <p className="text-gray-400">Please enter your <b>Secure Session ID</b> to begin.</p>
                     </div>
-                    <form onSubmit={(e) => { e.preventDefault(); if (sessionId.length > 5) setView('instructions'); }} className="space-y-6">
-                        <input required className="input-field w-full px-6 py-4 rounded-2xl outline-none text-lg font-medium" placeholder="Paste Session ID here..." value={sessionId} onChange={(e) => setSessionId(e.target.value)} />
-                        <button className="btn-primary w-full py-5 rounded-2xl font-bold text-lg">Initialize Session</button>
-                    </form>
-                    <div className="mt-8 pt-6 border-t border-white/5 text-center">
-                        <button onClick={() => setView('admin')} className="text-sm text-gray-500 hover:text-indigo-400 transition-colors underline">Recruiter? Post New Job</button>
+                </header>
+                <main className="flex-1">{children}</main>
+            </div>
+        );
+
+        const LoginView = ({ sessionId, setSessionId, setView }) => (
+            <Shell subtitle="Candidate access">
+                <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
+                    <div className="panel max-w-md w-full rounded-xl p-8 sm:p-10">
+                        <h1 className="text-xl font-semibold text-white mb-1">Sign in</h1>
+                        <p className="text-sm text-slate-400 mb-8">Enter the session identifier you received from the talent team.</p>
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                if (sessionId.trim().length > 5) setView('instructions');
+                            }}
+                            className="space-y-5"
+                        >
+                            <div>
+                                <label htmlFor="session" className="block text-xs font-medium text-slate-400 mb-2">Session ID</label>
+                                <input
+                                    id="session"
+                                    required
+                                    autoComplete="off"
+                                    className="input-field w-full px-4 py-3 rounded-lg text-sm"
+                                    placeholder="Paste your session ID"
+                                    value={sessionId}
+                                    onChange={(e) => setSessionId(e.target.value)}
+                                />
+                            </div>
+                            <button type="submit" className="btn-primary w-full py-3 rounded-lg text-sm">
+                                Continue
+                            </button>
+                        </form>
+                        <div className="mt-8 pt-6 border-t border-surface-border text-center">
+                            <button type="button" onClick={() => setView('admin')} className="text-sm text-slate-500 hover:text-accent transition-colors">
+                                Recruiter: publish a role
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </Shell>
         );
 
         const InstructionsView = ({ onStart }) => {
             const [agreed, setAgreed] = React.useState(false);
+            const rules = [
+                'Each phase is timed. Submit before the timer ends.',
+                'Stay on this tab during the assessment.',
+                'Answer in your own words; copying from external sources may affect evaluation.',
+                'Responses may be analyzed for consistency and effort.',
+            ];
             return (
-                <div className="min-h-screen flex items-center justify-center p-6 fade-in">
-                    <div className="glass max-w-2xl w-full p-12 rounded-[3rem]">
-                        <h2 className="text-3xl font-bold mb-6">Assessment Rules</h2>
-                        <div className="space-y-3 mb-8">
-                            {['Global 20-minute timer for all tasks.', 'No tab switching permitted.', 'Copy/Paste is disabled.', 'AI monitors all input streams.'].map((rule, i) => (
-                                <div key={i} className="rule-item text-sm">✨ {rule}</div>
-                            ))}
+                <Shell subtitle="Before you begin">
+                    <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
+                        <div className="panel max-w-xl w-full rounded-xl p-8 sm:p-10">
+                            <h2 className="text-xl font-semibold text-white mb-2">Guidelines</h2>
+                            <p className="text-sm text-slate-400 mb-6">Please read the following before starting. You must confirm to proceed.</p>
+                            <ol className="space-y-3 mb-8 list-none">
+                                {rules.map((rule, i) => (
+                                    <li key={i} className="flex gap-3 text-sm text-slate-300 leading-relaxed">
+                                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-surface-elevated border border-surface-border text-xs font-semibold text-slate-400 flex items-center justify-center">{i + 1}</span>
+                                        <span>{rule}</span>
+                                    </li>
+                                ))}
+                            </ol>
+                            <label className="flex items-start gap-3 mb-8 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="mt-1 w-4 h-4 rounded border-surface-border bg-surface-elevated text-accent focus:ring-accent focus:ring-offset-0 focus:ring-2"
+                                    checked={agreed}
+                                    onChange={(e) => setAgreed(e.target.checked)}
+                                />
+                                <span className="text-sm text-slate-400">I understand and agree to these guidelines.</span>
+                            </label>
+                            <button
+                                type="button"
+                                onClick={onStart}
+                                disabled={!agreed}
+                                className="btn-primary w-full py-3 rounded-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
+                            >
+                                Start assessment
+                            </button>
                         </div>
-
-                        <label className="flex items-center gap-4 mb-8 cursor-pointer group">
-                            <input type="checkbox" className="w-6 h-6 rounded border-white/10 bg-white/5 accent-indigo-500" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-                            <span className="text-gray-400 group-hover:text-white transition-colors text-sm">I have read and agree to follow the assessment rules.</span>
-                        </label>
-
-                        <button onClick={onStart} disabled={!agreed} className="btn-primary w-full py-5 rounded-2xl font-bold text-lg disabled:opacity-30 disabled:cursor-not-allowed">
-                            Start Assessment
-                        </button>
                     </div>
-                </div>
+                </Shell>
             );
         };
 
@@ -187,178 +216,229 @@
                 e.preventDefault();
                 setIsCreating(true);
                 try {
-                    const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook/job-create', {
+                    const response = await fetch(`${WEBHOOK_BASE}/job-create`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-                        body: JSON.stringify({ title: jobTitle, description: jd })
+                        body: JSON.stringify({ title: jobTitle, description: jd }),
                     });
                     const data = await response.json();
-                    if (data.jobUrl) {
-                        setGeneratedLink(data.jobUrl);
-                    } else {
-                        alert("Job Created! Use the portal link to invite candidates.");
-                    }
+                    if (data.jobUrl) setGeneratedLink(data.jobUrl);
+                    else alert('Role created. Use your standard invitation flow if no link was returned.');
                 } catch (e) {
-                    alert("Error creating job. Check n8n connection.");
+                    alert('Could not reach the automation endpoint. Check your n8n tunnel and workflow.');
                 } finally {
                     setIsCreating(false);
                 }
             };
 
             return (
-                <div className="min-h-screen flex items-center justify-center p-6 fade-in">
-                    <div className="glass max-w-2xl w-full p-12 rounded-[3rem]">
-                        <div className="flex justify-between items-center mb-8">
-                            <h2 className="text-3xl font-bold gradient-text">Post New Vacancy</h2>
-                            <button onClick={() => setView('login')} className="text-gray-500 hover:text-white">Back</button>
-                        </div>
-
-                        {!generatedLink ? (
-                            <form onSubmit={handleCreateJob} className="space-y-6">
+                <Shell subtitle="Recruiter">
+                    <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
+                        <div className="panel max-w-xl w-full rounded-xl p-8 sm:p-10">
+                            <div className="flex items-start justify-between gap-4 mb-8">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Job Title</label>
-                                    <input required className="input-field w-full px-6 py-4 rounded-2xl outline-none" placeholder="e.g. Senior Full Stack Developer" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} />
+                                    <h2 className="text-xl font-semibold text-white">Publish role</h2>
+                                    <p className="text-sm text-slate-400 mt-1">Create a posting and share the generated link with candidates.</p>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Job Description (JD)</label>
-                                    <textarea required className="input-field w-full px-6 py-4 rounded-2xl outline-none h-48 resize-none" placeholder="Paste full JD here..." value={jd} onChange={(e) => setJd(e.target.value)} />
-                                </div>
-                                <button disabled={isCreating} className="btn-primary w-full py-5 rounded-2xl font-bold text-lg disabled:opacity-50">
-                                    {isCreating ? 'Publishing...' : 'Publish Job & Generate Link'}
+                                <button type="button" onClick={() => setView('login')} className="btn-secondary px-4 py-2 rounded-lg text-sm shrink-0">
+                                    Back
                                 </button>
-                            </form>
-                        ) : (
-                            <div className="text-center space-y-6">
-                                <div className="w-20 h-20 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto">
-                                    <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                                </div>
-                                <h3 className="text-2xl font-bold">Job Published Successfully!</h3>
-                                <p className="text-gray-400 text-sm">Send this link to your candidates:</p>
-                                <div className="bg-black/40 p-4 rounded-xl font-mono text-xs break-all border border-white/10 select-all">
-                                    {generatedLink}
-                                </div>
-                                <button onClick={() => setGeneratedLink('')} className="text-indigo-400 font-bold">Create Another</button>
                             </div>
-                        )}
+
+                            {!generatedLink ? (
+                                <form onSubmit={handleCreateJob} className="space-y-5">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-400 mb-2">Job title</label>
+                                        <input
+                                            required
+                                            className="input-field w-full px-4 py-3 rounded-lg text-sm"
+                                            placeholder="e.g. Senior software engineer"
+                                            value={jobTitle}
+                                            onChange={(e) => setJobTitle(e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-400 mb-2">Description</label>
+                                        <textarea
+                                            required
+                                            className="input-field w-full px-4 py-3 rounded-lg text-sm h-40 resize-y min-h-[120px]"
+                                            placeholder="Paste the job description..."
+                                            value={jd}
+                                            onChange={(e) => setJd(e.target.value)}
+                                        />
+                                    </div>
+                                    <button type="submit" disabled={isCreating} className="btn-primary w-full py-3 rounded-lg text-sm disabled:opacity-50">
+                                        {isCreating ? 'Publishing…' : 'Publish and generate link'}
+                                    </button>
+                                </form>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
+                                        <svg className="w-5 h-5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                        <p className="text-sm text-emerald-200/90">Role published. Share the link below with applicants.</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-medium text-slate-400 mb-2">Invitation link</p>
+                                        <div className="input-field p-3 rounded-lg font-mono text-xs break-all text-slate-300 select-all">
+                                            {generatedLink}
+                                        </div>
+                                    </div>
+                                    <button type="button" onClick={() => setGeneratedLink('')} className="text-sm font-medium text-accent hover:text-blue-300">
+                                        Publish another role
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
+                </Shell>
             );
         };
 
-        const AssessmentView = ({ currentStep, timeLeft, question, answer, setAnswer, handleAssessmentSubmit, isLoading, sessionId }) => (
-            <div className="min-h-screen flex flex-col items-center justify-center p-6 fade-in">
-                <div className="max-w-5xl w-full flex justify-between items-end mb-10 px-4 text-left">
-                    <div>
-                        <span className="text-xs font-bold text-indigo-400 uppercase tracking-[0.2em] mb-3 block">Adaptive AI Assessment</span>
-                        <h1 className="text-4xl font-bold">Phase <span className="gradient-text">{String(currentStep).padStart(2, '0')}</span> <span className="text-gray-500 font-light text-sm ml-2 uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full border border-white/10">Dynamic</span></h1>
-                    </div>
-                    <div className={`glass px-8 py-4 rounded-3xl flex items-center gap-4 ${timeLeft < 30 ? 'text-red-400 border-red-500/30' : 'text-indigo-300'}`}>
-                        <div className="text-right">
-                            <p className="text-[10px] uppercase font-bold tracking-widest opacity-50 mb-1">Phase Time</p>
-                            <p className="text-2xl font-mono font-bold leading-none">{Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</p>
+        const AssessmentView = ({ currentStep, totalSteps, timeLeft, question, answer, setAnswer, handleAssessmentSubmit, isLoading, sessionId }) => {
+            const pct = totalSteps > 0 ? Math.min(100, (currentStep / totalSteps) * 100) : 0;
+            const low = timeLeft < 30;
+            return (
+                <Shell subtitle={`Phase ${currentStep} of ${totalSteps}`}>
+                    <div className={`max-w-4xl mx-auto px-4 sm:px-6 py-8 fade-in assessment-lock`}>
+                        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
+                            <div>
+                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Technical assessment</p>
+                                <h1 className="text-2xl font-semibold text-white">Phase {currentStep}</h1>
+                            </div>
+                            <div className={`panel px-5 py-3 rounded-lg flex items-baseline gap-2 ${low ? 'border-amber-500/40' : ''}`}>
+                                <span className="text-xs font-medium text-slate-500">Time remaining</span>
+                                <span className={`font-mono text-lg font-semibold tabular-nums ${low ? 'text-amber-400' : 'text-white'}`}>
+                                    {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="h-1.5 bg-surface-elevated rounded-full overflow-hidden border border-surface-border mb-8">
+                            <div className="h-full bg-accent transition-all duration-300 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+
+                        <div className="panel rounded-xl p-6 sm:p-8 relative">
+                            {isLoading && (
+                                <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
+                                    <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
+                                    <p className="text-sm text-slate-400">Processing your response…</p>
+                                </div>
+                            )}
+                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Question</p>
+                            <div className="text-base sm:text-lg text-slate-200 leading-relaxed mb-8 border-l-2 border-accent pl-4">
+                                {question}
+                            </div>
+                            <label htmlFor="answer" className="sr-only">Your answer</label>
+                            <textarea
+                                id="answer"
+                                className="input-field w-full px-4 py-4 rounded-lg text-sm leading-relaxed min-h-[200px] resize-y mb-6"
+                                placeholder="Type your answer here."
+                                value={answer}
+                                onChange={(e) => setAnswer(e.target.value)}
+                            />
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-500">
+                                    <span>
+                                        Session: <span className="font-mono text-slate-400">{sessionId ? `${sessionId.slice(0, 8)}…` : '—'}</span>
+                                    </span>
+                                    <span className="text-slate-600">|</span>
+                                    <span>Automated review enabled for this session</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleAssessmentSubmit}
+                                    disabled={answer.trim().length < 5 || isLoading}
+                                    className="btn-primary px-8 py-3 rounded-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed sm:shrink-0"
+                                >
+                                    Submit answer
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div className="max-w-5xl w-full h-2 bg-white/5 rounded-full mb-12 overflow-hidden mx-4">
-                    <div className="h-full btn-primary transition-all duration-700 ease-out" style={{ width: `${Math.min((currentStep / 10) * 100, 100)}%` }}></div>
-                </div>
-                <main className="max-w-5xl w-full glass rounded-[3rem] p-12 md:p-20 relative overflow-hidden text-left">
-                    {isLoading && <div className="absolute inset-0 bg-black/40 backdrop-blur-md z-50 flex flex-col items-center justify-center"><div className="w-16 h-16 border-4 border-white/5 border-t-indigo-500 rounded-full animate-spin mb-6"></div><p className="text-lg font-medium tracking-wide">AI Analyzing Response & Scoring...</p></div>}
-                    <div className="mb-12">
-                        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-widest mb-6"><span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>Technical Challenge</div>
-                        <h3 className="text-3xl md:text-4xl font-semibold leading-tight text-gray-100 italic">"{question}"</h3>
-                    </div>
-                    <textarea className="input-field w-full px-8 py-8 rounded-[2rem] h-64 outline-none text-xl leading-relaxed mb-10 placeholder:text-gray-700 resize-none" placeholder="Detail your technical strategy and reasoning..." value={answer} onChange={(e) => setAnswer(e.target.value)}></textarea>
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-8">
-                        <div className="flex items-center gap-6 glass-dark px-6 py-3 rounded-2xl">
-                            <div><p className="text-[10px] uppercase font-bold text-gray-500 tracking-tighter mb-1">Session Token</p><p className="font-mono text-xs text-indigo-300 truncate w-32">{sessionId}</p></div>
-                            <div className="w-px h-8 bg-white/10"></div>
-                            <div><p className="text-[10px] uppercase font-bold text-gray-500 tracking-tighter mb-1">AI Detection</p><p className="text-xs font-bold text-green-500 uppercase tracking-tighter">Active</p></div>
-                        </div>
-                        <button onClick={handleAssessmentSubmit} disabled={answer.length < 5 || isLoading} className="btn-primary px-12 py-5 rounded-[1.5rem] font-bold text-xl flex items-center gap-4 disabled:opacity-30 disabled:grayscale">Submit Response <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg></button>
-                    </div>
-                </main>
-            </div>
-        );
+                </Shell>
+            );
+        };
 
         const FinishedView = ({ result, feedback, onReview }) => (
-            <div className="min-h-screen flex items-center justify-center p-6 fade-in">
-                <div className="glass max-w-3xl w-full p-20 rounded-[4rem] text-center">
-                    <div className={`w-24 h-24 ${result === 'PASS' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} rounded-[2rem] flex items-center justify-center mx-auto mb-10 rotate-12`}>
-                        {result === 'PASS' ? (
-                            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7"></path></svg>
-                        ) : (
-                            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
-                        )}
-                    </div>
-                    <h1 className="text-5xl font-bold mb-6 tracking-tight">{result === 'PASS' ? 'Assessment Passed' : 'Assessment Completed'}</h1>
-                    <p className="text-xl text-gray-400 mb-8 leading-relaxed">
-                        {result === 'PASS'
-                            ? "Great work! Your technical depth matches our requirements. Our talent team will contact you for the next steps."
-                            : "Thank you for your time. Your assessment is complete and our team will review the results."}
-                    </p>
-
-                    <div className="space-y-6">
+            <Shell subtitle="Results">
+                <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
+                    <div className="panel max-w-lg w-full rounded-xl p-8 sm:p-10 text-center">
+                        <div className={`w-14 h-14 mx-auto mb-6 rounded-full flex items-center justify-center ${result === 'PASS' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-600/30 text-slate-400'}`}>
+                            {result === 'PASS' ? (
+                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                            ) : (
+                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13h14" /></svg>
+                            )}
+                        </div>
+                        <h1 className="text-xl font-semibold text-white mb-3">
+                            {result === 'PASS' ? 'You meet the bar for this stage' : 'Assessment complete'}
+                        </h1>
+                        <p className="text-sm text-slate-400 leading-relaxed mb-8">
+                            {result === 'PASS'
+                                ? 'Thank you for your responses. Our team will follow up with next steps.'
+                                : 'Thank you for your time. Your submission will be reviewed by the hiring team.'}
+                        </p>
                         {feedback && (
-                            <div className="glass-dark p-6 rounded-2xl text-left border border-white/5 mb-8">
-                                <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">AI Feedback Summary</p>
-                                <p className="text-gray-300 italic">"{feedback}"</p>
+                            <div className="text-left p-4 rounded-lg bg-surface-elevated border border-surface-border mb-8">
+                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Evaluator summary</p>
+                                <p className="text-sm text-slate-300 leading-relaxed">{feedback}</p>
                             </div>
                         )}
-
-                        <button onClick={onReview} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-5 rounded-2xl shadow-xl shadow-indigo-500/20 transition-all transform hover:scale-[1.02] flex items-center justify-center gap-3">
-                            <i className="fas fa-graduation-cap"></i> Review My Answers & Learn
+                        <button type="button" onClick={onReview} className="btn-primary w-full py-3 rounded-lg text-sm inline-flex items-center justify-center gap-2">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                            Review responses and notes
                         </button>
                     </div>
                 </div>
-            </div>
+            </Shell>
         );
 
         const ReviewView = ({ history, onBack }) => (
-            <div className="min-h-screen p-6 md:p-12 fade-in max-w-6xl mx-auto">
-                <div className="flex items-center justify-between mb-12 sticky top-0 bg-[#050505]/80 backdrop-blur-md py-4 z-50">
-                    <div>
-                        <h2 className="text-4xl font-bold gradient-text">Learning & Review</h2>
-                        <p className="text-gray-500 mt-2">See how you performed and read suggested improvements.</p>
-                    </div>
-                    <button onClick={onBack} className="glass px-6 py-3 rounded-xl hover:bg-white/5 transition-all">Back</button>
-                </div>
-
-                <div className="space-y-8">
-                    {history.map((item, index) => (
-                        <div key={index} className="glass rounded-[2.5rem] p-8 md:p-12 relative overflow-hidden border-l-4 border-l-indigo-500">
-                            <div className="flex items-center gap-4 mb-6">
-                                <span className="bg-indigo-500/10 text-indigo-400 px-4 py-1.5 rounded-full text-xs font-bold">PHASE {item.phase}</span>
-                            </div>
-                            <h3 className="text-2xl font-semibold mb-8 text-gray-100">Q: {item.question_text}</h3>
-
-                            <div className="grid md:grid-cols-2 gap-8">
-                                <div className="space-y-3">
-                                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-gray-500 flex items-center gap-2">
-                                        <i className="fas fa-user text-indigo-400"></i> Your Response
-                                    </h4>
-                                    <div className="p-6 rounded-2xl bg-white/5 border border-white/5 text-gray-300 italic leading-relaxed">
-                                        "{item.answer_text || 'No answer provided'}"
-                                    </div>
-                                </div>
-                                <div className="space-y-3">
-                                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 flex items-center gap-2">
-                                        <i className="fas fa-magic"></i> Suggested Better Answer
-                                    </h4>
-                                    <div className="p-6 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 text-indigo-50 font-medium leading-relaxed">
-                                        {item.suggested_answer || "Great answer! Our AI couldn't suggest any major improvements for this specific response."}
-                                    </div>
-                                </div>
-                            </div>
+            <Shell subtitle="Review">
+                <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 fade-in">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10 sticky top-0 z-10 -mx-4 px-4 py-3 sm:mx-0 sm:px-0 bg-[#0c0f14]/95 backdrop-blur-sm border-b border-surface-border sm:border-0">
+                        <div>
+                            <h2 className="text-xl font-semibold text-white">Your responses</h2>
+                            <p className="text-sm text-slate-400 mt-1">Per-phase questions and reference notes.</p>
                         </div>
-                    ))}
-                </div>
+                        <button type="button" onClick={onBack} className="btn-secondary px-4 py-2 rounded-lg text-sm self-start sm:self-auto">
+                            Back
+                        </button>
+                    </div>
 
-                <div className="text-center py-20">
-                    <p className="text-gray-500 mb-6">This completes your learning review.</p>
-                    <button onClick={() => window.location.reload()} className="btn-primary px-12 py-4 rounded-2xl font-bold">Exit Portal</button>
+                    <div className="space-y-6">
+                        {history.map((item, index) => (
+                            <article key={index} className="panel rounded-xl p-6 sm:p-8">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <span className="text-xs font-semibold text-accent bg-accent-muted px-2.5 py-1 rounded-md">Phase {item.phase}</span>
+                                </div>
+                                <h3 className="text-sm font-medium text-slate-400 mb-2">Question</h3>
+                                <p className="text-base text-white mb-8 leading-relaxed">{item.question_text}</p>
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    <div>
+                                        <h4 className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Your answer</h4>
+                                        <div className="p-4 rounded-lg bg-surface-elevated border border-surface-border text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                            {item.answer_text || 'No answer provided.'}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Suggested improvement</h4>
+                                        <div className="p-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">
+                                            {item.suggested_answer || 'No additional suggestion for this response.'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </article>
+                        ))}
+                    </div>
+
+                    <div className="text-center py-12 border-t border-surface-border mt-12">
+                        <p className="text-sm text-slate-500 mb-6">End of review</p>
+                        <button type="button" onClick={() => window.location.reload()} className="btn-secondary px-8 py-3 rounded-lg text-sm">
+                            Close portal
+                        </button>
+                    </div>
                 </div>
-            </div>
+            </Shell>
         );
 
         const App = () => {
@@ -369,19 +449,19 @@
             const [currentStep, setCurrentStep] = useState(1);
             const [totalSteps, setTotalSteps] = useState(5);
             const [timeLeft, setTimeLeft] = useState(180);
-            const [question, setQuestion] = useState("Loading your first technical challenge...");
-            const [answer, setAnswer] = useState("");
+            const [question, setQuestion] = useState('Loading question…');
+            const [answer, setAnswer] = useState('');
             const [result, setResult] = useState(null);
-            const [feedback, setFeedback] = useState("");
+            const [feedback, setFeedback] = useState('');
             const [tabSwitchCount, setTabSwitchCount] = useState(0);
             const [assessmentHistory, setAssessmentHistory] = useState([]);
 
-            // Supabase Initialization
             const supabaseUrl = 'https://vnxstyadacqntnsvcvzn.supabase.co';
             const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
             const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
             useEffect(() => {
+                if (view !== 'assessment') return;
                 const preventActions = (e) => e.preventDefault();
                 document.addEventListener('copy', preventActions);
                 document.addEventListener('paste', preventActions);
@@ -391,13 +471,13 @@
                     document.removeEventListener('paste', preventActions);
                     document.removeEventListener('contextmenu', preventActions);
                 };
-            }, []);
+            }, [view]);
 
             useEffect(() => {
                 const handleVisibilityChange = () => {
                     if (document.visibilityState === 'hidden' && view === 'assessment') {
-                        setTabSwitchCount(prev => prev + 1);
-                        alert("⚠️ SECURITY WARNING: Tab switching is monitored. This incident has been logged.");
+                        setTabSwitchCount((prev) => prev + 1);
+                        alert('You left this tab during the assessment. This may be recorded as part of your session.');
                     }
                 };
                 document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -418,10 +498,10 @@
                 setView('assessment');
                 setIsLoading(true);
                 try {
-                    const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook/assessment-start', {
+                    const response = await fetch(`${WEBHOOK_BASE}/assessment-start`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-                        body: JSON.stringify({ sessionId, email: candidateEmail })
+                        body: JSON.stringify({ sessionId, email: candidateEmail }),
                     });
 
                     let textData = await response.text();
@@ -429,11 +509,18 @@
                     if (sanitizedText.startsWith('=')) sanitizedText = sanitizedText.substring(1).trim();
 
                     let data;
-                    try { data = JSON.parse(sanitizedText); } catch (e) { data = { question: sanitizedText }; }
+                    try {
+                        data = JSON.parse(sanitizedText);
+                    } catch (e) {
+                        data = { question: sanitizedText };
+                    }
 
                     let q = data.question || data.nextQuestion || data.output || data.text || sanitizedText;
                     if (typeof q === 'string' && q.trim().startsWith('{')) {
-                        try { let parsed = JSON.parse(q); q = parsed.question || parsed.text || parsed.message || parsed.content || q; } catch (e) { }
+                        try {
+                            const parsed = JSON.parse(q);
+                            q = parsed.question || parsed.text || parsed.message || parsed.content || q;
+                        } catch (e) {}
                     }
                     if (typeof q === 'object') {
                         q = q.question || q.text || q.message || q.content || JSON.stringify(q);
@@ -445,28 +532,18 @@
                         setTimeLeft(180);
                     }
                 } catch (e) {
-                    console.error("Init Error", e);
-                    setQuestion("Error loading challenge. Please refresh.");
+                    console.error('Init Error', e);
+                    setQuestion('Unable to load this question. Refresh the page or contact support.');
                 } finally {
                     setIsLoading(false);
                 }
             };
 
-            // Timer Logic
-            useEffect(() => {
-                if (view === 'assessment' && timeLeft > 0 && !isLoading) {
-                    const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-                    return () => clearTimeout(timer);
-                } else if (view === 'assessment' && timeLeft === 0) {
-                    handleAssessmentSubmit();
-                }
-            }, [timeLeft, view, isLoading]);
-
             const handleAssessmentSubmit = async () => {
                 if (!answer.trim()) return;
                 setIsLoading(true);
                 try {
-                    const response = await fetch('https://randy-gaunt-bradley.ngrok-free.dev/webhook/assessment-answer', {
+                    const response = await fetch(`${WEBHOOK_BASE}/assessment-answer`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
                         body: JSON.stringify({
@@ -474,8 +551,8 @@
                             answer,
                             phase: currentStep,
                             email: candidateEmail,
-                            tabSwitches: tabSwitchCount
-                        })
+                            tabSwitches: tabSwitchCount,
+                        }),
                     });
 
                     let textData = await response.text();
@@ -483,16 +560,23 @@
                     if (sanitizedText.startsWith('=')) sanitizedText = sanitizedText.substring(1).trim();
 
                     let data;
-                    try { data = JSON.parse(sanitizedText); } catch (e) { data = { question: sanitizedText }; }
+                    try {
+                        data = JSON.parse(sanitizedText);
+                    } catch (e) {
+                        data = { question: sanitizedText };
+                    }
 
                     if (data.isFinal || data.result || currentStep >= totalSteps) {
                         setView('finished');
                         setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));
-                        setFeedback(data.feedback || "Assessment completed successfully.");
+                        setFeedback(data.feedback || 'Assessment completed.');
                     } else {
-                        let nextQ = data.nextQuestion || data.question || data.output || "";
+                        let nextQ = data.nextQuestion || data.question || data.output || '';
                         if (typeof nextQ === 'string' && nextQ.trim().startsWith('{')) {
-                            try { let parsed = JSON.parse(nextQ); nextQ = parsed.question || parsed.text || parsed.message || parsed.content || nextQ; } catch (e) { }
+                            try {
+                                const parsed = JSON.parse(nextQ);
+                                nextQ = parsed.question || parsed.text || parsed.message || parsed.content || nextQ;
+                            } catch (e) {}
                         }
                         if (typeof nextQ === 'object') {
                             nextQ = nextQ.question || nextQ.text || nextQ.message || nextQ.content || JSON.stringify(nextQ);
@@ -501,15 +585,27 @@
 
                         if (nextQ) {
                             setQuestion(nextQ);
-                            setCurrentStep(prev => prev + 1);
+                            setCurrentStep((prev) => prev + 1);
                             setTimeLeft(180);
-                            setAnswer("");
+                            setAnswer('');
                         }
                     }
                 } catch (e) {
-                    alert("Communication Error. Please retry.");
-                } finally { setIsLoading(false); }
+                    alert('Connection error. Please try submitting again.');
+                } finally {
+                    setIsLoading(false);
+                }
             };
+
+            useEffect(() => {
+                if (view === 'assessment' && timeLeft > 0 && !isLoading) {
+                    const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+                    return () => clearTimeout(timer);
+                }
+                if (view === 'assessment' && timeLeft === 0) {
+                    handleAssessmentSubmit();
+                }
+            }, [timeLeft, view, isLoading]);
 
             const fetchAndShowReview = async () => {
                 setIsLoading(true);
@@ -524,7 +620,7 @@
                     setAssessmentHistory(data || []);
                     setView('review');
                 } catch (e) {
-                    alert("Error fetching assessment history. Make sure you are connected to the database.");
+                    alert('Could not load history. Check your connection and session ID.');
                 } finally {
                     setIsLoading(false);
                 }
@@ -532,21 +628,36 @@
 
             const renderView = () => {
                 switch (view) {
-                    case 'login': return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} />;
-                    case 'instructions': return <InstructionsView onStart={handleStartAssessment} />;
-                    case 'assessment': return <AssessmentView currentStep={currentStep} totalSteps={totalSteps} timeLeft={timeLeft} question={question} answer={answer} setAnswer={setAnswer} handleAssessmentSubmit={handleAssessmentSubmit} isLoading={isLoading} sessionId={sessionId} />;
-                    case 'finished': return <FinishedView result={result} feedback={feedback} onReview={fetchAndShowReview} />;
-                    case 'review': return <ReviewView history={assessmentHistory} onBack={() => setView('finished')} />;
-                    case 'admin': return <AdminView setView={setView} />;
-                    default: return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} />;
+                    case 'login':
+                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} />;
+                    case 'instructions':
+                        return <InstructionsView onStart={handleStartAssessment} />;
+                    case 'assessment':
+                        return (
+                            <AssessmentView
+                                currentStep={currentStep}
+                                totalSteps={totalSteps}
+                                timeLeft={timeLeft}
+                                question={question}
+                                answer={answer}
+                                setAnswer={setAnswer}
+                                handleAssessmentSubmit={handleAssessmentSubmit}
+                                isLoading={isLoading}
+                                sessionId={sessionId}
+                            />
+                        );
+                    case 'finished':
+                        return <FinishedView result={result} feedback={feedback} onReview={fetchAndShowReview} />;
+                    case 'review':
+                        return <ReviewView history={assessmentHistory} onBack={() => setView('finished')} />;
+                    case 'admin':
+                        return <AdminView setView={setView} />;
+                    default:
+                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} />;
                 }
             };
 
-            return (
-                <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-indigo-500/30">
-                    {renderView()}
-                </div>
-            );
+            return <div className="min-h-screen bg-[#0c0f14] text-slate-200 antialiased">{renderView()}</div>;
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));

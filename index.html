@@ -755,7 +755,7 @@
                     try {
                         data = JSON.parse(sanitizedText);
                     } catch (e) {
-                        data = { question: sanitizedText };
+                        data = { output: sanitizedText };
                     }
 
                     if (data.isFinal || data.result || currentStep >= totalSteps) {
@@ -763,17 +763,14 @@
                         setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));
                         setFeedback(data.feedback || 'Assessment completed.');
                     } else {
-                        let nextQ = data.nextQuestion || data.question || data.output || '';
+                        let nextQ = data.nextQuestion || data.question || data.output || data.text || '';
+                        
                         if (typeof nextQ === 'string' && nextQ.trim().startsWith('{')) {
                             try {
                                 const parsed = JSON.parse(nextQ);
-                                nextQ = parsed.question || parsed.text || parsed.message || parsed.content || nextQ;
+                                nextQ = parsed.nextQuestion || parsed.question || parsed.text || nextQ;
                             } catch (e) {}
                         }
-                        if (typeof nextQ === 'object') {
-                            nextQ = nextQ.question || nextQ.text || nextQ.message || nextQ.content || JSON.stringify(nextQ);
-                        }
-                        if (typeof nextQ === 'string') nextQ = nextQ.replace(/^"|"$/g, '').trim();
 
                         if (nextQ) {
                             setQuestion(nextQ);
@@ -783,6 +780,7 @@
                         }
                     }
                 } catch (e) {
+                    console.error('Submit Error:', e);
                     alert('Connection error. Please try submitting again.');
                 } finally {
                     setIsLoading(false);
@@ -802,17 +800,27 @@
             const fetchAndShowReview = async () => {
                 setIsLoading(true);
                 try {
+                    console.log('Fetching history for session:', sessionId);
                     const { data, error } = await supabase
                         .from('assessment_questions')
-                        .select('*')
+                        .select('id, session_id, phase, question_text, answer_text, suggested_answer')
                         .eq('session_id', sessionId)
                         .order('phase', { ascending: true });
 
-                    if (error) throw error;
+                    if (error) {
+                        console.error('Supabase Error:', error);
+                        throw error;
+                    }
+
+                    if (!data || data.length === 0) {
+                        console.warn('No history records found in DB.');
+                    }
+
                     setAssessmentHistory(data || []);
                     setView('review');
                 } catch (e) {
-                    alert('Could not load history. Check your connection and session ID.');
+                    console.error('Fetch Error:', e);
+                    alert(`Could not load history: ${e.message || 'Check console for details'}`);
                 } finally {
                     setIsLoading(false);
                 }

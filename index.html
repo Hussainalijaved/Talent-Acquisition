@@ -90,6 +90,13 @@
             -webkit-user-select: none;
             user-select: none;
         }
+
+        .onboarding-hero {
+            background: linear-gradient(165deg, rgba(59, 130, 246, 0.06) 0%, transparent 45%),
+                linear-gradient(135deg, #12171e 0%, #0c0f14 100%);
+            border: 1px solid #2a3341;
+            border-radius: 1rem;
+        }
     </style>
 </head>
 
@@ -122,84 +129,212 @@
             </div>
         );
 
-        const LoginView = ({ sessionId, setSessionId, setView }) => (
-            <Shell subtitle="Candidate access">
-                <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
-                    <div className="panel max-w-md w-full rounded-xl p-8 sm:p-10">
-                        <h1 className="text-xl font-semibold text-white mb-1">Sign in</h1>
-                        <p className="text-sm text-slate-400 mb-8">Enter the session identifier you received from the talent team.</p>
-                        <form
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                if (sessionId.trim().length > 5) setView('instructions');
-                            }}
-                            className="space-y-5"
-                        >
-                            <div>
-                                <label htmlFor="session" className="block text-xs font-medium text-slate-400 mb-2">Session ID</label>
-                                <input
-                                    id="session"
-                                    required
-                                    autoComplete="off"
-                                    className="input-field w-full px-4 py-3 rounded-lg text-sm"
-                                    placeholder="Paste your session ID"
-                                    value={sessionId}
-                                    onChange={(e) => setSessionId(e.target.value)}
-                                />
+        const LoginView = ({ sessionId, setSessionId, setView }) => {
+            const steps = [
+                { t: 'Review guidelines', d: 'Short checklist before the timed questions.' },
+                { t: 'Complete phases', d: 'Answer each prompt; stay in this browser tab.' },
+                { t: 'Submit for review', d: 'Your responses are evaluated by the hiring team.' },
+            ];
+            return (
+                <Shell subtitle="Candidate access">
+                    <div className="max-w-[1600px] xl:max-w-[1760px] mx-auto min-h-[calc(100vh-3.5rem)] px-4 sm:px-6 lg:px-8 py-8 lg:py-14 fade-in">
+                        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 xl:gap-16 items-center min-h-[min(640px,calc(100vh-8rem))]">
+                            <div className="onboarding-hero p-8 sm:p-10 lg:p-12 order-2 lg:order-1">
+                                <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-4">Secure portal</p>
+                                <h1 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight leading-tight mb-4">
+                                    Sign in to your assessment
+                                </h1>
+                                <p className="text-slate-400 text-base leading-relaxed mb-10 max-w-md">
+                                    Use the unique session ID from your invitation email. The link may also include your session in the URL—we pre-fill it when possible.
+                                </p>
+                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-4">What happens next</p>
+                                <ul className="space-y-4">
+                                    {steps.map((s, i) => (
+                                        <li key={i} className="flex gap-4">
+                                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 border border-accent/25 text-sm font-semibold text-accent">
+                                                {i + 1}
+                                            </span>
+                                            <div>
+                                                <p className="text-sm font-medium text-white">{s.t}</p>
+                                                <p className="text-sm text-slate-500 mt-0.5 leading-relaxed">{s.d}</p>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
                             </div>
-                            <button type="submit" className="btn-primary w-full py-3 rounded-lg text-sm">
-                                Continue
-                            </button>
-                        </form>
-                        <div className="mt-8 pt-6 border-t border-surface-border text-center">
-                            <button type="button" onClick={() => setView('admin')} className="text-sm text-slate-500 hover:text-accent transition-colors">
-                                Recruiter: publish a role
-                            </button>
+
+                            <div className="order-1 lg:order-2 w-full max-w-lg mx-auto lg:max-w-md xl:max-w-lg lg:justify-self-end">
+                                <div className="panel rounded-xl p-8 sm:p-10 shadow-lg shadow-black/20 border-surface-border">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="h-10 w-10 rounded-lg bg-surface-elevated border border-surface-border flex items-center justify-center">
+                                            <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-semibold text-white">Session ID</h2>
+                                            <p className="text-xs text-slate-500">Required to load your assessment</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-slate-400 mt-4 mb-6 leading-relaxed">
+                                        Paste the identifier exactly as provided. It is typically a UUID or long token from your recruiter.
+                                    </p>
+                                    <form
+                                        onSubmit={(e) => {
+                                            e.preventDefault();
+                                            if (sessionId.trim().length > 5) setView('instructions');
+                                        }}
+                                        className="space-y-5"
+                                    >
+                                        <div>
+                                            <label htmlFor="session" className="block text-xs font-medium text-slate-400 mb-2">
+                                                Session identifier
+                                            </label>
+                                            <input
+                                                id="session"
+                                                required
+                                                autoComplete="off"
+                                                spellCheck="false"
+                                                className="input-field w-full px-4 py-3.5 rounded-lg text-sm font-mono"
+                                                placeholder="e.g. 8f3a2b1c-4d5e-…"
+                                                value={sessionId}
+                                                onChange={(e) => setSessionId(e.target.value)}
+                                            />
+                                        </div>
+                                        <button type="submit" className="btn-primary w-full py-3.5 rounded-lg text-sm">
+                                            Continue to guidelines
+                                        </button>
+                                    </form>
+                                    <div className="mt-8 pt-6 border-t border-surface-border">
+                                        <button
+                                            type="button"
+                                            onClick={() => setView('admin')}
+                                            className="w-full text-center text-sm text-slate-500 hover:text-accent transition-colors py-2"
+                                        >
+                                            Hiring team? <span className="text-slate-400">Publish a role →</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </Shell>
-        );
+                </Shell>
+            );
+        };
 
         const InstructionsView = ({ onStart }) => {
             const [agreed, setAgreed] = React.useState(false);
             const rules = [
-                'Each phase is timed. Submit before the timer ends.',
-                'Stay on this tab during the assessment.',
-                'Answer in your own words; copying from external sources may affect evaluation.',
-                'Responses may be analyzed for consistency and effort.',
+                {
+                    title: 'Timed phases',
+                    body: 'Each phase has a visible timer. Submit your answer before time runs out.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    ),
+                },
+                {
+                    title: 'Stay in this tab',
+                    body: 'Avoid switching browser tabs or windows during an active phase. Changes may be recorded.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    ),
+                },
+                {
+                    title: 'Your own words',
+                    body: 'Write original answers. Over-reliance on generic or pasted text may affect how responses are read.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    ),
+                },
+                {
+                    title: 'Fair review',
+                    body: 'We may review timing, consistency, and effort to support an equitable process.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    ),
+                },
             ];
             return (
                 <Shell subtitle="Before you begin">
-                    <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
-                        <div className="panel max-w-xl w-full rounded-xl p-8 sm:p-10">
-                            <h2 className="text-xl font-semibold text-white mb-2">Guidelines</h2>
-                            <p className="text-sm text-slate-400 mb-6">Please read the following before starting. You must confirm to proceed.</p>
-                            <ol className="space-y-3 mb-8 list-none">
-                                {rules.map((rule, i) => (
-                                    <li key={i} className="flex gap-3 text-sm text-slate-300 leading-relaxed">
-                                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-surface-elevated border border-surface-border text-xs font-semibold text-slate-400 flex items-center justify-center">{i + 1}</span>
-                                        <span>{rule}</span>
-                                    </li>
-                                ))}
-                            </ol>
-                            <label className="flex items-start gap-3 mb-8 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="mt-1 w-4 h-4 rounded border-surface-border bg-surface-elevated text-accent focus:ring-accent focus:ring-offset-0 focus:ring-2"
-                                    checked={agreed}
-                                    onChange={(e) => setAgreed(e.target.checked)}
-                                />
-                                <span className="text-sm text-slate-400">I understand and agree to these guidelines.</span>
-                            </label>
-                            <button
-                                type="button"
-                                onClick={onStart}
-                                disabled={!agreed}
-                                className="btn-primary w-full py-3 rounded-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
-                            >
-                                Start assessment
-                            </button>
+                    <div className="max-w-[1600px] xl:max-w-[1760px] mx-auto min-h-[calc(100vh-3.5rem)] px-4 sm:px-6 lg:px-8 py-8 lg:py-14 fade-in">
+                        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 xl:gap-16 items-start lg:items-stretch">
+                            <div className="onboarding-hero p-8 sm:p-10 lg:p-12 flex flex-col order-2 lg:order-1">
+                                <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-4">Guidelines</p>
+                                <h1 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight leading-tight mb-4">
+                                    Before you start
+                                </h1>
+                                <p className="text-slate-400 text-base leading-relaxed mb-8 max-w-md">
+                                    The assessment runs in phases. Take a minute to read how it works—then confirm below to begin.
+                                </p>
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 mt-auto">
+                                    <div className="panel rounded-lg p-4 border-surface-border bg-surface/80">
+                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Format</p>
+                                        <p className="text-sm font-medium text-white">Multi-phase technical prompts</p>
+                                        <p className="text-xs text-slate-500 mt-1">Typically five phases unless your invite says otherwise.</p>
+                                    </div>
+                                    <div className="panel rounded-lg p-4 border-surface-border bg-surface/80">
+                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Need help?</p>
+                                        <p className="text-sm font-medium text-white">Contact your recruiter</p>
+                                        <p className="text-xs text-slate-500 mt-1">They issued your session ID and can assist with access issues.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="order-1 lg:order-2 w-full max-w-xl mx-auto lg:max-w-none">
+                                <div className="panel rounded-xl overflow-hidden border-surface-border shadow-lg shadow-black/20">
+                                    <div className="px-8 pt-8 sm:px-10 sm:pt-10 pb-2 border-b border-surface-border bg-surface-elevated/30">
+                                        <h2 className="text-lg font-semibold text-white">Rules you are accepting</h2>
+                                        <p className="text-sm text-slate-500 mt-1">
+                                            All items apply once you click <span className="text-slate-400">Start assessment</span>.
+                                        </p>
+                                    </div>
+                                    <div className="p-8 sm:p-10 space-y-3">
+                                        {rules.map((rule, i) => (
+                                            <div
+                                                key={i}
+                                                className="flex gap-4 p-4 rounded-lg border border-surface-border bg-surface-elevated/40 hover:border-slate-600/80 transition-colors"
+                                            >
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 border border-accent/20 text-accent">
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                        {rule.icon}
+                                                    </svg>
+                                                </div>
+                                                <div className="min-w-0 pt-0.5">
+                                                    <p className="text-sm font-medium text-white flex items-center gap-2">
+                                                        <span className="text-xs font-semibold text-slate-500 tabular-nums w-5">{i + 1}.</span>
+                                                        {rule.title}
+                                                    </p>
+                                                    <p className="text-sm text-slate-400 mt-1 leading-relaxed">{rule.body}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="px-8 sm:px-10 pb-8 sm:pb-10 pt-0 space-y-5">
+                                        <label className="flex items-start gap-3 cursor-pointer group rounded-lg border border-transparent p-3 -m-2 hover:bg-surface-elevated/40 transition-colors">
+                                            <input
+                                                type="checkbox"
+                                                className="mt-0.5 w-4 h-4 rounded border-surface-border bg-surface-elevated text-accent focus:ring-accent focus:ring-offset-0 focus:ring-2 shrink-0"
+                                                checked={agreed}
+                                                onChange={(e) => setAgreed(e.target.checked)}
+                                            />
+                                            <span className="text-sm text-slate-400 group-hover:text-slate-300 leading-relaxed">
+                                                I have read and agree to follow these guidelines for the duration of the assessment.
+                                            </span>
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={onStart}
+                                            disabled={!agreed}
+                                            className="btn-primary w-full py-3.5 rounded-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
+                                        >
+                                            Start assessment
+                                        </button>
+                                        <p className="text-xs text-center text-slate-600">
+                                            You can close the window before starting; your session ID will work again when you return.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </Shell>

@@ -104,7 +104,7 @@
         const Shell = ({ children, subtitle }) => (
             <div className="min-h-screen flex flex-col">
                 <header className="border-b border-surface-border bg-surface/80 backdrop-blur-sm">
-                    <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+                    <div className="max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center">
                                 <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -294,63 +294,152 @@
             );
         };
 
-        const AssessmentView = ({ currentStep, totalSteps, timeLeft, question, answer, setAnswer, handleAssessmentSubmit, isLoading, sessionId }) => {
+        const AssessmentView = ({
+            currentStep,
+            totalSteps,
+            timeLeft,
+            question,
+            answer,
+            setAnswer,
+            handleAssessmentSubmit,
+            isLoading,
+            sessionId,
+            candidateEmail,
+            tabSwitchCount,
+        }) => {
             const pct = totalSteps > 0 ? Math.min(100, (currentStep / totalSteps) * 100) : 0;
             const low = timeLeft < 30;
+            const phases = Array.from({ length: totalSteps }, (_, i) => i + 1);
             return (
                 <Shell subtitle={`Phase ${currentStep} of ${totalSteps}`}>
-                    <div className={`max-w-4xl mx-auto px-4 sm:px-6 py-8 fade-in assessment-lock`}>
-                        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-                            <div>
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Technical assessment</p>
-                                <h1 className="text-2xl font-semibold text-white">Phase {currentStep}</h1>
-                            </div>
-                            <div className={`panel px-5 py-3 rounded-lg flex items-baseline gap-2 ${low ? 'border-amber-500/40' : ''}`}>
-                                <span className="text-xs font-medium text-slate-500">Time remaining</span>
-                                <span className={`font-mono text-lg font-semibold tabular-nums ${low ? 'text-amber-400' : 'text-white'}`}>
-                                    {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
-                                </span>
-                            </div>
-                        </div>
-                        <div className="h-1.5 bg-surface-elevated rounded-full overflow-hidden border border-surface-border mb-8">
-                            <div className="h-full bg-accent transition-all duration-300 rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
+                    <div className="max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10 fade-in assessment-lock">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 xl:gap-10">
+                            {/* Left rail — progress & context */}
+                            <aside className="lg:col-span-4 xl:col-span-3 space-y-6 order-2 lg:order-1">
+                                <div className="panel rounded-xl p-5 lg:p-6">
+                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-4">Progress</p>
+                                    <ul className="space-y-2">
+                                        {phases.map((p) => {
+                                            const done = p < currentStep;
+                                            const active = p === currentStep;
+                                            return (
+                                                <li
+                                                    key={p}
+                                                    className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm ${
+                                                        active
+                                                            ? 'border-accent/50 bg-accent-muted text-white'
+                                                            : done
+                                                            ? 'border-surface-border bg-surface-elevated/50 text-slate-400'
+                                                            : 'border-surface-border text-slate-500'
+                                                    }`}
+                                                >
+                                                    <span
+                                                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${
+                                                            active
+                                                                ? 'bg-accent text-white'
+                                                                : done
+                                                                ? 'bg-slate-600 text-white'
+                                                                : 'bg-surface-elevated border border-surface-border text-slate-500'
+                                                        }`}
+                                                    >
+                                                        {done ? (
+                                                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                                            </svg>
+                                                        ) : (
+                                                            p
+                                                        )}
+                                                    </span>
+                                                    <span className="font-medium">{active ? 'In progress' : done ? 'Completed' : 'Upcoming'}</span>
+                                                    <span className="ml-auto text-xs text-slate-500 tabular-nums">Phase {p}</span>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                </div>
 
-                        <div className="panel rounded-xl p-6 sm:p-8 relative">
-                            {isLoading && (
-                                <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
-                                    <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
-                                    <p className="text-sm text-slate-400">Processing your response…</p>
+                                <div className="panel rounded-xl p-5 lg:p-6">
+                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Session</p>
+                                    <dl className="space-y-3 text-sm">
+                                        <div>
+                                            <dt className="text-slate-500 text-xs mb-1">Session ID</dt>
+                                            <dd className="font-mono text-xs text-slate-300 break-all">{sessionId || '—'}</dd>
+                                        </div>
+                                        {candidateEmail ? (
+                                            <div>
+                                                <dt className="text-slate-500 text-xs mb-1">Email</dt>
+                                                <dd className="text-slate-300 break-all">{candidateEmail}</dd>
+                                            </div>
+                                        ) : null}
+                                        <div>
+                                            <dt className="text-slate-500 text-xs mb-1">Tab changes recorded</dt>
+                                            <dd className="text-slate-300 tabular-nums">{tabSwitchCount}</dd>
+                                        </div>
+                                    </dl>
                                 </div>
-                            )}
-                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Question</p>
-                            <div className="text-base sm:text-lg text-slate-200 leading-relaxed mb-8 border-l-2 border-accent pl-4">
-                                {question}
-                            </div>
-                            <label htmlFor="answer" className="sr-only">Your answer</label>
-                            <textarea
-                                id="answer"
-                                className="input-field w-full px-4 py-4 rounded-lg text-sm leading-relaxed min-h-[200px] resize-y mb-6"
-                                placeholder="Type your answer here."
-                                value={answer}
-                                onChange={(e) => setAnswer(e.target.value)}
-                            />
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                                <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-500">
-                                    <span>
-                                        Session: <span className="font-mono text-slate-400">{sessionId ? `${sessionId.slice(0, 8)}…` : '—'}</span>
-                                    </span>
-                                    <span className="text-slate-600">|</span>
-                                    <span>Automated review enabled for this session</span>
+
+                                <div className="panel rounded-xl p-5 lg:p-6 border-l-2 border-l-accent/60">
+                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">While you work</p>
+                                    <ul className="space-y-2.5 text-xs text-slate-400 leading-relaxed">
+                                        <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Answer directly below the question; aim for substance over length.</li>
+                                        <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Submit before the timer ends — empty answers are not sent.</li>
+                                        <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Keep this browser tab active until you finish the phase.</li>
+                                    </ul>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={handleAssessmentSubmit}
-                                    disabled={answer.trim().length < 5 || isLoading}
-                                    className="btn-primary px-8 py-3 rounded-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed sm:shrink-0"
-                                >
-                                    Submit answer
-                                </button>
+                            </aside>
+
+                            {/* Main task column */}
+                            <div className="lg:col-span-8 xl:col-span-9 space-y-6 order-1 lg:order-2 min-w-0">
+                                <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+                                    <div>
+                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Technical assessment</p>
+                                        <h1 className="text-2xl lg:text-3xl font-semibold text-white">Phase {currentStep}</h1>
+                                        <p className="text-sm text-slate-500 mt-2">Phase {currentStep} of {totalSteps} · Automated review enabled</p>
+                                    </div>
+                                    <div className={`panel px-5 py-3 rounded-lg flex items-baseline gap-2 shrink-0 ${low ? 'border-amber-500/40' : ''}`}>
+                                        <span className="text-xs font-medium text-slate-500">Time remaining</span>
+                                        <span className={`font-mono text-xl font-semibold tabular-nums ${low ? 'text-amber-400' : 'text-white'}`}>
+                                            {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="h-2 bg-surface-elevated rounded-full overflow-hidden border border-surface-border">
+                                    <div className="h-full bg-accent transition-all duration-300 rounded-full" style={{ width: `${pct}%` }} />
+                                </div>
+
+                                <div className="panel rounded-xl p-6 sm:p-8 lg:p-10 relative">
+                                    {isLoading && (
+                                        <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
+                                            <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
+                                            <p className="text-sm text-slate-400">Processing your response…</p>
+                                        </div>
+                                    )}
+                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Question</p>
+                                    <div className="text-lg lg:text-xl text-slate-100 leading-relaxed mb-8 lg:mb-10 border-l-2 border-accent pl-4 lg:pl-5">
+                                        {question}
+                                    </div>
+                                    <label htmlFor="answer" className="sr-only">Your answer</label>
+                                    <textarea
+                                        id="answer"
+                                        className="input-field w-full px-4 py-4 lg:px-5 lg:py-5 rounded-lg text-sm lg:text-base leading-relaxed min-h-[260px] lg:min-h-[320px] resize-y mb-6"
+                                        placeholder="Type your answer here."
+                                        value={answer}
+                                        onChange={(e) => setAnswer(e.target.value)}
+                                    />
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4 pt-2 border-t border-surface-border">
+                                        <p className="text-xs text-slate-500 sm:mr-auto order-2 sm:order-1">
+                                            Minimum 5 characters to submit · {answer.trim().length} characters
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={handleAssessmentSubmit}
+                                            disabled={answer.trim().length < 5 || isLoading}
+                                            className="btn-primary px-10 py-3.5 rounded-lg text-sm lg:px-12 disabled:opacity-40 disabled:cursor-not-allowed order-1 sm:order-2 w-full sm:w-auto"
+                                        >
+                                            Submit answer
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -394,7 +483,7 @@
 
         const ReviewView = ({ history, onBack }) => (
             <Shell subtitle="Review">
-                <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 fade-in">
+                <div className="max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8 py-8 fade-in">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10 sticky top-0 z-10 -mx-4 px-4 py-3 sm:mx-0 sm:px-0 bg-[#0c0f14]/95 backdrop-blur-sm border-b border-surface-border sm:border-0">
                         <div>
                             <h2 className="text-xl font-semibold text-white">Your responses</h2>
@@ -644,6 +733,8 @@
                                 handleAssessmentSubmit={handleAssessmentSubmit}
                                 isLoading={isLoading}
                                 sessionId={sessionId}
+                                candidateEmail={candidateEmail}
+                                tabSwitchCount={tabSwitchCount}
                             />
                         );
                     case 'finished':

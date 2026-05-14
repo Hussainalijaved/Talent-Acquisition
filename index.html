@@ -801,15 +801,25 @@
                 setIsLoading(true);
                 try {
                     console.log('Fetching history for session:', sessionId);
-                    const { data, error } = await supabase
+                    
+                    // Try Supabase SDK first
+                    let { data, error } = await supabase
                         .from('assessment_questions')
                         .select('id, session_id, phase, question_text, answer_text, suggested_answer')
                         .eq('session_id', sessionId)
                         .order('phase', { ascending: true });
 
                     if (error) {
-                        console.error('Supabase Error:', error);
-                        throw error;
+                        console.warn('SDK failed, trying direct REST fallback...');
+                        // Fallback to direct REST API if SDK fails (Failed to Fetch protection)
+                        const response = await fetch(`${supabaseUrl}/rest/v1/assessment_questions?session_id=eq.${sessionId}&select=*&order=phase.asc`, {
+                            headers: {
+                                'apikey': supabaseKey,
+                                'Authorization': `Bearer ${supabaseKey}`
+                            }
+                        });
+                        if (!response.ok) throw new Error('Direct fetch failed as well');
+                        data = await response.json();
                     }
 
                     if (!data || data.length === 0) {
@@ -820,7 +830,7 @@
                     setView('review');
                 } catch (e) {
                     console.error('Fetch Error:', e);
-                    alert(`Could not load history: ${e.message || 'Check console for details'}`);
+                    alert(`History loading failed. Possible causes: Wrong session ID or network block. Details: ${e.message}`);
                 } finally {
                     setIsLoading(false);
                 }

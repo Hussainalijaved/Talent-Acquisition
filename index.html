@@ -82,8 +82,15 @@
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .assessment-lock {
@@ -428,22 +435,20 @@
                                             return (
                                                 <li
                                                     key={p}
-                                                    className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm ${
-                                                        active
+                                                    className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm ${active
                                                             ? 'border-accent/50 bg-accent-muted text-white'
                                                             : done
-                                                            ? 'border-surface-border bg-surface-elevated/50 text-slate-400'
-                                                            : 'border-surface-border text-slate-500'
-                                                    }`}
+                                                                ? 'border-surface-border bg-surface-elevated/50 text-slate-400'
+                                                                : 'border-surface-border text-slate-500'
+                                                        }`}
                                                 >
                                                     <span
-                                                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${
-                                                            active
+                                                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${active
                                                                 ? 'bg-accent text-white'
                                                                 : done
-                                                                ? 'bg-slate-600 text-white'
-                                                                : 'bg-surface-elevated border border-surface-border text-slate-500'
-                                                        }`}
+                                                                    ? 'bg-slate-600 text-white'
+                                                                    : 'bg-surface-elevated border border-surface-border text-slate-500'
+                                                            }`}
                                                     >
                                                         {done ? (
                                                             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -569,12 +574,6 @@
                                 ? 'Thank you for your responses. Our team will follow up with next steps.'
                                 : 'Thank you for your time. Your submission will be reviewed by the hiring team.'}
                         </p>
-                        {feedback && (
-                            <div className="text-left p-4 rounded-lg bg-surface-elevated border border-surface-border mb-8">
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Evaluator summary</p>
-                                <p className="text-sm text-slate-300 leading-relaxed">{feedback}</p>
-                            </div>
-                        )}
                         <button type="button" onClick={onReview} className="btn-primary w-full py-3 rounded-lg text-sm inline-flex items-center justify-center gap-2">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
                             Review responses and notes
@@ -687,45 +686,32 @@
             }, []);
 
             const handleStartAssessment = async () => {
-                setView('assessment');
                 setIsLoading(true);
                 try {
-                    const response = await fetch(`${WEBHOOK_BASE}/assessment-start`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-                        body: JSON.stringify({ sessionId, email: candidateEmail }),
-                    });
+                    // Fetch initial question from Supabase JSONB instead of calling n8n start webhook
+                    const { data, error } = await supabase
+                        .from('assessment_sessions')
+                        .select('interview_history, max_phases')
+                        .eq('id', sessionId)
+                        .single();
 
-                    let textData = await response.text();
-                    let sanitizedText = textData.trim();
-                    if (sanitizedText.startsWith('=')) sanitizedText = sanitizedText.substring(1).trim();
+                    if (error) throw error;
 
-                    let data;
-                    try {
-                        data = JSON.parse(sanitizedText);
-                    } catch (e) {
-                        data = { question: sanitizedText };
-                    }
+                    const history = data.interview_history || [];
+                    const firstPhase = history[0];
 
-                    let q = data.question || data.nextQuestion || data.output || data.text || sanitizedText;
-                    if (typeof q === 'string' && q.trim().startsWith('{')) {
-                        try {
-                            const parsed = JSON.parse(q);
-                            q = parsed.question || parsed.text || parsed.message || parsed.content || q;
-                        } catch (e) {}
-                    }
-                    if (typeof q === 'object') {
-                        q = q.question || q.text || q.message || q.content || JSON.stringify(q);
-                    }
-                    if (typeof q === 'string') q = q.replace(/^"|"$/g, '').trim();
-
-                    if (q) {
-                        setQuestion(q);
-                        setTimeLeft(180);
+                    if (firstPhase) {
+                        setQuestion(firstPhase.question_text || firstPhase.question);
+                        setTotalSteps(data.max_phases || 5);
+                        setCurrentStep(1);
+                        setView('assessment');
+                        setTimeLeft(120);
+                    } else {
+                        throw new Error("No initial question found in session history.");
                     }
                 } catch (e) {
-                    console.error('Init Error', e);
-                    setQuestion('Unable to load this question. Refresh the page or contact support.');
+                    console.error('Start Assessment Error:', e);
+                    alert('Failed to load the first question. Please refresh.');
                 } finally {
                     setIsLoading(false);
                 }
@@ -764,12 +750,12 @@
                         setFeedback(data.feedback || 'Assessment completed.');
                     } else {
                         let nextQ = data.nextQuestion || data.question || data.output || data.text || '';
-                        
+
                         if (typeof nextQ === 'string' && nextQ.trim().startsWith('{')) {
                             try {
                                 const parsed = JSON.parse(nextQ);
                                 nextQ = parsed.nextQuestion || parsed.question || parsed.text || nextQ;
-                            } catch (e) {}
+                            } catch (e) { }
                         }
 
                         if (nextQ) {
@@ -801,30 +787,16 @@
                 setIsLoading(true);
                 try {
                     console.log('Fetching history directly from Supabase for:', sessionId);
-                    
+
                     // Priority 1: Official Supabase SDK
                     const { data, error } = await supabase
-                        .from('assessment_questions')
-                        .select('id, phase, question_text, answer_text, suggested_answer')
-                        .eq('session_id', sessionId)
-                        .order('phase', { ascending: true });
+                        .from('assessment_sessions')
+                        .select('interview_history')
+                        .eq('id', sessionId)
+                        .single();
 
-                    if (error) {
-                        console.warn('SDK Error, trying manual REST call:', error);
-                        // Priority 2: Direct REST fetch as fallback
-                        const resp = await fetch(`${supabaseUrl}/rest/v1/assessment_questions?session_id=eq.${sessionId}&select=*&order=phase.asc`, {
-                            headers: {
-                                'apikey': supabaseKey,
-                                'Authorization': `Bearer ${supabaseKey}`
-                            }
-                        });
-                        if (!resp.ok) throw new Error(`Supabase API responded with ${resp.status}`);
-                        const fallbackData = await resp.json();
-                        setAssessmentHistory(fallbackData || []);
-                    } else {
-                        setAssessmentHistory(data || []);
-                    }
-
+                    if (error) throw error;
+                    setAssessmentHistory(data.interview_history || []);
                     setView('review');
                 } catch (e) {
                     console.error('Supabase Fetch Error:', e);

@@ -697,7 +697,11 @@
 
                     if (error) throw error;
 
-                    const history = data.interview_history || [];
+                    let history = data.interview_history || [];
+                    if (typeof history === 'string') {
+                        try { history = JSON.parse(history); } catch(e) {}
+                    }
+                    
                     const firstPhase = history[0];
 
                     if (firstPhase) {
@@ -796,7 +800,13 @@
                         .single();
 
                     if (error) throw error;
-                    setAssessmentHistory(data.interview_history || []);
+                    
+                    let parsedHistory = data.interview_history || [];
+                    if (typeof parsedHistory === 'string') {
+                        try { parsedHistory = JSON.parse(parsedHistory); } catch(e) {}
+                    }
+                    
+                    setAssessmentHistory(parsedHistory);
                     setView('review');
                 } catch (e) {
                     console.error('Supabase Fetch Error:', e);

@@ -651,6 +651,7 @@
             const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
             const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
+            /*
             useEffect(() => {
                 if (view !== 'assessment') return;
                 const preventActions = (e) => e.preventDefault();
@@ -674,6 +675,7 @@
                 document.addEventListener('visibilitychange', handleVisibilityChange);
                 return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
             }, [view]);
+            */
 
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);

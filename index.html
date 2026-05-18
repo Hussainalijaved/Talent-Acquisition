@@ -436,18 +436,18 @@
                                                 <li
                                                     key={p}
                                                     className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm ${active
-                                                            ? 'border-accent/50 bg-accent-muted text-white'
-                                                            : done
-                                                                ? 'border-surface-border bg-surface-elevated/50 text-slate-400'
-                                                                : 'border-surface-border text-slate-500'
+                                                        ? 'border-accent/50 bg-accent-muted text-white'
+                                                        : done
+                                                            ? 'border-surface-border bg-surface-elevated/50 text-slate-400'
+                                                            : 'border-surface-border text-slate-500'
                                                         }`}
                                                 >
                                                     <span
                                                         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${active
-                                                                ? 'bg-accent text-white'
-                                                                : done
-                                                                    ? 'bg-slate-600 text-white'
-                                                                    : 'bg-surface-elevated border border-surface-border text-slate-500'
+                                                            ? 'bg-accent text-white'
+                                                            : done
+                                                                ? 'bg-slate-600 text-white'
+                                                                : 'bg-surface-elevated border border-surface-border text-slate-500'
                                                             }`}
                                                     >
                                                         {done ? (
@@ -597,7 +597,7 @@
                     </div>
 
                     <div className="space-y-6">
-                        {history.map((item, index) => (
+                        {history.filter(item => item.answer_text && item.answer_text.trim() !== '').map((item, index) => (
                             <article key={index} className="panel rounded-xl p-6 sm:p-8">
                                 <div className="flex items-center gap-2 mb-4">
                                     <span className="text-xs font-semibold text-accent bg-accent-muted px-2.5 py-1 rounded-md">Phase {item.phase}</span>
@@ -699,9 +699,9 @@
 
                     let history = data.interview_history || [];
                     if (typeof history === 'string') {
-                        try { history = JSON.parse(history); } catch(e) {}
+                        try { history = JSON.parse(history); } catch (e) { }
                     }
-                    
+
                     const firstPhase = history[0];
 
                     if (firstPhase) {
@@ -800,12 +800,12 @@
                         .single();
 
                     if (error) throw error;
-                    
+
                     let parsedHistory = data.interview_history || [];
                     if (typeof parsedHistory === 'string') {
-                        try { parsedHistory = JSON.parse(parsedHistory); } catch(e) {}
+                        try { parsedHistory = JSON.parse(parsedHistory); } catch (e) { }
                     }
-                    
+
                     setAssessmentHistory(parsedHistory);
                     setView('review');
                 } catch (e) {

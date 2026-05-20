@@ -172,7 +172,8 @@
                         return;
                     }
 
-                    if (data.status === 'completed' || data.status === 'terminated') {
+                    const statusStr = (data.status || '').toLowerCase();
+                    if (statusStr.includes('completed') || statusStr.includes('terminated')) {
                         setErrorMsg('This assessment session has already been completed or terminated.');
                         return;
                     }
@@ -854,7 +855,8 @@
                     const { data, error } = await query.single();
                     if (error || !data) return;
 
-                    if (data.status === 'completed' || data.status === 'terminated') {
+                    const statusStr = (data.status || '').toLowerCase();
+                    if (statusStr.includes('completed') || statusStr.includes('terminated')) {
                         sessionStorage.removeItem('current_session_id');
                         sessionStorage.removeItem('candidate_email');
                         sessionStorage.removeItem('time_left');

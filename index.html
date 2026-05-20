@@ -670,6 +670,9 @@
                 setView('finished');
                 setResult('FAIL');
                 setFeedback('Test terminated automatically due to excessive tab switching (cheating detected).');
+                sessionStorage.removeItem('current_session_id');
+                sessionStorage.removeItem('candidate_email');
+                sessionStorage.removeItem('time_left');
                 try {
                     // Update Supabase directly to mark as failed/completed
                     await supabase
@@ -761,22 +764,128 @@
                 };
             }, [view]);
 
+            const restoreSession = async (sId, email) => {
+                if (!sId) return;
+                setIsLoading(true);
+                try {
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sId);
+                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, status');
+                    if (isUuid) {
+                        query = query.eq('id', sId);
+                    } else {
+                        query = query.eq('gmail_thread_id', sId);
+                    }
+                    const { data, error } = await query.single();
+                    if (error || !data) return;
+
+                    if (data.status === 'completed' || data.status === 'terminated') {
+                        sessionStorage.removeItem('current_session_id');
+                        sessionStorage.removeItem('candidate_email');
+                        sessionStorage.removeItem('time_left');
+                        return;
+                    }
+
+                    sessionStorage.setItem('current_session_id', data.id);
+                    sessionStorage.setItem('candidate_email', email || '');
+
+                    let history = data.interview_history || [];
+                    if (typeof history === 'string') {
+                        try { history = JSON.parse(history); } catch (e) { }
+                    }
+
+                    if (!Array.isArray(history) || history.length === 0) return;
+
+                    let currentStepIndex = history.findIndex(h => h.answer_text === null || h.answer_text === undefined);
+                    if (currentStepIndex === -1) {
+                        return;
+                    }
+
+                    const currentPhaseData = history[currentStepIndex];
+                    if (currentPhaseData) {
+                        setQuestion(currentPhaseData.question_text || currentPhaseData.question);
+                        setTotalSteps(data.max_phases || 5);
+                        setCurrentStep(currentStepIndex + 1);
+                        
+                        const savedTime = sessionStorage.getItem('time_left');
+                        setTimeLeft(savedTime ? parseInt(savedTime, 10) : 180);
+                        
+                        setView('assessment');
+                    }
+                } catch (e) {
+                    console.error('Session Restoration Error:', e);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
-                const sId = params.get('session');
-                const email = params.get('email');
+                let sId = params.get('session');
+                let email = params.get('email');
+                if (!sId) {
+                    sId = sessionStorage.getItem('current_session_id');
+                    email = sessionStorage.getItem('candidate_email');
+                }
                 if (sId) {
                     setSessionId(sId);
                     setCandidateEmail(email || '');
+                    restoreSession(sId, email);
                 }
             }, []);
+
+            useEffect(() => {
+                const handleBeforeUnload = (e) => {
+                    if (view === 'assessment') {
+                        e.preventDefault();
+                        e.returnValue = 'Assessment is in progress. Are you sure you want to leave? Your progress will be saved but time will continue to run.';
+                        return e.returnValue;
+                    }
+                };
+                window.addEventListener('beforeunload', handleBeforeUnload);
+                return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+            }, [view]);
+
+            useEffect(() => {
+                if (view !== 'assessment') return;
+                
+                const blockDevTools = () => {
+                    try {
+                        (function() {
+                            (function a() {
+                                try {
+                                    (function b(i) {
+                                        if (('' + (i / i)).length !== 1 || i % 20 === 0) {
+                                            (function() {
+                                                return true;
+                                            }
+                                            .constructor('debugger')
+                                            .call('action'));
+                                        } else {
+                                            (function() {
+                                                return false;
+                                            }
+                                            .constructor('debugger')
+                                            .call('action'));
+                                        }
+                                        b(++i);
+                                    }(0));
+                                } catch (e) {
+                                    setTimeout(a, 50);
+                                }
+                            }());
+                        }());
+                    } catch (e) {}
+                };
+
+                const interval = setInterval(blockDevTools, 500);
+                return () => clearInterval(interval);
+            }, [view]);
 
             const handleStartAssessment = async () => {
                 setIsLoading(true);
                 try {
-                    // Fetch initial question from Supabase JSONB, support both UUID and gmail_thread_id
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId);
-                    let query = supabase.from('assessment_sessions').select('interview_history, max_phases');
+                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases');
                     if (isUuid) {
                         query = query.eq('id', sessionId);
                     } else {
@@ -799,6 +908,11 @@
                         setCurrentStep(1);
                         setView('assessment');
                         setTimeLeft(120);
+
+                        const resolvedId = data.id || sessionId;
+                        sessionStorage.setItem('current_session_id', resolvedId);
+                        sessionStorage.setItem('candidate_email', candidateEmail || '');
+                        sessionStorage.setItem('time_left', '120');
                     } else {
                         throw new Error("No initial question found in session history.");
                     }
@@ -844,6 +958,9 @@
                         setView('finished');
                         setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));
                         setFeedback(data.feedback || 'Assessment completed.');
+                        sessionStorage.removeItem('current_session_id');
+                        sessionStorage.removeItem('candidate_email');
+                        sessionStorage.removeItem('time_left');
                     } else {
                         let nextQ = data.nextQuestion || data.question || data.output || data.text || '';
 
@@ -859,6 +976,7 @@
                             setCurrentStep((prev) => prev + 1);
                             setTimeLeft(180);
                             setAnswer('');
+                            sessionStorage.setItem('time_left', '180');
                         }
                     }
                 } catch (e) {
@@ -871,7 +989,11 @@
 
             useEffect(() => {
                 if (view === 'assessment' && timeLeft > 0 && !isLoading) {
-                    const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+                    const timer = setTimeout(() => {
+                        const newTime = timeLeft - 1;
+                        setTimeLeft(newTime);
+                        sessionStorage.setItem('time_left', newTime.toString());
+                    }, 1000);
                     return () => clearTimeout(timer);
                 }
                 if (view === 'assessment' && timeLeft === 0 && !isLoading) {

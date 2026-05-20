@@ -138,12 +138,61 @@
             </div>
         );
 
-        const LoginView = ({ sessionId, setSessionId, setView }) => {
+        const LoginView = ({ sessionId, setSessionId, setView, supabase }) => {
+            const [localLoading, setLocalLoading] = React.useState(false);
+            const [errorMsg, setErrorMsg] = React.useState('');
+
+            const handleLoginSubmit = async (e) => {
+                e.preventDefault();
+                setErrorMsg('');
+                const sId = sessionId.trim();
+                if (!sId) {
+                    setErrorMsg('Please enter a session ID.');
+                    return;
+                }
+
+                if (sId.length < 10) {
+                    setErrorMsg('The session ID you entered is incomplete or invalid.');
+                    return;
+                }
+
+                setLocalLoading(true);
+                try {
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sId);
+                    let query = supabase.from('assessment_sessions').select('id, status');
+                    if (isUuid) {
+                        query = query.eq('id', sId);
+                    } else {
+                        query = query.eq('gmail_thread_id', sId);
+                    }
+                    const { data, error } = await query.single();
+
+                    if (error || !data) {
+                        setErrorMsg('Invalid Session ID. Please check your invitation link.');
+                        return;
+                    }
+
+                    if (data.status === 'completed' || data.status === 'terminated') {
+                        setErrorMsg('This assessment session has already been completed or terminated.');
+                        return;
+                    }
+
+                    setSessionId(data.id);
+                    setView('instructions');
+                } catch (err) {
+                    console.error('Session verification error:', err);
+                    setErrorMsg('Invalid Session ID. Please check your invitation link.');
+                } finally {
+                    setLocalLoading(false);
+                }
+            };
+
             const steps = [
                 { t: 'Guidelines', d: 'Short checklist before timed questions.' },
                 { t: 'Phases', d: 'Answer each prompt; stay in this tab.' },
                 { t: 'Review', d: 'Your hiring team evaluates submissions.' },
             ];
+
             return (
                 <Shell subtitle="Candidate access">
                     <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
@@ -179,10 +228,7 @@
                                 </ul>
                             </div>
                             <form
-                                onSubmit={(e) => {
-                                    e.preventDefault();
-                                    if (sessionId.trim().length > 5) setView('instructions');
-                                }}
+                                onSubmit={handleLoginSubmit}
                                 className="space-y-4"
                             >
                                 <div>
@@ -196,10 +242,26 @@
                                         placeholder="Paste your session ID"
                                         value={sessionId}
                                         onChange={(e) => setSessionId(e.target.value)}
+                                        disabled={localLoading}
                                     />
                                 </div>
-                                <button type="submit" className="btn-primary w-full py-3.5 rounded-lg text-sm">
-                                    Continue to guidelines
+                                {errorMsg && (
+                                    <div className="text-red-400 text-xs font-medium bg-red-950/30 border border-red-900/50 rounded-lg p-3">
+                                        {errorMsg}
+                                    </div>
+                                )}
+                                <button type="submit" disabled={localLoading} className="btn-primary w-full py-3.5 rounded-lg text-sm flex items-center justify-center gap-2">
+                                    {localLoading ? (
+                                        <>
+                                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                            </svg>
+                                            Verifying...
+                                        </>
+                                    ) : (
+                                        'Continue to guidelines'
+                                    )}
                                 </button>
                             </form>
                             <div className="mt-6 pt-6 border-t border-surface-border text-center">
@@ -1050,7 +1112,7 @@
             const renderView = () => {
                 switch (view) {
                     case 'login':
-                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} />;
+                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} />;
                     case 'instructions':
                         return <InstructionsView onStart={handleStartAssessment} />;
                     case 'assessment':
@@ -1076,7 +1138,7 @@
                     case 'admin':
                         return <AdminView setView={setView} />;
                     default:
-                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} />;
+                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} />;
                 }
             };
 

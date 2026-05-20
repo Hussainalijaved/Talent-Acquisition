@@ -41,6 +41,8 @@
             border: 1px solid #2a3341;
             color: #e8eaed;
             transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            -webkit-user-select: text;
+            user-select: text;
         }
 
         .input-field::placeholder {
@@ -713,6 +715,51 @@
                 document.addEventListener('visibilitychange', handleVisibilityChange);
                 return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
             }, [view, currentStep, candidateEmail, sessionId]);
+
+            useEffect(() => {
+                if (view !== 'assessment') return;
+
+                const handleContextMenu = (e) => {
+                    e.preventDefault();
+                };
+
+                const handleCopy = (e) => {
+                    e.preventDefault();
+                };
+
+                const handleKeyDown = (e) => {
+                    // Block F12
+                    if (e.key === 'F12') {
+                        e.preventDefault();
+                        return;
+                    }
+                    // Block Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C, Ctrl+U
+                    if (e.ctrlKey && (
+                        (e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c')) ||
+                        e.key === 'u' || e.key === 'U'
+                    )) {
+                        e.preventDefault();
+                        return;
+                    }
+                    // Block Ctrl+C and Ctrl+X (just in case)
+                    if (e.ctrlKey && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X')) {
+                        e.preventDefault();
+                        return;
+                    }
+                };
+
+                document.addEventListener('contextmenu', handleContextMenu);
+                document.addEventListener('copy', handleCopy);
+                document.addEventListener('cut', handleCopy);
+                document.addEventListener('keydown', handleKeyDown);
+
+                return () => {
+                    document.removeEventListener('contextmenu', handleContextMenu);
+                    document.removeEventListener('copy', handleCopy);
+                    document.removeEventListener('cut', handleCopy);
+                    document.removeEventListener('keydown', handleKeyDown);
+                };
+            }, [view]);
 
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Interview Slot</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(20, 28, 47, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary-glow: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Subtle background glow */
+        body::before {
+            content: '';
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 70%, transparent 100%);
+            top: 20%;
+            left: 30%;
+            z-index: 1;
+        }
+
+        body::after {
+            content: '';
+            position: absolute;
+            width: 350px;
+            height: 350px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 70%, transparent 100%);
+            bottom: 25%;
+            right: 25%;
+            z-index: 1;
+        }
+
+        .container {
+            position: relative;
+            z-index: 10;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 40px;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 400px;
+            box-sizing: border-box;
+            text-align: center;
+            animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h2 {
+            font-weight: 800;
+            margin-top: 0;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #ffffff 50%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 28px;
+        }
+
+        p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 28px;
+            font-weight: 300;
+        }
+
+        .input-group {
+            margin-bottom: 24px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        input[type="text"], input[type="datetime-local"] {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 15px;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 12px;
+            margin: 20px 0;
+        }
+
+        .divider::before, .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .divider:not(:empty)::before {
+            margin-right: .5em;
+        }
+
+        .divider:not(:empty)::after {
+            margin-left: .5em;
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            background: var(--primary-glow);
+            color: white;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+            filter: brightness(1.1);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .footer {
+            margin-top: 24px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Select Availability</h2>
+        <p>Propose your preferred date & time for the interview</p>
+        
+        <!-- Date Time Picker Option -->
+        <div class="input-group">
+            <label for="datetime">Choose Date & Time</label>
+            <input type="datetime-local" id="datetime">
+        </div>
+        
+        <div class="divider">OR TYPE CUSTOM TEXT</div>
+        
+        <!-- Custom text description option -->
+        <div class="input-group">
+            <label for="customText">Custom Availability Window</label>
+            <input type="text" id="customText" placeholder="e.g. Next Friday afternoon">
+        </div>
+        
+        <button onclick="submitAvailability()">Schedule Interview</button>
+        
+        <div class="footer">
+            Powered by Antigravity Automation
+        </div>
+    </div>
+
+    <script>
+        // Extract resumeUrl from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const resumeUrl = urlParams.get('resumeUrl');
+
+        function submitAvailability() {
+            if (!resumeUrl) {
+                alert("Error: Resume URL missing. Make sure you opened this link from the coordination email.");
+                return;
+            }
+
+            const dtInput = document.getElementById('datetime').value;
+            const textInput = document.getElementById('customText').value.trim();
+            
+            let selectedTime = '';
+            
+            if (dtInput) {
+                // Format datetime-local to a clean readable string
+                const date = new Date(dtInput);
+                selectedTime = date.toLocaleString('en-US', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric', 
+                    hour: 'numeric', 
+                    minute: '2-digit',
+                    hour12: true 
+                });
+            } else if (textInput) {
+                selectedTime = textInput;
+            } else {
+                alert("Please select a date/time or enter custom availability text.");
+                return;
+            }
+
+            // Redirect to n8n resume webhook
+            const finalUrl = resumeUrl + '&availability=' + encodeURIComponent(selectedTime);
+            window.location.href = finalUrl;
+        }
+    </script>
+</body>
+</html>

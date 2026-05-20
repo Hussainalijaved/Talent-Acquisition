@@ -143,7 +143,7 @@
     {
       "parameters": {
         "options": {
-          "systemMessage": "=You are an Expert Technical Interviewer. \n\nINTERVIEW CONTEXT:\n- Target Role: {{ $('CFG - Workflow configuration2').first().json.config.requisition_title }}\n- Job Requirements (JD): {{ $('CFG - Workflow configuration2').first().json.config.requisition_requirements }}\n- Candidate CV: {{ $('Fetch History').first().json.cv_plaintext }}\n- Candidate's Latest Answer: {{ $('Webhook - Answer').first().json.body.answer }}\n\nGOAL: Conduct a rigorous technical assessment. \nYou must balance your questions between:\n1. CV Verification: Drill down into specific projects and skills mentioned in the CV.\n2. JD Alignment: Test if the candidate has the mandatory skills required for the role (e.g. .NET 8/9, C#, React as per JD).\n\nSTRICT RULES:\n1. NO REPETITIVE GREETINGS. No \"Hello\" or \"Great job\". Dive straight into the next technical question.\n2. If the candidate fails 3 consecutive technical questions, set isFinal to true and result to FAIL.\n\nOUTPUT FORMAT (JSON ONLY):\nReturn a JSON object with these exact keys:\nnextQuestion: (Your next technical question text)\nfeedback: (Internal reasoning)\nisFinal: (boolean, true if test ends)\nscore: (number 0-100)\nresult: (string \"PASS\", \"FAIL\", or null)"
+          "systemMessage": "=You are an Expert Technical Interviewer. Your goal is to conduct a rigorous technical assessment for the following role:\n\nROLE CONTEXT:\n- Target Role: {{ $('CFG - Workflow configuration2').first().json.config.requisition_title }}\n- Job Requirements (JD): {{ $('CFG - Workflow configuration2').first().json.config.requisition_requirements }}\n- Candidate CV: {{ $('Fetch History').first().json.cv_plaintext }}\n- Current Phase: {{ $('Webhook - Answer').first().json.body.phase }} of 5\n\nOPERATIONAL RULES:\n1. NO CONVERSATION: Do not say Hello, do not apologize, do not confirm understanding. Respond ONLY with JSON.\n2. BALANCED EVALUATION (CV & JD): Generate questions that are balanced between the candidate's CV (verifying projects and experiences) and the Job Requirements (JD) (evaluating mandatory technologies, skills, and engineering challenges).\n3. SCENARIO-BASED & CONCISE: Ask deep, real-world scenario questions but keep the \"nextQuestion\" text concise, direct, and under 2-3 sentences. Do not write lengthy questions.\n4. RIGOROUS REAL SCORING: Evaluate the technical depth, accuracy, and completeness of the candidate's last answer and provide a realistic \"currentScore\" (0-100). Do NOT inflate scores; be honest and rigorous.\n5. NO EARLY TERMINATION: Do NOT terminate the interview early. Always allow the candidate to complete all 5 questions.\n6. PASS/FAIL DECISION:\n   - If Current Phase is less than 5: Set \"isFinal\": false, and \"result\": null.\n   - If Current Phase is 5 (final phase): Evaluate the candidate's overall performance. Set \"isFinal\": true. If their cumulative score average (or final score) is 30 or above, set \"result\": \"PASS\". If it is below 30, set \"result\": \"FAIL\".\n7. SUGGESTED ANSWER: Provide the ideal high-standard technical response in the \"suggestedAnswer\" field.\n\nSTRICT OUTPUT FORMAT (JSON ONLY):\nReturn only a JSON object. No markdown backticks. No explanation.\n{\n  \"nextQuestion\": \"Your next concise technical question text (leave empty if isFinal is true)\",\n  \"suggestedAnswer\": \"The ideal high-standard answer for the PREVIOUS question\",\n  \"currentScore\": number (0-100, specific score for the answer just provided),\n  \"feedback\": \"Internal notes on technical depth and confidence\",\n  \"isFinal\": boolean (true if Current Phase is 5, otherwise false),\n  \"score\": number (Cumulative total score 0-100),\n  \"result\": \"PASS\" | \"FAIL\" | null\n}"
         }
       },
       "id": "agent-answer",
@@ -206,7 +206,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ answer_text: $('Webhook - Answer').first().json.body.answer, received_at: new Date().toISOString() }) }}"
+        "jsonBody": "={{ JSON.stringify({ answer_text: $('Webhook - Answer').first().json.body.answer, received_at: new Date().toISOString(), score: $('AI Agent - Answer').first().json.output.currentScore || $('AI Agent - Answer').first().json.output.score || null, suggested_answer: $('AI Agent - Answer').first().json.output.suggestedAnswer || $('AI Agent - Answer').first().json.output.suggested_answer || null, feedback: $('AI Agent - Answer').first().json.output.feedback || null }) }}"
       },
       "id": "update-answer-db",
       "name": "Update Answer in DB",
@@ -290,7 +290,7 @@
         "conditions": {
           "boolean": [
             {
-              "value1": "={{ $('AI Agent - Answer').first().json.output.isFinal === true || $('AI Agent - Answer').first().json.output.result !== undefined }}",
+              "value1": "={{ $('AI Agent - Answer').first().json.output.isFinal === true || $('AI Agent - Answer').first().json.output.result === 'PASS' || $('AI Agent - Answer').first().json.output.result === 'FAIL' }}",
               "value2": true
             }
           ]

@@ -727,12 +727,15 @@
             const handleStartAssessment = async () => {
                 setIsLoading(true);
                 try {
-                    // Fetch initial question from Supabase JSONB instead of calling n8n start webhook
-                    const { data, error } = await supabase
-                        .from('assessment_sessions')
-                        .select('interview_history, max_phases')
-                        .eq('id', sessionId)
-                        .single();
+                    // Fetch initial question from Supabase JSONB, support both UUID and gmail_thread_id
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId);
+                    let query = supabase.from('assessment_sessions').select('interview_history, max_phases');
+                    if (isUuid) {
+                        query = query.eq('id', sessionId);
+                    } else {
+                        query = query.eq('gmail_thread_id', sessionId);
+                    }
+                    const { data, error } = await query.single();
 
                     if (error) throw error;
 
@@ -831,12 +834,15 @@
                 try {
                     console.log('Fetching history directly from Supabase for:', sessionId);
 
-                    // Priority 1: Official Supabase SDK
-                    const { data, error } = await supabase
-                        .from('assessment_sessions')
-                        .select('interview_history')
-                        .eq('id', sessionId)
-                        .single();
+                    // Priority 1: Official Supabase SDK, support both UUID and gmail_thread_id
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId);
+                    let query = supabase.from('assessment_sessions').select('interview_history');
+                    if (isUuid) {
+                        query = query.eq('id', sessionId);
+                    } else {
+                        query = query.eq('gmail_thread_id', sessionId);
+                    }
+                    const { data, error } = await query.single();
 
                     if (error) throw error;
 

@@ -113,7 +113,61 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        const MAX_INTEGRITY_VIOLATIONS = 3;
+        const VIOLATION_DEBOUNCE_MS = 1200;
+        const DEVTOOLS_SIZE_THRESHOLD = 160;
+
+        const VIOLATION_LABELS = {
+            tab_switch: 'leaving the assessment tab',
+            window_blur: 'switching to another window or app',
+            devtools: 'opening developer tools (Inspect Element)',
+            fullscreen_exit: 'exiting fullscreen mode',
+            blocked_shortcut: 'using blocked keyboard shortcuts (F12, Inspect, View Source)',
+        };
+
+        const enterAssessmentFullscreen = async () => {
+            const el = document.documentElement;
+            try {
+                if (document.fullscreenElement) return true;
+                if (el.requestFullscreen) {
+                    await el.requestFullscreen();
+                } else if (el.webkitRequestFullscreen) {
+                    await el.webkitRequestFullscreen();
+                } else if (el.msRequestFullscreen) {
+                    await el.msRequestFullscreen();
+                }
+                return !!document.fullscreenElement;
+            } catch (e) {
+                return false;
+            }
+        };
+
+        const exitAssessmentFullscreen = () => {
+            try {
+                if (document.fullscreenElement && document.exitFullscreen) {
+                    document.exitFullscreen().catch(() => {});
+                } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
+            } catch (e) {}
+        };
+
+        const isDevToolsLikelyOpen = () => (
+            window.outerWidth - window.innerWidth > DEVTOOLS_SIZE_THRESHOLD ||
+            window.outerHeight - window.innerHeight > DEVTOOLS_SIZE_THRESHOLD
+        );
+
+        const isBlockedDevToolsShortcut = (e) => {
+            if (e.key === 'F12') return true;
+            const key = (e.key || '').toLowerCase();
+            if (e.ctrlKey && e.shiftKey && ['i', 'j', 'c', 'k'].includes(key)) return true;
+            if (e.ctrlKey && (key === 'u' || key === 's')) return true;
+            if (e.metaKey && e.altKey && ['i', 'j', 'c', 'u'].includes(key)) return true;
+            if (e.metaKey && e.shiftKey && ['i', 'j', 'c'].includes(key)) return true;
+            return false;
+        };
 
         // Update when ngrok restarts (free tier gets a new subdomain each time).
         // Must match: ngrok URL + n8n path on TRG - Assessment Answer (assessment-answer).
@@ -289,8 +343,8 @@
                     ),
                 },
                 {
-                    title: 'Tab Switching Limits (Warning)',
-                    body: 'You are allowed a maximum of 2 tab switches. Switching tabs or leaving the screen a 3rd time will terminate the test immediately with an automatic FAIL.',
+                    title: 'Focus & Fullscreen Rules',
+                    body: 'The assessment runs in fullscreen. You may receive up to 2 integrity warnings (tab switch, leaving the window, exiting fullscreen, or opening developer tools). A 3rd violation terminates the test with an automatic FAIL.',
                     icon: (
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     ),
@@ -303,8 +357,8 @@
                     ),
                 },
                 {
-                    title: 'Action Shortcuts Blocked',
-                    body: 'Keyboard combinations used to view source code or extract content are disabled. Suspicious shortcut triggers will lock your screen.',
+                    title: 'Developer Tools Blocked',
+                    body: 'Right-click, Inspect Element, F12, Ctrl/Cmd+Shift+I/J/C, and View Source are disabled. Attempting these shortcuts counts as an integrity violation.',
                     icon: (
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                     ),
@@ -496,7 +550,7 @@
             isLoading,
             sessionId,
             candidateEmail,
-            tabSwitchCount,
+            integrityViolationCount,
         }) => {
             const pct = totalSteps > 0 ? Math.min(100, (currentStep / totalSteps) * 100) : 0;
             const low = timeLeft < 30;
@@ -561,8 +615,8 @@
                                             </div>
                                         ) : null}
                                         <div>
-                                            <dt className="text-slate-500 text-xs mb-1">Tab changes recorded</dt>
-                                            <dd className="text-slate-300 tabular-nums">{tabSwitchCount}</dd>
+                                            <dt className="text-slate-500 text-xs mb-1">Integrity violations</dt>
+                                            <dd className="text-slate-300 tabular-nums">{integrityViolationCount} / {MAX_INTEGRITY_VIOLATIONS - 1} allowed</dd>
                                         </div>
                                     </dl>
                                 </div>
@@ -572,7 +626,8 @@
                                     <ul className="space-y-2.5 text-xs text-slate-400 leading-relaxed">
                                         <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Answer directly below the question; aim for substance over length.</li>
                                         <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Submit before the timer ends — empty answers are not sent.</li>
-                                        <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Keep this browser tab active until you finish the phase.</li>
+                                        <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Stay in fullscreen and keep this tab focused until you finish.</li>
+                                        <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Do not open developer tools or use Inspect Element.</li>
                                     </ul>
                                 </div>
                             </aside>
@@ -820,8 +875,23 @@
             const [answer, setAnswer] = useState('');
             const [result, setResult] = useState(null);
             const [feedback, setFeedback] = useState('');
-            const [tabSwitchCount, setTabSwitchCount] = useState(0);
+            const [integrityViolationCount, setIntegrityViolationCount] = useState(0);
             const [assessmentHistory, setAssessmentHistory] = useState([]);
+
+            const viewRef = useRef(view);
+            const sessionIdRef = useRef(sessionId);
+            const candidateEmailRef = useRef(candidateEmail);
+            const currentStepRef = useRef(currentStep);
+            const integrityViolationCountRef = useRef(0);
+            const terminatingRef = useRef(false);
+            const lastViolationAtRef = useRef(0);
+            const devToolsOpenRef = useRef(false);
+
+            useEffect(() => { viewRef.current = view; }, [view]);
+            useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+            useEffect(() => { candidateEmailRef.current = candidateEmail; }, [candidateEmail]);
+            useEffect(() => { currentStepRef.current = currentStep; }, [currentStep]);
+            useEffect(() => { integrityViolationCountRef.current = integrityViolationCount; }, [integrityViolationCount]);
 
             const supabaseUrl = 'https://vnxstyadacgntnsvcvzn.supabase.co';
             const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
@@ -840,15 +910,17 @@
                 };
             }, [view]);
 
-            const terminateTestDueToCheating = async (currentCount) => {
+            const terminateTestDueToCheating = useCallback(async (reason, currentCount) => {
+                if (terminatingRef.current) return;
+                terminatingRef.current = true;
                 setView('finished');
                 setResult('FAIL');
-                setFeedback('Test terminated automatically due to excessive tab switching (cheating detected).');
+                const reasonText = VIOLATION_LABELS[reason] || reason;
+                setFeedback(`Test terminated automatically due to integrity violations (${reasonText}).`);
                 sessionStorage.removeItem('current_session_id');
                 sessionStorage.removeItem('candidate_email');
                 sessionStorage.removeItem('time_left');
                 try {
-                    // Update Supabase directly to mark as failed/completed
                     await supabase
                         .from('assessment_sessions')
                         .update({
@@ -856,42 +928,84 @@
                             score: 0,
                             updated_at: new Date().toISOString()
                         })
-                        .eq('id', sessionId);
+                        .eq('id', sessionIdRef.current);
 
-                    // Submit cheating status to webhook
                     await fetch(`${WEBHOOK_BASE}/assessment-answer`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
                         body: JSON.stringify({
-                            sessionId,
-                            answer: '[SYSTEM TERMINATION: Candidate shifted tabs 3 times. Cheating detected.]',
-                            phase: currentStep,
-                            email: candidateEmail,
+                            sessionId: sessionIdRef.current,
+                            answer: `[SYSTEM TERMINATION: Integrity violation #${currentCount} (${reason}). Cheating detected.]`,
+                            phase: currentStepRef.current,
+                            email: candidateEmailRef.current,
                             tabSwitches: currentCount,
+                            integrityViolations: currentCount,
+                            violationReason: reason,
                         }),
                     });
                 } catch (e) {
                     console.error('Cheating submit error:', e);
                 }
-            };
+            }, [supabase]);
+
+            const recordIntegrityViolation = useCallback((reason) => {
+                if (viewRef.current !== 'assessment' || terminatingRef.current) return;
+                const now = Date.now();
+                if (now - lastViolationAtRef.current < VIOLATION_DEBOUNCE_MS) return;
+                lastViolationAtRef.current = now;
+
+                const newCount = integrityViolationCountRef.current + 1;
+                integrityViolationCountRef.current = newCount;
+                setIntegrityViolationCount(newCount);
+
+                const reasonText = VIOLATION_LABELS[reason] || reason;
+                if (newCount >= MAX_INTEGRITY_VIOLATIONS) {
+                    terminateTestDueToCheating(reason, newCount);
+                    return;
+                }
+
+                const remaining = MAX_INTEGRITY_VIOLATIONS - newCount;
+                alert(
+                    `Integrity warning ${newCount} of ${MAX_INTEGRITY_VIOLATIONS - 1}: ${reasonText}. ` +
+                    `${remaining} more violation${remaining === 1 ? '' : 's'} will terminate and fail your assessment.`
+                );
+            }, [terminateTestDueToCheating]);
 
             useEffect(() => {
                 const handleVisibilityChange = () => {
-                    if (document.visibilityState === 'hidden' && view === 'assessment') {
-                        setTabSwitchCount((prev) => {
-                            const newCount = prev + 1;
-                            if (newCount >= 3) {
-                                terminateTestDueToCheating(newCount);
-                            } else {
-                                alert(`You left this tab during the assessment. Warning: Only 2 tab switches are allowed. This is tab switch #${newCount}. Leaving the tab again will terminate and fail your assessment.`);
-                            }
-                            return newCount;
-                        });
+                    if (document.visibilityState === 'hidden' && viewRef.current === 'assessment') {
+                        recordIntegrityViolation('tab_switch');
                     }
                 };
                 document.addEventListener('visibilitychange', handleVisibilityChange);
                 return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-            }, [view, currentStep, candidateEmail, sessionId]);
+            }, [recordIntegrityViolation]);
+
+            useEffect(() => {
+                if (view !== 'assessment') return;
+
+                const handleWindowBlur = () => {
+                    if (document.visibilityState === 'visible') {
+                        recordIntegrityViolation('window_blur');
+                    }
+                };
+
+                const handleFullscreenChange = () => {
+                    if (viewRef.current !== 'assessment' || terminatingRef.current) return;
+                    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                        recordIntegrityViolation('fullscreen_exit');
+                    }
+                };
+
+                window.addEventListener('blur', handleWindowBlur);
+                document.addEventListener('fullscreenchange', handleFullscreenChange);
+                document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+                return () => {
+                    window.removeEventListener('blur', handleWindowBlur);
+                    document.removeEventListener('fullscreenchange', handleFullscreenChange);
+                    document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+                };
+            }, [view, recordIntegrityViolation]);
 
             useEffect(() => {
                 if (view !== 'assessment') return;
@@ -905,37 +1019,60 @@
                 };
 
                 const handleKeyDown = (e) => {
-                    // Block F12
-                    if (e.key === 'F12') {
+                    if (isBlockedDevToolsShortcut(e)) {
                         e.preventDefault();
+                        e.stopPropagation();
+                        recordIntegrityViolation('blocked_shortcut');
                         return;
                     }
-                    // Block Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C, Ctrl+U
-                    if (e.ctrlKey && (
-                        (e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c')) ||
-                        e.key === 'u' || e.key === 'U'
-                    )) {
-                        e.preventDefault();
-                        return;
-                    }
-                    // Block Ctrl+C and Ctrl+X (just in case)
                     if (e.ctrlKey && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X')) {
                         e.preventDefault();
-                        return;
                     }
                 };
 
                 document.addEventListener('contextmenu', handleContextMenu);
                 document.addEventListener('copy', handleCopy);
                 document.addEventListener('cut', handleCopy);
-                document.addEventListener('keydown', handleKeyDown);
+                document.addEventListener('keydown', handleKeyDown, true);
 
                 return () => {
                     document.removeEventListener('contextmenu', handleContextMenu);
                     document.removeEventListener('copy', handleCopy);
                     document.removeEventListener('cut', handleCopy);
-                    document.removeEventListener('keydown', handleKeyDown);
+                    document.removeEventListener('keydown', handleKeyDown, true);
                 };
+            }, [view, recordIntegrityViolation]);
+
+            useEffect(() => {
+                if (view !== 'assessment') return;
+
+                const checkDevTools = () => {
+                    if (viewRef.current !== 'assessment' || terminatingRef.current) return;
+                    const open = isDevToolsLikelyOpen();
+                    if (open && !devToolsOpenRef.current) {
+                        devToolsOpenRef.current = true;
+                        recordIntegrityViolation('devtools');
+                    } else if (!open) {
+                        devToolsOpenRef.current = false;
+                    }
+                };
+
+                checkDevTools();
+                const interval = setInterval(checkDevTools, 750);
+                return () => clearInterval(interval);
+            }, [view, recordIntegrityViolation]);
+
+            useEffect(() => {
+                if (view !== 'assessment') {
+                    exitAssessmentFullscreen();
+                    return;
+                }
+
+                enterAssessmentFullscreen().then((ok) => {
+                    if (!ok && viewRef.current === 'assessment') {
+                        alert('Fullscreen is required for this assessment. Please allow fullscreen when prompted.');
+                    }
+                });
             }, [view]);
 
             const restoreSession = async (sId, email) => {
@@ -1027,42 +1164,6 @@
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
             }, [view]);
 
-            useEffect(() => {
-                if (view !== 'assessment') return;
-                
-                const blockDevTools = () => {
-                    try {
-                        (function() {
-                            (function a() {
-                                try {
-                                    (function b(i) {
-                                        if (('' + (i / i)).length !== 1 || i % 20 === 0) {
-                                            (function() {
-                                                return true;
-                                            }
-                                            .constructor('debugger')
-                                            .call('action'));
-                                        } else {
-                                            (function() {
-                                                return false;
-                                            }
-                                            .constructor('debugger')
-                                            .call('action'));
-                                        }
-                                        b(++i);
-                                    }(0));
-                                } catch (e) {
-                                    setTimeout(a, 50);
-                                }
-                            }());
-                        }());
-                    } catch (e) {}
-                };
-
-                const interval = setInterval(blockDevTools, 500);
-                return () => clearInterval(interval);
-            }, [view]);
-
             const handleStartAssessment = async () => {
                 setIsLoading(true);
                 try {
@@ -1088,6 +1189,11 @@
                         setQuestion(firstPhase.question_text || firstPhase.question);
                         setTotalSteps(data.max_phases || 5);
                         setCurrentStep(1);
+                        setIntegrityViolationCount(0);
+                        integrityViolationCountRef.current = 0;
+                        terminatingRef.current = false;
+                        lastViolationAtRef.current = 0;
+                        devToolsOpenRef.current = false;
                         setView('assessment');
                         setTimeLeft(120);
 
@@ -1121,7 +1227,8 @@
                             answer: finalAnswer,
                             phase: currentStep,
                             email: candidateEmail,
-                            tabSwitches: tabSwitchCount,
+                            tabSwitches: integrityViolationCount,
+                            integrityViolations: integrityViolationCount,
                         }),
                     });
 
@@ -1254,7 +1361,7 @@
                                 isLoading={isLoading}
                                 sessionId={sessionId}
                                 candidateEmail={candidateEmail}
-                                tabSwitchCount={tabSwitchCount}
+                                integrityViolationCount={integrityViolationCount}
                             />
                         );
                     case 'finished':

@@ -95,7 +95,8 @@
             }
         }
 
-        .assessment-lock {
+        .assessment-lock,
+        .portal-lock {
             -webkit-user-select: none;
             user-select: none;
         }
@@ -169,6 +170,9 @@
             return false;
         };
 
+        const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'assessment'];
+        const isPortalLockedView = (v) => PORTAL_LOCKED_VIEWS.includes(v);
+
         // Update when ngrok restarts (free tier gets a new subdomain each time).
         // Must match: ngrok URL + n8n path on TRG - Assessment Answer (assessment-answer).
         const WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
@@ -234,7 +238,10 @@
                         return;
                     }
 
+                    sessionStorage.setItem('current_session_id', data.id);
+                    sessionStorage.removeItem('assessment_started');
                     setSessionId(data.id);
+                    await enterAssessmentFullscreen();
                     setView('instructions');
                 } catch (err) {
                     console.error('Session verification error:', err);
@@ -252,7 +259,7 @@
 
             return (
                 <Shell subtitle="Candidate access">
-                    <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
+                    <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in portal-lock">
                         <div className="onboarding-hero max-w-md w-full rounded-xl p-8 sm:p-10 shadow-lg shadow-black/25">
                             <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-3">Secure portal</p>
                             <div className="flex items-start gap-3 mb-4">
@@ -264,7 +271,7 @@
                                 <div>
                                     <h1 className="text-xl font-semibold text-white leading-tight">Sign in</h1>
                                     <p className="text-sm text-slate-400 mt-1 leading-relaxed">
-                                        Enter the session ID from your invitation. If you opened a link with <span className="text-slate-500 font-mono text-xs">?session=</span>, it may already be filled in.
+                                        Enter the session ID from your invitation, then click continue. Fullscreen mode will be enabled for the assessment.
                                     </p>
                                 </div>
                             </div>
@@ -380,7 +387,7 @@
             ];
             return (
                 <Shell subtitle="Before you begin">
-                    <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
+                    <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in portal-lock">
                         <div className="onboarding-hero max-w-xl w-full rounded-xl overflow-hidden shadow-lg shadow-black/25">
                             <div className="p-8 sm:p-10 border-b border-surface-border bg-surface-elevated/40">
                                 <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">Guidelines</p>
@@ -898,15 +905,26 @@
             const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
             useEffect(() => {
-                if (view !== 'assessment') return;
+                if (isPortalLockedView(view)) {
+                    document.documentElement.classList.add('portal-lock');
+                } else {
+                    document.documentElement.classList.remove('portal-lock');
+                }
+                return () => document.documentElement.classList.remove('portal-lock');
+            }, [view]);
+
+            useEffect(() => {
+                if (!isPortalLockedView(view)) return;
                 const preventActions = (e) => e.preventDefault();
-                document.addEventListener('copy', preventActions);
-                document.addEventListener('paste', preventActions);
                 document.addEventListener('contextmenu', preventActions);
+                if (view === 'assessment') {
+                    document.addEventListener('copy', preventActions);
+                    document.addEventListener('paste', preventActions);
+                }
                 return () => {
+                    document.removeEventListener('contextmenu', preventActions);
                     document.removeEventListener('copy', preventActions);
                     document.removeEventListener('paste', preventActions);
-                    document.removeEventListener('contextmenu', preventActions);
                 };
             }, [view]);
 
@@ -920,6 +938,7 @@
                 sessionStorage.removeItem('current_session_id');
                 sessionStorage.removeItem('candidate_email');
                 sessionStorage.removeItem('time_left');
+                sessionStorage.removeItem('assessment_started');
                 try {
                     await supabase
                         .from('assessment_sessions')
@@ -982,18 +1001,23 @@
             }, [recordIntegrityViolation]);
 
             useEffect(() => {
-                if (view !== 'assessment') return;
+                if (!isPortalLockedView(view)) return;
 
                 const handleWindowBlur = () => {
+                    if (viewRef.current !== 'assessment') return;
                     if (document.visibilityState === 'visible') {
                         recordIntegrityViolation('window_blur');
                     }
                 };
 
                 const handleFullscreenChange = () => {
-                    if (viewRef.current !== 'assessment' || terminatingRef.current) return;
+                    if (!isPortalLockedView(viewRef.current) || terminatingRef.current) return;
                     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-                        recordIntegrityViolation('fullscreen_exit');
+                        if (viewRef.current === 'assessment') {
+                            recordIntegrityViolation('fullscreen_exit');
+                        } else {
+                            enterAssessmentFullscreen();
+                        }
                     }
                 };
 
@@ -1008,24 +1032,26 @@
             }, [view, recordIntegrityViolation]);
 
             useEffect(() => {
-                if (view !== 'assessment') return;
+                if (!isPortalLockedView(view)) return;
 
                 const handleContextMenu = (e) => {
                     e.preventDefault();
                 };
 
                 const handleCopy = (e) => {
-                    e.preventDefault();
+                    if (viewRef.current === 'assessment') e.preventDefault();
                 };
 
                 const handleKeyDown = (e) => {
                     if (isBlockedDevToolsShortcut(e)) {
                         e.preventDefault();
                         e.stopPropagation();
-                        recordIntegrityViolation('blocked_shortcut');
+                        if (viewRef.current === 'assessment') {
+                            recordIntegrityViolation('blocked_shortcut');
+                        }
                         return;
                     }
-                    if (e.ctrlKey && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X')) {
+                    if (viewRef.current === 'assessment' && e.ctrlKey && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X')) {
                         e.preventDefault();
                     }
                 };
@@ -1044,16 +1070,18 @@
             }, [view, recordIntegrityViolation]);
 
             useEffect(() => {
-                if (view !== 'assessment') return;
+                if (!isPortalLockedView(view)) return;
 
                 const checkDevTools = () => {
-                    if (viewRef.current !== 'assessment' || terminatingRef.current) return;
+                    if (!isPortalLockedView(viewRef.current) || terminatingRef.current) return;
                     const open = isDevToolsLikelyOpen();
-                    if (open && !devToolsOpenRef.current) {
+                    if (!open) {
+                        devToolsOpenRef.current = false;
+                        return;
+                    }
+                    if (viewRef.current === 'assessment' && !devToolsOpenRef.current) {
                         devToolsOpenRef.current = true;
                         recordIntegrityViolation('devtools');
-                    } else if (!open) {
-                        devToolsOpenRef.current = false;
                     }
                 };
 
@@ -1063,19 +1091,19 @@
             }, [view, recordIntegrityViolation]);
 
             useEffect(() => {
-                if (view !== 'assessment') {
+                if (!isPortalLockedView(view)) {
                     exitAssessmentFullscreen();
                     return;
                 }
 
                 enterAssessmentFullscreen().then((ok) => {
-                    if (!ok && viewRef.current === 'assessment') {
-                        alert('Fullscreen is required for this assessment. Please allow fullscreen when prompted.');
+                    if (!ok && isPortalLockedView(viewRef.current)) {
+                        alert('Fullscreen is required. Please allow fullscreen to continue.');
                     }
                 });
             }, [view]);
 
-            const restoreSession = async (sId, email) => {
+            const restoreSession = async (sId, email, { resumeOnly = false } = {}) => {
                 if (!sId) return;
                 setIsLoading(true);
                 try {
@@ -1091,6 +1119,8 @@
 
                     const statusStr = (data.status || '').toLowerCase();
                     if (statusStr.includes('completed') || statusStr.includes('terminated')) {
+                        sessionStorage.removeItem('assessment_started');
+                        if (!resumeOnly) return;
                         const resolvedId = data.id || sId;
                         setSessionId(resolvedId);
                         sessionStorage.setItem('current_session_id', resolvedId);
@@ -1103,6 +1133,8 @@
                         sessionStorage.removeItem('time_left');
                         return;
                     }
+
+                    if (!resumeOnly) return;
 
                     sessionStorage.setItem('current_session_id', data.id);
                     sessionStorage.setItem('candidate_email', email || '');
@@ -1124,10 +1156,10 @@
                         setQuestion(currentPhaseData.question_text || currentPhaseData.question);
                         setTotalSteps(data.max_phases || 5);
                         setCurrentStep(currentStepIndex + 1);
-                        
+
                         const savedTime = sessionStorage.getItem('time_left');
                         setTimeLeft(savedTime ? parseInt(savedTime, 10) : 180);
-                        
+
                         setView('assessment');
                     }
                 } catch (e) {
@@ -1141,14 +1173,20 @@
                 const params = new URLSearchParams(window.location.search);
                 let sId = cleanUrlParam(params.get('session'));
                 let email = cleanUrlParam(params.get('email'));
-                if (!sId) {
-                    sId = cleanUrlParam(sessionStorage.getItem('current_session_id'));
-                    email = cleanUrlParam(sessionStorage.getItem('candidate_email'));
-                }
                 if (sId) {
                     setSessionId(sId);
                     setCandidateEmail(email || '');
-                    restoreSession(sId, email);
+                    if (email) sessionStorage.setItem('candidate_email', email);
+                } else {
+                    sId = cleanUrlParam(sessionStorage.getItem('current_session_id'));
+                    email = cleanUrlParam(sessionStorage.getItem('candidate_email'));
+                    if (sId) setSessionId(sId);
+                    if (email) setCandidateEmail(email);
+                }
+
+                const started = sessionStorage.getItem('assessment_started') === 'true';
+                if (started && sId) {
+                    restoreSession(sId, email, { resumeOnly: true });
                 }
             }, []);
 
@@ -1167,6 +1205,7 @@
             const handleStartAssessment = async () => {
                 setIsLoading(true);
                 try {
+                    await enterAssessmentFullscreen();
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId);
                     let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases');
                     if (isUuid) {
@@ -1183,24 +1222,29 @@
                         try { history = JSON.parse(history); } catch (e) { }
                     }
 
-                    const firstPhase = history[0];
+                    const firstUnanswered = history.findIndex(
+                        (h) => h.answer_text === null || h.answer_text === undefined
+                    );
+                    const phaseIndex = firstUnanswered >= 0 ? firstUnanswered : 0;
+                    const currentPhaseData = history[phaseIndex];
 
-                    if (firstPhase) {
-                        setQuestion(firstPhase.question_text || firstPhase.question);
+                    if (currentPhaseData) {
+                        setQuestion(currentPhaseData.question_text || currentPhaseData.question);
                         setTotalSteps(data.max_phases || 5);
-                        setCurrentStep(1);
+                        setCurrentStep(phaseIndex + 1);
                         setIntegrityViolationCount(0);
                         integrityViolationCountRef.current = 0;
                         terminatingRef.current = false;
                         lastViolationAtRef.current = 0;
                         devToolsOpenRef.current = false;
                         setView('assessment');
-                        setTimeLeft(120);
+                        setTimeLeft(phaseIndex === 0 ? 120 : (sessionStorage.getItem('time_left') ? parseInt(sessionStorage.getItem('time_left'), 10) : 180));
 
                         const resolvedId = data.id || sessionId;
                         sessionStorage.setItem('current_session_id', resolvedId);
                         sessionStorage.setItem('candidate_email', candidateEmail || '');
-                        sessionStorage.setItem('time_left', '120');
+                        sessionStorage.setItem('assessment_started', 'true');
+                        sessionStorage.setItem('time_left', String(phaseIndex === 0 ? 120 : (sessionStorage.getItem('time_left') || '180')));
                     } else {
                         throw new Error("No initial question found in session history.");
                     }
@@ -1245,6 +1289,7 @@
 
                     if (data.isFinal || data.result || currentStep >= totalSteps) {
                         setView('finished');
+                        sessionStorage.removeItem('assessment_started');
                         setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));
                         setFeedback(data.feedback || 'Assessment completed.');
                         sessionStorage.removeItem('time_left');

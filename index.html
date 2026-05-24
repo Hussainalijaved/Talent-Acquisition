@@ -172,11 +172,23 @@
             return false;
         };
 
+        const isBlockedTabSwitchShortcut = (e) => {
+            const key = (e.key || '').toLowerCase();
+            if (e.altKey && (key === 'tab' || e.keyCode === 9)) return true;
+            if (e.ctrlKey && (key === 'tab' || key === 'pageup' || key === 'pagedown')) return true;
+            if (e.ctrlKey && e.shiftKey && key === 'tab') return true;
+            return false;
+        };
+
         const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'assessment'];
         const isPortalLockedView = (v) => PORTAL_LOCKED_VIEWS.includes(v);
 
         const FullscreenRequiredOverlay = ({ onRestore }) => (
-            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-xl px-4">
+            <div
+                className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-black/90 backdrop-blur-2xl px-4 portal-lock"
+                onContextMenu={(e) => e.preventDefault()}
+                style={{ top: 0, left: 0, width: '100vw', height: '100vh' }}
+            >
                 <div className="panel max-w-md w-full rounded-xl p-8 sm:p-10 text-center shadow-2xl border border-accent/30">
                     <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/15 border border-amber-500/30">
                         <svg className="h-7 w-7 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -185,13 +197,14 @@
                     </div>
                     <h2 className="text-xl font-semibold text-white mb-3">Fullscreen required</h2>
                     <p className="text-sm text-slate-400 leading-relaxed mb-2">
-                        You cannot exit or go back during this session. Leaving fullscreen is not allowed.
+                        You cannot exit or go back during this session. Alt+Tab, browser menu, and Developer Tools are blocked until you return.
                     </p>
                     <p className="text-sm text-slate-500 leading-relaxed mb-8">
-                        Press the button below to return to fullscreen and continue.
+                        Click below to re-enter fullscreen and continue your assessment.
                     </p>
                     <button
                         type="button"
+                        autoFocus
                         onClick={onRestore}
                         className="btn-primary w-full py-3.5 rounded-lg text-sm"
                     >
@@ -379,7 +392,7 @@
                 },
                 {
                     title: 'Focus & Fullscreen Rules',
-                    body: 'The portal stays in fullscreen from sign-in. Pressing Esc or leaving fullscreen blurs the screen until you return — this is not counted as a tab switch. Alt+Tab or switching tabs during the assessment is monitored and counts as a violation.',
+                    body: 'The portal stays in fullscreen from sign-in. Alt+Tab and Ctrl+Tab are blocked. Pressing Esc blurs the screen until you return — DevTools and browser menu access are disabled while blurred. Tab switches during the assessment count as violations.',
                     icon: (
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     ),
@@ -922,18 +935,32 @@
             const lastViolationAtRef = useRef(0);
             const devToolsOpenRef = useRef(false);
             const escExitRef = useRef(false);
+            const fullscreenRequiredRef = useRef(false);
+            const devToolsWarnedRef = useRef(false);
             const [fullscreenRequired, setFullscreenRequired] = useState(false);
+
+            const isSecurityActive = useCallback(() => (
+                isPortalLockedView(viewRef.current) || fullscreenRequiredRef.current
+            ), []);
 
             const syncFullscreenState = useCallback(() => {
                 if (!isPortalLockedView(viewRef.current)) {
                     setFullscreenRequired(false);
+                    fullscreenRequiredRef.current = false;
                     return;
                 }
-                setFullscreenRequired(!isInFullscreen());
+                const required = !isInFullscreen();
+                setFullscreenRequired(required);
+                fullscreenRequiredRef.current = required;
             }, []);
 
             const restorePortalFullscreen = useCallback(async () => {
                 escExitRef.current = false;
+                devToolsWarnedRef.current = false;
+                if (isDevToolsLikelyOpen()) {
+                    alert('Please close Developer Tools first, then return to fullscreen.');
+                    return;
+                }
                 await enterAssessmentFullscreen();
                 syncFullscreenState();
             }, [syncFullscreenState]);
@@ -949,16 +976,16 @@
             const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
             useEffect(() => {
-                if (isPortalLockedView(view)) {
+                if (isPortalLockedView(view) || fullscreenRequired) {
                     document.documentElement.classList.add('portal-lock');
                 } else {
                     document.documentElement.classList.remove('portal-lock');
                 }
                 return () => document.documentElement.classList.remove('portal-lock');
-            }, [view]);
+            }, [view, fullscreenRequired]);
 
             useEffect(() => {
-                if (!isPortalLockedView(view)) return;
+                if (!isPortalLockedView(view) && !fullscreenRequired) return;
                 const preventActions = (e) => e.preventDefault();
                 document.addEventListener('contextmenu', preventActions);
                 if (view === 'assessment') {
@@ -970,7 +997,7 @@
                     document.removeEventListener('copy', preventActions);
                     document.removeEventListener('paste', preventActions);
                 };
-            }, [view]);
+            }, [view, fullscreenRequired]);
 
             const terminateTestDueToCheating = useCallback(async (reason, currentCount) => {
                 if (terminatingRef.current) return;
@@ -1036,22 +1063,29 @@
 
             useEffect(() => {
                 const handleVisibilityChange = () => {
-                    if (document.visibilityState !== 'hidden') return;
-                    if (viewRef.current !== 'assessment' || terminatingRef.current) return;
-                    if (escExitRef.current) return;
-                    recordIntegrityViolation('tab_switch');
+                    if (!isSecurityActive() || terminatingRef.current) return;
+
+                    if (document.visibilityState === 'hidden') {
+                        if (viewRef.current === 'assessment' && !escExitRef.current) {
+                            recordIntegrityViolation('tab_switch');
+                        }
+                        return;
+                    }
+
+                    if (!isInFullscreen()) {
+                        fullscreenRequiredRef.current = true;
+                        setFullscreenRequired(true);
+                    }
                 };
                 document.addEventListener('visibilitychange', handleVisibilityChange);
                 return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-            }, [recordIntegrityViolation]);
+            }, [recordIntegrityViolation, isSecurityActive]);
 
             useEffect(() => {
-                if (!isPortalLockedView(view)) return;
-
                 const handleWindowBlur = () => {
-                    if (viewRef.current !== 'assessment' || terminatingRef.current) return;
+                    if (!isSecurityActive() || terminatingRef.current) return;
                     if (escExitRef.current) return;
-                    if (document.visibilityState === 'visible') {
+                    if (viewRef.current === 'assessment' && document.visibilityState === 'visible') {
                         recordIntegrityViolation('window_blur');
                     }
                 };
@@ -1060,11 +1094,14 @@
                     if (!isPortalLockedView(viewRef.current) || terminatingRef.current) return;
                     if (!isInFullscreen()) {
                         escExitRef.current = true;
-                        setTimeout(() => { escExitRef.current = false; }, 2000);
+                        fullscreenRequiredRef.current = true;
                         setFullscreenRequired(true);
+                        setTimeout(() => { escExitRef.current = false; }, 2000);
                     } else {
                         escExitRef.current = false;
+                        fullscreenRequiredRef.current = false;
                         setFullscreenRequired(false);
+                        devToolsWarnedRef.current = false;
                     }
                 };
 
@@ -1077,25 +1114,36 @@
                     document.removeEventListener('fullscreenchange', handleFullscreenChange);
                     document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
                 };
-            }, [view, recordIntegrityViolation, syncFullscreenState]);
+            }, [view, recordIntegrityViolation, syncFullscreenState, isSecurityActive]);
 
             useEffect(() => {
-                if (!isPortalLockedView(view)) return;
-
                 const handleContextMenu = (e) => {
+                    if (!isSecurityActive()) return;
                     e.preventDefault();
                 };
 
                 const handleCopy = (e) => {
-                    if (viewRef.current === 'assessment') e.preventDefault();
+                    if (viewRef.current === 'assessment' && isSecurityActive()) e.preventDefault();
                 };
 
                 const handleKeyDown = (e) => {
-                    if (e.key === 'Escape' && isPortalLockedView(viewRef.current)) {
+                    if (!isSecurityActive()) return;
+
+                    if (e.key === 'Escape') {
                         e.preventDefault();
                         e.stopPropagation();
                         return;
                     }
+
+                    if (isBlockedTabSwitchShortcut(e)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (viewRef.current === 'assessment') {
+                            recordIntegrityViolation('blocked_shortcut');
+                        }
+                        return;
+                    }
+
                     if (isBlockedDevToolsShortcut(e)) {
                         e.preventDefault();
                         e.stopPropagation();
@@ -1104,6 +1152,7 @@
                         }
                         return;
                     }
+
                     if (viewRef.current === 'assessment' && e.ctrlKey && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X')) {
                         e.preventDefault();
                     }
@@ -1113,35 +1162,41 @@
                 document.addEventListener('copy', handleCopy);
                 document.addEventListener('cut', handleCopy);
                 document.addEventListener('keydown', handleKeyDown, true);
+                window.addEventListener('keydown', handleKeyDown, true);
 
                 return () => {
                     document.removeEventListener('contextmenu', handleContextMenu);
                     document.removeEventListener('copy', handleCopy);
                     document.removeEventListener('cut', handleCopy);
                     document.removeEventListener('keydown', handleKeyDown, true);
+                    window.removeEventListener('keydown', handleKeyDown, true);
                 };
-            }, [view, recordIntegrityViolation]);
+            }, [view, fullscreenRequired, recordIntegrityViolation, isSecurityActive]);
 
             useEffect(() => {
-                if (!isPortalLockedView(view)) return;
-
                 const checkDevTools = () => {
-                    if (!isPortalLockedView(viewRef.current) || terminatingRef.current) return;
+                    if (!isSecurityActive() || terminatingRef.current) return;
                     const open = isDevToolsLikelyOpen();
                     if (!open) {
                         devToolsOpenRef.current = false;
+                        devToolsWarnedRef.current = false;
                         return;
                     }
                     if (viewRef.current === 'assessment' && !devToolsOpenRef.current) {
                         devToolsOpenRef.current = true;
                         recordIntegrityViolation('devtools');
+                        return;
+                    }
+                    if (fullscreenRequiredRef.current && !devToolsWarnedRef.current) {
+                        devToolsWarnedRef.current = true;
+                        alert('Developer tools are not allowed. Close them and return to fullscreen to continue.');
                     }
                 };
 
                 checkDevTools();
-                const interval = setInterval(checkDevTools, 750);
+                const interval = setInterval(checkDevTools, 500);
                 return () => clearInterval(interval);
-            }, [view, recordIntegrityViolation]);
+            }, [view, fullscreenRequired, recordIntegrityViolation, isSecurityActive]);
 
             useEffect(() => {
                 if (!isPortalLockedView(view)) {

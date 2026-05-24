@@ -128,6 +128,8 @@
             blocked_shortcut: 'using blocked keyboard shortcuts (F12, Inspect, View Source)',
         };
 
+        const isInFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+
         const enterAssessmentFullscreen = async () => {
             const el = document.documentElement;
             try {
@@ -172,6 +174,32 @@
 
         const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'assessment'];
         const isPortalLockedView = (v) => PORTAL_LOCKED_VIEWS.includes(v);
+
+        const FullscreenRequiredOverlay = ({ onRestore }) => (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-xl px-4">
+                <div className="panel max-w-md w-full rounded-xl p-8 sm:p-10 text-center shadow-2xl border border-accent/30">
+                    <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/15 border border-amber-500/30">
+                        <svg className="h-7 w-7 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-xl font-semibold text-white mb-3">Fullscreen required</h2>
+                    <p className="text-sm text-slate-400 leading-relaxed mb-2">
+                        You cannot exit or go back during this session. Leaving fullscreen is not allowed.
+                    </p>
+                    <p className="text-sm text-slate-500 leading-relaxed mb-8">
+                        Press the button below to return to fullscreen and continue.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={onRestore}
+                        className="btn-primary w-full py-3.5 rounded-lg text-sm"
+                    >
+                        Return to fullscreen
+                    </button>
+                </div>
+            </div>
+        );
 
         // Update when ngrok restarts (free tier gets a new subdomain each time).
         // Must match: ngrok URL + n8n path on TRG - Assessment Answer (assessment-answer).
@@ -271,7 +299,7 @@
                                 <div>
                                     <h1 className="text-xl font-semibold text-white leading-tight">Sign in</h1>
                                     <p className="text-sm text-slate-400 mt-1 leading-relaxed">
-                                        Enter the session ID from your invitation, then click continue. Fullscreen mode will be enabled for the assessment.
+                                        This portal opens in fullscreen automatically. Enter your session ID and click continue to proceed.
                                     </p>
                                 </div>
                             </div>
@@ -351,7 +379,7 @@
                 },
                 {
                     title: 'Focus & Fullscreen Rules',
-                    body: 'The assessment runs in fullscreen. You may receive up to 2 integrity warnings (tab switch, leaving the window, exiting fullscreen, or opening developer tools). A 3rd violation terminates the test with an automatic FAIL.',
+                    body: 'The portal stays in fullscreen from sign-in. Pressing Esc or leaving fullscreen blurs the screen until you return — this is not counted as a tab switch. Alt+Tab or switching tabs during the assessment is monitored and counts as a violation.',
                     icon: (
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     ),
@@ -893,6 +921,22 @@
             const terminatingRef = useRef(false);
             const lastViolationAtRef = useRef(0);
             const devToolsOpenRef = useRef(false);
+            const escExitRef = useRef(false);
+            const [fullscreenRequired, setFullscreenRequired] = useState(false);
+
+            const syncFullscreenState = useCallback(() => {
+                if (!isPortalLockedView(viewRef.current)) {
+                    setFullscreenRequired(false);
+                    return;
+                }
+                setFullscreenRequired(!isInFullscreen());
+            }, []);
+
+            const restorePortalFullscreen = useCallback(async () => {
+                escExitRef.current = false;
+                await enterAssessmentFullscreen();
+                syncFullscreenState();
+            }, [syncFullscreenState]);
 
             useEffect(() => { viewRef.current = view; }, [view]);
             useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
@@ -992,9 +1036,10 @@
 
             useEffect(() => {
                 const handleVisibilityChange = () => {
-                    if (document.visibilityState === 'hidden' && viewRef.current === 'assessment') {
-                        recordIntegrityViolation('tab_switch');
-                    }
+                    if (document.visibilityState !== 'hidden') return;
+                    if (viewRef.current !== 'assessment' || terminatingRef.current) return;
+                    if (escExitRef.current) return;
+                    recordIntegrityViolation('tab_switch');
                 };
                 document.addEventListener('visibilitychange', handleVisibilityChange);
                 return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -1004,7 +1049,8 @@
                 if (!isPortalLockedView(view)) return;
 
                 const handleWindowBlur = () => {
-                    if (viewRef.current !== 'assessment') return;
+                    if (viewRef.current !== 'assessment' || terminatingRef.current) return;
+                    if (escExitRef.current) return;
                     if (document.visibilityState === 'visible') {
                         recordIntegrityViolation('window_blur');
                     }
@@ -1012,24 +1058,26 @@
 
                 const handleFullscreenChange = () => {
                     if (!isPortalLockedView(viewRef.current) || terminatingRef.current) return;
-                    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-                        if (viewRef.current === 'assessment') {
-                            recordIntegrityViolation('fullscreen_exit');
-                        } else {
-                            enterAssessmentFullscreen();
-                        }
+                    if (!isInFullscreen()) {
+                        escExitRef.current = true;
+                        setTimeout(() => { escExitRef.current = false; }, 2000);
+                        setFullscreenRequired(true);
+                    } else {
+                        escExitRef.current = false;
+                        setFullscreenRequired(false);
                     }
                 };
 
                 window.addEventListener('blur', handleWindowBlur);
                 document.addEventListener('fullscreenchange', handleFullscreenChange);
                 document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+                syncFullscreenState();
                 return () => {
                     window.removeEventListener('blur', handleWindowBlur);
                     document.removeEventListener('fullscreenchange', handleFullscreenChange);
                     document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
                 };
-            }, [view, recordIntegrityViolation]);
+            }, [view, recordIntegrityViolation, syncFullscreenState]);
 
             useEffect(() => {
                 if (!isPortalLockedView(view)) return;
@@ -1043,6 +1091,11 @@
                 };
 
                 const handleKeyDown = (e) => {
+                    if (e.key === 'Escape' && isPortalLockedView(viewRef.current)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                    }
                     if (isBlockedDevToolsShortcut(e)) {
                         e.preventDefault();
                         e.stopPropagation();
@@ -1093,15 +1146,23 @@
             useEffect(() => {
                 if (!isPortalLockedView(view)) {
                     exitAssessmentFullscreen();
+                    setFullscreenRequired(false);
                     return;
                 }
 
-                enterAssessmentFullscreen().then((ok) => {
-                    if (!ok && isPortalLockedView(viewRef.current)) {
-                        alert('Fullscreen is required. Please allow fullscreen to continue.');
+                enterAssessmentFullscreen().then(() => syncFullscreenState());
+            }, [view, syncFullscreenState]);
+
+            useEffect(() => {
+                const requestOnGesture = () => {
+                    if (isPortalLockedView(viewRef.current) && !isInFullscreen()) {
+                        enterAssessmentFullscreen().then(() => syncFullscreenState());
                     }
-                });
-            }, [view]);
+                };
+                document.addEventListener('click', requestOnGesture, { once: true });
+                enterAssessmentFullscreen().then(() => syncFullscreenState());
+                return () => document.removeEventListener('click', requestOnGesture);
+            }, [syncFullscreenState]);
 
             const restoreSession = async (sId, email, { resumeOnly = false } = {}) => {
                 if (!sId) return;
@@ -1426,7 +1487,14 @@
                 }
             };
 
-            return <div className="min-h-screen bg-[#0c0f14] text-slate-200 antialiased">{renderView()}</div>;
+            return (
+                <div className="min-h-screen bg-[#0c0f14] text-slate-200 antialiased">
+                    {renderView()}
+                    {fullscreenRequired && isPortalLockedView(view) && (
+                        <FullscreenRequiredOverlay onRestore={restorePortalFullscreen} />
+                    )}
+                </div>
+            );
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));

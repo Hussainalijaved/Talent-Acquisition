@@ -101,6 +101,24 @@
             user-select: none;
         }
 
+        .question-protected {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        .question-masked {
+            filter: blur(12px);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        @media print {
+            html, body, #root {
+                display: none !important;
+            }
+        }
+
         .onboarding-hero {
             background: linear-gradient(165deg, rgba(59, 130, 246, 0.06) 0%, transparent 45%),
                 linear-gradient(135deg, #12171e 0%, #0c0f14 100%);
@@ -118,7 +136,9 @@
 
         const MAX_INTEGRITY_VIOLATIONS = 3;
         const VIOLATION_DEBOUNCE_MS = 1200;
-        const DEVTOOLS_SIZE_THRESHOLD = 160;
+        const DEVTOOLS_SIZE_THRESHOLD = 140;
+        const DEVTOOLS_POLL_MS = 350;
+        const DEBUGGER_PAUSE_MS = 90;
 
         const VIOLATION_LABELS = {
             tab_switch: 'leaving the assessment tab',
@@ -126,6 +146,26 @@
             devtools: 'opening developer tools (Inspect Element)',
             fullscreen_exit: 'exiting fullscreen mode',
             blocked_shortcut: 'using blocked keyboard shortcuts (F12, Inspect, View Source)',
+            screenshot: 'attempting to take a screenshot (Print Screen)',
+            snipping_tool: 'attempting to open Snipping Tool or screen capture (Win+Shift+S)',
+            print_attempt: 'attempting to print or save the page',
+        };
+
+        const hasWinModifier = (e) => (
+            e.metaKey ||
+            (typeof e.getModifierState === 'function' && (
+                e.getModifierState('Meta') ||
+                e.getModifierState('OS') ||
+                e.getModifierState('Super')
+            ))
+        );
+
+        const clearClipboardBestEffort = async () => {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText('');
+                }
+            } catch (err) { /* permission or unsupported */ }
         };
 
         const isInFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
@@ -157,18 +197,59 @@
             } catch (e) {}
         };
 
-        const isDevToolsLikelyOpen = () => (
+        const isDevToolsLikelyOpenBySize = () => (
             window.outerWidth - window.innerWidth > DEVTOOLS_SIZE_THRESHOLD ||
             window.outerHeight - window.innerHeight > DEVTOOLS_SIZE_THRESHOLD
+        );
+
+        const isDevToolsLikelyOpenByConsole = () => {
+            let detected = false;
+            const bait = new Image();
+            try {
+                Object.defineProperty(bait, 'id', {
+                    get() {
+                        detected = true;
+                        return 'devtools-probe';
+                    },
+                    configurable: true,
+                });
+                console.debug(bait);
+                console.clear?.();
+            } catch (err) { /* ignore */ }
+            return detected;
+        };
+
+        const isDevToolsLikelyOpenByDebugger = () => {
+            try {
+                const start = performance.now();
+                // eslint-disable-next-line no-debugger
+                debugger;
+                return performance.now() - start > DEBUGGER_PAUSE_MS;
+            } catch (err) {
+                return false;
+            }
+        };
+
+        const isDevToolsLikelyOpen = () => (
+            isDevToolsLikelyOpenBySize() ||
+            isDevToolsLikelyOpenByConsole()
         );
 
         const isBlockedDevToolsShortcut = (e) => {
             if (e.key === 'F12') return true;
             const key = (e.key || '').toLowerCase();
-            if (e.ctrlKey && e.shiftKey && ['i', 'j', 'c', 'k'].includes(key)) return true;
-            if (e.ctrlKey && (key === 'u' || key === 's')) return true;
+            if (e.ctrlKey && e.shiftKey && ['i', 'j', 'c', 'k', 'u'].includes(key)) return true;
+            if (e.ctrlKey && !e.shiftKey && (key === 'u' || key === 's')) return true;
             if (e.metaKey && e.altKey && ['i', 'j', 'c', 'u'].includes(key)) return true;
-            if (e.metaKey && e.shiftKey && ['i', 'j', 'c'].includes(key)) return true;
+            if (e.metaKey && e.shiftKey && ['i', 'j', 'c', 'k'].includes(key)) return true;
+            if (hasWinModifier(e) && e.altKey && key === 'i') return true;
+            return false;
+        };
+
+        const isBlockedFullscreenEscapeShortcut = (e) => {
+            if (e.key === 'F11') return true;
+            const key = (e.key || '').toLowerCase();
+            if (hasWinModifier(e) && key === 'enter') return true;
             return false;
         };
 
@@ -180,13 +261,80 @@
             return false;
         };
 
+        const isBlockedScreenshotShortcut = (e) => {
+            const key = (e.key || '').toLowerCase();
+            const code = e.code || '';
+            if (e.key === 'PrintScreen' || e.keyCode === 44) return true;
+            if (e.altKey && (e.key === 'PrintScreen' || e.keyCode === 44)) return true;
+            if (hasWinModifier(e) && (e.key === 'PrintScreen' || e.keyCode === 44)) return true;
+            if (e.metaKey && e.shiftKey && ['3', '4', '5', 's'].includes(key)) return true;
+            if (hasWinModifier(e) && e.shiftKey && (key === 's' || code === 'KeyS')) return true;
+            if (hasWinModifier(e) && e.shiftKey && code === 'KeyS') return true;
+            if (hasWinModifier(e) && key === 'g') return true;
+            if (hasWinModifier(e) && e.altKey && key === 'r') return true;
+            return false;
+        };
+
+        const isBlockedPrintShortcut = (e) => {
+            const key = (e.key || '').toLowerCase();
+            if (e.ctrlKey && key === 'p') return true;
+            if (e.metaKey && key === 'p') return true;
+            return false;
+        };
+
+        const handleBlockedSecurityKey = (e, recordViolation) => {
+            if (isBlockedTabSwitchShortcut(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                recordViolation?.('blocked_shortcut');
+                return true;
+            }
+            if (isBlockedDevToolsShortcut(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                recordViolation?.('devtools');
+                return true;
+            }
+            if (isBlockedFullscreenEscapeShortcut(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                recordViolation?.('blocked_shortcut');
+                return true;
+            }
+            if (isBlockedPrintShortcut(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                recordViolation?.('print_attempt');
+                return true;
+            }
+            if (isBlockedScreenshotShortcut(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                clearClipboardBestEffort();
+                const key = (e.key || '').toLowerCase();
+                const code = e.code || '';
+                const isSnip = hasWinModifier(e) && e.shiftKey && (key === 's' || code === 'KeyS');
+                recordViolation?.(isSnip ? 'snipping_tool' : 'screenshot');
+                return true;
+            }
+            return false;
+        };
+
         const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'assessment'];
         const isPortalLockedView = (v) => PORTAL_LOCKED_VIEWS.includes(v);
 
-        const FullscreenRequiredOverlay = ({ onRestore }) => (
+        const FullscreenRequiredOverlay = ({ onRestore, onSecurityKeyDown }) => (
             <div
-                className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-black/90 backdrop-blur-2xl px-4 portal-lock"
+                className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-black/95 backdrop-blur-2xl px-4 portal-lock"
                 onContextMenu={(e) => e.preventDefault()}
+                onCopy={(e) => e.preventDefault()}
+                onCut={(e) => e.preventDefault()}
+                onPaste={(e) => e.preventDefault()}
+                onKeyDown={onSecurityKeyDown}
+                tabIndex={-1}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Fullscreen required"
                 style={{ top: 0, left: 0, width: '100vw', height: '100vh' }}
             >
                 <div className="panel max-w-md w-full rounded-xl p-8 sm:p-10 text-center shadow-2xl border border-accent/30">
@@ -197,10 +345,10 @@
                     </div>
                     <h2 className="text-xl font-semibold text-white mb-3">Fullscreen required</h2>
                     <p className="text-sm text-slate-400 leading-relaxed mb-2">
-                        You cannot exit or go back during this session. Alt+Tab, browser menu, and Developer Tools are blocked until you return.
+                        You cannot exit or go back during this session. Developer Tools, Snipping Tool, screenshots, and browser menus are blocked until you return.
                     </p>
                     <p className="text-sm text-slate-500 leading-relaxed mb-8">
-                        Click below to re-enter fullscreen and continue your assessment.
+                        Close Developer Tools if open, then click below to re-enter fullscreen and continue.
                     </p>
                     <button
                         type="button"
@@ -392,21 +540,21 @@
                 },
                 {
                     title: 'Focus & Fullscreen Rules',
-                    body: 'The portal stays in fullscreen from sign-in. Alt+Tab and Ctrl+Tab are blocked. Pressing Esc blurs the screen until you return — DevTools and browser menu access are disabled while blurred. Tab switches during the assessment count as violations.',
+                    body: 'The portal stays in fullscreen from sign-in. Alt+Tab, Ctrl+Tab, F11, Win+Shift+S (Snipping Tool), Print Screen, and screenshot shortcuts are blocked. Pressing Esc blurs the screen and hides question content until you return. Developer Tools are detected even while blurred.',
                     icon: (
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     ),
                 },
                 {
                     title: 'No Copying or Right-Clicking',
-                    body: 'Text selection, right-clicking, copy-pasting, and cut actions are strictly disabled. All answers must be written in your own words.',
+                    body: 'Text selection, right-clicking, copy-paste, cut, drag, and print are disabled on questions. Answers must be typed manually in the answer box.',
                     icon: (
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                     ),
                 },
                 {
                     title: 'Developer Tools Blocked',
-                    body: 'Right-click, Inspect Element, F12, Ctrl/Cmd+Shift+I/J/C, and View Source are disabled. Attempting these shortcuts counts as an integrity violation.',
+                    body: 'F12, Inspect, View Source, and DevTools docking are detected. If DevTools opens, the question is hidden and a violation is recorded during the assessment.',
                     icon: (
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                     ),
@@ -599,6 +747,7 @@
             sessionId,
             candidateEmail,
             integrityViolationCount,
+            contentMasked,
         }) => {
             const pct = totalSteps > 0 ? Math.min(100, (currentStep / totalSteps) * 100) : 0;
             const low = timeLeft < 30;
@@ -707,9 +856,24 @@
                                         </div>
                                     )}
                                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Question</p>
-                                    <div className="text-lg lg:text-xl text-slate-100 leading-relaxed mb-8 lg:mb-10 border-l-2 border-accent pl-4 lg:pl-5">
-                                        {question}
-                                    </div>
+                                    {contentMasked ? (
+                                        <div className="mb-8 lg:mb-10 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-8 text-center">
+                                            <p className="text-sm font-medium text-amber-200 mb-2">Content hidden for security</p>
+                                            <p className="text-sm text-slate-400 leading-relaxed">
+                                                Return to fullscreen and close Developer Tools to view the question again.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div
+                                            className="question-protected text-lg lg:text-xl text-slate-100 leading-relaxed mb-8 lg:mb-10 border-l-2 border-accent pl-4 lg:pl-5"
+                                            onCopy={(e) => e.preventDefault()}
+                                            onCut={(e) => e.preventDefault()}
+                                            onContextMenu={(e) => e.preventDefault()}
+                                            onDragStart={(e) => e.preventDefault()}
+                                        >
+                                            {question}
+                                        </div>
+                                    )}
                                     <label htmlFor="answer" className="sr-only">Your answer</label>
                                     <textarea
                                         id="answer"
@@ -717,6 +881,15 @@
                                         placeholder="Type your answer here."
                                         value={answer}
                                         onChange={(e) => setAnswer(e.target.value)}
+                                        onPaste={(e) => e.preventDefault()}
+                                        onCopy={(e) => e.preventDefault()}
+                                        onCut={(e) => e.preventDefault()}
+                                        onDrop={(e) => e.preventDefault()}
+                                        autoComplete="off"
+                                        autoCorrect="off"
+                                        autoCapitalize="off"
+                                        spellCheck="false"
+                                        disabled={contentMasked || isLoading}
                                     />
                                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4 pt-2 border-t border-surface-border">
                                         <p className="text-xs text-slate-500 sm:mr-auto order-2 sm:order-1">
@@ -725,7 +898,7 @@
                                         <button
                                             type="button"
                                             onClick={handleAssessmentSubmit}
-                                            disabled={answer.trim().length < 5 || isLoading}
+                                            disabled={contentMasked || answer.trim().length < 5 || isLoading}
                                             className="btn-primary px-10 py-3.5 rounded-lg text-sm lg:px-12 disabled:opacity-40 disabled:cursor-not-allowed order-1 sm:order-2 w-full sm:w-auto"
                                         >
                                             Submit answer
@@ -937,11 +1110,22 @@
             const escExitRef = useRef(false);
             const fullscreenRequiredRef = useRef(false);
             const devToolsWarnedRef = useRef(false);
+            const debuggerCheckCounterRef = useRef(0);
             const [fullscreenRequired, setFullscreenRequired] = useState(false);
+            const [devToolsDetected, setDevToolsDetected] = useState(false);
 
             const isSecurityActive = useCallback(() => (
                 isPortalLockedView(viewRef.current) || fullscreenRequiredRef.current
             ), []);
+
+            const runDevToolsProbe = useCallback(() => {
+                debuggerCheckCounterRef.current += 1;
+                let open = isDevToolsLikelyOpen();
+                if (!open && viewRef.current === 'assessment' && debuggerCheckCounterRef.current % 3 === 0) {
+                    open = isDevToolsLikelyOpenByDebugger();
+                }
+                return open;
+            }, []);
 
             const syncFullscreenState = useCallback(() => {
                 if (!isPortalLockedView(viewRef.current)) {
@@ -957,13 +1141,15 @@
             const restorePortalFullscreen = useCallback(async () => {
                 escExitRef.current = false;
                 devToolsWarnedRef.current = false;
-                if (isDevToolsLikelyOpen()) {
-                    alert('Please close Developer Tools first, then return to fullscreen.');
+                if (runDevToolsProbe()) {
+                    devToolsOpenRef.current = true;
+                    setDevToolsDetected(true);
+                    alert('Close Developer Tools (F12) completely, then click Return to fullscreen.');
                     return;
                 }
                 await enterAssessmentFullscreen();
                 syncFullscreenState();
-            }, [syncFullscreenState]);
+            }, [syncFullscreenState, runDevToolsProbe]);
 
             useEffect(() => { viewRef.current = view; }, [view]);
             useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
@@ -987,15 +1173,26 @@
             useEffect(() => {
                 if (!isPortalLockedView(view) && !fullscreenRequired) return;
                 const preventActions = (e) => e.preventDefault();
+                const preventSelect = (e) => {
+                    if (viewRef.current === 'assessment' && e.target && e.target.closest && e.target.closest('textarea')) {
+                        return;
+                    }
+                    e.preventDefault();
+                };
+                const preventDrag = (e) => e.preventDefault();
                 document.addEventListener('contextmenu', preventActions);
-                if (view === 'assessment') {
-                    document.addEventListener('copy', preventActions);
-                    document.addEventListener('paste', preventActions);
-                }
+                document.addEventListener('copy', preventActions);
+                document.addEventListener('cut', preventActions);
+                document.addEventListener('paste', preventActions);
+                document.addEventListener('selectstart', preventSelect);
+                document.addEventListener('dragstart', preventDrag);
                 return () => {
                     document.removeEventListener('contextmenu', preventActions);
                     document.removeEventListener('copy', preventActions);
+                    document.removeEventListener('cut', preventActions);
                     document.removeEventListener('paste', preventActions);
+                    document.removeEventListener('selectstart', preventSelect);
+                    document.removeEventListener('dragstart', preventDrag);
                 };
             }, [view, fullscreenRequired]);
 
@@ -1061,6 +1258,40 @@
                 );
             }, [terminateTestDueToCheating]);
 
+            const handleSecurityKeyDown = useCallback((e) => {
+                if (!isSecurityActive()) return;
+
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+
+                const record = (reason) => {
+                    if (viewRef.current === 'assessment') {
+                        recordIntegrityViolation(reason);
+                    }
+                };
+
+                if (handleBlockedSecurityKey(e, record)) return;
+
+                if (viewRef.current === 'assessment') {
+                    const key = (e.key || '').toLowerCase();
+                    if (e.ctrlKey && (key === 'c' || key === 'x' || key === 'a')) {
+                        if (!e.target || !e.target.closest || !e.target.closest('textarea')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+                    }
+                    if (e.metaKey && (key === 'c' || key === 'x' || key === 'a')) {
+                        if (!e.target || !e.target.closest || !e.target.closest('textarea')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+                    }
+                }
+            }, [isSecurityActive, recordIntegrityViolation]);
+
             useEffect(() => {
                 const handleVisibilityChange = () => {
                     if (!isSecurityActive() || terminatingRef.current) return;
@@ -1122,81 +1353,66 @@
                     e.preventDefault();
                 };
 
-                const handleCopy = (e) => {
-                    if (viewRef.current === 'assessment' && isSecurityActive()) e.preventDefault();
+                const handleBeforePrint = (e) => {
+                    if (!isSecurityActive()) return;
+                    e.preventDefault();
+                    if (viewRef.current === 'assessment') {
+                        recordIntegrityViolation('print_attempt');
+                    }
                 };
 
-                const handleKeyDown = (e) => {
-                    if (!isSecurityActive()) return;
-
-                    if (e.key === 'Escape') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        return;
-                    }
-
-                    if (isBlockedTabSwitchShortcut(e)) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (viewRef.current === 'assessment') {
-                            recordIntegrityViolation('blocked_shortcut');
-                        }
-                        return;
-                    }
-
-                    if (isBlockedDevToolsShortcut(e)) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (viewRef.current === 'assessment') {
-                            recordIntegrityViolation('blocked_shortcut');
-                        }
-                        return;
-                    }
-
-                    if (viewRef.current === 'assessment' && e.ctrlKey && (e.key === 'c' || e.key === 'C' || e.key === 'x' || e.key === 'X')) {
-                        e.preventDefault();
+                const handleClipboardClear = (e) => {
+                    if (!isSecurityActive() || viewRef.current !== 'assessment') return;
+                    if (e.key === 'PrintScreen' || e.keyCode === 44) {
+                        clearClipboardBestEffort();
                     }
                 };
 
                 document.addEventListener('contextmenu', handleContextMenu);
-                document.addEventListener('copy', handleCopy);
-                document.addEventListener('cut', handleCopy);
-                document.addEventListener('keydown', handleKeyDown, true);
-                window.addEventListener('keydown', handleKeyDown, true);
+                document.addEventListener('keydown', handleSecurityKeyDown, true);
+                window.addEventListener('keydown', handleSecurityKeyDown, true);
+                document.addEventListener('keyup', handleClipboardClear, true);
+                window.addEventListener('beforeprint', handleBeforePrint);
 
                 return () => {
                     document.removeEventListener('contextmenu', handleContextMenu);
-                    document.removeEventListener('copy', handleCopy);
-                    document.removeEventListener('cut', handleCopy);
-                    document.removeEventListener('keydown', handleKeyDown, true);
-                    window.removeEventListener('keydown', handleKeyDown, true);
+                    document.removeEventListener('keydown', handleSecurityKeyDown, true);
+                    window.removeEventListener('keydown', handleSecurityKeyDown, true);
+                    document.removeEventListener('keyup', handleClipboardClear, true);
+                    window.removeEventListener('beforeprint', handleBeforePrint);
                 };
-            }, [view, fullscreenRequired, recordIntegrityViolation, isSecurityActive]);
+            }, [view, fullscreenRequired, handleSecurityKeyDown, isSecurityActive, recordIntegrityViolation]);
 
             useEffect(() => {
                 const checkDevTools = () => {
                     if (!isSecurityActive() || terminatingRef.current) return;
-                    const open = isDevToolsLikelyOpen();
+                    const open = runDevToolsProbe();
+                    devToolsOpenRef.current = open;
+                    setDevToolsDetected(open);
+
                     if (!open) {
-                        devToolsOpenRef.current = false;
                         devToolsWarnedRef.current = false;
                         return;
                     }
-                    if (viewRef.current === 'assessment' && !devToolsOpenRef.current) {
-                        devToolsOpenRef.current = true;
-                        recordIntegrityViolation('devtools');
+
+                    if (viewRef.current === 'assessment') {
+                        if (!devToolsWarnedRef.current) {
+                            devToolsWarnedRef.current = true;
+                            recordIntegrityViolation('devtools');
+                        }
                         return;
                     }
+
                     if (fullscreenRequiredRef.current && !devToolsWarnedRef.current) {
                         devToolsWarnedRef.current = true;
-                        alert('Developer tools are not allowed. Close them and return to fullscreen to continue.');
+                        alert('Developer Tools are not allowed. Close them to continue.');
                     }
                 };
 
                 checkDevTools();
-                const interval = setInterval(checkDevTools, 500);
+                const interval = setInterval(checkDevTools, DEVTOOLS_POLL_MS);
                 return () => clearInterval(interval);
-            }, [view, fullscreenRequired, recordIntegrityViolation, isSecurityActive]);
+            }, [view, fullscreenRequired, recordIntegrityViolation, isSecurityActive, runDevToolsProbe]);
 
             useEffect(() => {
                 if (!isPortalLockedView(view)) {
@@ -1523,6 +1739,7 @@
                                 sessionId={sessionId}
                                 candidateEmail={candidateEmail}
                                 integrityViolationCount={integrityViolationCount}
+                                contentMasked={devToolsDetected || fullscreenRequired}
                             />
                         );
                     case 'finished':
@@ -1546,7 +1763,10 @@
                 <div className="min-h-screen bg-[#0c0f14] text-slate-200 antialiased">
                     {renderView()}
                     {fullscreenRequired && isPortalLockedView(view) && (
-                        <FullscreenRequiredOverlay onRestore={restorePortalFullscreen} />
+                        <FullscreenRequiredOverlay
+                            onRestore={restorePortalFullscreen}
+                            onSecurityKeyDown={handleSecurityKeyDown}
+                        />
                     )}
                 </div>
             );

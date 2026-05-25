@@ -533,7 +533,7 @@
             const rules = [
                 {
                     title: 'Timed Phases & Auto-Save',
-                    body: 'Each phase has a countdown timer. If the timer runs out, whatever you have typed will be automatically saved and submitted.',
+                    body: 'Each phase has its own countdown timer (set by question difficulty). If the timer runs out, whatever you have typed will be automatically saved and submitted.',
                     icon: (
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     ),
@@ -917,6 +917,26 @@
             return decodeURIComponent(String(value)).trim().split(/\n/)[0].split(/\s+regards/i)[0].trim();
         };
 
+        const DEFAULT_TIME_LIMIT = 180;
+
+        const parseInterviewHistory = (raw) => {
+            let history = raw || [];
+            if (typeof history === 'string') {
+                try { history = JSON.parse(history); } catch (e) { history = []; }
+            }
+            return Array.isArray(history) ? history : [];
+        };
+
+        const computeRemainingFromPhase = (phaseRow) => {
+            if (!phaseRow) return DEFAULT_TIME_LIMIT;
+            if (phaseRow.deadline_at) {
+                return Math.max(0, Math.floor((new Date(phaseRow.deadline_at).getTime() - Date.now()) / 1000));
+            }
+            const limit = Number(phaseRow.time_limit_seconds);
+            if (Number.isFinite(limit) && limit > 0) return limit;
+            return DEFAULT_TIME_LIMIT;
+        };
+
         const normalizeInterviewHistory = (raw) => {
             let history = raw || [];
             if (typeof history === 'string') {
@@ -1091,7 +1111,8 @@
             const [isLoading, setIsLoading] = useState(false);
             const [currentStep, setCurrentStep] = useState(1);
             const [totalSteps, setTotalSteps] = useState(5);
-            const [timeLeft, setTimeLeft] = useState(180);
+            const [timeLeft, setTimeLeft] = useState(DEFAULT_TIME_LIMIT);
+            const deadlineAtRef = useRef(null);
             const [question, setQuestion] = useState('Loading question…');
             const [answer, setAnswer] = useState('');
             const [result, setResult] = useState(null);
@@ -1161,6 +1182,46 @@
             const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
             const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
+            const applyTimerFromPhase = useCallback((phaseRow) => {
+                const remaining = computeRemainingFromPhase(phaseRow);
+                if (phaseRow?.deadline_at) {
+                    deadlineAtRef.current = phaseRow.deadline_at;
+                    sessionStorage.setItem('deadline_at', phaseRow.deadline_at);
+                } else {
+                    deadlineAtRef.current = null;
+                    sessionStorage.removeItem('deadline_at');
+                }
+                setTimeLeft(remaining);
+                sessionStorage.setItem('time_left', String(remaining));
+                return remaining;
+            }, []);
+
+            const startPhaseTimerInDatabase = useCallback(async (sessionDbId, history, phaseIndex) => {
+                const row = { ...(history[phaseIndex] || {}) };
+                const limit = Number(row.time_limit_seconds);
+                const seconds = Number.isFinite(limit) && limit > 0 ? limit : DEFAULT_TIME_LIMIT;
+                const sent_at = new Date().toISOString();
+                const deadline_at = new Date(Date.now() + seconds * 1000).toISOString();
+                const updatedHistory = history.map((item, i) => (
+                    i === phaseIndex
+                        ? { ...item, time_limit_seconds: seconds, sent_at, deadline_at }
+                        : item
+                ));
+
+                const { error } = await supabase
+                    .from('assessment_sessions')
+                    .update({
+                        interview_history: updatedHistory,
+                        updated_at: sent_at,
+                        last_question_sent_at: sent_at,
+                    })
+                    .eq('id', sessionDbId);
+
+                if (error) throw error;
+                applyTimerFromPhase(updatedHistory[phaseIndex]);
+                return updatedHistory[phaseIndex];
+            }, [supabase, applyTimerFromPhase]);
+
             useEffect(() => {
                 if (isPortalLockedView(view) || fullscreenRequired) {
                     document.documentElement.classList.add('portal-lock');
@@ -1206,7 +1267,9 @@
                 sessionStorage.removeItem('current_session_id');
                 sessionStorage.removeItem('candidate_email');
                 sessionStorage.removeItem('time_left');
+                sessionStorage.removeItem('deadline_at');
                 sessionStorage.removeItem('assessment_started');
+                deadlineAtRef.current = null;
                 try {
                     await supabase
                         .from('assessment_sessions')
@@ -1463,6 +1526,8 @@
                         setFeedback(pickLatestFeedback(restoredHistory, ''));
                         setView('finished');
                         sessionStorage.removeItem('time_left');
+                        sessionStorage.removeItem('deadline_at');
+                        deadlineAtRef.current = null;
                         return;
                     }
 
@@ -1471,12 +1536,8 @@
                     sessionStorage.setItem('current_session_id', data.id);
                     sessionStorage.setItem('candidate_email', email || '');
 
-                    let history = data.interview_history || [];
-                    if (typeof history === 'string') {
-                        try { history = JSON.parse(history); } catch (e) { }
-                    }
-
-                    if (!Array.isArray(history) || history.length === 0) return;
+                    const history = parseInterviewHistory(data.interview_history);
+                    if (history.length === 0) return;
 
                     let currentStepIndex = history.findIndex(h => h.answer_text === null || h.answer_text === undefined);
                     if (currentStepIndex === -1) {
@@ -1488,10 +1549,7 @@
                         setQuestion(currentPhaseData.question_text || currentPhaseData.question);
                         setTotalSteps(data.max_phases || 5);
                         setCurrentStep(currentStepIndex + 1);
-
-                        const savedTime = sessionStorage.getItem('time_left');
-                        setTimeLeft(savedTime ? parseInt(savedTime, 10) : 180);
-
+                        applyTimerFromPhase(currentPhaseData);
                         setView('assessment');
                     }
                 } catch (e) {
@@ -1549,10 +1607,7 @@
 
                     if (error) throw error;
 
-                    let history = data.interview_history || [];
-                    if (typeof history === 'string') {
-                        try { history = JSON.parse(history); } catch (e) { }
-                    }
+                    const history = parseInterviewHistory(data.interview_history);
 
                     const firstUnanswered = history.findIndex(
                         (h) => h.answer_text === null || h.answer_text === undefined
@@ -1569,14 +1624,15 @@
                         terminatingRef.current = false;
                         lastViolationAtRef.current = 0;
                         devToolsOpenRef.current = false;
-                        setView('assessment');
-                        setTimeLeft(phaseIndex === 0 ? 120 : (sessionStorage.getItem('time_left') ? parseInt(sessionStorage.getItem('time_left'), 10) : 180));
 
                         const resolvedId = data.id || sessionId;
+                        setSessionId(resolvedId);
                         sessionStorage.setItem('current_session_id', resolvedId);
                         sessionStorage.setItem('candidate_email', candidateEmail || '');
                         sessionStorage.setItem('assessment_started', 'true');
-                        sessionStorage.setItem('time_left', String(phaseIndex === 0 ? 120 : (sessionStorage.getItem('time_left') || '180')));
+
+                        await startPhaseTimerInDatabase(resolvedId, history, phaseIndex);
+                        setView('assessment');
                     } else {
                         throw new Error("No initial question found in session history.");
                     }
@@ -1625,6 +1681,8 @@
                         setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));
                         setFeedback(data.feedback || 'Assessment completed.');
                         sessionStorage.removeItem('time_left');
+                        sessionStorage.removeItem('deadline_at');
+                        deadlineAtRef.current = null;
                         if (sessionId) sessionStorage.setItem('current_session_id', sessionId);
                         if (candidateEmail) sessionStorage.setItem('candidate_email', candidateEmail);
                     } else {
@@ -1640,9 +1698,11 @@
                         if (nextQ) {
                             setQuestion(nextQ);
                             setCurrentStep((prev) => prev + 1);
-                            setTimeLeft(180);
                             setAnswer('');
-                            sessionStorage.setItem('time_left', '180');
+                            applyTimerFromPhase({
+                                time_limit_seconds: data.time_limit_seconds,
+                                deadline_at: data.deadline_at,
+                            });
                         }
                     }
                 } catch (e) {
@@ -1654,14 +1714,26 @@
             };
 
             useEffect(() => {
-                if (view === 'assessment' && timeLeft > 0 && !isLoading) {
-                    const timer = setTimeout(() => {
-                        const newTime = timeLeft - 1;
-                        setTimeLeft(newTime);
-                        sessionStorage.setItem('time_left', newTime.toString());
-                    }, 1000);
-                    return () => clearTimeout(timer);
-                }
+                if (view !== 'assessment' || isLoading) return;
+
+                const tick = () => {
+                    const deadline = deadlineAtRef.current || sessionStorage.getItem('deadline_at');
+                    let remaining;
+                    if (deadline) {
+                        remaining = Math.max(0, Math.floor((new Date(deadline).getTime() - Date.now()) / 1000));
+                    } else {
+                        remaining = Math.max(0, parseInt(sessionStorage.getItem('time_left') || String(DEFAULT_TIME_LIMIT), 10));
+                    }
+                    setTimeLeft(remaining);
+                    sessionStorage.setItem('time_left', String(remaining));
+                };
+
+                tick();
+                const interval = setInterval(tick, 1000);
+                return () => clearInterval(interval);
+            }, [view, isLoading]);
+
+            useEffect(() => {
                 if (view === 'assessment' && timeLeft === 0 && !isLoading) {
                     handleAssessmentSubmit(true);
                 }

@@ -4,99 +4,174 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Talent assessment portal</title>
+    <title>Convo · Technical Assessment</title>
+    <meta name="description" content="Secure multi-phase technical assessment portal for candidates." />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
+                    fontFamily: { sans: ['"DM Sans"', 'system-ui', 'sans-serif'] },
                     colors: {
-                        surface: { DEFAULT: '#14181f', elevated: '#1b212b', border: '#2a3341' },
-                        accent: { DEFAULT: '#3b82f6', hover: '#2563eb', muted: 'rgba(59, 130, 246, 0.12)' },
+                        surface: { DEFAULT: '#121a27', elevated: '#1a2433', border: '#2a3a4f' },
+                        accent: { DEFAULT: '#6366f1', hover: '#4f46e5', muted: 'rgba(99, 102, 241, 0.14)' },
+                    },
+                    boxShadow: {
+                        card: '0 4px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255,255,255,0.04)',
+                        glow: '0 0 40px -8px rgba(99, 102, 241, 0.35)',
                     },
                 },
             },
         };
     </script>
     <style>
+        :root {
+            --bg: #080b10;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+        }
+
+        * { box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
         body {
-            font-family: 'Inter', system-ui, sans-serif;
-            background: #0c0f14;
-            color: #e8eaed;
+            font-family: 'DM Sans', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        ::selection {
+            background: rgba(99, 102, 241, 0.35);
+            color: #fff;
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f1419; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .app-bg {
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 0%, rgba(59, 130, 246, 0.06), transparent);
         }
 
         .panel {
-            background: #14181f;
-            border: 1px solid #2a3341;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+            background: linear-gradient(180deg, rgba(26, 36, 51, 0.95) 0%, rgba(18, 26, 39, 0.98) 100%);
+            border: 1px solid #2a3a4f;
+            box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03);
+        }
+
+        .panel-elevated {
+            background: #1a2433;
+            border: 1px solid #2a3a4f;
         }
 
         .input-field {
-            background: #1b212b;
-            border: 1px solid #2a3341;
-            color: #e8eaed;
-            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            background: #0f1620;
+            border: 1px solid #2a3a4f;
+            color: #f1f5f9;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
             -webkit-user-select: text;
             user-select: text;
         }
 
-        .input-field::placeholder {
-            color: #64748b;
-        }
+        .input-field::placeholder { color: #64748b; }
 
         .input-field:focus {
             outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22);
         }
 
         .btn-primary {
-            background: #3b82f6;
+            background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
             color: #fff;
             font-weight: 600;
-            transition: background 0.15s ease;
+            letter-spacing: 0.01em;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 14px -2px rgba(99, 102, 241, 0.45);
         }
 
         .btn-primary:hover:not(:disabled) {
-            background: #2563eb;
+            filter: brightness(1.08);
+            box-shadow: 0 4px 20px -2px rgba(99, 102, 241, 0.55);
         }
 
+        .btn-primary:active:not(:disabled) { transform: scale(0.98); }
+
         .btn-secondary {
-            background: transparent;
-            border: 1px solid #2a3341;
-            color: #94a3b8;
+            background: rgba(15, 22, 32, 0.6);
+            border: 1px solid #2a3a4f;
+            color: #cbd5e1;
             font-weight: 500;
-            transition: border-color 0.15s ease, color 0.15s ease;
+            transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
         }
 
         .btn-secondary:hover:not(:disabled) {
             border-color: #475569;
-            color: #e8eaed;
+            background: rgba(26, 36, 51, 0.8);
+            color: #f8fafc;
         }
 
-        .fade-in {
-            animation: fadeIn 0.35s ease-out;
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.65rem;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            border-radius: 9999px;
+            border: 1px solid transparent;
         }
+
+        .badge-accent {
+            background: rgba(99, 102, 241, 0.12);
+            border-color: rgba(99, 102, 241, 0.35);
+            color: #a5b4fc;
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.12);
+            border-color: rgba(16, 185, 129, 0.35);
+            color: #6ee7b7;
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.12);
+            border-color: rgba(245, 158, 11, 0.35);
+            color: #fcd34d;
+        }
+
+        .onboarding-hero {
+            background: linear-gradient(165deg, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+                linear-gradient(180deg, #141c28 0%, #0f1419 100%);
+            border: 1px solid #2a3a4f;
+            border-radius: 1rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .fade-in { animation: fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
 
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(8px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        .assessment-lock,
-        .portal-lock {
+        .assessment-lock, .portal-lock {
             -webkit-user-select: none;
             user-select: none;
         }
@@ -108,22 +183,18 @@
         }
 
         .question-masked {
-            filter: blur(12px);
+            filter: blur(14px);
             pointer-events: none;
             user-select: none;
         }
 
-        @media print {
-            html, body, #root {
-                display: none !important;
-            }
-        }
+        .timer-ring-track { stroke: #1e293b; }
+        .timer-ring-progress { stroke: #6366f1; transition: stroke-dashoffset 1s linear; }
+        .timer-ring-progress.low { stroke: #f59e0b; }
+        .timer-ring-progress.critical { stroke: #ef4444; }
 
-        .onboarding-hero {
-            background: linear-gradient(165deg, rgba(59, 130, 246, 0.06) 0%, transparent 45%),
-                linear-gradient(135deg, #12171e 0%, #0c0f14 100%);
-            border: 1px solid #2a3341;
-            border-radius: 1rem;
+        @media print {
+            html, body, #root { display: none !important; }
         }
     </style>
 </head>
@@ -325,7 +396,7 @@
 
         const FullscreenRequiredOverlay = ({ onRestore, onSecurityKeyDown }) => (
             <div
-                className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-black/95 backdrop-blur-2xl px-4 portal-lock"
+                className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-[#080b10]/95 backdrop-blur-2xl px-4 portal-lock"
                 onContextMenu={(e) => e.preventDefault()}
                 onCopy={(e) => e.preventDefault()}
                 onCut={(e) => e.preventDefault()}
@@ -337,13 +408,14 @@
                 aria-label="Fullscreen required"
                 style={{ top: 0, left: 0, width: '100vw', height: '100vh' }}
             >
-                <div className="panel max-w-md w-full rounded-xl p-8 sm:p-10 text-center shadow-2xl border border-accent/30">
+                <div className="panel max-w-md w-full rounded-2xl p-8 sm:p-10 text-center shadow-card border border-accent/30">
                     <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/15 border border-amber-500/30">
                         <svg className="h-7 w-7 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
                     </div>
-                    <h2 className="text-xl font-semibold text-white mb-3">Fullscreen required</h2>
+                    <span className="badge badge-warning mb-4">Session paused</span>
+                    <h2 className="text-xl font-bold text-white mb-3 tracking-tight">Fullscreen required</h2>
                     <p className="text-sm text-slate-400 leading-relaxed mb-2">
                         You cannot exit or go back during this session. Developer Tools, Snipping Tool, screenshots, and browser menus are blocked until you return.
                     </p>
@@ -354,7 +426,7 @@
                         type="button"
                         autoFocus
                         onClick={onRestore}
-                        className="btn-primary w-full py-3.5 rounded-lg text-sm"
+                        className="btn-primary w-full py-3.5 rounded-xl text-sm"
                     >
                         Return to fullscreen
                     </button>
@@ -366,26 +438,80 @@
         // Must match: ngrok URL + n8n path on TRG - Assessment Answer (assessment-answer).
         const WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
 
-        const Shell = ({ children, subtitle }) => (
+        const Shell = ({ children, subtitle, footerNote }) => (
             <div className="min-h-screen flex flex-col">
-                <header className="border-b border-surface-border bg-surface/80 backdrop-blur-sm">
-                    <div className="max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-md bg-accent/15 border border-accent/30 flex items-center justify-center">
-                                <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <header className="sticky top-0 z-40 border-b border-surface-border/80 bg-[#080b10]/90 backdrop-blur-md">
+                    <div className="max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent/30 to-accent/5 border border-accent/40 flex items-center justify-center shrink-0 shadow-glow">
+                                <svg className="w-5 h-5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                                 </svg>
                             </div>
-                            <div>
-                                <p className="text-sm font-semibold text-white leading-tight">Talent assessment</p>
-                                {subtitle && <p className="text-xs text-slate-500 leading-tight">{subtitle}</p>}
+                            <div className="min-w-0">
+                                <p className="text-sm font-bold text-white tracking-tight leading-tight">Convo Assessment</p>
+                                {subtitle && <p className="text-xs text-slate-500 truncate leading-tight mt-0.5">{subtitle}</p>}
                             </div>
                         </div>
+                        <span className="badge badge-accent shrink-0 hidden sm:inline-flex">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
+                            Secure session
+                        </span>
                     </div>
                 </header>
                 <main className="flex-1">{children}</main>
+                {footerNote && (
+                    <footer className="border-t border-surface-border/60 py-4">
+                        <p className="text-center text-xs text-slate-600 max-w-xl mx-auto px-4 leading-relaxed">{footerNote}</p>
+                    </footer>
+                )}
             </div>
         );
+
+        const TimerRing = ({ seconds, totalSeconds }) => {
+            const size = 88;
+            const stroke = 6;
+            const r = (size - stroke) / 2;
+            const c = 2 * Math.PI * r;
+            const total = totalSeconds && totalSeconds > 0 ? totalSeconds : seconds || 1;
+            const pct = seconds != null ? Math.max(0, Math.min(1, seconds / total)) : 0;
+            const offset = c * (1 - pct);
+            const low = seconds != null && seconds < 30;
+            const critical = seconds != null && seconds < 10;
+            const progClass = critical ? 'timer-ring-progress critical' : low ? 'timer-ring-progress low' : 'timer-ring-progress';
+            const mm = seconds != null ? `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}` : '—';
+            return (
+                <div className="flex items-center gap-4 panel rounded-xl px-5 py-3 shrink-0">
+                    <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
+                        <circle className="timer-ring-track" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} />
+                        <circle
+                            className={progClass}
+                            cx={size / 2}
+                            cy={size / 2}
+                            r={r}
+                            fill="none"
+                            strokeWidth={stroke}
+                            strokeLinecap="round"
+                            strokeDasharray={c}
+                            strokeDashoffset={offset}
+                        />
+                    </svg>
+                    <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Time left</p>
+                        <p className={`font-mono text-2xl font-bold tabular-nums tracking-tight ${critical ? 'text-red-400' : low ? 'text-amber-400' : 'text-white'}`}>{mm}</p>
+                    </div>
+                </div>
+            );
+        };
+
+        const scoreTone = (score) => {
+            const n = Number(score);
+            if (!Number.isFinite(n)) return 'text-slate-400';
+            if (n >= 75) return 'text-emerald-400';
+            if (n >= 60) return 'text-indigo-300';
+            if (n >= 40) return 'text-amber-400';
+            return 'text-red-400';
+        };
 
         const LoginView = ({ sessionId, setSessionId, setView, supabase }) => {
             const [localLoading, setLocalLoading] = React.useState(false);
@@ -447,10 +573,10 @@
             ];
 
             return (
-                <Shell subtitle="Candidate access">
-                    <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in portal-lock">
-                        <div className="onboarding-hero max-w-md w-full rounded-xl p-8 sm:p-10 shadow-lg shadow-black/25">
-                            <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-3">Secure portal</p>
+                <Shell subtitle="Candidate access" footerNote="Encrypted session · Proctored environment · Do not share your session ID">
+                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in portal-lock">
+                        <div className="onboarding-hero max-w-lg w-full rounded-2xl p-8 sm:p-10">
+                            <p className="badge badge-accent mb-4">Enterprise screening</p>
                             <div className="flex items-start gap-3 mb-4">
                                 <div className="h-10 w-10 rounded-lg bg-surface-elevated border border-surface-border flex items-center justify-center shrink-0">
                                     <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -458,9 +584,9 @@
                                     </svg>
                                 </div>
                                 <div>
-                                    <h1 className="text-xl font-semibold text-white leading-tight">Sign in</h1>
-                                    <p className="text-sm text-slate-400 mt-1 leading-relaxed">
-                                        This portal opens in fullscreen automatically. Enter your session ID and click continue to proceed.
+                                    <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">Welcome</h1>
+                                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                                        Enter the session ID from your invitation email. You will review guidelines, then begin a timed technical assessment in fullscreen.
                                     </p>
                                 </div>
                             </div>
@@ -491,7 +617,7 @@
                                         required
                                         autoComplete="off"
                                         spellCheck="false"
-                                        className="input-field w-full px-4 py-3.5 rounded-lg text-sm font-mono"
+                                        className="input-field w-full px-4 py-3.5 rounded-xl text-sm font-mono"
                                         placeholder="Paste your session ID"
                                         value={sessionId}
                                         onChange={(e) => setSessionId(e.target.value)}
@@ -503,7 +629,7 @@
                                         {errorMsg}
                                     </div>
                                 )}
-                                <button type="submit" disabled={localLoading} className="btn-primary w-full py-3.5 rounded-lg text-sm flex items-center justify-center gap-2">
+                                <button type="submit" disabled={localLoading} className="btn-primary w-full py-3.5 rounded-xl text-sm flex items-center justify-center gap-2">
                                     {localLoading ? (
                                         <>
                                             <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
@@ -575,12 +701,12 @@
                 },
             ];
             return (
-                <Shell subtitle="Before you begin">
-                    <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in portal-lock">
-                        <div className="onboarding-hero max-w-xl w-full rounded-xl overflow-hidden shadow-lg shadow-black/25">
+                <Shell subtitle="Guidelines & integrity" footerNote="By starting, you agree to proctored session rules below">
+                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in portal-lock">
+                        <div className="onboarding-hero max-w-2xl w-full rounded-2xl overflow-hidden">
                             <div className="p-8 sm:p-10 border-b border-surface-border bg-surface-elevated/40">
-                                <p className="text-xs font-semibold uppercase tracking-widest text-accent mb-2">Guidelines</p>
-                                <h1 className="text-xl sm:text-2xl font-semibold text-white tracking-tight">Before you start</h1>
+                                <p className="badge badge-accent mb-3">Before you begin</p>
+                                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Assessment guidelines</h1>
                                 <p className="text-sm text-slate-400 mt-2 leading-relaxed">
                                     The assessment runs in timed phases (often five). Read the rules below, then confirm to begin.
                                 </p>
@@ -633,7 +759,7 @@
                                     type="button"
                                     onClick={onStart}
                                     disabled={!agreed}
-                                    className="btn-primary w-full py-3.5 rounded-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
+                                    className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
                                 >
                                     Start assessment
                                 </button>
@@ -652,6 +778,18 @@
             const [jd, setJd] = useState('');
             const [isCreating, setIsCreating] = useState(false);
             const [generatedLink, setGeneratedLink] = useState('');
+            const [copied, setCopied] = useState(false);
+
+            const copyLink = async () => {
+                if (!generatedLink) return;
+                try {
+                    await navigator.clipboard.writeText(generatedLink);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2500);
+                } catch {
+                    alert('Copy failed — select the link and copy manually.');
+                }
+            };
 
             const handleCreateJob = async (e) => {
                 e.preventDefault();
@@ -673,15 +811,18 @@
             };
 
             return (
-                <Shell subtitle="Recruiter">
-                    <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
-                        <div className="panel max-w-xl w-full rounded-xl p-8 sm:p-10">
+                <Shell subtitle="Recruiter portal" footerNote="New roles sync to your n8n talent acquisition workflow">
+                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in">
+                        <div className="onboarding-hero max-w-xl w-full rounded-2xl p-8 sm:p-10">
                             <div className="flex items-start justify-between gap-4 mb-8">
                                 <div>
-                                    <h2 className="text-xl font-semibold text-white">Publish role</h2>
-                                    <p className="text-sm text-slate-400 mt-1">Create a posting and share the generated link with candidates.</p>
+                                    <p className="badge badge-accent mb-3">Talent operations</p>
+                                    <h2 className="text-2xl font-bold text-white tracking-tight">Publish a role</h2>
+                                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                                        Create a job posting and share the generated application link with candidates.
+                                    </p>
                                 </div>
-                                <button type="button" onClick={() => setView('login')} className="btn-secondary px-4 py-2 rounded-lg text-sm shrink-0">
+                                <button type="button" onClick={() => setView('login')} className="btn-secondary px-4 py-2 rounded-xl text-sm shrink-0">
                                     Back
                                 </button>
                             </div>
@@ -692,41 +833,49 @@
                                         <label className="block text-xs font-medium text-slate-400 mb-2">Job title</label>
                                         <input
                                             required
-                                            className="input-field w-full px-4 py-3 rounded-lg text-sm"
+                                            className="input-field w-full px-4 py-3.5 rounded-xl text-sm"
                                             placeholder="e.g. Senior software engineer"
                                             value={jobTitle}
                                             onChange={(e) => setJobTitle(e.target.value)}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-slate-400 mb-2">Description</label>
+                                        <label className="block text-xs font-medium text-slate-400 mb-2">Job description</label>
                                         <textarea
                                             required
-                                            className="input-field w-full px-4 py-3 rounded-lg text-sm h-40 resize-y min-h-[120px]"
-                                            placeholder="Paste the job description..."
+                                            className="input-field w-full px-4 py-3.5 rounded-xl text-sm h-44 resize-y min-h-[140px] leading-relaxed"
+                                            placeholder="Paste the full job description — used for CV screening and assessment questions."
                                             value={jd}
                                             onChange={(e) => setJd(e.target.value)}
                                         />
                                     </div>
-                                    <button type="submit" disabled={isCreating} className="btn-primary w-full py-3 rounded-lg text-sm disabled:opacity-50">
+                                    <button type="submit" disabled={isCreating} className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-50">
                                         {isCreating ? 'Publishing…' : 'Publish and generate link'}
                                     </button>
                                 </form>
                             ) : (
                                 <div className="space-y-6">
-                                    <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
-                                        <svg className="w-5 h-5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                                        <p className="text-sm text-emerald-200/90">Role published. Share the link below with applicants.</p>
+                                    <div className="flex items-start gap-3 p-5 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
+                                        <svg className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                        <div>
+                                            <p className="text-sm font-medium text-emerald-200">Role published successfully</p>
+                                            <p className="text-xs text-slate-400 mt-1">Share the invitation link with applicants.</p>
+                                        </div>
                                     </div>
                                     <div>
-                                        <p className="text-xs font-medium text-slate-400 mb-2">Invitation link</p>
-                                        <div className="input-field p-3 rounded-lg font-mono text-xs break-all text-slate-300 select-all">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Invitation link</p>
+                                        <div className="input-field p-4 rounded-xl font-mono text-xs break-all text-slate-300 leading-relaxed">
                                             {generatedLink}
                                         </div>
                                     </div>
-                                    <button type="button" onClick={() => setGeneratedLink('')} className="text-sm font-medium text-accent hover:text-blue-300">
-                                        Publish another role
-                                    </button>
+                                    <div className="flex flex-col sm:flex-row gap-3">
+                                        <button type="button" onClick={copyLink} className="btn-primary flex-1 py-3 rounded-xl text-sm">
+                                            {copied ? 'Copied to clipboard' : 'Copy link'}
+                                        </button>
+                                        <button type="button" onClick={() => { setGeneratedLink(''); setCopied(false); }} className="btn-secondary flex-1 py-3 rounded-xl text-sm">
+                                            Publish another
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -739,27 +888,27 @@
             currentStep,
             totalSteps,
             timeLeft,
+            phaseTimeLimit,
             question,
             answer,
             setAnswer,
             handleAssessmentSubmit,
             isLoading,
-            sessionId,
             candidateEmail,
             integrityViolationCount,
             contentMasked,
         }) => {
             const pct = totalSteps > 0 ? Math.min(100, (currentStep / totalSteps) * 100) : 0;
-            const low = timeLeft != null && timeLeft < 30;
             const phases = Array.from({ length: totalSteps }, (_, i) => i + 1);
+            const charCount = answer.trim().length;
+            const canSubmit = charCount >= 5 && !contentMasked && !isLoading;
             return (
-                <Shell subtitle={`Phase ${currentStep} of ${totalSteps}`}>
-                    <div className="max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10 fade-in assessment-lock">
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 xl:gap-10">
-                            {/* Left rail — progress & context */}
-                            <aside className="lg:col-span-4 xl:col-span-3 space-y-6 order-2 lg:order-1">
-                                <div className="panel rounded-xl p-5 lg:p-6">
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-4">Progress</p>
+                <Shell subtitle={`Phase ${currentStep} of ${totalSteps} · Technical assessment`}>
+                    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10 fade-in assessment-lock">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+                            <aside className="lg:col-span-4 space-y-5 order-2 lg:order-1">
+                                <div className="panel rounded-2xl p-5 lg:p-6">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Your progress</p>
                                     <ul className="space-y-2">
                                         {phases.map((p) => {
                                             const done = p < currentStep;
@@ -798,27 +947,28 @@
                                     </ul>
                                 </div>
 
-                                <div className="panel rounded-xl p-5 lg:p-6">
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Session</p>
+                                <div className="panel rounded-2xl p-5 lg:p-6">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Session</p>
                                     <dl className="space-y-3 text-sm">
-                                        <div>
-                                            <dt className="text-slate-500 text-xs mb-1">Session ID</dt>
-                                            <dd className="font-mono text-xs text-slate-300 break-all">{sessionId || '—'}</dd>
-                                        </div>
                                         {candidateEmail ? (
                                             <div>
-                                                <dt className="text-slate-500 text-xs mb-1">Email</dt>
-                                                <dd className="text-slate-300 break-all">{candidateEmail}</dd>
+                                                <dt className="text-slate-500 text-xs mb-1">Candidate</dt>
+                                                <dd className="text-slate-200 truncate">{candidateEmail}</dd>
                                             </div>
                                         ) : null}
                                         <div>
-                                            <dt className="text-slate-500 text-xs mb-1">Integrity violations</dt>
-                                            <dd className="text-slate-300 tabular-nums">{integrityViolationCount} / {MAX_INTEGRITY_VIOLATIONS - 1} allowed</dd>
+                                            <dt className="text-slate-500 text-xs mb-1">Integrity monitor</dt>
+                                            <dd className="text-slate-200 tabular-nums">
+                                                <span className={integrityViolationCount > 0 ? 'text-amber-400 font-semibold' : ''}>
+                                                    {integrityViolationCount}
+                                                </span>
+                                                {' '}/ {MAX_INTEGRITY_VIOLATIONS - 1} warnings
+                                            </dd>
                                         </div>
                                     </dl>
                                 </div>
 
-                                <div className="panel rounded-xl p-5 lg:p-6 border-l-2 border-l-accent/60">
+                                <div className="panel rounded-2xl p-5 lg:p-6 border-l-2 border-l-indigo-500/50">
                                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">While you work</p>
                                     <ul className="space-y-2.5 text-xs text-slate-400 leading-relaxed">
                                         <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Answer directly below the question; aim for substance over length.</li>
@@ -829,45 +979,40 @@
                                 </div>
                             </aside>
 
-                            {/* Main task column */}
-                            <div className="lg:col-span-8 xl:col-span-9 space-y-6 order-1 lg:order-2 min-w-0">
-                                <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+                            <div className="lg:col-span-8 space-y-5 order-1 lg:order-2 min-w-0">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                                     <div>
-                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Technical assessment</p>
-                                        <h1 className="text-2xl lg:text-3xl font-semibold text-white">Phase {currentStep}</h1>
-                                        <p className="text-sm text-slate-500 mt-2">Phase {currentStep} of {totalSteps} · Automated review enabled</p>
+                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Current task</p>
+                                        <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Phase {currentStep}</h1>
+                                        <p className="text-sm text-slate-500 mt-1">Answer in your own words · AI-assisted review after submit</p>
                                     </div>
-                                    <div className={`panel px-5 py-3 rounded-lg flex items-baseline gap-2 shrink-0 ${low ? 'border-amber-500/40' : ''}`}>
-                                        <span className="text-xs font-medium text-slate-500">Time remaining</span>
-                                        <span className={`font-mono text-xl font-semibold tabular-nums ${low ? 'text-amber-400' : 'text-white'}`}>
-                                            {timeLeft == null
-                                                ? '—'
-                                                : `${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`}
-                                        </span>
-                                    </div>
+                                    <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} />
                                 </div>
-                                <div className="h-2 bg-surface-elevated rounded-full overflow-hidden border border-surface-border">
-                                    <div className="h-full bg-accent transition-all duration-300 rounded-full" style={{ width: `${pct}%` }} />
+                                <div className="h-1.5 bg-surface-elevated rounded-full overflow-hidden">
+                                    <div className="h-full bg-gradient-to-r from-accent to-indigo-400 transition-all duration-500 rounded-full" style={{ width: `${pct}%` }} />
                                 </div>
 
-                                <div className="panel rounded-xl p-6 sm:p-8 lg:p-10 relative">
+                                <div className="panel rounded-2xl p-6 sm:p-8 lg:p-10 relative">
                                     {isLoading && (
                                         <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
                                             <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
                                             <p className="text-sm text-slate-400">Processing your response…</p>
                                         </div>
                                     )}
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">Question</p>
+                                    <div className="flex items-center justify-between gap-3 mb-4">
+                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Question</p>
+                                        <span className="badge badge-accent">Phase {currentStep}</span>
+                                    </div>
                                     {contentMasked ? (
-                                        <div className="mb-8 lg:mb-10 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-8 text-center">
-                                            <p className="text-sm font-medium text-amber-200 mb-2">Content hidden for security</p>
-                                            <p className="text-sm text-slate-400 leading-relaxed">
-                                                Return to fullscreen and close Developer Tools to view the question again.
+                                        <div className="mb-8 lg:mb-10 rounded-xl border border-amber-500/30 bg-amber-500/10 px-6 py-10 text-center">
+                                            <p className="text-base font-semibold text-amber-100 mb-2">Content protected</p>
+                                            <p className="text-sm text-slate-400 leading-relaxed max-w-md mx-auto">
+                                                Return to fullscreen and close developer tools to continue.
                                             </p>
                                         </div>
                                     ) : (
                                         <div
-                                            className="question-protected text-lg lg:text-xl text-slate-100 leading-relaxed mb-8 lg:mb-10 border-l-2 border-accent pl-4 lg:pl-5"
+                                            className="question-protected text-base sm:text-lg text-slate-100 leading-relaxed mb-8 lg:mb-10 rounded-xl bg-surface-elevated/50 border border-surface-border px-5 py-6 sm:px-6 sm:py-7"
                                             onCopy={(e) => e.preventDefault()}
                                             onCut={(e) => e.preventDefault()}
                                             onContextMenu={(e) => e.preventDefault()}
@@ -893,15 +1038,18 @@
                                         spellCheck="false"
                                         disabled={contentMasked || isLoading}
                                     />
-                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4 pt-2 border-t border-surface-border">
-                                        <p className="text-xs text-slate-500 sm:mr-auto order-2 sm:order-1">
-                                            Minimum 5 characters to submit · {answer.trim().length} characters
-                                        </p>
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-6 border-t border-surface-border">
+                                        <div className="order-2 sm:order-1">
+                                            <p className="text-xs text-slate-500">
+                                                {canSubmit ? 'Ready to submit' : 'Type at least 5 characters'}
+                                            </p>
+                                            <p className="text-xs text-slate-600 mt-0.5 tabular-nums">{charCount} characters</p>
+                                        </div>
                                         <button
                                             type="button"
                                             onClick={handleAssessmentSubmit}
-                                            disabled={contentMasked || answer.trim().length < 5 || isLoading}
-                                            className="btn-primary px-10 py-3.5 rounded-lg text-sm lg:px-12 disabled:opacity-40 disabled:cursor-not-allowed order-1 sm:order-2 w-full sm:w-auto"
+                                            disabled={!canSubmit}
+                                            className="btn-primary px-10 py-3.5 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed order-1 sm:order-2 w-full sm:w-auto"
                                         >
                                             Submit answer
                                         </button>
@@ -976,28 +1124,40 @@
             return '';
         };
 
-        const FinishedView = ({ result, feedback, onReview, isLoading }) => (
-            <Shell subtitle="Results">
-                <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center p-6 fade-in">
-                    <div className="panel max-w-lg w-full rounded-xl p-8 sm:p-10 text-center">
-                        <div className={`w-14 h-14 mx-auto mb-6 rounded-full flex items-center justify-center ${result === 'PASS' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-600/30 text-slate-400'}`}>
-                            {result === 'PASS' ? (
-                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+        const FinishedView = ({ result, overallScore, feedback, onReview, isLoading }) => {
+            const passed = result === 'PASS';
+            const scoreNum = Number(overallScore);
+            const showScore = Number.isFinite(scoreNum);
+            return (
+            <Shell subtitle="Assessment complete">
+                <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in">
+                    <div className="panel max-w-xl w-full rounded-2xl p-8 sm:p-12 text-center shadow-card">
+                        <div className={`w-16 h-16 mx-auto mb-6 rounded-2xl flex items-center justify-center ${passed ? 'bg-emerald-500/15 border border-emerald-500/30' : 'bg-slate-700/30 border border-surface-border'}`}>
+                            {passed ? (
+                                <svg className="w-9 h-9 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
                             ) : (
-                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13h14" /></svg>
+                                <svg className="w-9 h-9 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             )}
                         </div>
-                        <h1 className="text-xl font-semibold text-white mb-3">
-                            {result === 'PASS' ? 'You meet the bar for this stage' : 'Assessment complete'}
+                        <span className={`badge mb-4 ${passed ? 'badge-success' : 'badge-warning'}`}>
+                            {passed ? 'Proceed to next stage' : 'Under review'}
+                        </span>
+                        {showScore && (
+                            <p className={`text-4xl font-bold tabular-nums mb-2 ${scoreTone(scoreNum)}`}>
+                                {Math.round(scoreNum)}<span className="text-lg text-slate-500 font-medium">/100</span>
+                            </p>
+                        )}
+                        <h1 className="text-2xl font-bold text-white mb-3 tracking-tight">
+                            {passed ? 'Strong performance' : 'Thank you for completing'}
                         </h1>
-                        <p className="text-sm text-slate-400 leading-relaxed mb-6">
-                            {result === 'PASS'
-                                ? 'Thank you for your responses. Our team will follow up with next steps.'
-                                : 'Thank you for your time. Your submission will be reviewed by the hiring team.'}
+                        <p className="text-sm text-slate-400 leading-relaxed mb-8 max-w-md mx-auto">
+                            {passed
+                                ? 'You met the screening bar. Our team will contact you with scheduling and next steps.'
+                                : 'Your responses have been recorded. The hiring team will review your submission.'}
                         </p>
                         {feedback && String(feedback).trim() && feedback !== 'Assessment completed.' && (
-                            <div className="text-left mb-8 p-4 rounded-lg border border-amber-500/25 bg-amber-500/10">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-amber-400/90 mb-2">Feedback</p>
+                            <div className="text-left mb-8 p-5 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">Evaluator notes</p>
                                 <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{feedback}</p>
                             </div>
                         )}
@@ -1005,7 +1165,7 @@
                             type="button"
                             onClick={onReview}
                             disabled={isLoading}
-                            className="btn-primary w-full py-3 rounded-lg text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60"
+                            className="btn-primary w-full py-3.5 rounded-xl text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60"
                         >
                             {isLoading ? (
                                 <>
@@ -1022,85 +1182,75 @@
                     </div>
                 </div>
             </Shell>
-        );
+            );
+        };
 
         const ReviewView = ({ history, onBack, overallFeedback }) => (
-            <Shell subtitle="Review">
-                <div className="max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8 py-8 fade-in">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10 sticky top-0 z-10 -mx-4 px-4 py-3 sm:mx-0 sm:px-0 bg-[#0c0f14]/95 backdrop-blur-sm border-b border-surface-border sm:border-0">
+            <Shell subtitle="Response review">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10 fade-in">
+                    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
                         <div>
-                            <h2 className="text-xl font-semibold text-white">Interview history</h2>
-                            <p className="text-sm text-slate-400 mt-1">Questions, answers, scores, feedback, and suggested notes per phase.</p>
+                            <h2 className="text-2xl font-bold text-white tracking-tight">Your responses</h2>
+                            <p className="text-sm text-slate-400 mt-1">Per-phase scores, feedback, and reference answers.</p>
                         </div>
-                        <button type="button" onClick={onBack} className="btn-secondary px-4 py-2 rounded-lg text-sm self-start sm:self-auto">
-                            Back
+                        <button type="button" onClick={onBack} className="btn-secondary px-5 py-2.5 rounded-xl text-sm self-start sm:self-auto">
+                            Back to results
                         </button>
                     </div>
 
                     {overallFeedback && (
-                        <div className="panel rounded-xl p-6 mb-8 border border-amber-500/25 bg-amber-500/10">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-400/90 mb-2">Latest overall feedback</p>
+                        <div className="panel rounded-2xl p-6 mb-8 border border-indigo-500/20 bg-indigo-500/5">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">Overall feedback</p>
                             <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{overallFeedback}</p>
                         </div>
                     )}
 
                     {history.length === 0 ? (
-                        <div className="panel rounded-xl p-10 text-center text-slate-400 text-sm">
-                            No interview history found for this session.
+                        <div className="panel rounded-2xl p-12 text-center text-slate-400 text-sm">
+                            No response history for this session.
                         </div>
                     ) : (
-                        <div className="panel rounded-xl overflow-hidden border border-surface-border">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm">
-                                    <thead>
-                                        <tr className="border-b border-surface-border bg-surface-elevated/80 text-xs uppercase tracking-wide text-slate-500">
-                                            <th className="px-4 py-3 font-medium whitespace-nowrap">Phase</th>
-                                            <th className="px-4 py-3 font-medium min-w-[200px]">Question</th>
-                                            <th className="px-4 py-3 font-medium min-w-[200px]">Your answer</th>
-                                            <th className="px-4 py-3 font-medium whitespace-nowrap">Score</th>
-                                            <th className="px-4 py-3 font-medium min-w-[160px]">Feedback</th>
-                                            <th className="px-4 py-3 font-medium min-w-[200px]">Suggested answer</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {history.map((item, index) => (
-                                            <tr key={`${item.phase}-${index}`} className="border-b border-surface-border/80 align-top hover:bg-surface-elevated/40">
-                                                <td className="px-4 py-4 text-accent font-semibold">{item.phase}</td>
-                                                <td className="px-4 py-4 text-slate-200 whitespace-pre-wrap">{item.question_text}</td>
-                                                <td className="px-4 py-4 text-slate-300 whitespace-pre-wrap">{item.answer_text?.trim() ? item.answer_text : '—'}</td>
-                                                <td className="px-4 py-4 text-slate-300">{item.score}</td>
-                                                <td className="px-4 py-4 whitespace-pre-wrap">
-                                                    {item.feedback && item.feedback !== '—' ? (
-                                                        <span className="text-amber-200/90 text-sm leading-relaxed">{item.feedback}</span>
-                                                    ) : (
-                                                        <span className="text-slate-600">—</span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-4 text-slate-300 whitespace-pre-wrap">{item.suggested_answer}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                        <div className="space-y-5">
+                            {history.map((item, index) => (
+                                <article key={`${item.phase}-${index}`} className="panel rounded-2xl p-6 sm:p-8">
+                                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-surface-border">
+                                        <span className="badge badge-accent">Phase {item.phase}</span>
+                                        <span className={`text-lg font-bold tabular-nums ${scoreTone(item.score)}`}>
+                                            {item.score !== '—' ? `${item.score}/100` : '—'}
+                                        </span>
+                                    </div>
+                                    <div className="grid gap-5 sm:grid-cols-1">
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Question</p>
+                                            <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{item.question_text}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Your answer</p>
+                                            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap panel-elevated rounded-xl p-4">
+                                                {item.answer_text?.trim() ? item.answer_text : '—'}
+                                            </p>
+                                        </div>
+                                        {item.feedback && item.feedback !== '—' && (
+                                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-400/90 mb-2">Feedback</p>
+                                                <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{item.feedback}</p>
+                                            </div>
+                                        )}
+                                        {item.suggested_answer && item.suggested_answer !== '—' && (
+                                            <div className="rounded-xl border border-surface-border bg-surface-elevated/40 p-4">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Reference answer</p>
+                                                <p className="text-sm text-slate-400 leading-relaxed whitespace-pre-wrap">{item.suggested_answer}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </article>
+                            ))}
                         </div>
                     )}
 
-                    <div className="space-y-6 mt-10">
-                        {history.filter((item) => item.feedback && item.feedback !== '—').map((item, index) => (
-                            <article key={`fb-${item.phase}-${index}`} className="panel rounded-xl p-6 border-l-4 border-l-amber-500/50">
-                                <p className="text-xs font-semibold text-accent mb-1">Phase {item.phase} · Feedback</p>
-                                {item.score !== '—' && (
-                                    <p className="text-xs text-slate-500 mb-3">Score: {item.score}/100</p>
-                                )}
-                                <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{item.feedback}</p>
-                            </article>
-                        ))}
-                    </div>
-
-                    <div className="text-center py-12 border-t border-surface-border mt-12">
-                        <p className="text-sm text-slate-500 mb-6">End of review</p>
-                        <button type="button" onClick={() => window.location.reload()} className="btn-secondary px-8 py-3 rounded-lg text-sm">
-                            Close portal
+                    <div className="text-center py-12 mt-8">
+                        <button type="button" onClick={() => window.location.reload()} className="btn-secondary px-8 py-3 rounded-xl text-sm">
+                            Exit portal
                         </button>
                     </div>
                 </div>
@@ -1115,10 +1265,12 @@
             const [currentStep, setCurrentStep] = useState(1);
             const [totalSteps, setTotalSteps] = useState(5);
             const [timeLeft, setTimeLeft] = useState(null);
+            const [phaseTimeLimit, setPhaseTimeLimit] = useState(null);
             const deadlineAtRef = useRef(null);
             const [question, setQuestion] = useState('Loading question…');
             const [answer, setAnswer] = useState('');
             const [result, setResult] = useState(null);
+            const [overallScore, setOverallScore] = useState(null);
             const [feedback, setFeedback] = useState('');
             const [integrityViolationCount, setIntegrityViolationCount] = useState(0);
             const [assessmentHistory, setAssessmentHistory] = useState([]);
@@ -1192,6 +1344,7 @@
                     sessionStorage.removeItem('deadline_at');
                     sessionStorage.removeItem('time_left');
                     setTimeLeft(null);
+                    setPhaseTimeLimit(null);
                     return null;
                 }
                 if (phaseRow?.deadline_at) {
@@ -1202,6 +1355,8 @@
                     sessionStorage.removeItem('deadline_at');
                 }
                 setTimeLeft(remaining);
+                const limit = getAiTimeLimitSeconds(phaseRow);
+                if (limit) setPhaseTimeLimit(limit);
                 sessionStorage.setItem('time_left', String(remaining));
                 return remaining;
             }, []);
@@ -1515,7 +1670,7 @@
                 setIsLoading(true);
                 try {
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sId);
-                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, status');
+                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, status, result, score');
                     if (isUuid) {
                         query = query.eq('id', sId);
                     } else {
@@ -1532,6 +1687,7 @@
                         setSessionId(resolvedId);
                         sessionStorage.setItem('current_session_id', resolvedId);
                         setResult(data.result || (Number(data.score) > 60 ? 'PASS' : 'FAIL'));
+                        if (data.score != null) setOverallScore(Number(data.score));
                         setFeedback('Assessment completed.');
                         const restoredHistory = normalizeInterviewHistory(data.interview_history);
                         setAssessmentHistory(restoredHistory);
@@ -1691,6 +1847,7 @@
                         setView('finished');
                         sessionStorage.removeItem('assessment_started');
                         setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));
+                        if (data.score != null) setOverallScore(Number(data.score));
                         setFeedback(data.feedback || 'Assessment completed.');
                         sessionStorage.removeItem('time_left');
                         sessionStorage.removeItem('deadline_at');
@@ -1796,6 +1953,8 @@
                     sessionStorage.setItem('current_session_id', data.id || sid);
                     setAssessmentHistory(rows);
                     setFeedback(pickLatestFeedback(rows, feedback));
+                    if (data.score != null) setOverallScore(Number(data.score));
+                    if (data.result) setResult(data.result);
                     setView('review');
                 } catch (e) {
                     console.error('Supabase Fetch Error:', e);
@@ -1817,19 +1976,19 @@
                                 currentStep={currentStep}
                                 totalSteps={totalSteps}
                                 timeLeft={timeLeft}
+                                phaseTimeLimit={phaseTimeLimit}
                                 question={question}
                                 answer={answer}
                                 setAnswer={setAnswer}
                                 handleAssessmentSubmit={handleAssessmentSubmit}
                                 isLoading={isLoading}
-                                sessionId={sessionId}
                                 candidateEmail={candidateEmail}
                                 integrityViolationCount={integrityViolationCount}
                                 contentMasked={devToolsDetected || fullscreenRequired}
                             />
                         );
                     case 'finished':
-                        return <FinishedView result={result} feedback={feedback} onReview={fetchAndShowReview} isLoading={isLoading} />;
+                        return <FinishedView result={result} overallScore={overallScore} feedback={feedback} onReview={fetchAndShowReview} isLoading={isLoading} />;
                     case 'review':
                         return (
                             <ReviewView
@@ -1846,7 +2005,7 @@
             };
 
             return (
-                <div className="min-h-screen bg-[#0c0f14] text-slate-200 antialiased">
+                <div className="min-h-screen app-bg text-slate-200 antialiased">
                     {renderView()}
                     {fullscreenRequired && isPortalLockedView(view) && (
                         <FullscreenRequiredOverlay

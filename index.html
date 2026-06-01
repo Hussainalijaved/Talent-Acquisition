@@ -40,14 +40,30 @@
 
         * { box-sizing: border-box; }
 
-        html { scroll-behavior: smooth; }
+        html {
+            scroll-behavior: smooth;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
 
         body {
             font-family: 'DM Sans', system-ui, sans-serif;
             background: var(--bg);
             color: var(--text);
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+        }
+
+        #root {
+            width: 100%;
+            max-width: 100%;
+            min-height: 100vh;
         }
 
         ::selection {
@@ -438,10 +454,10 @@
         // Must match: ngrok URL + n8n path on TRG - Assessment Answer (assessment-answer).
         const WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
 
-        const Shell = ({ children, subtitle, footerNote }) => (
-            <div className="min-h-screen flex flex-col">
-                <header className="sticky top-0 z-40 border-b border-surface-border/80 bg-[#080b10]/90 backdrop-blur-md">
-                    <div className="max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        const Shell = ({ children, subtitle, footerNote, fullWidth = false }) => (
+            <div className="min-h-screen flex flex-col w-full">
+                <header className="sticky top-0 z-40 border-b border-surface-border/80 bg-[#080b10]/90 backdrop-blur-md w-full">
+                    <div className={`w-full h-16 flex items-center justify-between gap-4 ${fullWidth ? 'px-4 lg:px-5' : 'max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8'}`}>
                         <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent/30 to-accent/5 border border-accent/40 flex items-center justify-center shrink-0 shadow-glow">
                                 <svg className="w-5 h-5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -459,7 +475,7 @@
                         </span>
                     </div>
                 </header>
-                <main className="flex-1">{children}</main>
+                <main className={`flex-1 w-full ${fullWidth ? 'min-h-0 flex flex-col' : ''}`}>{children}</main>
                 {footerNote && (
                     <footer className="border-t border-surface-border/60 py-4">
                         <p className="text-center text-xs text-slate-600 max-w-xl mx-auto px-4 leading-relaxed">{footerNote}</p>
@@ -903,11 +919,10 @@
             const charCount = answer.trim().length;
             const canSubmit = charCount >= 5 && !contentMasked && !isLoading;
             return (
-                <Shell subtitle={`Phase ${currentStep} of ${totalSteps} · Technical assessment`}>
-                    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10 fade-in assessment-lock">
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-                            <aside className="lg:col-span-4 space-y-5 order-2 lg:order-1">
-                                <div className="panel rounded-2xl p-5 lg:p-6">
+                <Shell subtitle={`Phase ${currentStep} of ${totalSteps} · Technical assessment`} fullWidth>
+                    <div className="w-full flex-1 flex flex-col lg:flex-row min-h-[calc(100vh-4rem)] fade-in assessment-lock">
+                            <aside className="w-full lg:w-56 xl:w-60 shrink-0 lg:border-r border-surface-border bg-[#0a0f16]/90 flex flex-col gap-3 py-4 px-3 lg:px-4 order-2 lg:order-1 lg:overflow-y-auto">
+                                <div className="panel rounded-xl p-4 lg:p-5">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Your progress</p>
                                     <ul className="space-y-2">
                                         {phases.map((p) => {
@@ -947,7 +962,7 @@
                                     </ul>
                                 </div>
 
-                                <div className="panel rounded-2xl p-5 lg:p-6">
+                                <div className="panel rounded-xl p-4 lg:p-5">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Session</p>
                                     <dl className="space-y-3 text-sm">
                                         {candidateEmail ? (
@@ -968,7 +983,7 @@
                                     </dl>
                                 </div>
 
-                                <div className="panel rounded-2xl p-5 lg:p-6 border-l-2 border-l-indigo-500/50">
+                                <div className="panel rounded-xl p-4 lg:p-5 border-l-2 border-l-indigo-500/50 hidden lg:block">
                                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">While you work</p>
                                     <ul className="space-y-2.5 text-xs text-slate-400 leading-relaxed">
                                         <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Answer directly below the question; aim for substance over length.</li>
@@ -979,8 +994,8 @@
                                 </div>
                             </aside>
 
-                            <div className="lg:col-span-8 space-y-5 order-1 lg:order-2 min-w-0">
-                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <div className="flex-1 min-w-0 flex flex-col gap-3 py-4 px-3 sm:px-4 lg:px-5 order-1 lg:order-2 lg:overflow-y-auto">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
                                     <div>
                                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Current task</p>
                                         <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Phase {currentStep}</h1>
@@ -988,11 +1003,11 @@
                                     </div>
                                     <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} />
                                 </div>
-                                <div className="h-1.5 bg-surface-elevated rounded-full overflow-hidden">
+                                <div className="h-1.5 bg-surface-elevated rounded-full overflow-hidden shrink-0">
                                     <div className="h-full bg-gradient-to-r from-accent to-indigo-400 transition-all duration-500 rounded-full" style={{ width: `${pct}%` }} />
                                 </div>
 
-                                <div className="panel rounded-2xl p-6 sm:p-8 lg:p-10 relative">
+                                <div className="panel rounded-xl p-5 sm:p-6 lg:p-8 relative flex-1 flex flex-col min-h-0">
                                     {isLoading && (
                                         <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
                                             <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
@@ -1024,7 +1039,7 @@
                                     <label htmlFor="answer" className="sr-only">Your answer</label>
                                     <textarea
                                         id="answer"
-                                        className="input-field w-full px-4 py-4 lg:px-5 lg:py-5 rounded-lg text-sm lg:text-base leading-relaxed min-h-[260px] lg:min-h-[320px] resize-y mb-6"
+                                        className="input-field w-full flex-1 min-h-[200px] px-4 py-4 lg:px-5 lg:py-5 rounded-lg text-sm lg:text-base leading-relaxed resize-none mb-6"
                                         placeholder="Type your answer here."
                                         value={answer}
                                         onChange={(e) => setAnswer(e.target.value)}
@@ -1056,7 +1071,6 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
                     </div>
                 </Shell>
             );
@@ -2005,7 +2019,7 @@
             };
 
             return (
-                <div className="min-h-screen app-bg text-slate-200 antialiased">
+                <div className="min-h-screen w-full max-w-full app-bg text-slate-200 antialiased">
                     {renderView()}
                     {fullscreenRequired && isPortalLockedView(view) && (
                         <FullscreenRequiredOverlay

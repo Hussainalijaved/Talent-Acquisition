@@ -209,6 +209,48 @@
         .timer-ring-progress.low { stroke: #f59e0b; }
         .timer-ring-progress.critical { stroke: #ef4444; }
 
+        .phase-step {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid #2a3a4f;
+            background: rgba(15, 22, 32, 0.6);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .phase-step.active {
+            border-color: rgba(99, 102, 241, 0.55);
+            background: rgba(99, 102, 241, 0.14);
+            box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.2);
+        }
+
+        .phase-step.done { opacity: 0.85; }
+
+        .phase-step.upcoming { opacity: 0.45; }
+
+        .phase-step-num {
+            width: 1.75rem;
+            height: 1.75rem;
+            border-radius: 0.375rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .assessment-workspace {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: calc(100vh - 4rem);
+            min-height: calc(100vh - 4rem);
+        }
+
         @media print {
             html, body, #root { display: none !important; }
         }
@@ -484,9 +526,9 @@
             </div>
         );
 
-        const TimerRing = ({ seconds, totalSeconds }) => {
-            const size = 88;
-            const stroke = 6;
+        const TimerRing = ({ seconds, totalSeconds, compact = false }) => {
+            const size = compact ? 52 : 88;
+            const stroke = compact ? 4 : 6;
             const r = (size - stroke) / 2;
             const c = 2 * Math.PI * r;
             const total = totalSeconds && totalSeconds > 0 ? totalSeconds : seconds || 1;
@@ -496,9 +538,15 @@
             const critical = seconds != null && seconds < 10;
             const progClass = critical ? 'timer-ring-progress critical' : low ? 'timer-ring-progress low' : 'timer-ring-progress';
             const mm = seconds != null ? `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}` : '—';
+            const wrapClass = compact
+                ? 'flex items-center gap-2.5 shrink-0 rounded-lg border border-surface-border bg-[#0f1620]/80 px-3 py-2'
+                : 'flex items-center gap-4 panel rounded-xl px-5 py-3 shrink-0';
+            const timeClass = compact
+                ? `font-mono text-lg font-bold tabular-nums ${critical ? 'text-red-400' : low ? 'text-amber-400' : 'text-white'}`
+                : `font-mono text-2xl font-bold tabular-nums tracking-tight ${critical ? 'text-red-400' : low ? 'text-amber-400' : 'text-white'}`;
             return (
-                <div className="flex items-center gap-4 panel rounded-xl px-5 py-3 shrink-0">
-                    <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
+                <div className={wrapClass}>
+                    <svg width={size} height={size} className="-rotate-90 shrink-0" aria-hidden="true">
                         <circle className="timer-ring-track" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} />
                         <circle
                             className={progClass}
@@ -514,11 +562,47 @@
                     </svg>
                     <div>
                         <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Time left</p>
-                        <p className={`font-mono text-2xl font-bold tabular-nums tracking-tight ${critical ? 'text-red-400' : low ? 'text-amber-400' : 'text-white'}`}>{mm}</p>
+                        <p className={timeClass}>{mm}</p>
                     </div>
                 </div>
             );
         };
+
+        const PhaseStepper = ({ phases, currentStep }) => (
+            <div className="flex flex-wrap items-center gap-2" role="list" aria-label="Assessment phases">
+                {phases.map((p) => {
+                    const done = p < currentStep;
+                    const active = p === currentStep;
+                    const stateClass = active ? 'active' : done ? 'done' : 'upcoming';
+                    return (
+                        <div
+                            key={p}
+                            role="listitem"
+                            className={`phase-step ${stateClass}`}
+                            aria-current={active ? 'step' : undefined}
+                        >
+                            <span
+                                className={`phase-step-num ${active ? 'bg-accent text-white' : done ? 'bg-slate-600 text-white' : 'bg-surface-elevated text-slate-500 border border-surface-border'}`}
+                            >
+                                {done ? (
+                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                ) : (
+                                    p
+                                )}
+                            </span>
+                            <span className={`text-sm font-semibold ${active ? 'text-white' : 'text-slate-400'}`}>
+                                Phase {p}
+                            </span>
+                            {active && (
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-300 ml-0.5">Live</span>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        );
 
         const scoreTone = (score) => {
             const n = Number(score);
@@ -920,114 +1004,60 @@
             const canSubmit = charCount >= 5 && !contentMasked && !isLoading;
             return (
                 <Shell subtitle={`Phase ${currentStep} of ${totalSteps} · Technical assessment`} fullWidth>
-                    <div className="w-full flex-1 flex flex-col lg:flex-row min-h-[calc(100vh-4rem)] fade-in assessment-lock">
-                            <aside className="w-full lg:w-56 xl:w-60 shrink-0 lg:border-r border-surface-border bg-[#0a0f16]/90 flex flex-col gap-3 py-4 px-3 lg:px-4 order-2 lg:order-1 lg:overflow-y-auto">
-                                <div className="panel rounded-xl p-4 lg:p-5">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Your progress</p>
-                                    <ul className="space-y-2">
-                                        {phases.map((p) => {
-                                            const done = p < currentStep;
-                                            const active = p === currentStep;
-                                            return (
-                                                <li
-                                                    key={p}
-                                                    className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm ${active
-                                                        ? 'border-accent/50 bg-accent-muted text-white'
-                                                        : done
-                                                            ? 'border-surface-border bg-surface-elevated/50 text-slate-400'
-                                                            : 'border-surface-border text-slate-500'
-                                                        }`}
-                                                >
-                                                    <span
-                                                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold ${active
-                                                            ? 'bg-accent text-white'
-                                                            : done
-                                                                ? 'bg-slate-600 text-white'
-                                                                : 'bg-surface-elevated border border-surface-border text-slate-500'
-                                                            }`}
-                                                    >
-                                                        {done ? (
-                                                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                                                            </svg>
-                                                        ) : (
-                                                            p
-                                                        )}
-                                                    </span>
-                                                    <span className="font-medium">{active ? 'In progress' : done ? 'Completed' : 'Upcoming'}</span>
-                                                    <span className="ml-auto text-xs text-slate-500 tabular-nums">Phase {p}</span>
-                                                </li>
-                                            );
-                                        })}
-                                    </ul>
-                                </div>
+                    <div className="assessment-workspace fade-in assessment-lock">
+                        <div className="shrink-0 border-b border-surface-border bg-[#0a0f16]/60 px-4 sm:px-5 lg:px-6 py-4 space-y-3">
+                            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                                <PhaseStepper phases={phases} currentStep={currentStep} />
+                                <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} compact />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-400">
+                                {candidateEmail ? (
+                                    <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
+                                        <span className="text-slate-500 shrink-0">Candidate</span>
+                                        <span className="text-slate-200 break-all">{candidateEmail}</span>
+                                    </span>
+                                ) : null}
+                                <span className="inline-flex items-center gap-2">
+                                    <span className="text-slate-500">Integrity</span>
+                                    <span className={`tabular-nums font-medium ${integrityViolationCount > 0 ? 'text-amber-400' : 'text-slate-200'}`}>
+                                        {integrityViolationCount} / {MAX_INTEGRITY_VIOLATIONS - 1} warnings
+                                    </span>
+                                </span>
+                                <span className="hidden md:inline text-slate-600">·</span>
+                                <span className="hidden md:inline text-slate-500">Stay in fullscreen · No copy-paste · Submit before timer ends</span>
+                            </div>
+                            <div className="h-1 bg-surface-elevated rounded-full overflow-hidden">
+                                <div className="h-full bg-gradient-to-r from-accent to-indigo-400 transition-all duration-500 rounded-full" style={{ width: `${pct}%` }} />
+                            </div>
+                        </div>
 
-                                <div className="panel rounded-xl p-4 lg:p-5">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Session</p>
-                                    <dl className="space-y-3 text-sm">
-                                        {candidateEmail ? (
-                                            <div>
-                                                <dt className="text-slate-500 text-xs mb-1">Candidate</dt>
-                                                <dd className="text-slate-200 truncate">{candidateEmail}</dd>
-                                            </div>
-                                        ) : null}
-                                        <div>
-                                            <dt className="text-slate-500 text-xs mb-1">Integrity monitor</dt>
-                                            <dd className="text-slate-200 tabular-nums">
-                                                <span className={integrityViolationCount > 0 ? 'text-amber-400 font-semibold' : ''}>
-                                                    {integrityViolationCount}
-                                                </span>
-                                                {' '}/ {MAX_INTEGRITY_VIOLATIONS - 1} warnings
-                                            </dd>
-                                        </div>
-                                    </dl>
-                                </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-5 flex flex-col gap-4">
+                            <div className="shrink-0">
+                                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                                    Phase {currentStep} <span className="text-slate-500 font-normal text-lg sm:text-xl">of {totalSteps}</span>
+                                </h1>
+                                <p className="text-sm text-slate-500 mt-1">Answer in your own words — reviewed after you submit</p>
+                            </div>
 
-                                <div className="panel rounded-xl p-4 lg:p-5 border-l-2 border-l-indigo-500/50 hidden lg:block">
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">While you work</p>
-                                    <ul className="space-y-2.5 text-xs text-slate-400 leading-relaxed">
-                                        <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Answer directly below the question; aim for substance over length.</li>
-                                        <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Submit before the timer ends — empty answers are not sent.</li>
-                                        <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Stay in fullscreen and keep this tab focused until you finish.</li>
-                                        <li className="flex gap-2"><span className="text-accent shrink-0">•</span> Do not open developer tools or use Inspect Element.</li>
-                                    </ul>
-                                </div>
-                            </aside>
-
-                            <div className="flex-1 min-w-0 flex flex-col gap-3 py-4 px-3 sm:px-4 lg:px-5 order-1 lg:order-2 lg:overflow-y-auto">
-                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
-                                    <div>
-                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Current task</p>
-                                        <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Phase {currentStep}</h1>
-                                        <p className="text-sm text-slate-500 mt-1">Answer in your own words · AI-assisted review after submit</p>
+                            <div className="flex-1 min-h-[320px] flex flex-col rounded-xl border border-surface-border bg-[#0f1419]/80 relative">
+                                {isLoading && (
+                                    <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
+                                        <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
+                                        <p className="text-sm text-slate-400">Processing your response…</p>
                                     </div>
-                                    <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} />
-                                </div>
-                                <div className="h-1.5 bg-surface-elevated rounded-full overflow-hidden shrink-0">
-                                    <div className="h-full bg-gradient-to-r from-accent to-indigo-400 transition-all duration-500 rounded-full" style={{ width: `${pct}%` }} />
-                                </div>
-
-                                <div className="panel rounded-xl p-5 sm:p-6 lg:p-8 relative flex-1 flex flex-col min-h-0">
-                                    {isLoading && (
-                                        <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
-                                            <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
-                                            <p className="text-sm text-slate-400">Processing your response…</p>
-                                        </div>
-                                    )}
-                                    <div className="flex items-center justify-between gap-3 mb-4">
-                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Question</p>
-                                        <span className="badge badge-accent">Phase {currentStep}</span>
-                                    </div>
+                                )}
+                                <div className="shrink-0 px-5 sm:px-6 pt-5 pb-4 border-b border-surface-border/80">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Question</p>
                                     {contentMasked ? (
-                                        <div className="mb-8 lg:mb-10 rounded-xl border border-amber-500/30 bg-amber-500/10 px-6 py-10 text-center">
+                                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-5 py-8 text-center">
                                             <p className="text-base font-semibold text-amber-100 mb-2">Content protected</p>
-                                            <p className="text-sm text-slate-400 leading-relaxed max-w-md mx-auto">
+                                            <p className="text-sm text-slate-400 leading-relaxed">
                                                 Return to fullscreen and close developer tools to continue.
                                             </p>
                                         </div>
                                     ) : (
                                         <div
-                                            className="question-protected text-base sm:text-lg text-slate-100 leading-relaxed mb-8 lg:mb-10 rounded-xl bg-surface-elevated/50 border border-surface-border px-5 py-6 sm:px-6 sm:py-7"
+                                            className="question-protected text-base sm:text-lg text-slate-100 leading-relaxed"
                                             onCopy={(e) => e.preventDefault()}
                                             onCut={(e) => e.preventDefault()}
                                             onContextMenu={(e) => e.preventDefault()}
@@ -1036,10 +1066,12 @@
                                             {question}
                                         </div>
                                     )}
-                                    <label htmlFor="answer" className="sr-only">Your answer</label>
+                                </div>
+                                <div className="flex-1 flex flex-col min-h-0 px-5 sm:px-6 py-4">
+                                    <label htmlFor="answer" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Your answer</label>
                                     <textarea
                                         id="answer"
-                                        className="input-field w-full flex-1 min-h-[200px] px-4 py-4 lg:px-5 lg:py-5 rounded-lg text-sm lg:text-base leading-relaxed resize-none mb-6"
+                                        className="input-field w-full flex-1 min-h-[180px] px-4 py-4 rounded-lg text-sm sm:text-base leading-relaxed resize-none"
                                         placeholder="Type your answer here."
                                         value={answer}
                                         onChange={(e) => setAnswer(e.target.value)}
@@ -1053,24 +1085,25 @@
                                         spellCheck="false"
                                         disabled={contentMasked || isLoading}
                                     />
-                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-6 border-t border-surface-border">
-                                        <div className="order-2 sm:order-1">
-                                            <p className="text-xs text-slate-500">
-                                                {canSubmit ? 'Ready to submit' : 'Type at least 5 characters'}
-                                            </p>
-                                            <p className="text-xs text-slate-600 mt-0.5 tabular-nums">{charCount} characters</p>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={handleAssessmentSubmit}
-                                            disabled={!canSubmit}
-                                            className="btn-primary px-10 py-3.5 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed order-1 sm:order-2 w-full sm:w-auto"
-                                        >
-                                            Submit answer
-                                        </button>
+                                </div>
+                                <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-surface-border bg-[#0c121a]/50 rounded-b-xl">
+                                    <div>
+                                        <p className="text-xs text-slate-500">
+                                            {canSubmit ? 'Ready to submit' : 'Type at least 5 characters'}
+                                        </p>
+                                        <p className="text-xs text-slate-600 mt-0.5 tabular-nums">{charCount} characters</p>
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleAssessmentSubmit}
+                                        disabled={!canSubmit}
+                                        className="btn-primary px-10 py-3.5 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed w-full sm:w-auto"
+                                    >
+                                        Submit answer
+                                    </button>
                                 </div>
                             </div>
+                        </div>
                     </div>
                 </Shell>
             );

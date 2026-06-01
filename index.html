@@ -750,7 +750,7 @@
             contentMasked,
         }) => {
             const pct = totalSteps > 0 ? Math.min(100, (currentStep / totalSteps) * 100) : 0;
-            const low = timeLeft < 30;
+            const low = timeLeft != null && timeLeft < 30;
             const phases = Array.from({ length: totalSteps }, (_, i) => i + 1);
             return (
                 <Shell subtitle={`Phase ${currentStep} of ${totalSteps}`}>
@@ -840,7 +840,9 @@
                                     <div className={`panel px-5 py-3 rounded-lg flex items-baseline gap-2 shrink-0 ${low ? 'border-amber-500/40' : ''}`}>
                                         <span className="text-xs font-medium text-slate-500">Time remaining</span>
                                         <span className={`font-mono text-xl font-semibold tabular-nums ${low ? 'text-amber-400' : 'text-white'}`}>
-                                            {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                                            {timeLeft == null
+                                                ? '—'
+                                                : `${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`}
                                         </span>
                                     </div>
                                 </div>
@@ -917,8 +919,6 @@
             return decodeURIComponent(String(value)).trim().split(/\n/)[0].split(/\s+regards/i)[0].trim();
         };
 
-        const DEFAULT_TIME_LIMIT = 180;
-
         const parseInterviewHistory = (raw) => {
             let history = raw || [];
             if (typeof history === 'string') {
@@ -927,14 +927,17 @@
             return Array.isArray(history) ? history : [];
         };
 
+        const getAiTimeLimitSeconds = (phaseRow) => {
+            const limit = Number(phaseRow?.time_limit_seconds);
+            return Number.isFinite(limit) && limit > 0 ? limit : null;
+        };
+
         const computeRemainingFromPhase = (phaseRow) => {
-            if (!phaseRow) return DEFAULT_TIME_LIMIT;
+            if (!phaseRow) return null;
             if (phaseRow.deadline_at) {
                 return Math.max(0, Math.floor((new Date(phaseRow.deadline_at).getTime() - Date.now()) / 1000));
             }
-            const limit = Number(phaseRow.time_limit_seconds);
-            if (Number.isFinite(limit) && limit > 0) return limit;
-            return DEFAULT_TIME_LIMIT;
+            return getAiTimeLimitSeconds(phaseRow);
         };
 
         const normalizeInterviewHistory = (raw) => {
@@ -1111,7 +1114,7 @@
             const [isLoading, setIsLoading] = useState(false);
             const [currentStep, setCurrentStep] = useState(1);
             const [totalSteps, setTotalSteps] = useState(5);
-            const [timeLeft, setTimeLeft] = useState(DEFAULT_TIME_LIMIT);
+            const [timeLeft, setTimeLeft] = useState(null);
             const deadlineAtRef = useRef(null);
             const [question, setQuestion] = useState('Loading question…');
             const [answer, setAnswer] = useState('');
@@ -1184,6 +1187,13 @@
 
             const applyTimerFromPhase = useCallback((phaseRow) => {
                 const remaining = computeRemainingFromPhase(phaseRow);
+                if (remaining == null) {
+                    deadlineAtRef.current = null;
+                    sessionStorage.removeItem('deadline_at');
+                    sessionStorage.removeItem('time_left');
+                    setTimeLeft(null);
+                    return null;
+                }
                 if (phaseRow?.deadline_at) {
                     deadlineAtRef.current = phaseRow.deadline_at;
                     sessionStorage.setItem('deadline_at', phaseRow.deadline_at);
@@ -1198,8 +1208,10 @@
 
             const startPhaseTimerInDatabase = useCallback(async (sessionDbId, history, phaseIndex) => {
                 const row = { ...(history[phaseIndex] || {}) };
-                const limit = Number(row.time_limit_seconds);
-                const seconds = Number.isFinite(limit) && limit > 0 ? limit : DEFAULT_TIME_LIMIT;
+                const seconds = getAiTimeLimitSeconds(row);
+                if (seconds == null) {
+                    throw new Error('This question has no AI time_limit_seconds. Re-run screening or assessment workflow.');
+                }
                 const sent_at = new Date().toISOString();
                 const deadline_at = new Date(Date.now() + seconds * 1000).toISOString();
                 const updatedHistory = history.map((item, i) => (
@@ -1722,10 +1734,12 @@
                     if (deadline) {
                         remaining = Math.max(0, Math.floor((new Date(deadline).getTime() - Date.now()) / 1000));
                     } else {
-                        remaining = Math.max(0, parseInt(sessionStorage.getItem('time_left') || String(DEFAULT_TIME_LIMIT), 10));
+                        const stored = sessionStorage.getItem('time_left');
+                        const parsed = stored != null ? parseInt(stored, 10) : NaN;
+                        remaining = Number.isFinite(parsed) ? Math.max(0, parsed) : null;
                     }
                     setTimeLeft(remaining);
-                    sessionStorage.setItem('time_left', String(remaining));
+                    if (remaining != null) sessionStorage.setItem('time_left', String(remaining));
                 };
 
                 tick();
@@ -1734,7 +1748,7 @@
             }, [view, isLoading]);
 
             useEffect(() => {
-                if (view === 'assessment' && timeLeft === 0 && !isLoading) {
+                if (view === 'assessment' && timeLeft === 0 && !isLoading && deadlineAtRef.current) {
                     handleAssessmentSubmit(true);
                 }
             }, [timeLeft, view, isLoading]);

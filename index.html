@@ -209,46 +209,104 @@
         .timer-ring-progress.low { stroke: #f59e0b; }
         .timer-ring-progress.critical { stroke: #ef4444; }
 
-        .phase-step {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.5rem;
-            border: 1px solid #2a3a4f;
-            background: rgba(15, 22, 32, 0.6);
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        .phase-step.active {
-            border-color: rgba(99, 102, 241, 0.55);
-            background: rgba(99, 102, 241, 0.14);
-            box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.2);
-        }
-
-        .phase-step.done { opacity: 0.85; }
-
-        .phase-step.upcoming { opacity: 0.45; }
-
-        .phase-step-num {
-            width: 1.75rem;
-            height: 1.75rem;
-            border-radius: 0.375rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.75rem;
-            font-weight: 700;
-            flex-shrink: 0;
-        }
-
         .assessment-workspace {
             display: flex;
             flex-direction: column;
             width: 100%;
             height: calc(100vh - 4rem);
             min-height: calc(100vh - 4rem);
+        }
+
+        @media (min-width: 1024px) {
+            .assessment-workspace { flex-direction: row; }
+        }
+
+        .assessment-sidebar {
+            flex-shrink: 0;
+            width: 100%;
+            border-bottom: 1px solid #2a3a4f;
+            background: linear-gradient(180deg, #0c121a 0%, #0a0f16 100%);
+            padding: 1rem 1.25rem;
+            overflow-y: auto;
+            max-height: 42vh;
+        }
+
+        @media (min-width: 1024px) {
+            .assessment-sidebar {
+                width: 18.5rem;
+                min-width: 18.5rem;
+                max-height: none;
+                height: 100%;
+                border-bottom: none;
+                border-right: 1px solid #2a3a4f;
+                padding: 1.25rem 1rem 1.5rem;
+            }
+        }
+
+        @media (min-width: 1280px) {
+            .assessment-sidebar { width: 20rem; min-width: 20rem; }
+        }
+
+        .sidebar-section {
+            padding-bottom: 1.125rem;
+            margin-bottom: 1.125rem;
+            border-bottom: 1px solid rgba(42, 58, 79, 0.65);
+        }
+
+        .sidebar-section:last-child {
+            padding-bottom: 0;
+            margin-bottom: 0;
+            border-bottom: none;
+        }
+
+        .sidebar-label {
+            font-size: 0.625rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 0.75rem;
+        }
+
+        .phase-list-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.625rem 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid transparent;
+            margin-bottom: 0.375rem;
+        }
+
+        .phase-list-item:last-child { margin-bottom: 0; }
+
+        .phase-list-item.active {
+            border-color: rgba(99, 102, 241, 0.45);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .phase-list-item.done { opacity: 0.7; }
+
+        .phase-list-item.pending { opacity: 0.5; }
+
+        .phase-list-num {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8125rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .assessment-main {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         @media print {
@@ -568,40 +626,113 @@
             );
         };
 
-        const PhaseStepper = ({ phases, currentStep }) => (
-            <div className="flex flex-wrap items-center gap-2" role="list" aria-label="Assessment phases">
-                {phases.map((p) => {
-                    const done = p < currentStep;
-                    const active = p === currentStep;
-                    const stateClass = active ? 'active' : done ? 'done' : 'upcoming';
-                    return (
+        const ASSESSMENT_INSTRUCTIONS = [
+            'Answer in the text box — aim for clear, complete responses.',
+            'Submit before the timer runs out; partial text is saved on timeout.',
+            'Stay in fullscreen and keep this tab focused.',
+            'Copy-paste, right-click, and developer tools are disabled.',
+        ];
+
+        const AssessmentSidebar = ({
+            phases,
+            currentStep,
+            totalSteps,
+            timeLeft,
+            phaseTimeLimit,
+            candidateEmail,
+            integrityViolationCount,
+            pct,
+        }) => (
+            <aside className="assessment-sidebar" aria-label="Assessment sidebar">
+                <div className="sidebar-section">
+                    <p className="sidebar-label">Question count</p>
+                    <p className="text-3xl font-bold text-white tabular-nums leading-none">
+                        {currentStep}
+                        <span className="text-slate-500 text-xl font-semibold"> / {totalSteps}</span>
+                    </p>
+                    <p className="text-sm text-slate-400 mt-2">Technical questions in this session</p>
+                    <div className="h-1.5 bg-surface-elevated rounded-full overflow-hidden mt-4">
                         <div
-                            key={p}
-                            role="listitem"
-                            className={`phase-step ${stateClass}`}
-                            aria-current={active ? 'step' : undefined}
-                        >
-                            <span
-                                className={`phase-step-num ${active ? 'bg-accent text-white' : done ? 'bg-slate-600 text-white' : 'bg-surface-elevated text-slate-500 border border-surface-border'}`}
-                            >
-                                {done ? (
-                                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                ) : (
-                                    p
-                                )}
-                            </span>
-                            <span className={`text-sm font-semibold ${active ? 'text-white' : 'text-slate-400'}`}>
-                                Phase {p}
-                            </span>
-                            {active && (
-                                <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-300 ml-0.5">Live</span>
-                            )}
+                            className="h-full bg-gradient-to-r from-accent to-indigo-400 rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                        />
+                    </div>
+                </div>
+
+                <div className="sidebar-section">
+                    <p className="sidebar-label">Time remaining</p>
+                    <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} compact />
+                </div>
+
+                <div className="sidebar-section">
+                    <p className="sidebar-label">All phases</p>
+                    <ul className="list-none p-0 m-0" role="list">
+                        {phases.map((p) => {
+                            const done = p < currentStep;
+                            const active = p === currentStep;
+                            const rowClass = active ? 'active' : done ? 'done' : 'pending';
+                            const statusLabel = active ? 'In progress' : done ? 'Completed' : 'Upcoming';
+                            return (
+                                <li
+                                    key={p}
+                                    role="listitem"
+                                    className={`phase-list-item ${rowClass}`}
+                                    aria-current={active ? 'step' : undefined}
+                                >
+                                    <span
+                                        className={`phase-list-num ${active ? 'bg-accent text-white' : done ? 'bg-slate-600 text-white' : 'bg-[#0f1620] text-slate-500 border border-surface-border'}`}
+                                    >
+                                        {done ? (
+                                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        ) : (
+                                            p
+                                        )}
+                                    </span>
+                                    <div className="min-w-0 flex-1 pt-0.5">
+                                        <p className={`text-sm font-semibold leading-tight ${active ? 'text-white' : 'text-slate-300'}`}>
+                                            Question {p}
+                                        </p>
+                                        <p className={`text-xs mt-1 ${active ? 'text-indigo-300' : 'text-slate-500'}`}>{statusLabel}</p>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+
+                <div className="sidebar-section">
+                    <p className="sidebar-label">Session</p>
+                    {candidateEmail ? (
+                        <div className="mb-3">
+                            <p className="text-xs text-slate-500 mb-1">Candidate</p>
+                            <p className="text-sm text-slate-200 break-all leading-snug">{candidateEmail}</p>
                         </div>
-                    );
-                })}
-            </div>
+                    ) : null}
+                    <div>
+                        <p className="text-xs text-slate-500 mb-1">Integrity monitor</p>
+                        <p className="text-sm text-slate-200 tabular-nums">
+                            <span className={integrityViolationCount > 0 ? 'text-amber-400 font-semibold' : 'font-medium'}>
+                                {integrityViolationCount}
+                            </span>
+                            <span className="text-slate-500"> / {MAX_INTEGRITY_VIOLATIONS - 1} warnings</span>
+                        </p>
+                    </div>
+                </div>
+
+                <div className="sidebar-section">
+                    <p className="sidebar-label">Instructions</p>
+                    <ul className="space-y-2.5 m-0 p-0 list-none">
+                        {ASSESSMENT_INSTRUCTIONS.map((line, i) => (
+                            <li key={i} className="flex gap-2.5 text-xs text-slate-400 leading-relaxed">
+                                <span className="text-accent font-bold shrink-0 mt-px">{i + 1}.</span>
+                                <span>{line}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            </aside>
         );
 
         const scoreTone = (score) => {
@@ -1005,41 +1136,27 @@
             return (
                 <Shell subtitle={`Phase ${currentStep} of ${totalSteps} · Technical assessment`} fullWidth>
                     <div className="assessment-workspace fade-in assessment-lock">
-                        <div className="shrink-0 border-b border-surface-border bg-[#0a0f16]/60 px-4 sm:px-5 lg:px-6 py-4 space-y-3">
-                            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
-                                <PhaseStepper phases={phases} currentStep={currentStep} />
-                                <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} compact />
-                            </div>
-                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-400">
-                                {candidateEmail ? (
-                                    <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
-                                        <span className="text-slate-500 shrink-0">Candidate</span>
-                                        <span className="text-slate-200 break-all">{candidateEmail}</span>
-                                    </span>
-                                ) : null}
-                                <span className="inline-flex items-center gap-2">
-                                    <span className="text-slate-500">Integrity</span>
-                                    <span className={`tabular-nums font-medium ${integrityViolationCount > 0 ? 'text-amber-400' : 'text-slate-200'}`}>
-                                        {integrityViolationCount} / {MAX_INTEGRITY_VIOLATIONS - 1} warnings
-                                    </span>
-                                </span>
-                                <span className="hidden md:inline text-slate-600">·</span>
-                                <span className="hidden md:inline text-slate-500">Stay in fullscreen · No copy-paste · Submit before timer ends</span>
-                            </div>
-                            <div className="h-1 bg-surface-elevated rounded-full overflow-hidden">
-                                <div className="h-full bg-gradient-to-r from-accent to-indigo-400 transition-all duration-500 rounded-full" style={{ width: `${pct}%` }} />
-                            </div>
-                        </div>
+                        <AssessmentSidebar
+                            phases={phases}
+                            currentStep={currentStep}
+                            totalSteps={totalSteps}
+                            timeLeft={timeLeft}
+                            phaseTimeLimit={phaseTimeLimit}
+                            candidateEmail={candidateEmail}
+                            integrityViolationCount={integrityViolationCount}
+                            pct={pct}
+                        />
 
-                        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-5 flex flex-col gap-4">
-                            <div className="shrink-0">
-                                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-                                    Phase {currentStep} <span className="text-slate-500 font-normal text-lg sm:text-xl">of {totalSteps}</span>
+                        <div className="assessment-main">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-surface-border/60">
+                                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                                    Question {currentStep}
                                 </h1>
                                 <p className="text-sm text-slate-500 mt-1">Answer in your own words — reviewed after you submit</p>
                             </div>
 
-                            <div className="flex-1 min-h-[320px] flex flex-col rounded-xl border border-surface-border bg-[#0f1419]/80 relative">
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
+                            <div className="flex-1 min-h-[280px] flex flex-col rounded-xl border border-surface-border bg-[#0f1419]/80 relative">
                                 {isLoading && (
                                     <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
                                         <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
@@ -1102,6 +1219,7 @@
                                         Submit answer
                                     </button>
                                 </div>
+                            </div>
                             </div>
                         </div>
                     </div>

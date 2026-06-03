@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit candidate — Talent Acquisition</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --card: rgba(20, 28, 47, 0.85);
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #fff;
+            --muted: #94a3b8;
+            --accent: linear-gradient(135deg, #4f46e5, #6366f1);
+            --danger: #f87171;
+            --ok: #34d399;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            min-height: 100vh;
+            padding: 24px 16px 48px;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            width: 420px;
+            height: 420px;
+            background: radial-gradient(circle, rgba(79, 70, 229, 0.18) 0%, transparent 70%);
+            top: 8%;
+            right: 10%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .wrap {
+            position: relative;
+            z-index: 1;
+            max-width: 560px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 32px 28px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(16px);
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 26px;
+            font-weight: 800;
+            text-align: center;
+            background: linear-gradient(135deg, #fff 40%, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.55;
+            margin-bottom: 24px;
+        }
+
+        .panel {
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .panel-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted);
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 6px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        input[type="email"],
+        input[type="url"],
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 12px 14px;
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+            line-height: 1.5;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: rgba(99, 102, 241, 0.6);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
+
+        .field { margin-bottom: 16px; }
+
+        .file-zone {
+            border: 2px dashed rgba(148, 163, 184, 0.35);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .file-zone:hover,
+        .file-zone.dragover {
+            border-color: #6366f1;
+            background: rgba(99, 102, 241, 0.08);
+        }
+
+        .file-zone input { display: none; }
+
+        .file-name {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #cbd5e1;
+            word-break: break-all;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 8px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            font-family: inherit;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .tab.active {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.5);
+            color: #fff;
+        }
+
+        .cv-panel { display: none; }
+        .cv-panel.active { display: block; }
+
+        .btn {
+            width: 100%;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            color: #fff;
+            background: var(--accent);
+            margin-top: 8px;
+            transition: opacity 0.2s, transform 0.15s;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            opacity: 0.95;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+            display: none;
+        }
+
+        .status.show { display: block; }
+
+        .status.error {
+            background: rgba(248, 113, 113, 0.12);
+            border: 1px solid rgba(248, 113, 113, 0.35);
+            color: #fecaca;
+        }
+
+        .status.success {
+            background: rgba(52, 211, 153, 0.12);
+            border: 1px solid rgba(52, 211, 153, 0.35);
+            color: #a7f3d0;
+        }
+
+        .status.pending {
+            background: rgba(99, 102, 241, 0.12);
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            color: #c7d2fe;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 6px;
+            line-height: 1.45;
+        }
+
+        .save-webhook {
+            font-size: 12px;
+            color: #818cf8;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            margin-top: 8px;
+            font-family: inherit;
+            text-decoration: underline;
+        }
+
+        #successView { display: none; text-align: center; }
+        #successView.show { display: block; }
+        #formView.hide { display: none; }
+
+        .success-icon {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #059669, #10b981);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="card">
+            <div id="formView">
+                <h1>Submit candidate</h1>
+                <p class="subtitle">
+                    Upload a CV and job description to start screening and the 5-phase assessment pipeline.
+                </p>
+
+                <div class="panel">
+                    <div class="panel-title">n8n webhook (one-time setup)</div>
+                    <div class="field">
+                        <label for="webhookUrl">CV ingest URL</label>
+                        <input
+                            type="url"
+                            id="webhookUrl"
+                            placeholder="https://your-n8n.example.com/webhook/talent/cv-ingest"
+                            autocomplete="off"
+                        />
+                        <p class="hint">
+                            Same URL as Postman: <code style="color:#a5b4fc">POST …/webhook/talent/cv-ingest</code>.
+                            Saved in this browser. Override with <code>?webhook=</code> in the address bar.
+                        </p>
+                        <button type="button" class="save-webhook" id="saveWebhookBtn">Save URL locally</button>
+                    </div>
+                </div>
+
+                <form id="intakeForm" novalidate>
+                    <div class="field">
+                        <label for="candidateEmail">Candidate email</label>
+                        <input type="email" id="candidateEmail" required placeholder="candidate@example.com" />
+                    </div>
+
+                    <div class="field">
+                        <label for="jobTitle">Job title</label>
+                        <input type="text" id="jobTitle" required placeholder="Junior .NET Full Stack Developer" />
+                    </div>
+
+                    <div class="field">
+                        <label for="jobRequirements">Job requirements (JD)</label>
+                        <textarea
+                            id="jobRequirements"
+                            required
+                            placeholder="Responsibilities, required skills, nice-to-haves…"
+                        ></textarea>
+                    </div>
+
+                    <div class="field">
+                        <label>CV</label>
+                        <div class="tabs">
+                            <button type="button" class="tab active" data-tab="pdf">PDF upload</button>
+                            <button type="button" class="tab" data-tab="text">Paste text</button>
+                        </div>
+                        <div class="cv-panel active" id="panelPdf">
+                            <div class="file-zone" id="fileZone">
+                                <input type="file" id="cvFile" accept=".pdf,application/pdf" />
+                                <span>Drop PDF here or click to browse</span>
+                                <div class="file-name" id="fileName"></div>
+                            </div>
+                        </div>
+                        <div class="cv-panel" id="panelText">
+                            <textarea id="cvText" placeholder="Paste CV plain text if you do not have a PDF…"></textarea>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn" id="submitBtn">Start screening</button>
+                    <div class="status" id="statusBox" role="status"></div>
+                </form>
+            </div>
+
+            <div id="successView">
+                <div class="success-icon">✓</div>
+                <h1>Submitted</h1>
+                <p class="subtitle" id="successMessage">
+                    The workflow has been triggered. Screening, outreach, and assessment will run in n8n.
+                </p>
+                <button type="button" class="btn" id="anotherBtn">Submit another candidate</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'ta_cv_ingest_webhook';
+
+        const params = new URLSearchParams(window.location.search);
+        const webhookInput = document.getElementById('webhookUrl');
+        const saved =
+            params.get('webhook') ||
+            localStorage.getItem(STORAGE_KEY) ||
+            '';
+        if (saved) webhookInput.value = saved;
+
+        document.getElementById('saveWebhookBtn').addEventListener('click', () => {
+            const url = webhookInput.value.trim();
+            if (!url) {
+                showStatus('Enter a webhook URL first.', 'error');
+                return;
+            }
+            localStorage.setItem(STORAGE_KEY, url);
+            showStatus('Webhook URL saved in this browser.', 'success');
+        });
+
+        let activeCvTab = 'pdf';
+        document.querySelectorAll('.tab').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                activeCvTab = btn.dataset.tab;
+                document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b === btn));
+                document.getElementById('panelPdf').classList.toggle('active', activeCvTab === 'pdf');
+                document.getElementById('panelText').classList.toggle('active', activeCvTab === 'text');
+            });
+        });
+
+        const fileZone = document.getElementById('fileZone');
+        const cvFile = document.getElementById('cvFile');
+        const fileName = document.getElementById('fileName');
+
+        fileZone.addEventListener('click', () => cvFile.click());
+        cvFile.addEventListener('change', () => {
+            fileName.textContent = cvFile.files[0] ? cvFile.files[0].name : '';
+        });
+        fileZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileZone.classList.add('dragover');
+        });
+        fileZone.addEventListener('dragleave', () => fileZone.classList.remove('dragover'));
+        fileZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                cvFile.files = e.dataTransfer.files;
+                fileName.textContent = cvFile.files[0].name;
+            }
+        });
+
+        function showStatus(msg, type) {
+            const box = document.getElementById('statusBox');
+            box.textContent = msg;
+            box.className = 'status show ' + (type || '');
+        }
+
+        function normalizeWebhookUrl(raw) {
+            let url = String(raw || '').trim();
+            if (!url) return '';
+            if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+            return url.replace(/\/+$/, '');
+        }
+
+        document.getElementById('intakeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const webhook = normalizeWebhookUrl(webhookInput.value);
+            if (!webhook) {
+                showStatus('Set the n8n CV ingest webhook URL above.', 'error');
+                return;
+            }
+            localStorage.setItem(STORAGE_KEY, webhook);
+
+            const email = document.getElementById('candidateEmail').value.trim().toLowerCase();
+            const title = document.getElementById('jobTitle').value.trim();
+            const requirements = document.getElementById('jobRequirements').value.trim();
+
+            if (!email || !title || !requirements) {
+                showStatus('Email, job title, and JD are required.', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('candidate_email', email);
+            formData.append('requisition_title', title);
+            formData.append('requisition_requirements', requirements);
+
+            if (activeCvTab === 'pdf') {
+                const file = cvFile.files[0];
+                if (!file) {
+                    showStatus('Select a PDF CV or switch to Paste text.', 'error');
+                    return;
+                }
+                formData.append('cv_file', file, file.name);
+            } else {
+                const text = document.getElementById('cvText').value.trim();
+                if (!text) {
+                    showStatus('Paste CV text or switch to PDF upload.', 'error');
+                    return;
+                }
+                formData.append('cv_text', text);
+            }
+
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            showStatus('Sending to n8n… This may take 30–90 seconds while AI screens the CV.', 'pending');
+
+            try {
+                const res = await fetch(webhook, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'ngrok-skip-browser-warning': '1',
+                    },
+                });
+
+                if (!res.ok) {
+                    const errText = await res.text().catch(() => '');
+                    throw new Error(
+                        'Webhook returned ' + res.status + (errText ? ': ' + errText.slice(0, 200) : '')
+                    );
+                }
+
+                document.getElementById('formView').classList.add('hide');
+                document.getElementById('successView').classList.add('show');
+                document.getElementById('successMessage').textContent =
+                    'Submitted for ' + email + '. Check n8n Executions and the candidate inbox for the assessment link.';
+            } catch (err) {
+                console.error(err);
+                let msg = err.message || 'Request failed.';
+                if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+                    msg =
+                        'Network or CORS error. Use a public n8n URL (ngrok/production), enable CORS on the webhook, or use a small proxy. See setup guide.';
+                }
+                showStatus(msg, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        document.getElementById('anotherBtn').addEventListener('click', () => {
+            document.getElementById('formView').classList.remove('hide');
+            document.getElementById('successView').classList.remove('show');
+            document.getElementById('statusBox').classList.remove('show');
+            document.getElementById('intakeForm').reset();
+            fileName.textContent = '';
+        });
+    </script>
+</body>
+</html>

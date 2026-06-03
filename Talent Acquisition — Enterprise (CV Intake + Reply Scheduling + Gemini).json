@@ -1184,11 +1184,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
             },
             {
               "name": "Content-Type",
@@ -1206,7 +1206,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ ({\n  ts: $now.toISO(),\n  workflow: $workflow.name,\n  message: $json.execution.error.message || 'unknown_error',\n  node: $json.execution.error.node?.name || '',\n}) }}",
+        "jsonBody": "={{ ({\n  ts: $now.toISO(),\n  workflow: $workflow.name,\n  message: $json.execution?.error?.message || $json.message || 'unknown_error',\n  node: $json.execution?.error?.node?.name || $json.execution?.lastNodeExecuted || '',\n}) }}",
         "options": {
           "timeout": 180000
         }

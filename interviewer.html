@@ -53,7 +53,7 @@
             border-radius: 24px;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
             width: 100%;
-            max-width: 440px;
+            max-width: 480px;
             box-sizing: border-box;
         }
 
@@ -112,15 +112,60 @@
         }
 
         input[type="time"] {
-            width: 100%;
-            padding: 14px 16px;
+            padding: 10px 12px;
             background: rgba(15, 23, 42, 0.6);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
+            border-radius: 10px;
             color: #ffffff;
             font-family: inherit;
             font-size: 15px;
             box-sizing: border-box;
+            min-width: 120px;
+        }
+
+        .slot-times {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .slot-time-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 14px;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+        }
+
+        .slot-time-row .date-label {
+            flex: 1;
+            font-size: 13px;
+            color: #cbd5e1;
+            line-height: 1.35;
+        }
+
+        .slot-time-row .time-wrap {
+            flex-shrink: 0;
+        }
+
+        .slot-time-row .time-wrap label {
+            font-size: 10px;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .empty-times {
+            font-size: 13px;
+            color: #64748b;
+            padding: 12px;
+            text-align: center;
+            background: rgba(15, 23, 42, 0.35);
+            border-radius: 10px;
         }
 
         .flatpickr-calendar {
@@ -219,12 +264,13 @@
         </div>
 
         <div class="input-group">
-            <label for="interviewTime">Interview time (same for all selected days)</label>
-            <input type="time" id="interviewTime" value="14:00" required>
+            <label>Time for each selected day</label>
+            <p class="hint">Pick a date on the calendar, then set a different start time per day if needed.</p>
+            <div id="slotTimesContainer" class="slot-times"></div>
         </div>
 
         <div class="input-group">
-            <label>Selected slots</label>
+            <label>Preview</label>
             <ul class="slot-list" id="slotList"></ul>
             <p class="slot-count warn" id="slotCount">0 dates selected — need at least 2</p>
         </div>
@@ -243,9 +289,28 @@
         const slotListEl = document.getElementById('slotList');
         const slotCountEl = document.getElementById('slotCount');
         const submitBtn = document.getElementById('submitBtn');
-        const timeInput = document.getElementById('interviewTime');
+        const slotTimesContainer = document.getElementById('slotTimesContainer');
 
         let selectedDates = [];
+        /** @type {Record<string, string>} dateKey YYYY-MM-DD -> HH:mm */
+        const timesByDate = {};
+
+        function dateKey(d) {
+            const y = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const da = String(d.getDate()).padStart(2, '0');
+            return `${y}-${mo}-${da}`;
+        }
+
+        function formatDateOnly(date) {
+            return date.toLocaleDateString('en-PK', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                timeZone: 'Asia/Karachi',
+            });
+        }
 
         function isWeekday(date) {
             const d = date.getDay();
@@ -264,14 +329,58 @@
             });
         }
 
-        function buildSlots() {
-            const timeVal = timeInput.value;
-            if (!timeVal) return [];
+        function renderTimeRows() {
+            const sorted = [...selectedDates].sort((a, b) => a - b);
+            slotTimesContainer.innerHTML = '';
 
-            const [h, m] = timeVal.split(':').map(Number);
+            if (!sorted.length) {
+                slotTimesContainer.innerHTML =
+                    '<p class="empty-times">Select dates on the calendar to set a time for each day.</p>';
+                return;
+            }
+
+            sorted.forEach((day) => {
+                const key = dateKey(day);
+                if (!timesByDate[key]) timesByDate[key] = '14:00';
+
+                const row = document.createElement('div');
+                row.className = 'slot-time-row';
+
+                const dateSpan = document.createElement('div');
+                dateSpan.className = 'date-label';
+                dateSpan.textContent = formatDateOnly(day);
+
+                const timeWrap = document.createElement('div');
+                timeWrap.className = 'time-wrap';
+                const timeLbl = document.createElement('label');
+                timeLbl.textContent = 'Start time';
+                const timeInp = document.createElement('input');
+                timeInp.type = 'time';
+                timeInp.value = timesByDate[key];
+                timeInp.required = true;
+                timeInp.dataset.dateKey = key;
+                timeInp.addEventListener('change', () => {
+                    timesByDate[key] = timeInp.value || '14:00';
+                    refreshUI();
+                });
+
+                timeWrap.appendChild(timeLbl);
+                timeWrap.appendChild(timeInp);
+                row.appendChild(dateSpan);
+                row.appendChild(timeWrap);
+                slotTimesContainer.appendChild(row);
+            });
+        }
+
+        function buildSlots() {
             const slots = [];
 
             for (const day of selectedDates) {
+                const key = dateKey(day);
+                const timeVal = timesByDate[key];
+                if (!timeVal) continue;
+
+                const [h, m] = timeVal.split(':').map(Number);
                 const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m, 0, 0);
                 if (!isWeekday(start)) continue;
 
@@ -288,6 +397,8 @@
         }
 
         function refreshUI() {
+            renderTimeRows();
+
             const slots = buildSlots();
             slotListEl.innerHTML = '';
 
@@ -298,12 +409,17 @@
             });
 
             const n = slots.length;
-            if (n >= 2) {
-                slotCountEl.textContent = `${n} weekday slots ready`;
+            const allHaveTime = selectedDates.every((d) => timesByDate[dateKey(d)]);
+
+            if (n >= 2 && allHaveTime) {
+                slotCountEl.textContent = `${n} weekday slots ready (each with its own time)`;
                 slotCountEl.className = 'slot-count ok';
                 submitBtn.disabled = false;
             } else {
-                slotCountEl.textContent = `${n} date(s) — select at least 2 weekdays`;
+                slotCountEl.textContent =
+                    n < 2
+                        ? `${n} date(s) — select at least 2 weekdays`
+                        : 'Set a time for each selected day';
                 slotCountEl.className = 'slot-count warn';
                 submitBtn.disabled = true;
             }
@@ -319,12 +435,18 @@
                 },
             ],
             onChange: function (dates) {
+                const nextKeys = new Set(dates.map(dateKey));
+                Object.keys(timesByDate).forEach((k) => {
+                    if (!nextKeys.has(k)) delete timesByDate[k];
+                });
+                dates.forEach((d) => {
+                    const k = dateKey(d);
+                    if (!timesByDate[k]) timesByDate[k] = '14:00';
+                });
                 selectedDates = dates;
                 refreshUI();
             },
         });
-
-        timeInput.addEventListener('change', refreshUI);
 
         const SUCCESS_PAGE = 'https://talent-acquisition-six.vercel.app/scheduling-success.html';
 
@@ -357,6 +479,12 @@
                     alert('Only Monday–Friday are allowed.');
                     return;
                 }
+            }
+
+            const missingTime = selectedDates.some((d) => !timesByDate[dateKey(d)]);
+            if (missingTime) {
+                alert('Please set a start time for each selected day.');
+                return;
             }
 
             const btn = document.getElementById('submitBtn');

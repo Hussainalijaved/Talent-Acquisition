@@ -326,7 +326,20 @@
 
         timeInput.addEventListener('change', refreshUI);
 
-        function submitSlots() {
+        const SUCCESS_PAGE = 'https://talent-acquisition-six.vercel.app/scheduling-success.html';
+
+        async function resumeWorkflow(url) {
+            try {
+                await fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
+            } catch (e) {
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = url;
+                document.body.appendChild(iframe);
+            }
+        }
+
+        async function submitSlots() {
             if (!resumeUrl) {
                 alert('Resume URL missing. Open this page from the interviewer email link.');
                 return;
@@ -346,11 +359,22 @@
                 }
             }
 
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = 'Submitting…';
+
             const sep = resumeUrl.includes('?') ? '&' : '?';
             const params = new URLSearchParams();
             params.set('slots_json', JSON.stringify(slots));
+            const webhookUrl = resumeUrl + sep + params.toString();
 
-            window.location.href = resumeUrl + sep + params.toString();
+            await resumeWorkflow(webhookUrl);
+
+            const successUrl =
+                SUCCESS_PAGE +
+                '?role=interviewer&count=' +
+                encodeURIComponent(String(slots.length));
+            window.location.replace(successUrl);
         }
     </script>
 </body>

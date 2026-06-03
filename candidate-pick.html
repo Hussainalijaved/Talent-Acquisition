@@ -120,16 +120,39 @@
             });
         }
 
-        function submitChoice() {
+        const SUCCESS_PAGE = 'https://talent-acquisition-six.vercel.app/scheduling-success.html';
+
+        async function resumeWorkflow(url) {
+            try {
+                await fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
+            } catch (e) {
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = url;
+                document.body.appendChild(iframe);
+            }
+        }
+
+        async function submitChoice() {
             if (!resumeUrl || !chosen?.start_iso) {
                 alert('Missing resume link or selection.');
                 return;
             }
+
+            const btn = document.getElementById('confirmBtn');
+            btn.disabled = true;
+            btn.textContent = 'Confirming…';
+
             const sep = resumeUrl.includes('?') ? '&' : '?';
             const q = new URLSearchParams();
             q.set('chosen_start_iso', chosen.start_iso);
             if (chosen.end_iso) q.set('chosen_end_iso', chosen.end_iso);
-            window.location.href = resumeUrl + sep + q.toString();
+            const webhookUrl = resumeUrl + sep + q.toString();
+
+            await resumeWorkflow(webhookUrl);
+
+            const label = encodeURIComponent(chosen.label || chosen.start_iso);
+            window.location.replace(SUCCESS_PAGE + '?role=candidate&label=' + label);
         }
     </script>
 </body>

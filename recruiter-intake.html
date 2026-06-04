@@ -575,19 +575,35 @@
             return m ? m[0].toLowerCase() : '';
         }
 
-        function pickBestEmail(text, fallbackName) {
-            const raw = String(text || '');
-            const found = raw.match(EMAIL_RE) || [];
+        function collectEmailsFromText(...chunks) {
             const uniq = [];
-            for (const e of found) {
-                const email = e.toLowerCase().trim();
-                if (!email || uniq.includes(email)) continue;
-                const local = email.split('@')[0];
-                if (BLOCKED_LOCAL.test(local)) continue;
-                if (BLOCKED_DOMAIN.test(email)) continue;
-                if (email.endsWith('.png') || email.endsWith('.jpg')) continue;
-                uniq.push(email);
-            }
+            const addFrom = (source) => {
+                const normalized = String(source || '')
+                    .replace(/\s*@\s*/g, '@')
+                    .replace(/([a-z0-9._%+-])\s+\.\s+([a-z])/gi, '$1.$2');
+                const compact = normalized.replace(/\s+/g, '');
+                for (const blob of [source, normalized, compact]) {
+                    const found = String(blob).match(EMAIL_RE) || [];
+                    for (const e of found) {
+                        const email = e.toLowerCase().trim().replace(/\.+$/g, '');
+                        if (!email || uniq.includes(email)) continue;
+                        const local = email.split('@')[0];
+                        if (BLOCKED_LOCAL.test(local)) continue;
+                        if (BLOCKED_DOMAIN.test(email)) continue;
+                        if (/\.(png|jpg|jpeg|pdf)$/i.test(email)) continue;
+                        uniq.push(email);
+                    }
+                }
+            };
+            chunks.forEach(addFrom);
+            return uniq;
+        }
+
+        function pickBestEmail(...chunks) {
+            const fallbackName = chunks[chunks.length - 1];
+            const sources = chunks.slice(0, -1);
+            const raw = sources.join('\n');
+            const uniq = collectEmailsFromText(...sources);
             if (!uniq.length) return guessEmailFromFilename(fallbackName);
 
             const scored = uniq.map((email) => {
@@ -603,25 +619,53 @@
             return scored[0].email;
         }
 
+        function emailFromAnnotationUrl(url) {
+            const u = String(url || '').trim();
+            if (!u) return '';
+            if (/^mailto:/i.test(u)) {
+                return u.replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
+            }
+            const m = u.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+            return m ? m[0].toLowerCase() : '';
+        }
+
         async function extractTextFromPdf(file, maxPages) {
             if (!window.pdfjsLib) throw new Error('PDF reader not loaded');
             const buf = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
             const pages = Math.min(pdf.numPages, maxPages || 2);
             let text = '';
+            let compact = '';
+            const linkEmails = [];
             for (let p = 1; p <= pages; p++) {
                 const page = await pdf.getPage(p);
                 const content = await page.getTextContent();
-                text += content.items.map((it) => it.str).join(' ') + '\n';
+                const parts = content.items.map((it) => String(it.str || '').trim()).filter(Boolean);
+                text += parts.join(' ') + '\n';
+                compact += parts.join('');
+
+                try {
+                    const annots = await page.getAnnotations();
+                    for (const a of annots || []) {
+                        const fromUrl = emailFromAnnotationUrl(a.url || a.unsafeUrl);
+                        if (fromUrl) linkEmails.push(fromUrl);
+                    }
+                } catch (_) {
+                    /* annotations optional */
+                }
             }
-            return text;
+            return { text, compact, linkEmails };
         }
 
         async function extractEmailFromPdf(file) {
             const fromName = guessEmailFromFilename(file.name);
             try {
-                const text = await extractTextFromPdf(file, 2);
-                return pickBestEmail(text, file.name) || fromName;
+                const { text, compact, linkEmails } = await extractTextFromPdf(file, 2);
+                const linkBlob = linkEmails.join(' ');
+                return (
+                    pickBestEmail(text, compact, linkBlob, file.name) ||
+                    fromName
+                );
             } catch (err) {
                 console.warn('PDF email extract failed', file.name, err);
                 return fromName;

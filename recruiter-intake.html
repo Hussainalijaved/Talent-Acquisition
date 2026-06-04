@@ -635,7 +635,27 @@
         .hub-back:hover { color: #c7d2fe; }
 
         .portal-panel.active { display: block !important; }
+
+        a.hub-card {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        html[data-portal-tab] #portalHub { display: none !important; }
+        html[data-portal-tab] #portalWorkspace { display: block !important; }
+        html[data-portal-tab='intake'] #intakePanel { display: block !important; }
+        html[data-portal-tab='intake'] #resultsPanel { display: none !important; }
+        html[data-portal-tab='results'] #resultsPanel { display: block !important; }
+        html[data-portal-tab='results'] #intakePanel { display: none !important; }
     </style>
+    <script>
+        (function () {
+            var t = new URLSearchParams(location.search).get('tab');
+            if (t === 'intake' || t === 'results') {
+                document.documentElement.setAttribute('data-portal-tab', t);
+            }
+        })();
+    </script>
 </head>
 <body>
     <div class="wrap">
@@ -647,18 +667,18 @@
 
             <div id="portalHub">
                 <div class="hub-grid">
-                    <button type="button" class="hub-card screening" id="hubIntakeBtn">
+                    <a href="?tab=intake" class="hub-card screening" id="hubIntakeBtn">
                         <span class="hub-icon">📄</span>
                         <h2>CV Screening</h2>
                         <p>Upload CVs against one job description. AI scores each candidate and shortlists for assessment.</p>
                         <span class="hub-cta">Open screening →</span>
-                    </button>
-                    <button type="button" class="hub-card results" id="hubResultsBtn">
+                    </a>
+                    <a href="?tab=results" class="hub-card results" id="hubResultsBtn">
                         <span class="hub-icon">📊</span>
                         <h2>Screening Results</h2>
                         <p>View scores, shortlisted / rejected status, and AI reasons for candidates already screened.</p>
                         <span class="hub-cta">View results →</span>
-                    </button>
+                    </a>
                 </div>
             </div>
 
@@ -790,6 +810,17 @@
         </div>
     </div>
 
+    <script>
+        (function () {
+            var t = new URLSearchParams(location.search).get('tab');
+            if (t !== 'intake' && t !== 'results') return;
+            var hub = document.getElementById('portalHub');
+            var ws = document.getElementById('portalWorkspace');
+            if (hub) hub.classList.add('hidden');
+            if (ws) ws.classList.remove('hidden');
+        })();
+    </script>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
         if (window.pdfjsLib) {
@@ -823,8 +854,10 @@
 
         const savedTitle = localStorage.getItem(STORAGE_JD_TITLE);
         const savedReq = localStorage.getItem(STORAGE_JD_REQ);
-        if (savedTitle) document.getElementById('jobTitle').value = savedTitle;
-        if (savedReq) document.getElementById('jobRequirements').value = savedReq;
+        const jobTitleEl = document.getElementById('jobTitle');
+        const jobReqEl = document.getElementById('jobRequirements');
+        if (savedTitle && jobTitleEl) jobTitleEl.value = savedTitle;
+        if (savedReq && jobReqEl) jobReqEl.value = savedReq;
 
         function showResultsStatus(msg, type) {
             const box = document.getElementById('resultsStatusBox');
@@ -834,33 +867,37 @@
         }
 
         function enterWorkspace(tab) {
+            const t = tab === 'results' ? 'results' : 'intake';
+            document.documentElement.setAttribute('data-portal-tab', t);
             document.getElementById('portalHub').classList.add('hidden');
             document.getElementById('portalWorkspace').classList.remove('hidden');
-            setPortalTab(tab || 'intake', false);
+            setPortalTab(t);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function showHub() {
+            document.documentElement.removeAttribute('data-portal-tab');
             document.getElementById('portalHub').classList.remove('hidden');
             document.getElementById('portalWorkspace').classList.add('hidden');
-            const url = new URL(location.href);
-            url.searchParams.delete('tab');
-            history.replaceState(null, '', url.pathname + url.search);
+            location.href = location.pathname;
         }
 
-        function setPortalTab(tab, reloadResults) {
-            const loadData = reloadResults !== false;
+        function setPortalTab(tab) {
+            const t = tab === 'results' ? 'results' : 'intake';
             document.querySelectorAll('.portal-tab').forEach((b) => {
-                b.classList.toggle('active', b.dataset.portal === tab);
+                b.classList.toggle('active', b.dataset.portal === t);
             });
-            document.getElementById('intakePanel').classList.toggle('active', tab === 'intake');
-            document.getElementById('resultsPanel').classList.toggle('active', tab === 'results');
+            document.getElementById('intakePanel').classList.toggle('active', t === 'intake');
+            document.getElementById('resultsPanel').classList.toggle('active', t === 'results');
+            document.documentElement.setAttribute('data-portal-tab', t);
             const url = new URL(location.href);
-            if (tab === 'results') url.searchParams.set('tab', 'results');
-            else if (tab === 'intake') url.searchParams.set('tab', 'intake');
-            else url.searchParams.delete('tab');
-            history.replaceState(null, '', url.pathname + url.search);
-            if (tab === 'results' && loadData) {
+            url.searchParams.set('tab', t);
+            try {
+                history.replaceState(null, '', url.pathname + url.search);
+            } catch (_) {
+                /* ignore */
+            }
+            if (t === 'results') {
                 setTimeout(() => {
                     loadScreeningResults().catch((err) => {
                         showResultsStatus(err.message || 'Could not load results.', 'err');
@@ -869,9 +906,10 @@
             }
         }
 
-        document.getElementById('hubIntakeBtn').addEventListener('click', () => enterWorkspace('intake'));
-        document.getElementById('hubResultsBtn').addEventListener('click', () => enterWorkspace('results'));
-        document.getElementById('hubBackBtn').addEventListener('click', showHub);
+        document.getElementById('hubBackBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            showHub();
+        });
 
         document.querySelectorAll('.portal-tab').forEach((btn) => {
             btn.addEventListener('click', () => setPortalTab(btn.dataset.portal));

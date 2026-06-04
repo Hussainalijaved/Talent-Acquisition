@@ -65,12 +65,39 @@
             font-size: 14px;
             font-weight: 700;
             cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+            display: block;
         }
 
         .portal-tab.active {
             background: rgba(99, 102, 241, 0.22);
             border-color: rgba(99, 102, 241, 0.55);
             color: #fff;
+        }
+
+        .results-toolbar {
+            align-items: flex-end;
+        }
+
+        .results-toolbar .field label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .results-toolbar .field input {
+            width: 100%;
+            padding: 10px 12px;
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
         }
 
         .portal-panel { display: none; }
@@ -647,6 +674,34 @@
         html[data-portal-tab='intake'] #resultsPanel { display: none !important; }
         html[data-portal-tab='results'] #resultsPanel { display: block !important; }
         html[data-portal-tab='results'] #intakePanel { display: none !important; }
+        html[data-portal-tab='results'] #intakeJobPanel { display: none !important; }
+        html[data-portal-tab='intake'] #intakeJobPanel { display: block !important; }
+
+        html[data-portal-tab='results'] .portal-tab[data-portal='results'],
+        html[data-portal-tab='intake'] .portal-tab[data-portal='intake'] {
+            background: rgba(99, 102, 241, 0.22);
+            border-color: rgba(99, 102, 241, 0.55);
+            color: #fff;
+        }
+
+        html[data-portal-tab='results'] .portal-tab[data-portal='intake'],
+        html[data-portal-tab='intake'] .portal-tab[data-portal='results'] {
+            background: transparent;
+            border-color: var(--border);
+            color: var(--muted);
+        }
+
+        #fatalError {
+            display: none;
+            margin: 16px 0;
+            padding: 14px;
+            border-radius: 10px;
+            background: rgba(248, 113, 113, 0.15);
+            color: #fecaca;
+            font-size: 14px;
+        }
+
+        #fatalError.show { display: block; }
     </style>
     <script>
         (function () {
@@ -664,6 +719,7 @@
             <p class="subtitle">
                 Talent acquisition — CV screening and results for your open roles.
             </p>
+            <div id="fatalError" role="alert"></div>
 
             <div id="portalHub">
                 <div class="hub-grid">
@@ -686,27 +742,25 @@
             <button type="button" class="hub-back" id="hubBackBtn">← Back to home</button>
 
             <div class="portal-tabs">
-                <button type="button" class="portal-tab active" data-portal="intake">Screen CVs</button>
-                <button type="button" class="portal-tab" data-portal="results">Results</button>
+                <a href="?tab=intake" class="portal-tab" data-portal="intake">Screen CVs</a>
+                <a href="?tab=results" class="portal-tab" data-portal="results">Results</a>
             </div>
 
-            <div class="panel">
-                <div class="panel-title">Job (shared)</div>
+            <div id="intakePanel" class="portal-panel active">
+            <div class="panel" id="intakeJobPanel">
+                <div class="panel-title">Job for screening</div>
                 <div class="field">
                     <label for="jobTitle">Job title</label>
-                    <input type="text" id="jobTitle" required placeholder="Junior .NET Full Stack Developer" />
+                    <input type="text" id="jobTitle" placeholder="Junior .NET Full Stack Developer" />
                 </div>
                 <div class="field" style="margin-bottom:0">
                     <label for="jobRequirements">Job requirements (JD)</label>
                     <textarea
                         id="jobRequirements"
-                        required
                         placeholder="Responsibilities, required skills, nice-to-haves…"
                     ></textarea>
                 </div>
             </div>
-
-            <div id="intakePanel" class="portal-panel active">
             <div id="formView">
                 <div class="panel">
                     <div class="panel-title">n8n webhook (one-time setup)</div>
@@ -781,7 +835,11 @@
             <div id="resultsPanel" class="portal-panel">
                 <div id="resultsStatusBox" class="results-status"></div>
                 <div class="results-toolbar">
-                    <button type="button" class="btn btn-inline" id="loadResultsBtn">Load / refresh results</button>
+                    <div class="field" style="flex:1;min-width:200px;margin:0">
+                        <label for="resultsFilter">Filter by job title (optional)</label>
+                        <input type="text" id="resultsFilter" placeholder="Leave empty to show all screened candidates" />
+                    </div>
+                    <button type="button" class="btn btn-inline" id="loadResultsBtn">Refresh results</button>
                 </div>
                 <div class="stats" id="statsRow" style="display:none">
                     <div class="stat"><div class="n" id="statTotal">0</div><div class="l">Screened</div></div>
@@ -794,6 +852,7 @@
                         <thead>
                             <tr>
                                 <th>Candidate</th>
+                                <th>Role</th>
                                 <th>Score</th>
                                 <th>Outcome</th>
                                 <th>Reason</th>
@@ -801,7 +860,7 @@
                             </tr>
                         </thead>
                         <tbody id="screenTableBody">
-                            <tr><td colspan="5" class="table-empty">Switch here after screening, or click Load results.</td></tr>
+                            <tr><td colspan="6" class="table-empty">Loading candidates from database…</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -858,6 +917,15 @@
         const jobReqEl = document.getElementById('jobRequirements');
         if (savedTitle && jobTitleEl) jobTitleEl.value = savedTitle;
         if (savedReq && jobReqEl) jobReqEl.value = savedReq;
+        const resultsFilterEl = document.getElementById('resultsFilter');
+        if (savedTitle && resultsFilterEl) resultsFilterEl.value = savedTitle;
+
+        function showFatal(err) {
+            const box = document.getElementById('fatalError');
+            if (!box) return;
+            box.textContent = 'Page error: ' + (err && err.message ? err.message : String(err));
+            box.classList.add('show');
+        }
 
         function showResultsStatus(msg, type) {
             const box = document.getElementById('resultsStatusBox');
@@ -909,10 +977,6 @@
         document.getElementById('hubBackBtn').addEventListener('click', (e) => {
             e.preventDefault();
             showHub();
-        });
-
-        document.querySelectorAll('.portal-tab').forEach((btn) => {
-            btn.addEventListener('click', () => setPortalTab(btn.dataset.portal));
         });
 
         const params = new URLSearchParams(window.location.search);
@@ -1191,34 +1255,36 @@
                 .replace(/"/g, '&quot;');
         }
 
-        fileZone.addEventListener('click', () => cvFile.click());
-        cvFile.addEventListener('change', async () => {
-            if (intakeMode === 'batch') {
-                renderBatchList();
-            } else {
-                const file = cvFile.files[0];
-                fileName.textContent = file ? file.name : '';
-                if (file && activeCvTab === 'pdf') await fillSingleEmailFromPdf(file);
-            }
-        });
-        fileZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            fileZone.classList.add('dragover');
-        });
-        fileZone.addEventListener('dragleave', () => fileZone.classList.remove('dragover'));
-        fileZone.addEventListener('drop', async (e) => {
-            e.preventDefault();
-            fileZone.classList.remove('dragover');
-            if (e.dataTransfer.files.length) {
-                cvFile.files = e.dataTransfer.files;
-                if (intakeMode === 'batch') renderBatchList();
-                else {
+        if (fileZone && cvFile && fileName) {
+            fileZone.addEventListener('click', () => cvFile.click());
+            cvFile.addEventListener('change', async () => {
+                if (intakeMode === 'batch') {
+                    renderBatchList();
+                } else {
                     const file = cvFile.files[0];
                     fileName.textContent = file ? file.name : '';
                     if (file && activeCvTab === 'pdf') await fillSingleEmailFromPdf(file);
                 }
-            }
-        });
+            });
+            fileZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                fileZone.classList.add('dragover');
+            });
+            fileZone.addEventListener('dragleave', () => fileZone.classList.remove('dragover'));
+            fileZone.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                fileZone.classList.remove('dragover');
+                if (e.dataTransfer.files.length) {
+                    cvFile.files = e.dataTransfer.files;
+                    if (intakeMode === 'batch') renderBatchList();
+                    else {
+                        const file = cvFile.files[0];
+                        fileName.textContent = file ? file.name : '';
+                        if (file && activeCvTab === 'pdf') await fillSingleEmailFromPdf(file);
+                    }
+                }
+            });
+        }
 
         function showStatus(msg, type) {
             const box = document.getElementById('statusBox');
@@ -1527,61 +1593,50 @@
 
         async function loadScreeningResults() {
             if (!supabase) {
-                showResultsStatus('Supabase client failed to load. Refresh the page or check your connection.', 'err');
+                showResultsStatus('Supabase failed to load. Check internet or refresh.', 'err');
                 return;
             }
-            const title = document.getElementById('jobTitle').value.trim();
+
+            const filterInput = document.getElementById('resultsFilter');
+            const title = (filterInput && filterInput.value.trim()) || (jobTitleEl && jobTitleEl.value.trim()) || '';
             const slug = slugFromTitle(title);
-            if (!title) {
-                showResultsStatus('Enter job title in the Job (shared) section above.', 'err');
-                return;
-            }
 
-            localStorage.setItem(STORAGE_JD_TITLE, title);
-            const req = document.getElementById('jobRequirements').value.trim();
-            if (req) localStorage.setItem(STORAGE_JD_REQ, req);
+            if (loadResultsBtn) loadResultsBtn.disabled = true;
+            showResultsStatus('Loading all candidates from database…', 'ok');
 
-            const loadBtn = document.getElementById('loadResultsBtn');
-            if (loadBtn) loadBtn.disabled = true;
-            showResultsStatus('Loading from Supabase…', 'ok');
-
-            let data = [];
-            let error = null;
-            const bySlug = await supabase
+            const { data: allRows, error } = await supabase
                 .from('candidates')
                 .select('id, candidate_email, stage, score, requisition_id, notes, created_at, updated_at')
-                .eq('requisition_id', slug)
                 .order('created_at', { ascending: false })
-                .limit(200);
+                .limit(500);
 
-            if (bySlug.error) error = bySlug.error;
-            else if ((bySlug.data || []).length) data = bySlug.data;
-            else {
-                const broad = await supabase
-                    .from('candidates')
-                    .select('id, candidate_email, stage, score, requisition_id, notes, created_at, updated_at')
-                    .order('created_at', { ascending: false })
-                    .limit(300);
-                error = broad.error;
-                data = (broad.data || []).filter((r) => rowMatchesJob(r, title, slug));
-            }
-
-            if (loadBtn) loadBtn.disabled = false;
+            if (loadResultsBtn) loadResultsBtn.disabled = false;
 
             if (error) {
                 showResultsStatus(
-                    'Could not read candidates: ' + error.message + '. Run supabase_rls_candidates_read.sql.',
+                    'Database error: ' + error.message + ' — run supabase_rls_candidates_read.sql in Supabase.',
                     'err'
                 );
                 return;
             }
 
-            let rows = dedupeLatest(data || []);
+            let rows = dedupeLatest(allRows || []);
+            if (title) {
+                rows = rows.filter((r) => rowMatchesJob(r, title, slug));
+            }
+
             if (!rows.length) {
                 document.getElementById('statsRow').style.display = 'none';
                 document.getElementById('screenTableBody').innerHTML =
-                    '<tr><td colspan="5" class="table-empty">No results yet for this job. Screen CVs first.</td></tr>';
-                showResultsStatus('No candidates found for «' + title + '».', 'err');
+                    '<tr><td colspan="6" class="table-empty">' +
+                    (title
+                        ? 'No candidates for this job filter. Clear filter or screen CVs first.'
+                        : 'No candidates in database yet. Screen CVs on the other tab.') +
+                    '</td></tr>';
+                showResultsStatus(
+                    title ? 'No rows for filter «' + title + '».' : 'No candidates in database yet.',
+                    'err'
+                );
                 return;
             }
 
@@ -1621,8 +1676,10 @@
                         ? '<div class="row-meta"><strong>Phase 1 Q:</strong> ' + escapeHtml(notes.phase_1_question) + '</div>'
                         : '';
                     const detailId = 'scr' + idx;
+                    const role = row.requisition_id || notes.requisition_title || '—';
                     return (
                         '<tr><td><div class="row-email">' + escapeHtml(email) + '</div>' + assess + '</td>' +
+                        '<td class="row-meta">' + escapeHtml(String(role).replace(/-/g, ' ')) + '</td>' +
                         '<td><span class="cv-score ' + scoreClass(sc) + '">' +
                         (sc != null && Number.isFinite(sc) ? sc : '—') + '</span></td>' +
                         '<td><span class="pill ' + st.cls + '">' + st.text + '</span>' +
@@ -1644,10 +1701,17 @@
                 });
             });
 
-            showResultsStatus('Loaded ' + rows.length + ' candidate(s) for «' + title + '».', 'ok');
+            const label = title ? ' for «' + title + '»' : ' (all jobs)';
+            showResultsStatus('Loaded ' + rows.length + ' candidate(s)' + label + '.', 'ok');
         }
 
-        document.getElementById('loadResultsBtn').addEventListener('click', loadScreeningResults);
+        const loadResultsBtn = document.getElementById('loadResultsBtn');
+        if (loadResultsBtn) {
+            loadResultsBtn.addEventListener('click', () => {
+                loadScreeningResults().catch((err) => showResultsStatus(err.message || 'Load failed', 'err'));
+            });
+        }
+
         document.getElementById('viewResultsBtn').addEventListener('click', () => enterWorkspace('results'));
 
         document.getElementById('anotherBtn').addEventListener('click', () => {
@@ -1662,6 +1726,9 @@
             setMode('single');
             setPortalTab('intake');
         });
+
+        window.addEventListener('error', (ev) => showFatal(ev.error || { message: ev.message }));
+        window.addEventListener('unhandledrejection', (ev) => showFatal(ev.reason || { message: 'Unhandled error' }));
     </script>
 </body>
 </html>

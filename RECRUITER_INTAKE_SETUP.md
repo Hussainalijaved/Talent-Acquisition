@@ -3,6 +3,14 @@
 Frontend: `recruiter-intake.html`  
 Live: `https://talent-acquisition-six.vercel.app/recruiter-intake.html`
 
+### Multiple CVs (same JD)
+
+1. Open recruiter intake → **Multiple CVs (same JD)**.
+2. Enter job title + JD once.
+3. Select several PDFs; enter **each candidate email** (auto-filled if the filename contains an email).
+4. **Start screening** — the browser calls the same webhook **once per CV**, in order (~30–90s each).
+5. Summary table shows OK / failed per candidate. n8n workflow unchanged (one execution per CV).
+
 ---
 
 ## Part 1 — Deploy frontend

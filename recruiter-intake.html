@@ -238,6 +238,19 @@
             font-size: 13px;
         }
 
+        .batch-row input.extracting {
+            color: #818cf8;
+            font-style: italic;
+        }
+
+        .batch-row input.extracted {
+            border-color: rgba(52, 211, 153, 0.45);
+        }
+
+        .batch-row input.missing {
+            border-color: rgba(248, 113, 113, 0.45);
+        }
+
         .progress-bar {
             height: 6px;
             background: rgba(255, 255, 255, 0.08);
@@ -442,7 +455,7 @@
                             <textarea id="cvText" placeholder="Paste CV plain text (single candidate only)…"></textarea>
                         </div>
                         <p class="hint hidden" id="batchHint">
-                            Select multiple PDFs. Enter each candidate’s email next to their file before submitting.
+                            Select multiple PDFs — emails are read from each CV automatically (first 2 pages). Edit any row if needed.
                         </p>
                     </div>
 
@@ -465,8 +478,18 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+
         const STORAGE_KEY = 'ta_cv_ingest_webhook';
+        const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
+        const BLOCKED_LOCAL = /^(noreply|no-reply|donotreply|mailer|bounce|info|hr|jobs|careers|support|admin|contact|hello|office)$/i;
+        const BLOCKED_DOMAIN = /(@example\.|@test\.|@linkedin\.|@facebook\.)/i;
+        let batchExtractGen = 0;
 
         const params = new URLSearchParams(window.location.search);
         const webhookInput = document.getElementById('webhookUrl');
@@ -552,6 +575,74 @@
             return m ? m[0].toLowerCase() : '';
         }
 
+        function pickBestEmail(text, fallbackName) {
+            const raw = String(text || '');
+            const found = raw.match(EMAIL_RE) || [];
+            const uniq = [];
+            for (const e of found) {
+                const email = e.toLowerCase().trim();
+                if (!email || uniq.includes(email)) continue;
+                const local = email.split('@')[0];
+                if (BLOCKED_LOCAL.test(local)) continue;
+                if (BLOCKED_DOMAIN.test(email)) continue;
+                if (email.endsWith('.png') || email.endsWith('.jpg')) continue;
+                uniq.push(email);
+            }
+            if (!uniq.length) return guessEmailFromFilename(fallbackName);
+
+            const scored = uniq.map((email) => {
+                let score = 0;
+                const pos = raw.toLowerCase().indexOf(email);
+                if (pos >= 0 && pos < 800) score += 30;
+                if (pos >= 0 && pos < 200) score += 20;
+                if (/\.(com|net|org|pk|co\.uk)$/i.test(email)) score += 5;
+                if (/gmail|outlook|hotmail|yahoo|icloud|live\./i.test(email)) score += 8;
+                return { email, score };
+            });
+            scored.sort((a, b) => b.score - a.score);
+            return scored[0].email;
+        }
+
+        async function extractTextFromPdf(file, maxPages) {
+            if (!window.pdfjsLib) throw new Error('PDF reader not loaded');
+            const buf = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+            const pages = Math.min(pdf.numPages, maxPages || 2);
+            let text = '';
+            for (let p = 1; p <= pages; p++) {
+                const page = await pdf.getPage(p);
+                const content = await page.getTextContent();
+                text += content.items.map((it) => it.str).join(' ') + '\n';
+            }
+            return text;
+        }
+
+        async function extractEmailFromPdf(file) {
+            const fromName = guessEmailFromFilename(file.name);
+            try {
+                const text = await extractTextFromPdf(file, 2);
+                return pickBestEmail(text, file.name) || fromName;
+            } catch (err) {
+                console.warn('PDF email extract failed', file.name, err);
+                return fromName;
+            }
+        }
+
+        async function fillSingleEmailFromPdf(file) {
+            if (!file) return;
+            const input = document.getElementById('candidateEmail');
+            input.placeholder = 'Reading email from CV…';
+            input.classList.add('extracting');
+            const email = await extractEmailFromPdf(file);
+            input.classList.remove('extracting');
+            if (email) {
+                input.value = email;
+                input.placeholder = 'candidate@example.com';
+            } else {
+                input.placeholder = 'Email not found in PDF — enter manually';
+            }
+        }
+
         function renderBatchList() {
             const list = document.getElementById('batchList');
             const files = Array.from(cvFile.files || []);
@@ -562,28 +653,58 @@
                 return;
             }
             list.classList.remove('hidden');
-            fileName.textContent = files.length + ' PDF(s) — enter email for each';
+            fileName.textContent = files.length + ' PDF(s) — extracting emails from CVs…';
             list.innerHTML = files
-                .map((file, i) => {
-                    const guess = guessEmailFromFilename(file.name);
-                    return (
-                        '<div class="batch-row" data-index="' +
-                        i +
-                        '">' +
-                        '<span class="fname" title="' +
-                        escapeHtml(file.name) +
-                        '">' +
-                        escapeHtml(file.name) +
-                        '</span>' +
-                        '<input type="email" required placeholder="email@example.com" data-batch-email="' +
-                        i +
-                        '" value="' +
-                        escapeHtml(guess) +
-                        '" />' +
-                        '</div>'
-                    );
-                })
+                .map((file, i) => (
+                    '<div class="batch-row" data-index="' +
+                    i +
+                    '">' +
+                    '<span class="fname" title="' +
+                    escapeHtml(file.name) +
+                    '">' +
+                    escapeHtml(file.name) +
+                    '</span>' +
+                    '<input type="email" required placeholder="Reading CV…" data-batch-email="' +
+                    i +
+                    '" class="extracting" disabled />' +
+                    '</div>'
+                ))
                 .join('');
+            runBatchEmailExtraction(files);
+        }
+
+        async function runBatchEmailExtraction(files) {
+            const gen = ++batchExtractGen;
+            let found = 0;
+            for (let i = 0; i < files.length; i++) {
+                if (gen !== batchExtractGen) return;
+                const input = document.querySelector('[data-batch-email="' + i + '"]');
+                if (!input) continue;
+                const email = await extractEmailFromPdf(files[i]);
+                if (gen !== batchExtractGen) return;
+                input.disabled = false;
+                input.classList.remove('extracting');
+                if (email) {
+                    input.value = email;
+                    input.classList.add('extracted');
+                    input.classList.remove('missing');
+                    input.placeholder = 'email@example.com';
+                    found++;
+                } else {
+                    input.value = '';
+                    input.classList.add('missing');
+                    input.classList.remove('extracted');
+                    input.placeholder = 'Not found — type email';
+                }
+            }
+            if (gen === batchExtractGen) {
+                fileName.textContent =
+                    files.length +
+                    ' PDF(s) — ' +
+                    found +
+                    ' email(s) auto-detected' +
+                    (found < files.length ? ' (fill rest manually)' : '');
+            }
         }
 
         function escapeHtml(s) {
@@ -594,22 +715,31 @@
         }
 
         fileZone.addEventListener('click', () => cvFile.click());
-        cvFile.addEventListener('change', () => {
-            if (intakeMode === 'batch') renderBatchList();
-            else fileName.textContent = cvFile.files[0] ? cvFile.files[0].name : '';
+        cvFile.addEventListener('change', async () => {
+            if (intakeMode === 'batch') {
+                renderBatchList();
+            } else {
+                const file = cvFile.files[0];
+                fileName.textContent = file ? file.name : '';
+                if (file && activeCvTab === 'pdf') await fillSingleEmailFromPdf(file);
+            }
         });
         fileZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             fileZone.classList.add('dragover');
         });
         fileZone.addEventListener('dragleave', () => fileZone.classList.remove('dragover'));
-        fileZone.addEventListener('drop', (e) => {
+        fileZone.addEventListener('drop', async (e) => {
             e.preventDefault();
             fileZone.classList.remove('dragover');
             if (e.dataTransfer.files.length) {
                 cvFile.files = e.dataTransfer.files;
                 if (intakeMode === 'batch') renderBatchList();
-                else fileName.textContent = cvFile.files[0].name;
+                else {
+                    const file = cvFile.files[0];
+                    fileName.textContent = file ? file.name : '';
+                    if (file && activeCvTab === 'pdf') await fillSingleEmailFromPdf(file);
+                }
             }
         });
 
@@ -711,17 +841,27 @@
                         return;
                     }
 
-                    const jobs = files.map((file, i) => {
+                    const jobs = [];
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
                         const input = document.querySelector('[data-batch-email="' + i + '"]');
-                        const email = (input && input.value.trim().toLowerCase()) || '';
-                        return { file, email, label: file.name };
-                    });
-
-                    for (const j of jobs) {
-                        if (!j.email) {
-                            showStatus('Enter an email for every CV in the list.', 'error');
+                        let email = (input && input.value.trim().toLowerCase()) || '';
+                        if (!email) {
+                            showStatus('Extracting email from ' + file.name + '…', 'pending');
+                            email = await extractEmailFromPdf(file);
+                            if (input && email) {
+                                input.value = email;
+                                input.classList.add('extracted');
+                            }
+                        }
+                        if (!email) {
+                            showStatus(
+                                'Could not find email in: ' + file.name + '. Type it manually or rename PDF to include email.',
+                                'error'
+                            );
                             return;
                         }
+                        jobs.push({ file, email, label: file.name });
                     }
 
                     progressBar.classList.add('show');

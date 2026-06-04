@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Submit candidates — Talent Acquisition</title>
+    <title>Recruiter portal — Talent Acquisition</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --bg: #0b0f19;
@@ -43,9 +44,169 @@
         .wrap {
             position: relative;
             z-index: 1;
-            max-width: 640px;
+            max-width: 1100px;
             margin: 0 auto;
         }
+
+        .portal-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .portal-tab {
+            flex: 1;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .portal-tab.active {
+            background: rgba(99, 102, 241, 0.22);
+            border-color: rgba(99, 102, 241, 0.55);
+            color: #fff;
+        }
+
+        .portal-panel { display: none; }
+        .portal-panel.active { display: block; }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .stat {
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px;
+        }
+
+        .stat .n { font-size: 26px; font-weight: 800; }
+        .stat .l { font-size: 11px; color: var(--muted); margin-top: 4px; }
+        .stat.ok .n { color: var(--ok); }
+        .stat.bad .n { color: #f87171; }
+        .stat.warn .n { color: #fbbf24; }
+
+        .results-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .btn-inline {
+            width: auto;
+            padding: 10px 18px;
+            font-size: 14px;
+            margin-top: 0;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: #c7d2fe;
+        }
+
+        .screen-table-wrap { overflow-x: auto; }
+
+        .screen-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .screen-table th {
+            text-align: left;
+            padding: 10px 8px;
+            color: var(--muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .screen-table td {
+            padding: 12px 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            vertical-align: top;
+        }
+
+        .screen-table tr:hover td { background: rgba(99, 102, 241, 0.06); }
+
+        .pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .pill-short { background: rgba(52, 211, 153, 0.15); color: #6ee7b7; }
+        .pill-reject { background: rgba(248, 113, 113, 0.15); color: #fca5a5; }
+        .pill-review { background: rgba(251, 191, 36, 0.15); color: #fde68a; }
+        .pill-dup { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; }
+        .pill-fail { background: rgba(248, 113, 113, 0.1); color: #f87171; }
+
+        .cv-score {
+            font-weight: 800;
+            font-size: 17px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .cv-score.high { color: var(--ok); }
+        .cv-score.mid { color: #fbbf24; }
+        .cv-score.low { color: #f87171; }
+
+        .reason-cell { color: #cbd5e1; line-height: 1.45; max-width: 360px; }
+        .row-email { font-weight: 600; color: #e2e8f0; }
+        .row-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+        .expand-btn {
+            background: none;
+            border: none;
+            color: #818cf8;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            padding: 0;
+            text-decoration: underline;
+        }
+
+        .detail-box {
+            display: none;
+            margin-top: 8px;
+            padding: 10px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .detail-box.open { display: block; }
+
+        .results-status {
+            margin-bottom: 14px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .results-status.show { display: block; }
+        .results-status.err { background: rgba(248, 113, 113, 0.12); color: #fecaca; border: 1px solid rgba(248, 113, 113, 0.3); }
+        .results-status.ok { background: rgba(52, 211, 153, 0.1); color: #a7f3d0; border: 1px solid rgba(52, 211, 153, 0.3); }
+
+        .table-empty { text-align: center; padding: 32px; color: var(--muted); }
 
         .card {
             background: var(--card);
@@ -388,12 +549,34 @@
 <body>
     <div class="wrap">
         <div class="card">
-            <div id="formView">
-                <h1>Submit candidates</h1>
-                <p class="subtitle">
-                    One job description — screen one or many CVs. Each CV is sent to n8n separately (same JD, queued one by one).
-                </p>
+            <h1>Recruiter portal</h1>
+            <p class="subtitle">
+                One job — screen CVs and view scores, outcomes, and AI reasons in the same place.
+            </p>
 
+            <div class="portal-tabs">
+                <button type="button" class="portal-tab active" data-portal="intake">Screen CVs</button>
+                <button type="button" class="portal-tab" data-portal="results">Results</button>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title">Job (shared)</div>
+                <div class="field">
+                    <label for="jobTitle">Job title</label>
+                    <input type="text" id="jobTitle" required placeholder="Junior .NET Full Stack Developer" />
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label for="jobRequirements">Job requirements (JD)</label>
+                    <textarea
+                        id="jobRequirements"
+                        required
+                        placeholder="Responsibilities, required skills, nice-to-haves…"
+                    ></textarea>
+                </div>
+            </div>
+
+            <div id="intakePanel" class="portal-panel active">
+            <div id="formView">
                 <div class="panel">
                     <div class="panel-title">n8n webhook (one-time setup)</div>
                     <div class="field">
@@ -416,20 +599,6 @@
                     <div class="mode-toggle">
                         <button type="button" class="mode-btn active" data-mode="single">Single candidate</button>
                         <button type="button" class="mode-btn" data-mode="batch">Multiple CVs (same JD)</button>
-                    </div>
-
-                    <div class="field">
-                        <label for="jobTitle">Job title</label>
-                        <input type="text" id="jobTitle" required placeholder="Junior .NET Full Stack Developer" />
-                    </div>
-
-                    <div class="field">
-                        <label for="jobRequirements">Job requirements (JD)</label>
-                        <textarea
-                            id="jobRequirements"
-                            required
-                            placeholder="Responsibilities, required skills, nice-to-haves…"
-                        ></textarea>
                     </div>
 
                     <div id="singleEmailField" class="field">
@@ -473,7 +642,38 @@
                 <h1 style="text-align:center">Done</h1>
                 <p class="subtitle" id="successMessage" style="text-align:center"></p>
                 <div id="resultsWrap"></div>
-                <button type="button" class="btn" id="anotherBtn" style="margin-top:20px">Submit more candidates</button>
+                <button type="button" class="btn" id="viewResultsBtn">View screening results</button>
+                <button type="button" class="btn" id="anotherBtn" style="margin-top:12px;background:transparent;border:1px solid var(--border)">Submit more candidates</button>
+            </div>
+            </div>
+
+            <div id="resultsPanel" class="portal-panel">
+                <div id="resultsStatusBox" class="results-status"></div>
+                <div class="results-toolbar">
+                    <button type="button" class="btn btn-inline" id="loadResultsBtn">Load / refresh results</button>
+                </div>
+                <div class="stats" id="statsRow" style="display:none">
+                    <div class="stat"><div class="n" id="statTotal">0</div><div class="l">Screened</div></div>
+                    <div class="stat ok"><div class="n" id="statShort">0</div><div class="l">Shortlisted</div></div>
+                    <div class="stat bad"><div class="n" id="statReject">0</div><div class="l">Rejected</div></div>
+                    <div class="stat warn"><div class="n" id="statReview">0</div><div class="l">Review</div></div>
+                </div>
+                <div class="panel screen-table-wrap">
+                    <table class="screen-table">
+                        <thead>
+                            <tr>
+                                <th>Candidate</th>
+                                <th>Score</th>
+                                <th>Outcome</th>
+                                <th>Reason</th>
+                                <th>When</th>
+                            </tr>
+                        </thead>
+                        <tbody id="screenTableBody">
+                            <tr><td colspan="5" class="table-empty">Switch here after screening, or click Load results.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -486,12 +686,51 @@
         }
 
         const STORAGE_KEY = 'ta_cv_ingest_webhook';
+        const STORAGE_JD_TITLE = 'ta_screening_jd_title';
+        const STORAGE_JD_REQ = 'ta_screening_jd_req';
+
+        function slugFromTitle(title) {
+            return String(title || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '')
+                .slice(0, 64);
+        }
+
+        const SUPABASE_URL = 'https://vnxstyadacgntnsvcvzn.supabase.co';
+        const SUPABASE_ANON_KEY =
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const savedTitle = localStorage.getItem(STORAGE_JD_TITLE);
+        const savedReq = localStorage.getItem(STORAGE_JD_REQ);
+        if (savedTitle) document.getElementById('jobTitle').value = savedTitle;
+        if (savedReq) document.getElementById('jobRequirements').value = savedReq;
+
+        function setPortalTab(tab) {
+            document.querySelectorAll('.portal-tab').forEach((b) => {
+                b.classList.toggle('active', b.dataset.portal === tab);
+            });
+            document.getElementById('intakePanel').classList.toggle('active', tab === 'intake');
+            document.getElementById('resultsPanel').classList.toggle('active', tab === 'results');
+            const url = new URL(location.href);
+            if (tab === 'results') url.searchParams.set('tab', 'results');
+            else url.searchParams.delete('tab');
+            history.replaceState(null, '', url.pathname + url.search);
+            if (tab === 'results') loadScreeningResults();
+        }
+
+        document.querySelectorAll('.portal-tab').forEach((btn) => {
+            btn.addEventListener('click', () => setPortalTab(btn.dataset.portal));
+        });
+
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('tab') === 'results') setPortalTab('results');
+
         const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
         const BLOCKED_LOCAL = /^(noreply|no-reply|donotreply|mailer|bounce|info|hr|jobs|careers|support|admin|contact|hello|office)$/i;
         const BLOCKED_DOMAIN = /(@example\.|@test\.|@linkedin\.|@facebook\.)/i;
         let batchExtractGen = 0;
-
-        const params = new URLSearchParams(window.location.search);
         const webhookInput = document.getElementById('webhookUrl');
         const saved =
             params.get('webhook') ||
@@ -805,6 +1044,7 @@
             formData.append('candidate_email', email);
             formData.append('requisition_title', title);
             formData.append('requisition_requirements', requirements);
+            formData.append('requisition_id', slugFromTitle(title));
             if (file) formData.append('cv_file', file, file.name);
             else if (cvText) formData.append('cv_text', cvText);
 
@@ -832,7 +1072,7 @@
                 ok +
                 ' succeeded, ' +
                 fail +
-                ' failed. Check n8n Executions and inboxes for shortlisted candidates.';
+                ' failed. Open the Results tab for scores and reasons (may take a few seconds in Supabase).';
 
             const rows = results
                 .map(
@@ -870,6 +1110,9 @@
                 showStatus('Job title and JD are required.', 'error');
                 return;
             }
+
+            localStorage.setItem(STORAGE_JD_TITLE, title);
+            localStorage.setItem(STORAGE_JD_REQ, requirements);
 
             const btn = document.getElementById('submitBtn');
             const progressBar = document.getElementById('progressBar');
@@ -942,6 +1185,7 @@
                     document.getElementById('successView').classList.add('show');
                     showBatchResults(results);
                     document.getElementById('statusBox').classList.remove('show');
+                    setTimeout(() => setPortalTab('results'), 800);
                 } else {
                     const email = document.getElementById('candidateEmail').value.trim().toLowerCase();
                     if (!email) {
@@ -973,8 +1217,9 @@
                     document.getElementById('successMessage').textContent =
                         'Submitted for ' +
                         email +
-                        '. Check n8n Executions and the candidate inbox for the assessment link.';
+                        '. Results tab will show score once n8n finishes (~30–90s).';
                     document.getElementById('statusBox').classList.remove('show');
+                    setTimeout(() => setPortalTab('results'), 800);
                 }
             } catch (err) {
                 console.error(err);
@@ -989,6 +1234,230 @@
             }
         });
 
+        function showResultsStatus(msg, type) {
+            const box = document.getElementById('resultsStatusBox');
+            box.textContent = msg;
+            box.className = 'results-status show ' + (type || '');
+        }
+
+        function parseNotes(raw) {
+            if (!raw) return {};
+            if (typeof raw === 'object') return raw;
+            try {
+                return JSON.parse(raw);
+            } catch {
+                return {};
+            }
+        }
+
+        function stageLabel(stage) {
+            const s = String(stage || '');
+            if (s === 'Shortlisted') return { text: 'Shortlisted', cls: 'pill-short', why: 'Selected for assessment' };
+            if (s === 'Rejected') return { text: 'Rejected', cls: 'pill-reject', why: 'Not a fit for this JD' };
+            if (s === 'ReviewQueue') return { text: 'Review', cls: 'pill-review', why: 'Needs recruiter review' };
+            if (s === 'DuplicateSkipped') return { text: 'Duplicate', cls: 'pill-dup', why: 'Already in system' };
+            if (s === 'ScreeningTransportFailed') return { text: 'Error', cls: 'pill-fail', why: 'AI/transport failed' };
+            return { text: s || 'Unknown', cls: 'pill-dup', why: '' };
+        }
+
+        function scoreClass(n) {
+            if (n == null || !Number.isFinite(n)) return '';
+            if (n >= 70) return 'high';
+            if (n >= 45) return 'mid';
+            return 'low';
+        }
+
+        function formatDate(iso) {
+            if (!iso) return '—';
+            try {
+                return new Date(iso).toLocaleString();
+            } catch {
+                return iso;
+            }
+        }
+
+        function rowMatchesJob(row, title, slug) {
+            if (!title) return true;
+            if (row.requisition_id && row.requisition_id === slug) return true;
+            const notes = parseNotes(row.notes);
+            const nTitle = notes.requisition_title || notes.config?.requisition_title || '';
+            if (nTitle && nTitle.toLowerCase().trim() === title.toLowerCase().trim()) return true;
+            const blob = JSON.stringify(notes).toLowerCase();
+            if (blob.includes(title.toLowerCase().slice(0, 24))) return true;
+            return false;
+        }
+
+        function extractReason(notes, stage) {
+            const n = parseNotes(notes);
+            const rec = String(n.recommendation || n.decision || '').toUpperCase();
+            const parts = [];
+            if (rec === 'SHORTLIST' || stage === 'Shortlisted') parts.push('Why selected:');
+            else if (rec === 'REJECT' || stage === 'Rejected') parts.push('Why rejected:');
+            else if (rec === 'REVIEW' || stage === 'ReviewQueue') parts.push('Needs review:');
+            if (n.summary) parts.push(n.summary);
+            else if (n.recommendation && parts.length < 2) parts.push(n.recommendation);
+            if (n.feedback) parts.push(n.feedback);
+            if (n.error) parts.push('Error: ' + n.error);
+            if (n.reason) parts.push(n.reason);
+            if (!parts.length && stage === 'Shortlisted') parts.push('Passed CV screening for this role.');
+            if (!parts.length && stage === 'Rejected') parts.push('Did not meet JD requirements.');
+            return parts.join(' ').trim() || '—';
+        }
+
+        function dedupeLatest(rows) {
+            const map = new Map();
+            for (const r of rows) {
+                const em = String(r.candidate_email || '').toLowerCase();
+                if (!em) continue;
+                const prev = map.get(em);
+                const t = new Date(r.created_at || 0).getTime();
+                const pt = prev ? new Date(prev.created_at || 0).getTime() : 0;
+                if (!prev || t >= pt) map.set(em, r);
+            }
+            return Array.from(map.values()).sort(
+                (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+            );
+        }
+
+        async function loadSessionsByEmails(emails) {
+            if (!emails.length) return {};
+            const { data, error } = await supabase
+                .from('assessment_sessions')
+                .select('id, candidate_email, status, current_phase, result, score, config')
+                .in('candidate_email', emails);
+            if (error) {
+                console.warn('sessions', error);
+                return {};
+            }
+            const map = {};
+            for (const row of data || []) {
+                const em = String(row.candidate_email || '').toLowerCase();
+                if (!map[em]) map[em] = row;
+            }
+            return map;
+        }
+
+        async function loadScreeningResults() {
+            const title = document.getElementById('jobTitle').value.trim();
+            const slug = slugFromTitle(title);
+            if (!title) {
+                showResultsStatus('Enter job title above (same as when you screened CVs).', 'err');
+                return;
+            }
+
+            localStorage.setItem(STORAGE_JD_TITLE, title);
+            const req = document.getElementById('jobRequirements').value.trim();
+            if (req) localStorage.setItem(STORAGE_JD_REQ, req);
+
+            const loadBtn = document.getElementById('loadResultsBtn');
+            loadBtn.disabled = true;
+            showResultsStatus('Loading from Supabase…', 'ok');
+
+            let data = [];
+            let error = null;
+            const bySlug = await supabase
+                .from('candidates')
+                .select('id, candidate_email, stage, score, requisition_id, notes, created_at, updated_at')
+                .eq('requisition_id', slug)
+                .order('created_at', { ascending: false })
+                .limit(200);
+
+            if (bySlug.error) error = bySlug.error;
+            else if ((bySlug.data || []).length) data = bySlug.data;
+            else {
+                const broad = await supabase
+                    .from('candidates')
+                    .select('id, candidate_email, stage, score, requisition_id, notes, created_at, updated_at')
+                    .order('created_at', { ascending: false })
+                    .limit(300);
+                error = broad.error;
+                data = (broad.data || []).filter((r) => rowMatchesJob(r, title, slug));
+            }
+
+            loadBtn.disabled = false;
+
+            if (error) {
+                showResultsStatus(
+                    'Could not read candidates: ' + error.message + '. Run supabase_rls_candidates_read.sql.',
+                    'err'
+                );
+                return;
+            }
+
+            let rows = dedupeLatest(data || []);
+            if (!rows.length) {
+                document.getElementById('statsRow').style.display = 'none';
+                document.getElementById('screenTableBody').innerHTML =
+                    '<tr><td colspan="5" class="table-empty">No results yet for this job. Screen CVs first.</td></tr>';
+                showResultsStatus('No candidates found for «' + title + '».', 'err');
+                return;
+            }
+
+            const emails = rows.map((r) => String(r.candidate_email || '').toLowerCase()).filter(Boolean);
+            const sessions = await loadSessionsByEmails(emails);
+            let short = 0, reject = 0, review = 0;
+            rows.forEach((r) => {
+                if (r.stage === 'Shortlisted') short++;
+                else if (r.stage === 'Rejected') reject++;
+                else if (r.stage === 'ReviewQueue' || r.stage === 'ScreeningTransportFailed') review++;
+            });
+
+            document.getElementById('statTotal').textContent = String(rows.length);
+            document.getElementById('statShort').textContent = String(short);
+            document.getElementById('statReject').textContent = String(reject);
+            document.getElementById('statReview').textContent = String(review);
+            document.getElementById('statsRow').style.display = 'grid';
+
+            const tbody = document.getElementById('screenTableBody');
+            tbody.innerHTML = rows
+                .map((row, idx) => {
+                    const email = row.candidate_email || '—';
+                    const st = stageLabel(row.stage);
+                    const sc = row.score != null ? Number(row.score) : null;
+                    const notes = parseNotes(row.notes);
+                    const reason = extractReason(row.notes, row.stage);
+                    const sess = sessions[String(email).toLowerCase()];
+                    let assess = '';
+                    if (sess) {
+                        assess =
+                            '<div class="row-meta">Assessment: ' +
+                            escapeHtml(sess.status || '—') +
+                            (sess.result ? ' (' + escapeHtml(sess.result) + ')' : '') +
+                            '</div>';
+                    }
+                    const q = notes.phase_1_question
+                        ? '<div class="row-meta"><strong>Phase 1 Q:</strong> ' + escapeHtml(notes.phase_1_question) + '</div>'
+                        : '';
+                    const detailId = 'scr' + idx;
+                    return (
+                        '<tr><td><div class="row-email">' + escapeHtml(email) + '</div>' + assess + '</td>' +
+                        '<td><span class="cv-score ' + scoreClass(sc) + '">' +
+                        (sc != null && Number.isFinite(sc) ? sc : '—') + '</span></td>' +
+                        '<td><span class="pill ' + st.cls + '">' + st.text + '</span>' +
+                        '<div class="row-meta">' + escapeHtml(st.why) + '</div></td>' +
+                        '<td><div class="reason-cell">' + escapeHtml(reason.slice(0, 260)) +
+                        (reason.length > 260 ? '…' : '') + '</div>' +
+                        '<button type="button" class="expand-btn" data-detail="' + detailId + '">Full details</button>' +
+                        '<div class="detail-box" id="' + detailId + '">' + escapeHtml(reason) + q + '</div></td>' +
+                        '<td class="row-meta">' + formatDate(row.created_at || row.updated_at) + '</td></tr>'
+                    );
+                })
+                .join('');
+
+            tbody.querySelectorAll('.expand-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const el = document.getElementById(btn.dataset.detail);
+                    if (el) el.classList.toggle('open');
+                    btn.textContent = el.classList.contains('open') ? 'Hide' : 'Full details';
+                });
+            });
+
+            showResultsStatus('Loaded ' + rows.length + ' candidate(s) for «' + title + '».', 'ok');
+        }
+
+        document.getElementById('loadResultsBtn').addEventListener('click', loadScreeningResults);
+        document.getElementById('viewResultsBtn').addEventListener('click', () => setPortalTab('results'));
+
         document.getElementById('anotherBtn').addEventListener('click', () => {
             document.getElementById('formView').classList.remove('hide');
             document.getElementById('successView').classList.remove('show');
@@ -999,6 +1468,7 @@
             document.getElementById('batchList').classList.add('hidden');
             fileName.textContent = '';
             setMode('single');
+            setPortalTab('intake');
         });
     </script>
 </body>

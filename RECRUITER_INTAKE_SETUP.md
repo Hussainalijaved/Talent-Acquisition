@@ -1,7 +1,15 @@
 # Recruiter intake (Level 1) — setup guide
 
-Frontend: `recruiter-intake.html`  
-Live: `https://talent-acquisition-six.vercel.app/recruiter-intake.html`
+Frontend (single portal): `recruiter-intake.html` — tabs **Screen CVs** | **Results**  
+Live: `https://talent-acquisition-six.vercel.app/recruiter-intake.html`  
+Old URL `screening-results.html` redirects to `?tab=results`.
+
+### Results tab (same page, same JD)
+
+1. Enter **job title + JD** once at the top (shared).
+2. Screen CVs on **Screen CVs** tab, then switch to **Results** (or `?tab=results`).
+3. **Load / refresh results** — email, score, outcome, AI reason.
+4. One-time Supabase: run `supabase_rls_candidates_read.sql` for anon `SELECT` on `candidates`.
 
 ### Multiple CVs (same JD)
 
@@ -143,6 +151,7 @@ Postman parity: same fields as form — `candidate_email`, `requisition_title`, 
 |------------|------------------|
 | Candidate email | `candidate_email` |
 | Job title | `requisition_title` |
+| Job slug (auto) | `requisition_id` |
 | JD textarea | `requisition_requirements` |
 | PDF file | `cv_file` (binary) |
 | Pasted CV | `cv_text` |

@@ -554,11 +554,11 @@
         // Must match: ngrok URL + n8n path on TRG - Assessment Answer (assessment-answer).
         const WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
 
-        const Shell = ({ children, subtitle, footerNote, fullWidth = false }) => (
+        const Shell = ({ children, subtitle, footerNote, fullWidth = false, headerExtra = null }) => (
             <div className="min-h-screen flex flex-col w-full">
                 <header className="sticky top-0 z-40 border-b border-surface-border/80 bg-[#080b10]/90 backdrop-blur-md w-full">
-                    <div className={`w-full h-16 flex items-center justify-between gap-4 ${fullWidth ? 'px-4 lg:px-5' : 'max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8'}`}>
-                        <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-full h-16 flex items-center justify-between gap-3 ${fullWidth ? 'px-4 lg:px-5' : 'max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8'}`}>
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
                             <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent/30 to-accent/5 border border-accent/40 flex items-center justify-center shrink-0 shadow-glow">
                                 <svg className="w-5 h-5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -569,10 +569,16 @@
                                 {subtitle && <p className="text-xs text-slate-500 truncate leading-tight mt-0.5">{subtitle}</p>}
                             </div>
                         </div>
-                        <span className="badge badge-accent shrink-0 hidden sm:inline-flex">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
-                            Secure session
-                        </span>
+                        {headerExtra ? (
+                            <div className="shrink-0 flex items-center" aria-label="Time remaining">
+                                {headerExtra}
+                            </div>
+                        ) : (
+                            <span className="badge badge-accent shrink-0 hidden sm:inline-flex">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
+                                Secure session
+                            </span>
+                        )}
                     </div>
                 </header>
                 <main className={`flex-1 w-full ${fullWidth ? 'min-h-0 flex flex-col' : ''}`}>{children}</main>
@@ -637,8 +643,6 @@
             phases,
             currentStep,
             totalSteps,
-            timeLeft,
-            phaseTimeLimit,
             candidateEmail,
             integrityViolationCount,
             pct,
@@ -657,11 +661,6 @@
                             style={{ width: `${pct}%` }}
                         />
                     </div>
-                </div>
-
-                <div className="sidebar-section">
-                    <p className="sidebar-label">Time remaining</p>
-                    <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} compact />
                 </div>
 
                 <div className="sidebar-section">
@@ -1134,14 +1133,20 @@
             const charCount = answer.trim().length;
             const canSubmit = charCount >= 5 && !contentMasked && !isLoading;
             return (
-                <Shell subtitle={`Phase ${currentStep} of ${totalSteps} · Technical assessment`} fullWidth>
+                <Shell
+                    subtitle={`Phase ${currentStep} of ${totalSteps} · Technical assessment`}
+                    fullWidth
+                    headerExtra={
+                        phaseTimeLimit != null && timeLeft != null ? (
+                            <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} compact />
+                        ) : null
+                    }
+                >
                     <div className="assessment-workspace fade-in assessment-lock">
                         <AssessmentSidebar
                             phases={phases}
                             currentStep={currentStep}
                             totalSteps={totalSteps}
-                            timeLeft={timeLeft}
-                            phaseTimeLimit={phaseTimeLimit}
                             candidateEmail={candidateEmail}
                             integrityViolationCount={integrityViolationCount}
                             pct={pct}
@@ -2008,7 +2013,7 @@
                         data = { output: sanitizedText };
                     }
 
-                    if (data.isFinal || data.result || currentStep >= totalSteps) {
+                    if (data.isFinal === true || currentStep >= totalSteps) {
                         setView('finished');
                         sessionStorage.removeItem('assessment_started');
                         setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));

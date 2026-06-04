@@ -544,6 +544,97 @@
         .pill-err { color: var(--danger); }
 
         .hidden { display: none !important; }
+
+        .hub-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 8px;
+        }
+
+        @media (max-width: 720px) {
+            .hub-grid { grid-template-columns: 1fr; }
+        }
+
+        .hub-card {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-align: left;
+            gap: 12px;
+            padding: 32px 28px;
+            min-height: 220px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.65);
+            cursor: pointer;
+            font-family: inherit;
+            color: #fff;
+            transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .hub-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(99, 102, 241, 0.55);
+            box-shadow: 0 16px 40px rgba(79, 70, 229, 0.2);
+        }
+
+        .hub-card.screening {
+            background: linear-gradient(145deg, rgba(79, 70, 229, 0.28) 0%, rgba(15, 23, 42, 0.85) 55%);
+        }
+
+        .hub-card.results {
+            background: linear-gradient(145deg, rgba(5, 150, 105, 0.22) 0%, rgba(15, 23, 42, 0.85) 55%);
+        }
+
+        .hub-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .hub-card h2 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 800;
+            -webkit-text-fill-color: #fff;
+            background: none;
+        }
+
+        .hub-card p {
+            margin: 0;
+            font-size: 14px;
+            color: #94a3b8;
+            line-height: 1.55;
+        }
+
+        .hub-cta {
+            margin-top: auto;
+            font-size: 13px;
+            font-weight: 700;
+            color: #a5b4fc;
+        }
+
+        .hub-back {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0 0 16px;
+            text-decoration: underline;
+        }
+
+        .hub-back:hover { color: #c7d2fe; }
+
+        .portal-panel.active { display: block !important; }
     </style>
 </head>
 <body>
@@ -551,8 +642,28 @@
         <div class="card">
             <h1>Recruiter portal</h1>
             <p class="subtitle">
-                One job — screen CVs and view scores, outcomes, and AI reasons in the same place.
+                Talent acquisition — CV screening and results for your open roles.
             </p>
+
+            <div id="portalHub">
+                <div class="hub-grid">
+                    <button type="button" class="hub-card screening" id="hubIntakeBtn">
+                        <span class="hub-icon">📄</span>
+                        <h2>CV Screening</h2>
+                        <p>Upload CVs against one job description. AI scores each candidate and shortlists for assessment.</p>
+                        <span class="hub-cta">Open screening →</span>
+                    </button>
+                    <button type="button" class="hub-card results" id="hubResultsBtn">
+                        <span class="hub-icon">📊</span>
+                        <h2>Screening Results</h2>
+                        <p>View scores, shortlisted / rejected status, and AI reasons for candidates already screened.</p>
+                        <span class="hub-cta">View results →</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="portalWorkspace" class="hidden">
+            <button type="button" class="hub-back" id="hubBackBtn">← Back to home</button>
 
             <div class="portal-tabs">
                 <button type="button" class="portal-tab active" data-portal="intake">Screen CVs</button>
@@ -675,6 +786,7 @@
                     </table>
                 </div>
             </div>
+            </div>
         </div>
     </div>
 
@@ -700,14 +812,44 @@
         const SUPABASE_URL = 'https://vnxstyadacgntnsvcvzn.supabase.co';
         const SUPABASE_ANON_KEY =
             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let supabase = null;
+        try {
+            if (window.supabase) {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+        } catch (e) {
+            console.error('Supabase init failed', e);
+        }
 
         const savedTitle = localStorage.getItem(STORAGE_JD_TITLE);
         const savedReq = localStorage.getItem(STORAGE_JD_REQ);
         if (savedTitle) document.getElementById('jobTitle').value = savedTitle;
         if (savedReq) document.getElementById('jobRequirements').value = savedReq;
 
-        function setPortalTab(tab) {
+        function showResultsStatus(msg, type) {
+            const box = document.getElementById('resultsStatusBox');
+            if (!box) return;
+            box.textContent = msg;
+            box.className = 'results-status show ' + (type || '');
+        }
+
+        function enterWorkspace(tab) {
+            document.getElementById('portalHub').classList.add('hidden');
+            document.getElementById('portalWorkspace').classList.remove('hidden');
+            setPortalTab(tab || 'intake', false);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function showHub() {
+            document.getElementById('portalHub').classList.remove('hidden');
+            document.getElementById('portalWorkspace').classList.add('hidden');
+            const url = new URL(location.href);
+            url.searchParams.delete('tab');
+            history.replaceState(null, '', url.pathname + url.search);
+        }
+
+        function setPortalTab(tab, reloadResults) {
+            const loadData = reloadResults !== false;
             document.querySelectorAll('.portal-tab').forEach((b) => {
                 b.classList.toggle('active', b.dataset.portal === tab);
             });
@@ -715,17 +857,31 @@
             document.getElementById('resultsPanel').classList.toggle('active', tab === 'results');
             const url = new URL(location.href);
             if (tab === 'results') url.searchParams.set('tab', 'results');
+            else if (tab === 'intake') url.searchParams.set('tab', 'intake');
             else url.searchParams.delete('tab');
             history.replaceState(null, '', url.pathname + url.search);
-            if (tab === 'results') loadScreeningResults();
+            if (tab === 'results' && loadData) {
+                setTimeout(() => {
+                    loadScreeningResults().catch((err) => {
+                        showResultsStatus(err.message || 'Could not load results.', 'err');
+                    });
+                }, 0);
+            }
         }
+
+        document.getElementById('hubIntakeBtn').addEventListener('click', () => enterWorkspace('intake'));
+        document.getElementById('hubResultsBtn').addEventListener('click', () => enterWorkspace('results'));
+        document.getElementById('hubBackBtn').addEventListener('click', showHub);
 
         document.querySelectorAll('.portal-tab').forEach((btn) => {
             btn.addEventListener('click', () => setPortalTab(btn.dataset.portal));
         });
 
         const params = new URLSearchParams(window.location.search);
-        if (params.get('tab') === 'results') setPortalTab('results');
+        const deepTab = params.get('tab');
+        if (deepTab === 'results' || deepTab === 'intake') {
+            enterWorkspace(deepTab);
+        }
 
         const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
         const BLOCKED_LOCAL = /^(noreply|no-reply|donotreply|mailer|bounce|info|hr|jobs|careers|support|admin|contact|hello|office)$/i;
@@ -1185,7 +1341,7 @@
                     document.getElementById('successView').classList.add('show');
                     showBatchResults(results);
                     document.getElementById('statusBox').classList.remove('show');
-                    setTimeout(() => setPortalTab('results'), 800);
+                    setTimeout(() => enterWorkspace('results'), 800);
                 } else {
                     const email = document.getElementById('candidateEmail').value.trim().toLowerCase();
                     if (!email) {
@@ -1219,7 +1375,7 @@
                         email +
                         '. Results tab will show score once n8n finishes (~30–90s).';
                     document.getElementById('statusBox').classList.remove('show');
-                    setTimeout(() => setPortalTab('results'), 800);
+                    setTimeout(() => enterWorkspace('results'), 800);
                 }
             } catch (err) {
                 console.error(err);
@@ -1233,12 +1389,6 @@
                 btn.disabled = false;
             }
         });
-
-        function showResultsStatus(msg, type) {
-            const box = document.getElementById('resultsStatusBox');
-            box.textContent = msg;
-            box.className = 'results-status show ' + (type || '');
-        }
 
         function parseNotes(raw) {
             if (!raw) return {};
@@ -1338,10 +1488,14 @@
         }
 
         async function loadScreeningResults() {
+            if (!supabase) {
+                showResultsStatus('Supabase client failed to load. Refresh the page or check your connection.', 'err');
+                return;
+            }
             const title = document.getElementById('jobTitle').value.trim();
             const slug = slugFromTitle(title);
             if (!title) {
-                showResultsStatus('Enter job title above (same as when you screened CVs).', 'err');
+                showResultsStatus('Enter job title in the Job (shared) section above.', 'err');
                 return;
             }
 
@@ -1350,7 +1504,7 @@
             if (req) localStorage.setItem(STORAGE_JD_REQ, req);
 
             const loadBtn = document.getElementById('loadResultsBtn');
-            loadBtn.disabled = true;
+            if (loadBtn) loadBtn.disabled = true;
             showResultsStatus('Loading from Supabase…', 'ok');
 
             let data = [];
@@ -1374,7 +1528,7 @@
                 data = (broad.data || []).filter((r) => rowMatchesJob(r, title, slug));
             }
 
-            loadBtn.disabled = false;
+            if (loadBtn) loadBtn.disabled = false;
 
             if (error) {
                 showResultsStatus(
@@ -1456,7 +1610,7 @@
         }
 
         document.getElementById('loadResultsBtn').addEventListener('click', loadScreeningResults);
-        document.getElementById('viewResultsBtn').addEventListener('click', () => setPortalTab('results'));
+        document.getElementById('viewResultsBtn').addEventListener('click', () => enterWorkspace('results'));
 
         document.getElementById('anotherBtn').addEventListener('click', () => {
             document.getElementById('formView').classList.remove('hide');

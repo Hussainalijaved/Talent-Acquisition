@@ -883,9 +883,19 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
         if (window.pdfjsLib) {
-            pdfjsLib.GlobalWorkerOptions.workerSrc =
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc =
                 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         }
+
+        function showFatal(err) {
+            const box = document.getElementById('fatalError');
+            if (!box) return;
+            box.textContent = 'Page error: ' + (err && err.message ? err.message : String(err));
+            box.classList.add('show');
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+        try {
 
         const STORAGE_KEY = 'ta_cv_ingest_webhook';
         const STORAGE_JD_TITLE = 'ta_screening_jd_title';
@@ -919,13 +929,6 @@
         if (savedReq && jobReqEl) jobReqEl.value = savedReq;
         const resultsFilterEl = document.getElementById('resultsFilter');
         if (savedTitle && resultsFilterEl) resultsFilterEl.value = savedTitle;
-
-        function showFatal(err) {
-            const box = document.getElementById('fatalError');
-            if (!box) return;
-            box.textContent = 'Page error: ' + (err && err.message ? err.message : String(err));
-            box.classList.add('show');
-        }
 
         function showResultsStatus(msg, type) {
             const box = document.getElementById('resultsStatusBox');
@@ -974,16 +977,15 @@
             }
         }
 
-        document.getElementById('hubBackBtn').addEventListener('click', (e) => {
-            e.preventDefault();
-            showHub();
-        });
+        const hubBack = document.getElementById('hubBackBtn');
+        if (hubBack) {
+            hubBack.addEventListener('click', (e) => {
+                e.preventDefault();
+                showHub();
+            });
+        }
 
         const params = new URLSearchParams(window.location.search);
-        const deepTab = params.get('tab');
-        if (deepTab === 'results' || deepTab === 'intake') {
-            enterWorkspace(deepTab);
-        }
 
         const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
         const BLOCKED_LOCAL = /^(noreply|no-reply|donotreply|mailer|bounce|info|hr|jobs|careers|support|admin|contact|hello|office)$/i;
@@ -994,20 +996,17 @@
             params.get('webhook') ||
             localStorage.getItem(STORAGE_KEY) ||
             '';
-        if (saved) webhookInput.value = saved;
+        if (saved && webhookInput) webhookInput.value = saved;
 
         let intakeMode = 'single';
         let activeCvTab = 'pdf';
 
-        document.getElementById('saveWebhookBtn').addEventListener('click', () => {
-            const url = webhookInput.value.trim();
-            if (!url) {
-                showStatus('Enter a webhook URL first.', 'error');
-                return;
-            }
-            localStorage.setItem(STORAGE_KEY, url);
-            showStatus('Webhook URL saved in this browser.', 'success');
-        });
+        function showStatus(msg, type) {
+            const box = document.getElementById('statusBox');
+            if (!box) return;
+            box.textContent = msg;
+            box.className = 'status show ' + (type || '');
+        }
 
         function setMode(mode) {
             intakeMode = mode;
@@ -1022,9 +1021,9 @@
             const fileZoneLabel = document.getElementById('fileZoneLabel');
 
             if (mode === 'batch') {
-                singleEmail.classList.add('hidden');
-                batchHint.classList.remove('hidden');
-                textTab.style.display = 'none';
+                if (singleEmail) singleEmail.classList.add('hidden');
+                if (batchHint) batchHint.classList.remove('hidden');
+                if (textTab) textTab.style.display = 'none';
                 if (activeCvTab === 'text') {
                     activeCvTab = 'pdf';
                     document.getElementById('panelPdf').classList.add('active');
@@ -1033,33 +1032,75 @@
                         b.classList.toggle('active', b.dataset.tab === 'pdf');
                     });
                 }
-                cvFile.multiple = true;
-                fileZoneLabel.textContent = 'Drop multiple PDFs here or click to browse';
+                if (cvFile) cvFile.multiple = true;
+                if (fileZoneLabel) fileZoneLabel.textContent = 'Drop multiple PDFs here or click to browse';
                 renderBatchList();
             } else {
-                singleEmail.classList.remove('hidden');
-                batchHint.classList.add('hidden');
-                batchList.classList.add('hidden');
-                textTab.style.display = '';
-                cvFile.multiple = false;
-                fileZoneLabel.textContent = 'Drop PDF here or click to browse';
+                if (singleEmail) singleEmail.classList.remove('hidden');
+                if (batchHint) batchHint.classList.add('hidden');
+                if (batchList) batchList.classList.add('hidden');
+                if (textTab) textTab.style.display = '';
+                if (cvFile) cvFile.multiple = false;
+                if (fileZoneLabel) fileZoneLabel.textContent = 'Drop PDF here or click to browse';
             }
-            cvFile.value = '';
-            document.getElementById('fileName').textContent = '';
+            if (cvFile) cvFile.value = '';
+            const fn = document.getElementById('fileName');
+            if (fn) fn.textContent = '';
         }
 
-        document.querySelectorAll('.mode-btn').forEach((btn) => {
-            btn.addEventListener('click', () => setMode(btn.dataset.mode));
-        });
-
-        document.querySelectorAll('.tab').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                if (intakeMode === 'batch' && btn.dataset.tab === 'text') return;
-                activeCvTab = btn.dataset.tab;
-                document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b === btn));
-                document.getElementById('panelPdf').classList.toggle('active', activeCvTab === 'pdf');
-                document.getElementById('panelText').classList.toggle('active', activeCvTab === 'text');
+        function setCvTab(tab) {
+            if (intakeMode === 'batch' && tab === 'text') return;
+            activeCvTab = tab;
+            document.querySelectorAll('#cvTabs .tab').forEach((b) => {
+                b.classList.toggle('active', b.dataset.tab === tab);
             });
+            const panelPdf = document.getElementById('panelPdf');
+            const panelText = document.getElementById('panelText');
+            if (panelPdf) panelPdf.classList.toggle('active', tab === 'pdf');
+            if (panelText) panelText.classList.toggle('active', tab === 'text');
+        }
+
+        function saveWebhookLocal() {
+            if (!webhookInput) return;
+            const url = webhookInput.value.trim();
+            if (!url) {
+                showStatus('Enter a webhook URL first.', 'error');
+                return;
+            }
+            localStorage.setItem(STORAGE_KEY, url);
+            showStatus('Webhook URL saved in this browser.', 'success');
+        }
+
+        document.addEventListener('click', function (e) {
+            const el = e.target;
+            if (!el || !el.closest) return;
+
+            const modeBtn = el.closest('.mode-btn');
+            if (modeBtn && modeBtn.dataset.mode) {
+                e.preventDefault();
+                setMode(modeBtn.dataset.mode);
+                return;
+            }
+
+            const tabBtn = el.closest('#cvTabs .tab');
+            if (tabBtn && tabBtn.dataset.tab) {
+                e.preventDefault();
+                setCvTab(tabBtn.dataset.tab);
+                return;
+            }
+
+            if (el.closest('#saveWebhookBtn')) {
+                e.preventDefault();
+                saveWebhookLocal();
+                return;
+            }
+
+            if (el.closest('#fileZone')) {
+                const cf = document.getElementById('cvFile');
+                if (cf) cf.click();
+                return;
+            }
+
         });
 
         const fileZone = document.getElementById('fileZone');
@@ -1286,12 +1327,6 @@
             });
         }
 
-        function showStatus(msg, type) {
-            const box = document.getElementById('statusBox');
-            box.textContent = msg;
-            box.className = 'status show ' + (type || '');
-        }
-
         function normalizeWebhookUrl(raw) {
             let url = String(raw || '').trim();
             if (!url) return '';
@@ -1353,7 +1388,10 @@
                 '</tbody></table>';
         }
 
-        document.getElementById('intakeForm').addEventListener('submit', async (e) => {
+        const intakeFormEl = document.getElementById('intakeForm');
+        if (!intakeFormEl) {
+            showFatal({ message: 'Form not found — refresh the page.' });
+        } else intakeFormEl.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const webhook = normalizeWebhookUrl(webhookInput.value);
@@ -1705,16 +1743,13 @@
             showResultsStatus('Loaded ' + rows.length + ' candidate(s)' + label + '.', 'ok');
         }
 
-        const loadResultsBtn = document.getElementById('loadResultsBtn');
-        if (loadResultsBtn) {
-            loadResultsBtn.addEventListener('click', () => {
-                loadScreeningResults().catch((err) => showResultsStatus(err.message || 'Load failed', 'err'));
-            });
+        const viewResultsBtn = document.getElementById('viewResultsBtn');
+        if (viewResultsBtn) {
+            viewResultsBtn.addEventListener('click', () => enterWorkspace('results'));
         }
 
-        document.getElementById('viewResultsBtn').addEventListener('click', () => enterWorkspace('results'));
-
-        document.getElementById('anotherBtn').addEventListener('click', () => {
+        const anotherBtn = document.getElementById('anotherBtn');
+        if (anotherBtn) anotherBtn.addEventListener('click', () => {
             document.getElementById('formView').classList.remove('hide');
             document.getElementById('successView').classList.remove('show');
             document.getElementById('statusBox').classList.remove('show');
@@ -1722,9 +1757,29 @@
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('intakeForm').reset();
             document.getElementById('batchList').classList.add('hidden');
-            fileName.textContent = '';
+            if (fileName) fileName.textContent = '';
             setMode('single');
             setPortalTab('intake');
+        });
+
+        document.addEventListener('click', function (e) {
+            if (e.target && e.target.closest && e.target.closest('#loadResultsBtn')) {
+                e.preventDefault();
+                loadScreeningResults().catch((err) =>
+                    showResultsStatus(err.message || 'Load failed', 'err')
+                );
+            }
+        });
+
+        const deepTab = params.get('tab');
+        if (deepTab === 'results' || deepTab === 'intake') {
+            enterWorkspace(deepTab);
+        }
+
+        } catch (err) {
+            showFatal(err);
+            console.error(err);
+        }
         });
 
         window.addEventListener('error', (ev) => showFatal(ev.error || { message: ev.message }));

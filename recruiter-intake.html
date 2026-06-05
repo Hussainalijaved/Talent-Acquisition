@@ -1644,7 +1644,7 @@
 
             const { data: allRows, error } = await supabase
                 .from('candidates')
-                .select('id, candidate_email, stage, score, requisition_id, notes, created_at, updated_at')
+                .select('id, candidate_email, stage, score, requisition_id, notes, created_at')
                 .order('created_at', { ascending: false })
                 .limit(500);
 
@@ -1726,7 +1726,7 @@
                         (reason.length > 260 ? '…' : '') + '</div>' +
                         '<button type="button" class="expand-btn" data-detail="' + detailId + '">Full details</button>' +
                         '<div class="detail-box" id="' + detailId + '">' + escapeHtml(reason) + q + '</div></td>' +
-                        '<td class="row-meta">' + formatDate(row.created_at || row.updated_at) + '</td></tr>'
+                        '<td class="row-meta">' + formatDate(row.created_at) + '</td></tr>'
                     );
                 })
                 .join('');

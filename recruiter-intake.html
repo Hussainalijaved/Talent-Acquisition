@@ -814,6 +814,7 @@
                     <div class="stat ok"><div class="n" id="statShort">0</div><div class="l">Shortlisted</div></div>
                     <div class="stat bad"><div class="n" id="statReject">0</div><div class="l">Rejected</div></div>
                     <div class="stat warn"><div class="n" id="statReview">0</div><div class="l">Review</div></div>
+                    <div class="stat"><div class="n" id="statDup">0</div><div class="l">Duplicate</div></div>
                 </div>
                 <div class="panel screen-table-wrap">
                     <table class="screen-table">
@@ -896,7 +897,6 @@
         if (savedTitle && jobTitleEl) jobTitleEl.value = savedTitle;
         if (savedReq && jobReqEl) jobReqEl.value = savedReq;
         const resultsFilterEl = document.getElementById('resultsFilter');
-        if (savedTitle && resultsFilterEl) resultsFilterEl.value = savedTitle;
 
         function showResultsStatus(msg, type) {
             const box = document.getElementById('resultsStatusBox');
@@ -1550,8 +1550,6 @@
             const notes = parseNotes(row.notes);
             const nTitle = notes.requisition_title || notes.config?.requisition_title || '';
             if (nTitle && nTitle.toLowerCase().trim() === title.toLowerCase().trim()) return true;
-            const blob = JSON.stringify(notes).toLowerCase();
-            if (blob.includes(title.toLowerCase().slice(0, 24))) return true;
             return false;
         }
 
@@ -1570,21 +1568,6 @@
             if (!parts.length && stage === 'Shortlisted') parts.push('Passed CV screening for this role.');
             if (!parts.length && stage === 'Rejected') parts.push('Did not meet JD requirements.');
             return parts.join(' ').trim() || '—';
-        }
-
-        function dedupeLatest(rows) {
-            const map = new Map();
-            for (const r of rows) {
-                const em = String(r.candidate_email || '').toLowerCase();
-                if (!em) continue;
-                const prev = map.get(em);
-                const t = new Date(r.created_at || 0).getTime();
-                const pt = prev ? new Date(prev.created_at || 0).getTime() : 0;
-                if (!prev || t >= pt) map.set(em, r);
-            }
-            return Array.from(map.values()).sort(
-                (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
-            );
         }
 
         async function loadSessionsByEmails(emails) {
@@ -1612,11 +1595,11 @@
             }
 
             const filterInput = document.getElementById('resultsFilter');
-            const title = (filterInput && filterInput.value.trim()) || (jobTitleEl && jobTitleEl.value.trim()) || '';
+            const title = filterInput ? filterInput.value.trim() : '';
             const slug = slugFromTitle(title);
 
             if (loadResultsBtn) loadResultsBtn.disabled = true;
-            showResultsStatus('Loading all candidates from database…', 'ok');
+            showResultsStatus('Loading all records from database…', 'ok');
 
             const { data: allRows, error } = await supabase
                 .from('candidates')
@@ -1634,7 +1617,7 @@
                 return;
             }
 
-            let rows = dedupeLatest(allRows || []);
+            let rows = allRows || [];
             if (title) {
                 rows = rows.filter((r) => rowMatchesJob(r, title, slug));
             }
@@ -1656,10 +1639,11 @@
 
             const emails = rows.map((r) => String(r.candidate_email || '').toLowerCase()).filter(Boolean);
             const sessions = await loadSessionsByEmails(emails);
-            let short = 0, reject = 0, review = 0;
+            let short = 0, reject = 0, review = 0, dup = 0;
             rows.forEach((r) => {
                 if (r.stage === 'Shortlisted') short++;
                 else if (r.stage === 'Rejected') reject++;
+                else if (r.stage === 'DuplicateSkipped') dup++;
                 else if (r.stage === 'ReviewQueue' || r.stage === 'ScreeningTransportFailed') review++;
             });
 
@@ -1667,6 +1651,8 @@
             document.getElementById('statShort').textContent = String(short);
             document.getElementById('statReject').textContent = String(reject);
             document.getElementById('statReview').textContent = String(review);
+            const statDup = document.getElementById('statDup');
+            if (statDup) statDup.textContent = String(dup);
             document.getElementById('statsRow').style.display = 'grid';
 
             const tbody = document.getElementById('screenTableBody');
@@ -1715,8 +1701,12 @@
                 });
             });
 
-            const label = title ? ' for «' + title + '»' : ' (all jobs)';
-            showResultsStatus('Loaded ' + rows.length + ' candidate(s)' + label + '.', 'ok');
+            const totalInDb = (allRows || []).length;
+            const label = title ? ' for «' + title + '»' : '';
+            showResultsStatus(
+                'Showing ' + rows.length + ' record(s)' + label + (totalInDb ? ' — ' + totalInDb + ' total in database.' : '.'),
+                'ok'
+            );
         }
 
         const viewResultsBtn = document.getElementById('viewResultsBtn');

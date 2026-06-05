@@ -1000,6 +1000,11 @@
                     <label for="jobTitle">Job title</label>
                     <input type="text" id="jobTitle" placeholder="Junior .NET Full Stack Developer" />
                 </div>
+                <div class="field">
+                    <label for="interviewerEmail">Interviewer email</label>
+                    <input type="email" id="interviewerEmail" placeholder="interviewer@company.com" autocomplete="email" />
+                    <p class="hint">Assessment complete hone par is email par notify jayega.</p>
+                </div>
                 <div class="field" style="margin-bottom:0">
                     <label for="jobRequirements">Requirements (JD)</label>
                     <textarea
@@ -1172,6 +1177,7 @@
         const STORAGE_KEY = 'ta_cv_ingest_webhook';
         const STORAGE_JD_TITLE = 'ta_screening_jd_title';
         const STORAGE_JD_REQ = 'ta_screening_jd_req';
+        const STORAGE_INTERVIEWER_EMAIL = 'ta_screening_interviewer_email';
 
         function slugFromTitle(title) {
             return String(title || '')
@@ -1195,10 +1201,13 @@
 
         const savedTitle = localStorage.getItem(STORAGE_JD_TITLE);
         const savedReq = localStorage.getItem(STORAGE_JD_REQ);
+        const savedInterviewer = localStorage.getItem(STORAGE_INTERVIEWER_EMAIL);
         const jobTitleEl = document.getElementById('jobTitle');
         const jobReqEl = document.getElementById('jobRequirements');
+        const interviewerEmailEl = document.getElementById('interviewerEmail');
         if (savedTitle && jobTitleEl) jobTitleEl.value = savedTitle;
         if (savedReq && jobReqEl) jobReqEl.value = savedReq;
+        if (savedInterviewer && interviewerEmailEl) interviewerEmailEl.value = savedInterviewer;
         const resultsFilterEl = document.getElementById('resultsFilter');
 
         function showResultsStatus(msg, type) {
@@ -1613,12 +1622,13 @@
             return url.replace(/\/+$/, '');
         }
 
-        async function screenOneCandidate(webhook, { email, title, requirements, file, cvText }) {
+        async function screenOneCandidate(webhook, { email, title, requirements, interviewerEmail, file, cvText }) {
             const formData = new FormData();
             formData.append('candidate_email', email);
             formData.append('requisition_title', title);
             formData.append('requisition_requirements', requirements);
             formData.append('requisition_id', slugFromTitle(title));
+            if (interviewerEmail) formData.append('interviewer_email', interviewerEmail);
             if (file) formData.append('cv_file', file, file.name);
             else if (cvText) formData.append('cv_text', cvText);
 
@@ -1682,14 +1692,20 @@
 
             const title = document.getElementById('jobTitle').value.trim();
             const requirements = document.getElementById('jobRequirements').value.trim();
+            const interviewerEmail = document.getElementById('interviewerEmail').value.trim().toLowerCase();
 
             if (!title || !requirements) {
                 showStatus('Job title and JD are required.', 'error');
                 return;
             }
+            if (!interviewerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(interviewerEmail)) {
+                showStatus('Valid interviewer email is required.', 'error');
+                return;
+            }
 
             localStorage.setItem(STORAGE_JD_TITLE, title);
             localStorage.setItem(STORAGE_JD_REQ, requirements);
+            localStorage.setItem(STORAGE_INTERVIEWER_EMAIL, interviewerEmail);
 
             const btn = document.getElementById('submitBtn');
             const progressBar = document.getElementById('progressBar');
@@ -1749,6 +1765,7 @@
                                 email: job.email,
                                 title,
                                 requirements,
+                                interviewerEmail,
                                 file: job.file,
                             });
                             results.push({ ...job, ok: true });
@@ -1777,7 +1794,7 @@
                             return;
                         }
                         showStatus('Sending to n8n… 30–90 seconds while AI screens the CV.', 'pending');
-                        await screenOneCandidate(webhook, { email, title, requirements, file });
+                        await screenOneCandidate(webhook, { email, title, requirements, interviewerEmail, file });
                     } else {
                         const text = document.getElementById('cvText').value.trim();
                         if (!text) {
@@ -1785,7 +1802,7 @@
                             return;
                         }
                         showStatus('Sending to n8n… 30–90 seconds while AI screens the CV.', 'pending');
-                        await screenOneCandidate(webhook, { email, title, requirements, cvText: text });
+                        await screenOneCandidate(webhook, { email, title, requirements, interviewerEmail, cvText: text });
                     }
 
                     document.getElementById('formView').classList.add('hide');

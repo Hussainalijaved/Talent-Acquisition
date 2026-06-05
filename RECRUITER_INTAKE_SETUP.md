@@ -151,6 +151,7 @@ Postman parity: same fields as form — `candidate_email`, `requisition_title`, 
 |------------|------------------|
 | Candidate email | `candidate_email` |
 | Job title | `requisition_title` |
+| Interviewer email | `interviewer_email` |
 | Job slug (auto) | `requisition_id` |
 | JD textarea | `requisition_requirements` |
 | PDF file | `cv_file` (binary) |

@@ -33,19 +33,21 @@ const cv = cvRaw.trim();
 const canon = String(cv || '').replace(/\s+/g, ' ').trim().slice(0, 6144);
 const fingerprint = `${email}|${canon}`;
 
-// Duplicate only when BOTH email and fingerprint (email + CV text) match an existing row.
-const is_duplicate = rows.some(
-  (r) =>
-    (r.candidate_email && r.candidate_email.toLowerCase() === email) &&
-    (r.fingerprint && r.fingerprint === fingerprint)
-);
-
-const requisition_id =
+const requisition_id = String(
   body.requisition_id ||
   triggerData.query?.requisition_id ||
   cfg.body?.requisition_id ||
   cfg.demo?.requisition_id ||
-  '';
+  ''
+).trim().toLowerCase();
+
+// Duplicate only when same person re-applies with the same CV for the same job.
+const is_duplicate = rows.some(
+  (r) =>
+    (r.candidate_email && r.candidate_email.toLowerCase() === email) &&
+    (r.fingerprint && r.fingerprint === fingerprint) &&
+    String(r.requisition_id || '').trim().toLowerCase() === requisition_id
+);
 
 const baseConfig = cfg.config || {};
 const config = {

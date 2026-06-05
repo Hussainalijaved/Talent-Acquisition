@@ -10,12 +10,14 @@ const email = intake.candidate_email;
 const cv = intake.cv_text;
 const canon = String(cv || '').replace(/\s+/g, ' ').trim().slice(0, 6144);
 const fingerprint = `${email}|${canon}`;
+const requisition_id = String(intake.requisition_id || '').trim().toLowerCase();
 
-// Duplicate only when BOTH email and fingerprint (email + CV text) match an existing row.
+// Duplicate only when same person re-applies with the same CV for the same job.
 const is_duplicate = rows.some(
   (r) =>
     (r.candidate_email && r.candidate_email.toLowerCase() === email) &&
-    (r.fingerprint && r.fingerprint === fingerprint)
+    (r.fingerprint && r.fingerprint === fingerprint) &&
+    String(r.requisition_id || '').trim().toLowerCase() === requisition_id
 );
 
 const config = {

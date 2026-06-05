@@ -1826,7 +1826,7 @@
             if (s === 'Shortlisted') return { text: 'Shortlisted', cls: 'pill-short', why: 'Selected for assessment' };
             if (s === 'Rejected') return { text: 'Rejected', cls: 'pill-reject', why: 'Not a fit for this JD' };
             if (s === 'ReviewQueue') return { text: 'Review', cls: 'pill-review', why: 'Needs recruiter review' };
-            if (s === 'DuplicateSkipped') return { text: 'Duplicate', cls: 'pill-dup', why: 'Same email and CV already screened' };
+            if (s === 'DuplicateSkipped') return { text: 'Duplicate', cls: 'pill-dup', why: 'Already applied for this job with same CV' };
             if (s === 'ScreeningTransportFailed') return { text: 'Error', cls: 'pill-fail', why: 'AI/transport failed' };
             return { text: s || 'Unknown', cls: 'pill-dup', why: '' };
         }

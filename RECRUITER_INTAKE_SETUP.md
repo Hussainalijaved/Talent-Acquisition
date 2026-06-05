@@ -166,4 +166,4 @@ Postman parity: same fields as form — `candidate_email`, `requisition_title`, 
 | 404 webhook | Workflow active; correct URL `/webhook/talent/cv-ingest` |
 | PDF empty in n8n | Binary field name must be `cv_file` |
 | JD still old | Apply Part 3 patches |
-| Duplicate skipped | Same email **and** same CV fingerprint already in `candidates` table |
+| Duplicate skipped | Same email, same CV, **and** same job (`requisition_id`) already in `candidates` |

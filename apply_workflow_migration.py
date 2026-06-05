@@ -209,7 +209,7 @@ NEW.append(
   score: null,
   fingerprint: $json.fingerprint,
   requisition_id: $json.requisition_id || '',
-  notes: { reason: 'duplicate_email_and_fingerprint', fingerprint: $json.fingerprint },
+  notes: { reason: 'duplicate_same_job_cv', fingerprint: $json.fingerprint },
 }) }}""",
         False,
         True,

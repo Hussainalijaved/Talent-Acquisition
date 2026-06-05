@@ -78,7 +78,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const intake = $('CODE - Frontend intake (JD + CV)').first().json;\nconst cfg = $('CFG - Workflow configuration').first().json;\nconst rows = $input.all().map((i) => i.json);\n\nconst email = intake.candidate_email;\nconst cv = intake.cv_text;\nconst canon = String(cv || '').replace(/\\s+/g, ' ').trim().slice(0, 6144);\nconst fingerprint = `${email}|${canon}`;\n\nconst is_duplicate = rows.some(\n  (r) =>\n    (r.candidate_email && r.candidate_email.toLowerCase() === email) &&\n    (r.fingerprint && r.fingerprint === fingerprint)\n);\n\nconst config = {\n  ...(cfg.config || {}),\n  requisition_title: intake.requisition_title,\n  requisition_requirements: intake.requisition_requirements,\n};\n\nreturn [\n  {\n    json: {\n      ...cfg,\n      config,\n      candidate_email: email,\n      cv_text: cv,\n      fingerprint,\n      is_duplicate,\n      requisition_id: intake.requisition_id || '',\n      jd_source: intake.jd_source,\n    },\n  },\n];"
+        "jsCode": "const intake = $('CODE - Frontend intake (JD + CV)').first().json;\nconst cfg = $('CFG - Workflow configuration').first().json;\nconst rows = $input.all().map((i) => i.json);\n\nconst email = intake.candidate_email;\nconst cv = intake.cv_text;\nconst canon = String(cv || '').replace(/\\s+/g, ' ').trim().slice(0, 6144);\nconst fingerprint = `${email}|${canon}`;\n\nconst requisition_id = String(intake.requisition_id || '').trim().toLowerCase();\n\nconst is_duplicate = rows.some(\n  (r) =>\n    (r.candidate_email && r.candidate_email.toLowerCase() === email) &&\n    (r.fingerprint && r.fingerprint === fingerprint) &&\n    String(r.requisition_id || '').trim().toLowerCase() === requisition_id\n);\n\nconst config = {\n  ...(cfg.config || {}),\n  requisition_title: intake.requisition_title,\n  requisition_requirements: intake.requisition_requirements,\n};\n\nreturn [\n  {\n    json: {\n      ...cfg,\n      config,\n      candidate_email: email,\n      cv_text: cv,\n      fingerprint,\n      is_duplicate,\n      requisition_id: intake.requisition_id || '',\n      jd_source: intake.jd_source,\n    },\n  },\n];"
       },
       "id": "fd6b0a10-37c4-47e7-8aae-7c144a89a235",
       "name": "CODE - Expand CVs and duplicate flag",
@@ -365,7 +365,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ ({\n  candidate_email: $json.candidate_email,\n  stage: 'DuplicateSkipped',\n  score: null,\n  fingerprint: $json.fingerprint,\n  requisition_id: $json.requisition_id || '',\n  notes: { reason: 'duplicate_email_and_fingerprint', fingerprint: $json.fingerprint },\n}) }}",
+        "jsonBody": "={{ ({\n  candidate_email: $json.candidate_email,\n  stage: 'DuplicateSkipped',\n  score: null,\n  fingerprint: $json.fingerprint,\n  requisition_id: $json.requisition_id || '',\n  notes: { reason: 'duplicate_same_job_cv', fingerprint: $json.fingerprint },\n}) }}",
         "options": {
           "timeout": 180000
         }

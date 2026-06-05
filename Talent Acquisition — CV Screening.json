@@ -1,0 +1,1138 @@
+{
+  "name": "Talent Acquisition — CV Screening (Frontend JD)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c27307e2-cde6-47ba-ad65-15eb975ee38b",
+      "name": "TRG - Manual (testing)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -688,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "talent/cv-ingest",
+        "options": {}
+      },
+      "id": "442a79c4-7a22-4cf6-98f4-6045622286e3",
+      "name": "TRG - Webhook CV ingest",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -688,
+        336
+      ],
+      "webhookId": "talent-cv-ingest"
+    },
+    {
+      "parameters": {},
+      "id": "fe7ad3fd-dd75-4f53-adf9-12f6d5b1be25",
+      "name": "MUX - Combine manual and webhook",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -464,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "cv_file",
+        "options": {}
+      },
+      "id": "7980db27-2f77-42da-907e-2307e6ac7110",
+      "name": "PDF - Extract text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        208
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "candidates"
+      },
+      "id": "0d346b2b-ab4f-4518-87df-16cc02c11f81",
+      "name": "DB - Supabase read candidates",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        112,
+        368
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "v9uLRFJsTMl7qUCN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const intake = $('CODE - Frontend intake (JD + CV)').first().json;\nconst cfg = $('CFG - Workflow configuration').first().json;\nconst rows = $input.all().map((i) => i.json);\n\nconst email = intake.candidate_email;\nconst cv = intake.cv_text;\nconst canon = String(cv || '').replace(/\\s+/g, ' ').trim().slice(0, 6144);\nconst fingerprint = `${email}|${canon}`;\n\nconst is_duplicate = rows.some(\n  (r) =>\n    (r.candidate_email && r.candidate_email.toLowerCase() === email) &&\n    (r.fingerprint && r.fingerprint === fingerprint)\n);\n\nconst config = {\n  ...(cfg.config || {}),\n  requisition_title: intake.requisition_title,\n  requisition_requirements: intake.requisition_requirements,\n};\n\nreturn [\n  {\n    json: {\n      ...cfg,\n      config,\n      candidate_email: email,\n      cv_text: cv,\n      fingerprint,\n      is_duplicate,\n      requisition_id: intake.requisition_id || '',\n      jd_source: intake.jd_source,\n    },\n  },\n];"
+      },
+      "id": "fd6b0a10-37c4-47e7-8aae-7c144a89a235",
+      "name": "CODE - Expand CVs and duplicate flag",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "nd1",
+              "leftValue": "={{ $json.is_duplicate }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b667a4c0-4f03-41f7-8182-3da3b221ee88",
+      "name": "GATE - Not duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nreturn [{ json: { ...j, cv_plaintext: String(j.cv_text || '').replace(/\\r/g, '').trim() } }];"
+      },
+      "id": "fa0412ed-ce6b-4eda-9200-0086653595da",
+      "name": "CODE - CV plain text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nconst jdTitle = row.config?.requisition_title;\nconst jdMust = row.config?.requisition_requirements;\nif (!jdTitle || !jdMust) {\n  throw new Error('Screening blocked: JD must come from recruiter form (CODE - Frontend intake).');\n}\nconst systemText = [\n  'You are the Lead AI Talent Acquisition Specialist for an elite technology firm.',\n  'Mission: identify top-tier talent with surgical precision and run a rigorous 5-phase sequential assessment.',\n  'This response is Phase 1 of 5: emit score, recommendation, assessment_status, summary, and exactly one Phase 1 drill-down question.',\n  'CV deep-scan: assess technical depth, project complexity, and mandatory skill matches versus the Job Specification provided by the recruiter (user message).',\n  'Initial scoring: assign score 0-100 for role-fit against THAT job spec only — not a generic role.',\n  'Use SHORTLIST only for strong matches; REJECT for clear non-fit; REVIEW when uncertain or mandatory skills are ambiguous.',\n  'Phase 1 challenge: one scenario-based technical question that targets a core skill evidenced on the CV—not generic or textbook.',\n  'Rules: never ask generic questions; only ONE question in phase_1_question; maintain sequential assessment (no Phase 2+ here).',\n  'AI shield (anti-cheat): frame phase_1_question so a convincing answer requires concrete project/context from this CV—generic LLM answers should fail.',\n  'If recommendation is REJECT, set phase_1_question to an empty string.',\n  'Always set assessment_status to IN_PROGRESS for this workflow step.',\n  'Return JSON matching the schema only.',\n].join(' ');\nconst phases = row.config?.max_questions ?? 5;\nconst userText = [\n  `Job specification title: ${jdTitle}`,\n  `Requirements: ${jdMust}`,\n  row.requisition_id ? `Submission ref: ${row.requisition_id}` : '',\n  `Sequential assessment: ${phases} phases total; you are issuing Phase 1 only (single drill-down in phase_1_question).`,\n  '',\n  'Candidate CV:',\n  row.cv_plaintext,\n].join('\\n');\nconst body = {\n  model: row.config?.groq_model || 'llama-3.3-70b-versatile',\n  messages: [\n    {\n      role: 'system',\n      content:\n        systemText +\n        ' Return JSON only with keys: score, recommendation, phase_1_question, assessment_status, summary.',\n    },\n    { role: 'user', content: userText },\n  ],\n  temperature: 0.15,\n  response_format: { type: 'json_object' },\n};\nreturn [{ json: { ...row, groq_cv_screening_request: body } }];"
+      },
+      "id": "e319e2ee-f4d0-4ffe-8c83-08aea5bf9381",
+      "name": "Gemini - CV screening agent (request body)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.groq_cv_screening_request }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "864829b5-1c7e-4a43-a2c5-f6b3b708389a",
+      "name": "Gemini - CV screening agent (API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1056,
+        352
+      ],
+      "retryOnFail": true,
+      "maxTries": 4,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const api = $input.first().json;\nconst base = $('CODE - CV plain text').first().json;\nconst text = api?.choices?.[0]?.message?.content;\nconst httpBad = !(api?.choices && api.choices[0]);\n\nif (!text || httpBad) {\n  const hint = api?.error?.message || api?.message || (httpBad ? 'GEMINI_HTTP_OR_SCHEMA' : 'GEMINI_EMPTY');\n  return [{\n    json: {\n      ...base,\n      screening: { error: hint, transport: httpBad },\n      decision: 'REVIEW',\n      score: null,\n      phase_1_question: '',\n      assessment_status: 'IN_PROGRESS',\n      session_phase: 1,\n      screening_transport_failed: true,\n    },\n  }];\n}\n\nlet s;\ntry {\n  s = JSON.parse(text);\n} catch (e) {\n  return [{\n    json: {\n      ...base,\n      screening: { error: 'GEMINI_PARSE', raw: String(text || '').slice(0, 2000) },\n      decision: 'REVIEW',\n      score: 50,\n      phase_1_question: '',\n      assessment_status: 'IN_PROGRESS',\n      session_phase: 1,\n      screening_transport_failed: false,\n    },\n  }];\n}\n\nlet score = Math.max(0, Math.min(100, Math.round(Number(s.score) || 0)));\nlet rec = String(s.recommendation || 'REVIEW').toUpperCase();\nif (!['SHORTLIST', 'REJECT', 'REVIEW'].includes(rec)) rec = 'REVIEW';\n\nlet decision = rec;\nif (score >= 78 && decision === 'REVIEW') decision = 'SHORTLIST';\nelse if (score <= 28 && decision === 'REVIEW') decision = 'REJECT';\nelse if (decision === 'SHORTLIST' && score < 62) decision = 'REVIEW';\nelse if (decision === 'REJECT' && score > 62) decision = 'REVIEW';\n\nconst phase_1_question = typeof s.phase_1_question === 'string' ? s.phase_1_question.trim() : '';\nconst assessment_status = 'IN_PROGRESS';\n\nreturn [{ json: { ...base, screening: s, score, decision, recommendation: rec, phase_1_question, assessment_status, session_phase: 1, screening_transport_failed: false } }];"
+      },
+      "id": "4cb4194e-cd46-4b8a-a13f-c01c2af83037",
+      "name": "CODE - Parse CV screening outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "sh1",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "SHORTLIST",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "81ba095b-3066-4835-80ee-5cf3fbad12c4",
+      "name": "GATE - Initial CV Pass",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1648,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.candidate_email }}",
+        "subject": "=Your application — next step: technical assessment (Phase {{ $json.session_phase }}/{{ $json.config.max_questions }})",
+        "emailType": "html",
+        "message": "={{ (() => {\n  const score = $json.score ?? 0;\n  const maxQ = $json.config?.max_questions ?? 5;\n  const org = $json.config?.organization_name || 'Talent Acquisition Team';\n  const role = $json.config?.requisition_title || 'Open role';\n  const email = String($json.candidate_email || '').trim().split('\\n')[0].split(/\\s+regards/i)[0].trim();\n  const session = $json.session_db_id || $json.id || $json.gmail_thread_id || '';\n  const link = 'https://talent-acquisition-six.vercel.app/?session=' + encodeURIComponent(session) + '&email=' + encodeURIComponent(email);\n  return `<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head>\n<body style=\"margin:0;padding:0;background:#eef2f7;font-family:Segoe UI,Arial,sans-serif;color:#1e293b;\">\n  <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#eef2f7;padding:32px 16px;\">\n    <tr><td align=\"center\">\n      <table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(15,23,42,.08);\">\n        <tr><td style=\"background:linear-gradient(135deg,#1d4ed8,#2563eb);padding:28px 32px;text-align:center;\">\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.75);\">Talent Assessment</p>\n          <h1 style=\"margin:0;font-size:24px;line-height:1.3;color:#ffffff;\">You are shortlisted</h1>\n        </td></tr>\n        <tr><td style=\"padding:32px;\">\n          <p style=\"margin:0 0 16px;font-size:16px;line-height:1.6;\">Hello,</p>\n          <p style=\"margin:0 0 16px;font-size:16px;line-height:1.6;\">Your CV has been successfully screened for <strong>${role}</strong> with a score of <strong style=\"color:#1d4ed8;\">${score}/100</strong>.</p>\n          <p style=\"margin:0 0 16px;font-size:16px;line-height:1.6;\">To proceed, complete our interactive technical assessment. It has <strong>${maxQ} timed phases</strong>. Each phase includes one question linked to your CV and the job description.</p>\n          <table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" style=\"margin:28px 0;\"><tr><td style=\"border-radius:8px;background:#2563eb;\">\n            <a href=\"${link}\" style=\"display:inline-block;padding:14px 28px;font-size:16px;font-weight:600;color:#ffffff;text-decoration:none;\">Start your assessment</a>\n          </td></tr></table>\n          <p style=\"margin:0 0 8px;font-size:13px;line-height:1.5;color:#64748b;\">If the button does not work, copy this link into your browser:</p>\n          <p style=\"margin:0 0 24px;font-size:13px;line-height:1.5;word-break:break-all;\"><a href=\"${link}\" style=\"color:#2563eb;\">${link}</a></p>\n          <p style=\"margin:0;font-size:16px;line-height:1.6;\">Regards,<br><strong>${org}</strong></p>\n        </td></tr>\n        <tr><td style=\"padding:16px 32px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;\">\n          <p style=\"margin:0;font-size:12px;line-height:1.5;color:#94a3b8;text-align:center;\">Please use a desktop browser, allow fullscreen, and keep the assessment tab focused.</p>\n        </td></tr>\n      </table>\n    </td></tr>\n  </table>\n</body>\n</html>`;\n})() }}",
+        "options": {}
+      },
+      "id": "ba0bad35-3876-411f-9669-edcb87167dbd",
+      "name": "MAIL - Email outreach agent (shortlist)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2080,
+        160
+      ],
+      "webhookId": "cec9d0de-22a2-456a-b209-4f6778c3ada4",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "BA2SGIRvrMkcdHoQ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "tf1",
+              "leftValue": "={{ $json.screening_transport_failed }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7f1709b8-6f00-4b4c-abe6-f0aa779a9f15",
+      "name": "GATE - Screening transport OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1424,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "rv1",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "REVIEW",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0ee021fa-e1ab-4262-af2f-5240a9a01ea2",
+      "name": "GATE - Needs human review",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2080,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Merge Gmail send response (after MAIL node)\nconst gmail = $input.first().json;\nconst mapped = $('CODE - SB map session id').first().json;\nconst parse = $('CODE - Parse CV screening outcome').first().json;\nconst msgId = gmail.id || gmail.messageId || '';\nconst threadId = String(gmail.threadId || gmail.thread_id || msgId || '').trim();\n\nreturn [\n  {\n    json: {\n      ...parse,\n      ...mapped,\n      gmail_message_id: msgId,\n      gmail_thread_id: threadId,\n      session_db_id: mapped.session_db_id || mapped.id,\n    },\n  },\n];"
+      },
+      "id": "3c5e990f-592d-4565-8f33-13a61a676ffb",
+      "name": "CODE - Merge Gmail send response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('CFG - Workflow configuration').first().json.config.supabase_url.replace(/\\/$/, '') + '/rest/v1/' + $('CFG - Workflow configuration').first().json.config.table_candidates }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  candidate_email: $json.candidate_email,\n  stage: 'DuplicateSkipped',\n  score: null,\n  fingerprint: $json.fingerprint,\n  requisition_id: $json.requisition_id || '',\n  notes: { reason: 'duplicate_email_and_fingerprint', fingerprint: $json.fingerprint },\n}) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "0ad864d8-6284-4ca8-932f-d40968a7d6d6",
+      "name": "HTTP - SB log duplicate skip",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        752,
+        608
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('CFG - Workflow configuration').first().json.config.supabase_url.replace(/\\/$/, '') + '/rest/v1/' + $('CFG - Workflow configuration').first().json.config.table_candidates }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  candidate_email: $json.candidate_email,\n  stage: 'ScreeningTransportFailed',\n  score: $json.score,\n  fingerprint: $json.fingerprint,\n  requisition_id: $json.requisition_id || '',\n  notes: $json.screening,\n}) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "71d683b2-52bc-4929-83e0-3f836c9733cb",
+      "name": "HTTP - SB log screening failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        592
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('CFG - Workflow configuration').first().json.config.supabase_url.replace(/\\/$/, '') + '/rest/v1/' + $('CFG - Workflow configuration').first().json.config.table_candidates }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  candidate_email: $json.candidate_email,\n  stage: 'ReviewQueue',\n  score: $json.score,\n  fingerprint: $json.fingerprint,\n  requisition_id: $json.requisition_id || '',\n  notes: $json.screening,\n}) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "c3601f7d-a884-48c4-8439-b9275c6bbb17",
+      "name": "HTTP - SB log review queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2368,
+        384
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('CFG - Workflow configuration').first().json.config.supabase_url.replace(/\\/$/, '') + '/rest/v1/' + $('CFG - Workflow configuration').first().json.config.table_candidates }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  candidate_email: $json.candidate_email,\n  stage: 'Rejected',\n  score: $json.score,\n  fingerprint: $json.fingerprint,\n  requisition_id: $json.requisition_id || '',\n  notes: $json.screening,\n}) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "83315a50-53c6-4506-8e1c-85b17a4ffd73",
+      "name": "HTTP - SB log rejected",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2368,
+        624
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - SB URLs after outreach mail\nconst j = $('CODE - Merge Gmail send response').first().json;\nconst mapped = $('CODE - SB map session id').first().json;\nconst b = String(j.config?.supabase_url || '').replace(/\\/+$/, '');\nconst tb = j.config?.table_assessment_sessions || 'assessment_sessions';\nconst sessionId = mapped.session_db_id || mapped.id;\nconst threadId = String(j.gmail_thread_id || '').trim();\nconst isRealThread =\n  threadId.length > 0 && !threadId.startsWith('pending-') && !threadId.startsWith('draft-');\n\nreturn [\n  {\n    json: {\n      ...j,\n      ...mapped,\n      gmail_thread_id: isRealThread ? threadId : mapped.gmail_thread_id,\n      session_phase: j.session_phase || 1,\n      _sb_insert_candidates: `${b}/rest/v1/${j.config?.table_candidates || 'candidates'}`,\n      _gmail_patch_url:\n        sessionId && isRealThread\n          ? `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(String(sessionId))}`\n          : '',\n      _gmail_patch_body: isRealThread\n        ? { gmail_thread_id: threadId, updated_at: new Date().toISOString() }\n        : null,\n    },\n  },\n];"
+      },
+      "id": "f53b8721-9c9e-48bf-8568-41852f5832df",
+      "name": "CODE - SB URLs after outreach mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2528,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('CODE - SB URLs after outreach mail').first().json._sb_insert_candidates }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({\n  candidate_email: $('CODE - SB URLs after outreach mail').first().json.candidate_email,\n  stage: 'Shortlisted',\n  score: $('CODE - SB URLs after outreach mail').first().json.score,\n  fingerprint: $('CODE - SB URLs after outreach mail').first().json.fingerprint,\n  requisition_id: $('CODE - SB URLs after outreach mail').first().json.requisition_id || '',\n  notes: $('CODE - SB URLs after outreach mail').first().json.screening,\n}) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "54ed2660-ff6f-4012-b70f-aa314114cb8c",
+      "name": "HTTP - SB candidates shortlisted",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2768,
+        160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - SB prepare session insert\n// Flow: GATE Shortlist → this node → HTTP insert → map session id → MAIL → Merge Gmail → PATCH thread (see n8n_code_patch_gmail_thread.js)\n\nfunction timerBounds(config) {\n  const min = Number(config?.timer_min_seconds);\n  const max = Number(config?.timer_max_seconds);\n  return {\n    min: Number.isFinite(min) && min > 0 ? min : 60,\n    max: Number.isFinite(max) && max > 0 ? max : 600,\n  };\n}\n\nfunction useAiTimeLimitSeconds(raw, config) {\n  const { min, max } = timerBounds(config);\n  let sec = Number(raw);\n  if (!Number.isFinite(sec) || sec <= 0) {\n    sec = Number(config?.default_phase_seconds ?? config?.phase_1_timer_seconds ?? 240);\n  }\n  if (!Number.isFinite(sec) || sec <= 0) sec = 240;\n  return Math.min(max, Math.max(min, Math.round(sec)));\n}\n\nfunction buildDeadline(isoStart, seconds) {\n  const start = isoStart ? new Date(isoStart) : new Date();\n  return new Date(start.getTime() + seconds * 1000).toISOString();\n}\n\nfunction uuidv4() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {\n    const r = (Math.random() * 16) | 0;\n    const v = c === 'x' ? r : (r & 0x3) | 0x8;\n    return v.toString(16);\n  });\n}\n\nfunction isRealGmailThreadId(id) {\n  const s = String(id || '').trim();\n  return s.length > 0 && !s.startsWith('pending-') && !s.startsWith('draft-');\n}\n\nfunction pickGmailThreadId(...candidates) {\n  for (const id of candidates) {\n    if (isRealGmailThreadId(id)) return String(id).trim();\n  }\n  return '';\n}\n\nconst parse = $('CODE - Parse CV screening outcome').first().json;\nconst inp = $input.first().json || {};\nconst httpOut =\n  inp.candidate_email || inp.stage || inp.notes || inp.gmail_thread_id ? inp : {};\n\nconst notes =\n  typeof httpOut?.notes === 'object' && httpOut.notes ? httpOut.notes : parse.screening || {};\n\nconst cfg =\n  parse.config || $('CFG - Workflow configuration').first().json.config || {};\n\nconst jdTitle = String(cfg.requisition_title || '').trim();\nconst jdReq = String(cfg.requisition_requirements || '').trim();\nif (!jdTitle || !jdReq) {\n  throw new Error(\n    'JD missing in config — recruiter form (requisition_title + requisition_requirements) must run before session insert.'\n  );\n}\n\nconst nowIso = new Date().toISOString();\nconst candidate_email = String(\n  httpOut.candidate_email || parse.candidate_email || inp.candidate_email || ''\n).trim().toLowerCase();\n\nconst qText = String(\n  parse.phase_1_question || notes.phase_1_question || ''\n).trim();\n\nconst aiSeconds =\n  parse.phase_1_time_limit_seconds ??\n  notes.time_limit_seconds ??\n  notes.timeLimitSeconds;\n\nconst time_limit_seconds = useAiTimeLimitSeconds(aiSeconds, cfg);\nconst deadline_at = buildDeadline(nowIso, time_limit_seconds);\nconst complexity_tier =\n  parse.phase_1_complexity_tier || notes.complexity_tier || notes.complexityTier || null;\n\nconst cv = String(parse.cv_plaintext || parse.cv_text || '').slice(0, 12000);\n\nconst session_uuid = uuidv4();\nconst realThread = pickGmailThreadId(\n  parse.gmail_thread_id,\n  httpOut.gmail_thread_id,\n  inp.gmail_thread_id\n);\n// Temporary until MAIL + PATCH; never use pending-email@...\nconst gmail_thread_id = realThread || `draft-${session_uuid}`;\n\nconst requisition_id =\n  String(parse.requisition_id || httpOut.requisition_id || inp.requisition_id || '').trim() ||\n  jdTitle\n    .toLowerCase()\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-|-$/g, '')\n    .slice(0, 64);\n\nconst sessionBody = {\n  id: session_uuid,\n  gmail_thread_id,\n  candidate_email,\n  current_phase: 1,\n  max_phases: cfg.max_questions ?? 5,\n  status: 'assessment',\n  screening: parse.screening || notes,\n  score: httpOut.score ?? parse.score ?? null,\n  requisition_id,\n  fingerprint: httpOut.fingerprint || parse.fingerprint || inp.fingerprint || '',\n  cv_plaintext: cv,\n  last_question_sent_at: nowIso,\n  updated_at: nowIso,\n  config: {\n    requisition_title: jdTitle,\n    requisition_requirements: jdReq,\n    organization_name: cfg.organization_name,\n    groq_model: cfg.groq_model,\n    gemini_model: cfg.gemini_model,\n    max_questions: cfg.max_questions,\n    interviewer_email: cfg.interviewer_email,\n    supabase_url: cfg.supabase_url,\n    supabase_key: cfg.supabase_key,\n    table_assessment_sessions: cfg.table_assessment_sessions,\n    fail_score_threshold: cfg.fail_score_threshold ?? 30,\n    pass_score_threshold: cfg.pass_score_threshold ?? 60,\n    timer_min_seconds: cfg.timer_min_seconds ?? 60,\n    timer_max_seconds: cfg.timer_max_seconds ?? 600,\n  },\n  interview_history: [\n    {\n      phase: 1,\n      question_text: qText,\n      answer_text: null,\n      score: null,\n      suggested_answer: null,\n      feedback: null,\n      time_limit_seconds,\n      deadline_at,\n      complexity_tier,\n      sent_at: nowIso,\n    },\n  ],\n};\n\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\n\nreturn [\n  {\n    json: {\n      ...parse,\n      ...httpOut,\n      config: cfg,\n      candidate_email,\n      gmail_thread_id,\n      gmail_thread_is_pending: !realThread,\n      phase_1_question: qText,\n      phase_1_time_limit_seconds: time_limit_seconds,\n      requisition_id,\n      _sb_insert_sessions: `${b}/rest/v1/${tb}`,\n      _session_body: sessionBody,\n      _now: nowIso,\n      _q_text: qText,\n    },\n  },\n];"
+      },
+      "id": "de85e3b4-4065-418a-8732-4bbbea6700d4",
+      "name": "CODE - SB prepare session insert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3008,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('CODE - SB prepare session insert').first().json._sb_insert_sessions }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('CODE - SB prepare session insert').first().json._session_body }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "51cd321e-ba4e-4050-b986-e15961a050cc",
+      "name": "HTTP - SB insert assessment session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3216,
+        160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg1",
+              "name": "config.supabase_url",
+              "value": "=https://vnxstyadacgntnsvcvzn.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "cfg2",
+              "name": "config.supabase_key",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}",
+              "type": "string"
+            },
+            {
+              "id": "cfg3",
+              "name": "config.table_candidates",
+              "value": "candidates",
+              "type": "string"
+            },
+            {
+              "id": "cfg4",
+              "name": "config.table_pending",
+              "value": "pending_replies",
+              "type": "string"
+            },
+            {
+              "id": "cfg15",
+              "name": "config.table_scheduling",
+              "value": "scheduling_log",
+              "type": "string"
+            },
+            {
+              "id": "cfg_max_q",
+              "name": "config.max_questions",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "cfg5",
+              "name": "config.organization_name",
+              "value": "Example Corporation Ltd.",
+              "type": "string"
+            },
+            {
+              "id": "cfg6",
+              "name": "config.talent_alias",
+              "value": "talent@example.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg7",
+              "name": "config.groq_model",
+              "value": "llama-3.3-70b-versatile",
+              "type": "string"
+            },
+            {
+              "id": "cfg8",
+              "name": "config.calendar_id",
+              "value": "primary",
+              "type": "string"
+            },
+            {
+              "id": "cfg12",
+              "name": "config.interviewer_email",
+              "value": "interviewer@example.com",
+              "type": "string"
+            },
+            {
+              "id": "t_sess",
+              "name": "config.table_assessment_sessions",
+              "value": "assessment_sessions",
+              "type": "string"
+            },
+            {
+              "id": "t_q",
+              "name": "config.table_assessment_questions",
+              "value": "assessment_questions",
+              "type": "string"
+            },
+            {
+              "id": "t_er",
+              "name": "config.table_errors",
+              "value": "workflow_errors",
+              "type": "string"
+            },
+            {
+              "id": "t_min",
+              "name": "config.min_response_seconds",
+              "value": 30,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "9303d902-b120-45f8-9cb2-cc037d14f18a",
+      "name": "CFG - Workflow configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -96,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map((item) => ({ json: { ...item.json } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1872,
+        160
+      ],
+      "id": "dcf2e4d0-1172-421d-aca4-aa4e4d70c78e",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "function getWebhookPayload() {\n  const tries = [\n    () => $('TRG - Webhook CV ingest').first().json,\n    () => $('MUX - Combine manual and webhook').first().json,\n    () => $('TRG - Manual (testing)').first().json,\n  ];\n  for (const fn of tries) {\n    try {\n      const raw = fn();\n      const body = raw.body || raw;\n      if (\n        body?.requisition_title ||\n        body?.requisition_requirements ||\n        body?.candidate_email ||\n        body?.cv_text\n      ) {\n        return body;\n      }\n    } catch (e) {\n      /* next */\n    }\n  }\n  return {};\n}\n\nfunction pick(body, ...keys) {\n  for (const k of keys) {\n    const v = body[k];\n    if (v != null && String(v).trim()) return String(v).trim();\n  }\n  return '';\n}\n\nconst pdf = $input.first().json;\nconst body = getWebhookPayload();\n\nconst requisition_title = pick(body, 'requisition_title', 'job_title');\nconst requisition_requirements = pick(\n  body,\n  'requisition_requirements',\n  'jd_text',\n  'job_requirements'\n);\nconst candidate_email = pick(body, 'candidate_email', 'email').toLowerCase();\nconst cv_text = String(pdf.text || pick(body, 'cv_text') || '').trim();\nconst requisition_id = pick(body, 'requisition_id');\n\nif (!requisition_title) {\n  throw new Error(\n    'Missing requisition_title — recruiter form must send job title (requisition_title).'\n  );\n}\nif (!requisition_requirements) {\n  throw new Error(\n    'Missing requisition_requirements — recruiter form must send JD text.'\n  );\n}\nif (!candidate_email) {\n  throw new Error('Missing candidate_email from recruiter form.');\n}\nif (!cv_text) {\n  throw new Error('Missing CV — upload PDF (cv_file) or paste cv_text.');\n}\n\nreturn [\n  {\n    json: {\n      requisition_title,\n      requisition_requirements,\n      candidate_email,\n      cv_text,\n      requisition_id,\n      jd_source: 'frontend_form',\n    },\n  },\n];"
+      },
+      "id": "a1f3e8c2-9b4d-4a1e-8f2c-frontend-intake01",
+      "name": "CODE - Frontend intake (JD + CV)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('CODE - SB prepare session insert').first().json;\nlet row = $input.first().json;\nif (Array.isArray(row)) row = row[0];\nconst session_id = row?.id;\nif (!session_id) {\n  throw new Error('Supabase did not return assessment session id — check HTTP - SB insert assessment session');\n}\nreturn [{\n  json: {\n    ...base,\n    session_db_id: session_id,\n    id: session_id,\n  },\n}];"
+      },
+      "id": "b8e2f1a0-map-session-id-0001",
+      "name": "CODE - SB map session id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3320,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('CODE - SB URLs after outreach mail').first().json._gmail_patch_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Workflow configuration').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('CODE - SB URLs after outreach mail').first().json._gmail_patch_body }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "a1b2c3d4-patch-gmail-thread-01",
+      "name": "HTTP - SB PATCH session gmail thread",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2648,
+        160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    }
+  ],
+  "connections": {
+    "TRG - Manual (testing)": {
+      "main": [
+        [
+          {
+            "node": "MUX - Combine manual and webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TRG - Webhook CV ingest": {
+      "main": [
+        [
+          {
+            "node": "MUX - Combine manual and webhook",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "MUX - Combine manual and webhook": {
+      "main": [
+        [
+          {
+            "node": "PDF - Extract text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF - Extract text": {
+      "main": [
+        [
+          {
+            "node": "CODE - Frontend intake (JD + CV)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB - Supabase read candidates": {
+      "main": [
+        [
+          {
+            "node": "CODE - Expand CVs and duplicate flag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Expand CVs and duplicate flag": {
+      "main": [
+        [
+          {
+            "node": "GATE - Not duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GATE - Not duplicate": {
+      "main": [
+        [
+          {
+            "node": "CODE - CV plain text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP - SB log duplicate skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - CV plain text": {
+      "main": [
+        [
+          {
+            "node": "Gemini - CV screening agent (request body)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini - CV screening agent (request body)": {
+      "main": [
+        [
+          {
+            "node": "Gemini - CV screening agent (API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini - CV screening agent (API)": {
+      "main": [
+        [
+          {
+            "node": "CODE - Parse CV screening outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Parse CV screening outcome": {
+      "main": [
+        [
+          {
+            "node": "GATE - Screening transport OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GATE - Screening transport OK": {
+      "main": [
+        [
+          {
+            "node": "GATE - Initial CV Pass",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP - SB log screening failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GATE - Initial CV Pass": {
+      "main": [
+        [
+          {
+            "node": "CODE - SB prepare session insert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GATE - Needs human review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MAIL - Email outreach agent (shortlist)": {
+      "main": [
+        [
+          {
+            "node": "CODE - Merge Gmail send response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Merge Gmail send response": {
+      "main": [
+        [
+          {
+            "node": "CODE - SB URLs after outreach mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - SB URLs after outreach mail": {
+      "main": [
+        [
+          {
+            "node": "HTTP - SB PATCH session gmail thread",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - SB candidates shortlisted": {
+      "main": [
+        []
+      ]
+    },
+    "CODE - SB prepare session insert": {
+      "main": [
+        [
+          {
+            "node": "HTTP - SB insert assessment session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GATE - Needs human review": {
+      "main": [
+        [
+          {
+            "node": "HTTP - SB log review queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP - SB log rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CFG - Workflow configuration": {
+      "main": [
+        [
+          {
+            "node": "DB - Supabase read candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Frontend intake (JD + CV)": {
+      "main": [
+        [
+          {
+            "node": "CFG - Workflow configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - SB insert assessment session": {
+      "main": [
+        [
+          {
+            "node": "CODE - SB map session id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - SB map session id": {
+      "main": [
+        [
+          {
+            "node": "MAIL - Email outreach agent (shortlist)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - SB PATCH session gmail thread": {
+      "main": [
+        [
+          {
+            "node": "HTTP - SB candidates shortlisted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "CV screening uses ONLY recruiter form JD (requisition_title + requisition_requirements). No hardcoded JD in CFG."
+  },
+  "tags": []
+}

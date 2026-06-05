@@ -48,32 +48,17 @@
             margin: 0 auto;
         }
 
-        .portal-tabs {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 20px;
-        }
-
-        .portal-tab {
-            flex: 1;
-            padding: 12px 16px;
-            border-radius: 12px;
-            border: 1px solid var(--border);
-            background: transparent;
-            color: var(--muted);
-            font-family: inherit;
-            font-size: 14px;
-            font-weight: 700;
-            cursor: pointer;
-            text-align: center;
-            text-decoration: none;
-            display: block;
-        }
-
-        .portal-tab.active {
-            background: rgba(99, 102, 241, 0.22);
-            border-color: rgba(99, 102, 241, 0.55);
+        .workspace-title {
+            font-size: 20px;
+            font-weight: 800;
+            margin: 0 0 4px;
             color: #fff;
+        }
+
+        .workspace-desc {
+            font-size: 13px;
+            color: var(--muted);
+            margin: 0 0 18px;
         }
 
         .results-toolbar {
@@ -677,20 +662,6 @@
         html[data-portal-tab='results'] #intakeJobPanel { display: none !important; }
         html[data-portal-tab='intake'] #intakeJobPanel { display: block !important; }
 
-        html[data-portal-tab='results'] .portal-tab[data-portal='results'],
-        html[data-portal-tab='intake'] .portal-tab[data-portal='intake'] {
-            background: rgba(99, 102, 241, 0.22);
-            border-color: rgba(99, 102, 241, 0.55);
-            color: #fff;
-        }
-
-        html[data-portal-tab='results'] .portal-tab[data-portal='intake'],
-        html[data-portal-tab='intake'] .portal-tab[data-portal='results'] {
-            background: transparent;
-            border-color: var(--border);
-            color: var(--muted);
-        }
-
         #fatalError {
             display: none;
             margin: 16px 0;
@@ -740,11 +711,8 @@
 
             <div id="portalWorkspace" class="hidden">
             <button type="button" class="hub-back" id="hubBackBtn">← Back to home</button>
-
-            <div class="portal-tabs">
-                <a href="?tab=intake" class="portal-tab" data-portal="intake">Screen CVs</a>
-                <a href="?tab=results" class="portal-tab" data-portal="results">Results</a>
-            </div>
+            <h2 class="workspace-title" id="workspaceTitle">CV Screening</h2>
+            <p class="workspace-desc" id="workspaceDesc">Upload CVs and run AI screening for one job.</p>
 
             <div id="intakePanel" class="portal-panel active">
             <div class="panel" id="intakeJobPanel">
@@ -955,12 +923,20 @@
 
         function setPortalTab(tab) {
             const t = tab === 'results' ? 'results' : 'intake';
-            document.querySelectorAll('.portal-tab').forEach((b) => {
-                b.classList.toggle('active', b.dataset.portal === t);
-            });
             document.getElementById('intakePanel').classList.toggle('active', t === 'intake');
             document.getElementById('resultsPanel').classList.toggle('active', t === 'results');
             document.documentElement.setAttribute('data-portal-tab', t);
+            const wt = document.getElementById('workspaceTitle');
+            const wd = document.getElementById('workspaceDesc');
+            if (wt && wd) {
+                if (t === 'results') {
+                    wt.textContent = 'Screening Results';
+                    wd.textContent = 'Scores, outcomes, and AI reasons for screened candidates.';
+                } else {
+                    wt.textContent = 'CV Screening';
+                    wd.textContent = 'Upload CVs and run AI screening for one job.';
+                }
+            }
             const url = new URL(location.href);
             url.searchParams.set('tab', t);
             try {
@@ -1483,7 +1459,7 @@
                     document.getElementById('successView').classList.add('show');
                     showBatchResults(results);
                     document.getElementById('statusBox').classList.remove('show');
-                    setTimeout(() => enterWorkspace('results'), 800);
+                    setTimeout(() => { location.href = location.pathname + '?tab=results'; }, 800);
                 } else {
                     const email = document.getElementById('candidateEmail').value.trim().toLowerCase();
                     if (!email) {
@@ -1517,7 +1493,7 @@
                         email +
                         '. Results tab will show score once n8n finishes (~30–90s).';
                     document.getElementById('statusBox').classList.remove('show');
-                    setTimeout(() => enterWorkspace('results'), 800);
+                    setTimeout(() => { location.href = location.pathname + '?tab=results'; }, 800);
                 }
             } catch (err) {
                 console.error(err);
@@ -1745,7 +1721,9 @@
 
         const viewResultsBtn = document.getElementById('viewResultsBtn');
         if (viewResultsBtn) {
-            viewResultsBtn.addEventListener('click', () => enterWorkspace('results'));
+            viewResultsBtn.addEventListener('click', () => {
+                location.href = location.pathname + '?tab=results';
+            });
         }
 
         const anotherBtn = document.getElementById('anotherBtn');

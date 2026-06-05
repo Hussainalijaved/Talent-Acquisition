@@ -4,62 +4,220 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Recruiter portal — Talent Acquisition</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
-            --bg: #0b0f19;
-            --card: rgba(20, 28, 47, 0.85);
-            --border: rgba(255, 255, 255, 0.08);
-            --text: #fff;
+            --bg: #080b10;
+            --surface: #121a27;
+            --surface-elevated: #1a2433;
+            --border: #2a3a4f;
+            --border-soft: rgba(255, 255, 255, 0.06);
+            --text: #f1f5f9;
             --muted: #94a3b8;
-            --accent: linear-gradient(135deg, #4f46e5, #6366f1);
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
             --danger: #f87171;
             --ok: #34d399;
+            --emerald: #10b981;
+            --radius: 14px;
+            --radius-lg: 20px;
+            --shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
         }
 
         * { box-sizing: border-box; }
 
+        html { scroll-behavior: smooth; }
+
         body {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'DM Sans', system-ui, sans-serif;
             background: var(--bg);
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.14), transparent),
+                radial-gradient(ellipse 50% 40% at 100% 0%, rgba(59, 130, 246, 0.06), transparent);
             color: var(--text);
             margin: 0;
             min-height: 100vh;
-            padding: 24px 16px 48px;
+            -webkit-font-smoothing: antialiased;
         }
 
-        body::before {
-            content: '';
-            position: fixed;
-            width: 420px;
-            height: 420px;
-            background: radial-gradient(circle, rgba(79, 70, 229, 0.18) 0%, transparent 70%);
-            top: 8%;
-            right: 10%;
-            pointer-events: none;
-            z-index: 0;
+        ::selection { background: rgba(99, 102, 241, 0.35); color: #fff; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f1419; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        .site-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-soft);
+            background: rgba(8, 11, 16, 0.85);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 50;
         }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .brand-mark {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 14px;
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+        }
+
+        .brand-text { font-weight: 700; font-size: 15px; letter-spacing: -0.02em; }
+        .brand-sub { font-size: 11px; color: var(--muted); display: block; margin-top: 1px; }
+
+        .header-link {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            text-decoration: none;
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            transition: color 0.15s, border-color 0.15s;
+        }
+
+        .header-link:hover { color: #e2e8f0; border-color: #475569; }
+
+        .site-main { padding: 32px 20px 56px; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            border-radius: 999px;
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            background: rgba(99, 102, 241, 0.12);
+            color: #a5b4fc;
+        }
+
+        .site-footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #64748b;
+            border-top: 1px solid var(--border-soft);
+        }
+
+        .site-footer a { color: #818cf8; text-decoration: none; }
+        .site-footer a:hover { text-decoration: underline; }
 
         .wrap {
-            position: relative;
-            z-index: 1;
-            max-width: 1100px;
+            max-width: 1080px;
             margin: 0 auto;
         }
 
+        .portal-hero {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .portal-hero .badge { margin-bottom: 14px; }
+
+        .workspace-header {
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-soft);
+        }
+
         .workspace-title {
-            font-size: 20px;
-            font-weight: 800;
-            margin: 0 0 4px;
+            font-size: 24px;
+            font-weight: 700;
+            margin: 12px 0 6px;
             color: #fff;
+            letter-spacing: -0.03em;
         }
 
         .workspace-desc {
-            font-size: 13px;
+            font-size: 14px;
             color: var(--muted);
-            margin: 0 0 18px;
+            margin: 0;
+            line-height: 1.55;
         }
+
+        .section-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .step-num {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: rgba(99, 102, 241, 0.2);
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            color: #a5b4fc;
+            font-size: 12px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .section-head h3 {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 700;
+            color: #e2e8f0;
+        }
+
+        .section-head p {
+            margin: 2px 0 0;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .webhook-panel summary {
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: #cbd5e1;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .webhook-panel summary::-webkit-details-marker { display: none; }
+
+        .webhook-panel summary::before {
+            content: '▸';
+            color: #818cf8;
+            transition: transform 0.2s;
+        }
+
+        .webhook-panel[open] summary::before { transform: rotate(90deg); }
+
+        .webhook-panel .webhook-body { margin-top: 14px; }
+
+        html[data-portal-tab] #portalHero { display: none; }
 
         .results-toolbar {
             align-items: flex-end;
@@ -96,17 +254,19 @@
         }
 
         .stat {
-            background: rgba(15, 23, 42, 0.55);
+            background: linear-gradient(180deg, var(--surface-elevated), var(--surface));
             border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 14px;
+            border-radius: var(--radius);
+            padding: 16px 18px;
+            box-shadow: var(--shadow);
         }
 
-        .stat .n { font-size: 26px; font-weight: 800; }
-        .stat .l { font-size: 11px; color: var(--muted); margin-top: 4px; }
+        .stat .n { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+        .stat .l { font-size: 11px; color: var(--muted); margin-top: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
         .stat.ok .n { color: var(--ok); }
         .stat.bad .n { color: #f87171; }
         .stat.warn .n { color: #fbbf24; }
+        .stat.dup .n { color: #94a3b8; }
 
         .results-toolbar {
             display: flex;
@@ -139,20 +299,26 @@
 
         .screen-table th {
             text-align: left;
-            padding: 10px 8px;
-            color: var(--muted);
-            font-size: 11px;
+            padding: 12px 14px;
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 0.06em;
             border-bottom: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.5);
+            position: sticky;
+            top: 0;
         }
 
         .screen-table td {
-            padding: 12px 8px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 14px;
+            border-bottom: 1px solid var(--border-soft);
             vertical-align: top;
         }
 
-        .screen-table tr:hover td { background: rgba(99, 102, 241, 0.06); }
+        .screen-table tbody tr { transition: background 0.15s; }
+        .screen-table tbody tr:hover td { background: rgba(99, 102, 241, 0.06); }
 
         .pill {
             display: inline-block;
@@ -221,47 +387,50 @@
         .table-empty { text-align: center; padding: 32px; color: var(--muted); }
 
         .card {
-            background: var(--card);
+            background: linear-gradient(180deg, rgba(26, 36, 51, 0.97) 0%, rgba(18, 26, 39, 0.98) 100%);
             border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 32px 28px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
-            backdrop-filter: blur(16px);
+            border-radius: var(--radius-lg);
+            padding: 36px 32px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        @media (max-width: 640px) {
+            .card { padding: 24px 18px; }
+            .site-main { padding: 20px 12px 40px; }
         }
 
         h1 {
-            margin: 0 0 8px;
-            font-size: 26px;
-            font-weight: 800;
-            text-align: center;
-            background: linear-gradient(135deg, #fff 40%, #94a3b8);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            margin: 0 0 10px;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            color: #fff;
         }
 
         .subtitle {
-            text-align: center;
             color: var(--muted);
-            font-size: 14px;
-            line-height: 1.55;
-            margin-bottom: 24px;
+            font-size: 15px;
+            line-height: 1.6;
+            margin: 0 auto;
+            max-width: 520px;
         }
 
         .panel {
-            background: rgba(15, 23, 42, 0.55);
+            background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 16px;
+            border-radius: var(--radius);
+            padding: 20px;
             margin-bottom: 20px;
+            box-shadow: var(--shadow);
         }
 
         .panel-title {
             font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: var(--muted);
-            font-weight: 600;
-            margin-bottom: 10px;
+            letter-spacing: 0.07em;
+            color: #64748b;
+            font-weight: 700;
+            margin-bottom: 12px;
         }
 
         label {
@@ -280,13 +449,16 @@
         textarea {
             width: 100%;
             padding: 12px 14px;
-            background: rgba(15, 23, 42, 0.7);
+            background: #0f1620;
             border: 1px solid var(--border);
             border-radius: 12px;
-            color: #fff;
+            color: #f1f5f9;
             font-family: inherit;
             font-size: 14px;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
+
+        input::placeholder, textarea::placeholder { color: #64748b; }
 
         textarea {
             min-height: 120px;
@@ -297,8 +469,8 @@
         input:focus,
         textarea:focus {
             outline: none;
-            border-color: rgba(99, 102, 241, 0.6);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22);
         }
 
         .field { margin-bottom: 16px; }
@@ -323,24 +495,42 @@
         }
 
         .mode-btn.active {
-            background: rgba(99, 102, 241, 0.2);
-            border-color: rgba(99, 102, 241, 0.5);
+            background: rgba(99, 102, 241, 0.18);
+            border-color: rgba(99, 102, 241, 0.55);
             color: #fff;
+            box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.2);
         }
 
         .file-zone {
-            border: 2px dashed rgba(148, 163, 184, 0.35);
-            border-radius: 12px;
-            padding: 20px;
+            border: 2px dashed #334155;
+            border-radius: var(--radius);
+            padding: 32px 20px;
             text-align: center;
             cursor: pointer;
-            transition: border-color 0.2s, background 0.2s;
+            transition: border-color 0.2s, background 0.2s, transform 0.15s;
+            background: rgba(15, 23, 42, 0.4);
         }
+
+        .file-zone-icon {
+            width: 44px;
+            height: 44px;
+            margin: 0 auto 12px;
+            border-radius: 12px;
+            background: rgba(99, 102, 241, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #818cf8;
+        }
+
+        .file-zone-label { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+        .file-zone-hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
         .file-zone:hover,
         .file-zone.dragover {
-            border-color: #6366f1;
+            border-color: var(--accent);
             background: rgba(99, 102, 241, 0.08);
+            transform: translateY(-1px);
         }
 
         .file-zone input { display: none; }
@@ -445,22 +635,41 @@
 
         .btn {
             width: 100%;
-            padding: 14px 20px;
+            padding: 14px 22px;
             border: none;
             border-radius: 12px;
             font-family: inherit;
-            font-size: 16px;
-            font-weight: 700;
+            font-size: 15px;
+            font-weight: 600;
             cursor: pointer;
             color: #fff;
-            background: var(--accent);
+            background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
             margin-top: 8px;
-            transition: opacity 0.2s, transform 0.15s;
+            transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 14px -2px rgba(99, 102, 241, 0.45);
+            letter-spacing: 0.01em;
         }
 
         .btn:hover:not(:disabled) {
             transform: translateY(-1px);
-            opacity: 0.95;
+            filter: brightness(1.06);
+            box-shadow: 0 4px 20px -2px rgba(99, 102, 241, 0.55);
+        }
+
+        .btn:active:not(:disabled) { transform: scale(0.98); }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: #cbd5e1;
+            box-shadow: none;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            border-color: #475569;
+            background: rgba(26, 36, 51, 0.6);
+            box-shadow: none;
+            filter: none;
         }
 
         .btn:disabled {
@@ -573,78 +782,121 @@
             flex-direction: column;
             align-items: flex-start;
             text-align: left;
-            gap: 12px;
-            padding: 32px 28px;
-            min-height: 220px;
-            border-radius: 20px;
+            gap: 14px;
+            padding: 28px 26px;
+            min-height: 240px;
+            border-radius: var(--radius-lg);
             border: 1px solid var(--border);
-            background: rgba(15, 23, 42, 0.65);
+            background: var(--surface);
             cursor: pointer;
             font-family: inherit;
             color: #fff;
-            transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+            transition: transform 0.2s, border-color 0.2s, box-shadow 0.25s;
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hub-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            transition: opacity 0.25s;
+            pointer-events: none;
+        }
+
+        .hub-card.screening::before {
+            background: radial-gradient(circle at 100% 0%, rgba(99, 102, 241, 0.2), transparent 55%);
+        }
+
+        .hub-card.results::before {
+            background: radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.18), transparent 55%);
         }
 
         .hub-card:hover {
-            transform: translateY(-3px);
-            border-color: rgba(99, 102, 241, 0.55);
-            box-shadow: 0 16px 40px rgba(79, 70, 229, 0.2);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.5);
         }
 
-        .hub-card.screening {
-            background: linear-gradient(145deg, rgba(79, 70, 229, 0.28) 0%, rgba(15, 23, 42, 0.85) 55%);
-        }
-
-        .hub-card.results {
-            background: linear-gradient(145deg, rgba(5, 150, 105, 0.22) 0%, rgba(15, 23, 42, 0.85) 55%);
-        }
+        .hub-card.screening:hover { border-color: rgba(99, 102, 241, 0.5); }
+        .hub-card.results:hover { border-color: rgba(16, 185, 129, 0.45); }
+        .hub-card:hover::before { opacity: 1; }
 
         .hub-icon {
-            width: 52px;
-            height: 52px;
-            border-radius: 14px;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 26px;
-            background: rgba(255, 255, 255, 0.08);
+            position: relative;
+            z-index: 1;
         }
+
+        .hub-card.screening .hub-icon {
+            background: rgba(99, 102, 241, 0.18);
+            color: #a5b4fc;
+        }
+
+        .hub-card.results .hub-icon {
+            background: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+        }
+
+        .hub-icon svg { width: 24px; height: 24px; }
 
         .hub-card h2 {
             margin: 0;
-            font-size: 22px;
-            font-weight: 800;
-            -webkit-text-fill-color: #fff;
-            background: none;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            position: relative;
+            z-index: 1;
         }
 
         .hub-card p {
             margin: 0;
             font-size: 14px;
-            color: #94a3b8;
-            line-height: 1.55;
+            color: var(--muted);
+            line-height: 1.6;
+            flex: 1;
+            position: relative;
+            z-index: 1;
         }
 
         .hub-cta {
             margin-top: auto;
             font-size: 13px;
-            font-weight: 700;
-            color: #a5b4fc;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            position: relative;
+            z-index: 1;
         }
 
+        .hub-card.screening .hub-cta { color: #a5b4fc; }
+        .hub-card.results .hub-cta { color: #6ee7b7; }
+
         .hub-back {
-            background: none;
-            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border);
             color: #94a3b8;
             font-family: inherit;
             font-size: 13px;
             font-weight: 600;
             cursor: pointer;
-            padding: 0 0 16px;
-            text-decoration: underline;
+            padding: 8px 14px;
+            border-radius: 10px;
+            margin-bottom: 4px;
+            transition: color 0.15s, border-color 0.15s;
         }
 
-        .hub-back:hover { color: #c7d2fe; }
+        .hub-back:hover { color: #e2e8f0; border-color: #475569; }
 
         .portal-panel.active { display: block !important; }
 
@@ -684,45 +936,72 @@
     </script>
 </head>
 <body>
+    <header class="site-header">
+        <a href="index.html" class="brand">
+            <span class="brand-mark">TA</span>
+            <span>
+                <span class="brand-text">Talent Acquisition</span>
+                <span class="brand-sub">Recruiter workspace</span>
+            </span>
+        </a>
+        <a href="index.html" class="header-link">Candidate portal</a>
+    </header>
+
+    <main class="site-main">
     <div class="wrap">
         <div class="card">
-            <h1>Recruiter portal</h1>
-            <p class="subtitle">
-                Talent acquisition — CV screening and results for your open roles.
-            </p>
+            <div id="portalHero" class="portal-hero">
+                <span class="badge">AI-powered hiring</span>
+                <h1>Recruiter Portal</h1>
+                <p class="subtitle">
+                    Screen CVs with your job description, review AI scores and reasons, and send assessments — all in one place.
+                </p>
+            </div>
             <div id="fatalError" role="alert"></div>
 
             <div id="portalHub">
                 <div class="hub-grid">
                     <a href="?tab=intake" class="hub-card screening" id="hubIntakeBtn">
-                        <span class="hub-icon">📄</span>
+                        <span class="hub-icon" aria-hidden="true">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        </span>
                         <h2>CV Screening</h2>
-                        <p>Upload CVs against one job description. AI scores each candidate and shortlists for assessment.</p>
-                        <span class="hub-cta">Open screening →</span>
+                        <p>Upload one or many CVs against a single JD. AI scores each candidate and shortlists for assessment.</p>
+                        <span class="hub-cta">Start screening →</span>
                     </a>
                     <a href="?tab=results" class="hub-card results" id="hubResultsBtn">
-                        <span class="hub-icon">📊</span>
+                        <span class="hub-icon" aria-hidden="true">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                        </span>
                         <h2>Screening Results</h2>
-                        <p>View scores, shortlisted / rejected status, and AI reasons for candidates already screened.</p>
+                        <p>Review every screening record — scores, outcomes, and AI reasoning pulled from your database.</p>
                         <span class="hub-cta">View results →</span>
                     </a>
                 </div>
             </div>
 
             <div id="portalWorkspace" class="hidden">
-            <button type="button" class="hub-back" id="hubBackBtn">← Back to home</button>
-            <h2 class="workspace-title" id="workspaceTitle">CV Screening</h2>
-            <p class="workspace-desc" id="workspaceDesc">Upload CVs and run AI screening for one job.</p>
+            <div class="workspace-header">
+                <button type="button" class="hub-back" id="hubBackBtn">← Back to home</button>
+                <h2 class="workspace-title" id="workspaceTitle">CV Screening</h2>
+                <p class="workspace-desc" id="workspaceDesc">Upload CVs and run AI screening for one job.</p>
+            </div>
 
             <div id="intakePanel" class="portal-panel active">
             <div class="panel" id="intakeJobPanel">
-                <div class="panel-title">Job for screening</div>
+                <div class="section-head">
+                    <span class="step-num">1</span>
+                    <div>
+                        <h3>Job description</h3>
+                        <p>Used for AI screening and assessment questions</p>
+                    </div>
+                </div>
                 <div class="field">
                     <label for="jobTitle">Job title</label>
                     <input type="text" id="jobTitle" placeholder="Junior .NET Full Stack Developer" />
                 </div>
                 <div class="field" style="margin-bottom:0">
-                    <label for="jobRequirements">Job requirements (JD)</label>
+                    <label for="jobRequirements">Requirements (JD)</label>
                     <textarea
                         id="jobRequirements"
                         placeholder="Responsibilities, required skills, nice-to-haves…"
@@ -730,25 +1009,33 @@
                 </div>
             </div>
             <div id="formView">
-                <div class="panel">
-                    <div class="panel-title">n8n webhook (one-time setup)</div>
-                    <div class="field">
-                        <label for="webhookUrl">CV ingest URL</label>
-                        <input
-                            type="url"
-                            id="webhookUrl"
-                            placeholder="https://your-n8n.example.com/webhook/talent/cv-ingest"
-                            autocomplete="off"
-                        />
-                        <p class="hint">
-                            Same URL as Postman: <code style="color:#a5b4fc">POST …/webhook/talent/cv-ingest</code>.
-                            Saved in this browser.
-                        </p>
-                        <button type="button" class="save-webhook" id="saveWebhookBtn">Save URL locally</button>
+                <details class="panel webhook-panel">
+                    <summary>Integration setup (one-time)</summary>
+                    <div class="webhook-body">
+                        <div class="field">
+                            <label for="webhookUrl">n8n CV ingest URL</label>
+                            <input
+                                type="url"
+                                id="webhookUrl"
+                                placeholder="https://your-n8n.example.com/webhook/talent/cv-ingest"
+                                autocomplete="off"
+                            />
+                            <p class="hint">
+                                Same as Postman: <code style="color:#a5b4fc">POST …/webhook/talent/cv-ingest</code> — saved in this browser.
+                            </p>
+                            <button type="button" class="save-webhook" id="saveWebhookBtn">Save URL locally</button>
+                        </div>
                     </div>
-                </div>
+                </details>
 
                 <form id="intakeForm" novalidate>
+                    <div class="section-head" style="margin-top:4px">
+                        <span class="step-num">2</span>
+                        <div>
+                            <h3>Candidates</h3>
+                            <p>Single CV or batch upload for the same role</p>
+                        </div>
+                    </div>
                     <div class="mode-toggle">
                         <button type="button" class="mode-btn active" data-mode="single">Single candidate</button>
                         <button type="button" class="mode-btn" data-mode="batch">Multiple CVs (same JD)</button>
@@ -768,7 +1055,11 @@
                         <div class="cv-panel active" id="panelPdf">
                             <div class="file-zone" id="fileZone">
                                 <input type="file" id="cvFile" accept=".pdf,application/pdf" />
-                                <span id="fileZoneLabel">Drop PDF here or click to browse</span>
+                                <div class="file-zone-icon" aria-hidden="true">
+                                    <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                </div>
+                                <div class="file-zone-label" id="fileZoneLabel">Drop PDF here or click to browse</div>
+                                <div class="file-zone-hint">PDF only · emails auto-detected in batch mode</div>
                                 <div class="file-name" id="fileName"></div>
                             </div>
                             <div id="batchList" class="batch-list hidden"></div>
@@ -785,7 +1076,7 @@
                         <div class="progress-fill" id="progressFill"></div>
                     </div>
 
-                    <button type="submit" class="btn" id="submitBtn">Start screening</button>
+                    <button type="submit" class="btn" id="submitBtn">Run AI screening</button>
                     <div class="status" id="statusBox" role="status"></div>
                 </form>
             </div>
@@ -796,11 +1087,18 @@
                 <p class="subtitle" id="successMessage" style="text-align:center"></p>
                 <div id="resultsWrap"></div>
                 <button type="button" class="btn" id="viewResultsBtn">View screening results</button>
-                <button type="button" class="btn" id="anotherBtn" style="margin-top:12px;background:transparent;border:1px solid var(--border)">Submit more candidates</button>
+                <button type="button" class="btn btn-secondary" id="anotherBtn" style="margin-top:12px">Submit more candidates</button>
             </div>
             </div>
 
             <div id="resultsPanel" class="portal-panel">
+                <div class="section-head">
+                    <span class="step-num">◎</span>
+                    <div>
+                        <h3>Screening dashboard</h3>
+                        <p>All records from your candidates table</p>
+                    </div>
+                </div>
                 <div id="resultsStatusBox" class="results-status"></div>
                 <div class="results-toolbar">
                     <div class="field" style="flex:1;min-width:200px;margin:0">
@@ -814,7 +1112,7 @@
                     <div class="stat ok"><div class="n" id="statShort">0</div><div class="l">Shortlisted</div></div>
                     <div class="stat bad"><div class="n" id="statReject">0</div><div class="l">Rejected</div></div>
                     <div class="stat warn"><div class="n" id="statReview">0</div><div class="l">Review</div></div>
-                    <div class="stat"><div class="n" id="statDup">0</div><div class="l">Duplicate</div></div>
+                    <div class="stat dup"><div class="n" id="statDup">0</div><div class="l">Duplicate</div></div>
                 </div>
                 <div class="panel screen-table-wrap">
                     <table class="screen-table">
@@ -837,6 +1135,11 @@
             </div>
         </div>
     </div>
+    </main>
+
+    <footer class="site-footer">
+        Talent Acquisition · <a href="index.html">Candidate assessment portal</a>
+    </footer>
 
     <script>
         (function () {
@@ -931,10 +1234,10 @@
             if (wt && wd) {
                 if (t === 'results') {
                     wt.textContent = 'Screening Results';
-                    wd.textContent = 'Scores, outcomes, and AI reasons for screened candidates.';
+                    wd.textContent = 'Every screening record from your database — scores, outcomes, and AI reasoning.';
                 } else {
                     wt.textContent = 'CV Screening';
-                    wd.textContent = 'Upload CVs and run AI screening for one job.';
+                    wd.textContent = 'Define the role, upload CVs, and let AI score candidates against your JD.';
                 }
             }
             const url = new URL(location.href);

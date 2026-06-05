@@ -1,0 +1,2060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recruiter portal — Talent Acquisition</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --bg: #080b10;
+            --surface: #121a27;
+            --surface-elevated: #1a2433;
+            --border: #2a3a4f;
+            --border-soft: rgba(255, 255, 255, 0.06);
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --danger: #f87171;
+            --ok: #34d399;
+            --emerald: #10b981;
+            --radius: 14px;
+            --radius-lg: 20px;
+            --shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+        }
+
+        * { box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'DM Sans', system-ui, sans-serif;
+            background: var(--bg);
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.14), transparent),
+                radial-gradient(ellipse 50% 40% at 100% 0%, rgba(59, 130, 246, 0.06), transparent);
+            color: var(--text);
+            margin: 0;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        ::selection { background: rgba(99, 102, 241, 0.35); color: #fff; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f1419; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        .site-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-soft);
+            background: rgba(8, 11, 16, 0.85);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .brand-mark {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 14px;
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+        }
+
+        .brand-text { font-weight: 700; font-size: 15px; letter-spacing: -0.02em; }
+        .brand-sub { font-size: 11px; color: var(--muted); display: block; margin-top: 1px; }
+
+        .header-link {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            text-decoration: none;
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            transition: color 0.15s, border-color 0.15s;
+        }
+
+        .header-link:hover { color: #e2e8f0; border-color: #475569; }
+
+        .site-main { padding: 32px 20px 56px; }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 10px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            border-radius: 999px;
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            background: rgba(99, 102, 241, 0.12);
+            color: #a5b4fc;
+        }
+
+        .site-footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #64748b;
+            border-top: 1px solid var(--border-soft);
+        }
+
+        .site-footer a { color: #818cf8; text-decoration: none; }
+        .site-footer a:hover { text-decoration: underline; }
+
+        .wrap {
+            max-width: 1080px;
+            margin: 0 auto;
+        }
+
+        .portal-hero {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .portal-hero .badge { margin-bottom: 14px; }
+
+        .workspace-header {
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-soft);
+        }
+
+        .workspace-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin: 12px 0 6px;
+            color: #fff;
+            letter-spacing: -0.03em;
+        }
+
+        .workspace-desc {
+            font-size: 14px;
+            color: var(--muted);
+            margin: 0;
+            line-height: 1.55;
+        }
+
+        .section-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .step-num {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: rgba(99, 102, 241, 0.2);
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            color: #a5b4fc;
+            font-size: 12px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .section-head h3 {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 700;
+            color: #e2e8f0;
+        }
+
+        .section-head p {
+            margin: 2px 0 0;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .webhook-panel summary {
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: #cbd5e1;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .webhook-panel summary::-webkit-details-marker { display: none; }
+
+        .webhook-panel summary::before {
+            content: '▸';
+            color: #818cf8;
+            transition: transform 0.2s;
+        }
+
+        .webhook-panel[open] summary::before { transform: rotate(90deg); }
+
+        .webhook-panel .webhook-body { margin-top: 14px; }
+
+        html[data-portal-tab] #portalHero { display: none; }
+
+        .results-toolbar {
+            align-items: flex-end;
+        }
+
+        .results-toolbar .field label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .results-toolbar .field input {
+            width: 100%;
+            padding: 10px 12px;
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+        }
+
+        .portal-panel { display: none; }
+        .portal-panel.active { display: block; }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .stat {
+            background: linear-gradient(180deg, var(--surface-elevated), var(--surface));
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 18px;
+            box-shadow: var(--shadow);
+        }
+
+        .stat .n { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+        .stat .l { font-size: 11px; color: var(--muted); margin-top: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+        .stat.ok .n { color: var(--ok); }
+        .stat.bad .n { color: #f87171; }
+        .stat.warn .n { color: #fbbf24; }
+        .stat.dup .n { color: #94a3b8; }
+
+        .results-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .btn-inline {
+            width: auto;
+            padding: 10px 18px;
+            font-size: 14px;
+            margin-top: 0;
+        }
+
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: #c7d2fe;
+        }
+
+        .screen-table-wrap { overflow-x: auto; }
+
+        .screen-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .screen-table th {
+            text-align: left;
+            padding: 12px 14px;
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.5);
+            position: sticky;
+            top: 0;
+        }
+
+        .screen-table td {
+            padding: 14px;
+            border-bottom: 1px solid var(--border-soft);
+            vertical-align: top;
+        }
+
+        .screen-table tbody tr { transition: background 0.15s; }
+        .screen-table tbody tr:hover td { background: rgba(99, 102, 241, 0.06); }
+
+        .pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .pill-short { background: rgba(52, 211, 153, 0.15); color: #6ee7b7; }
+        .pill-reject { background: rgba(248, 113, 113, 0.15); color: #fca5a5; }
+        .pill-review { background: rgba(251, 191, 36, 0.15); color: #fde68a; }
+        .pill-dup { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; }
+        .pill-fail { background: rgba(248, 113, 113, 0.1); color: #f87171; }
+
+        .cv-score {
+            font-weight: 800;
+            font-size: 17px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .cv-score.high { color: var(--ok); }
+        .cv-score.mid { color: #fbbf24; }
+        .cv-score.low { color: #f87171; }
+
+        .reason-cell { color: #cbd5e1; line-height: 1.45; max-width: 360px; }
+        .row-email { font-weight: 600; color: #e2e8f0; }
+        .row-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+        .expand-btn {
+            background: none;
+            border: none;
+            color: #818cf8;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            padding: 0;
+            text-decoration: underline;
+        }
+
+        .detail-box {
+            display: none;
+            margin-top: 8px;
+            padding: 10px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .detail-box.open { display: block; }
+
+        .results-status {
+            margin-bottom: 14px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .results-status.show { display: block; }
+        .results-status.err { background: rgba(248, 113, 113, 0.12); color: #fecaca; border: 1px solid rgba(248, 113, 113, 0.3); }
+        .results-status.ok { background: rgba(52, 211, 153, 0.1); color: #a7f3d0; border: 1px solid rgba(52, 211, 153, 0.3); }
+
+        .table-empty { text-align: center; padding: 32px; color: var(--muted); }
+
+        .card {
+            background: linear-gradient(180deg, rgba(26, 36, 51, 0.97) 0%, rgba(18, 26, 39, 0.98) 100%);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 36px 32px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        @media (max-width: 640px) {
+            .card { padding: 24px 18px; }
+            .site-main { padding: 20px 12px 40px; }
+        }
+
+        h1 {
+            margin: 0 0 10px;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            color: #fff;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.6;
+            margin: 0 auto;
+            max-width: 520px;
+        }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .panel-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: #64748b;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 6px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        input[type="email"],
+        input[type="url"],
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 12px 14px;
+            background: #0f1620;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: #f1f5f9;
+            font-family: inherit;
+            font-size: 14px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input::placeholder, textarea::placeholder { color: #64748b; }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+            line-height: 1.5;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22);
+        }
+
+        .field { margin-bottom: 16px; }
+
+        .mode-toggle {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .mode-btn.active {
+            background: rgba(99, 102, 241, 0.18);
+            border-color: rgba(99, 102, 241, 0.55);
+            color: #fff;
+            box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.2);
+        }
+
+        .file-zone {
+            border: 2px dashed #334155;
+            border-radius: var(--radius);
+            padding: 32px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s, transform 0.15s;
+            background: rgba(15, 23, 42, 0.4);
+        }
+
+        .file-zone-icon {
+            width: 44px;
+            height: 44px;
+            margin: 0 auto 12px;
+            border-radius: 12px;
+            background: rgba(99, 102, 241, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #818cf8;
+        }
+
+        .file-zone-label { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+        .file-zone-hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+        .file-zone:hover,
+        .file-zone.dragover {
+            border-color: var(--accent);
+            background: rgba(99, 102, 241, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .file-zone input { display: none; }
+
+        .file-name {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #cbd5e1;
+            word-break: break-all;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 8px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            font-family: inherit;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .tab.active {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.5);
+            color: #fff;
+        }
+
+        .cv-panel { display: none; }
+        .cv-panel.active { display: block; }
+
+        .batch-list {
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .batch-row {
+            display: grid;
+            grid-template-columns: 1fr minmax(0, 1.4fr);
+            gap: 8px;
+            align-items: center;
+            padding: 10px 12px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 13px;
+        }
+
+        .batch-row .fname {
+            color: #cbd5e1;
+            word-break: break-all;
+            font-size: 12px;
+        }
+
+        .batch-row input {
+            padding: 8px 10px;
+            font-size: 13px;
+        }
+
+        .batch-row input.extracting {
+            color: #818cf8;
+            font-style: italic;
+        }
+
+        .batch-row input.extracted {
+            border-color: rgba(52, 211, 153, 0.45);
+        }
+
+        .batch-row input.missing {
+            border-color: rgba(248, 113, 113, 0.45);
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 99px;
+            margin-top: 12px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .progress-bar.show { display: block; }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4f46e5, #818cf8);
+            border-radius: 99px;
+            width: 0%;
+            transition: width 0.25s ease;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px 22px;
+            border: none;
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #fff;
+            background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
+            margin-top: 8px;
+            transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 14px -2px rgba(99, 102, 241, 0.45);
+            letter-spacing: 0.01em;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            filter: brightness(1.06);
+            box-shadow: 0 4px 20px -2px rgba(99, 102, 241, 0.55);
+        }
+
+        .btn:active:not(:disabled) { transform: scale(0.98); }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: #cbd5e1;
+            box-shadow: none;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            border-color: #475569;
+            background: rgba(26, 36, 51, 0.6);
+            box-shadow: none;
+            filter: none;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+            display: none;
+        }
+
+        .status.show { display: block; }
+
+        .status.error {
+            background: rgba(248, 113, 113, 0.12);
+            border: 1px solid rgba(248, 113, 113, 0.35);
+            color: #fecaca;
+        }
+
+        .status.success {
+            background: rgba(52, 211, 153, 0.12);
+            border: 1px solid rgba(52, 211, 153, 0.35);
+            color: #a7f3d0;
+        }
+
+        .status.pending {
+            background: rgba(99, 102, 241, 0.12);
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            color: #c7d2fe;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 6px;
+            line-height: 1.45;
+        }
+
+        .save-webhook {
+            font-size: 12px;
+            color: #818cf8;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            margin-top: 8px;
+            font-family: inherit;
+            text-decoration: underline;
+        }
+
+        #successView { display: none; text-align: left; }
+        #successView.show { display: block; }
+        #formView.hide { display: none; }
+
+        .success-icon {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #059669, #10b981);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-top: 16px;
+        }
+
+        .results-table th,
+        .results-table td {
+            text-align: left;
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .results-table th {
+            color: var(--muted);
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .pill-ok { color: var(--ok); }
+        .pill-err { color: var(--danger); }
+
+        .hidden { display: none !important; }
+
+        .hub-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 8px;
+        }
+
+        @media (max-width: 720px) {
+            .hub-grid { grid-template-columns: 1fr; }
+        }
+
+        .hub-card {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-align: left;
+            gap: 14px;
+            padding: 28px 26px;
+            min-height: 240px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            background: var(--surface);
+            cursor: pointer;
+            font-family: inherit;
+            color: #fff;
+            transition: transform 0.2s, border-color 0.2s, box-shadow 0.25s;
+            box-shadow: var(--shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hub-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            transition: opacity 0.25s;
+            pointer-events: none;
+        }
+
+        .hub-card.screening::before {
+            background: radial-gradient(circle at 100% 0%, rgba(99, 102, 241, 0.2), transparent 55%);
+        }
+
+        .hub-card.results::before {
+            background: radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.18), transparent 55%);
+        }
+
+        .hub-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .hub-card.screening:hover { border-color: rgba(99, 102, 241, 0.5); }
+        .hub-card.results:hover { border-color: rgba(16, 185, 129, 0.45); }
+        .hub-card:hover::before { opacity: 1; }
+
+        .hub-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hub-card.screening .hub-icon {
+            background: rgba(99, 102, 241, 0.18);
+            color: #a5b4fc;
+        }
+
+        .hub-card.results .hub-icon {
+            background: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+        }
+
+        .hub-icon svg { width: 24px; height: 24px; }
+
+        .hub-card h2 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hub-card p {
+            margin: 0;
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.6;
+            flex: 1;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hub-cta {
+            margin-top: auto;
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hub-card.screening .hub-cta { color: #a5b4fc; }
+        .hub-card.results .hub-cta { color: #6ee7b7; }
+
+        .hub-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border);
+            color: #94a3b8;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 8px 14px;
+            border-radius: 10px;
+            margin-bottom: 4px;
+            transition: color 0.15s, border-color 0.15s;
+        }
+
+        .hub-back:hover { color: #e2e8f0; border-color: #475569; }
+
+        .portal-panel.active { display: block !important; }
+
+        a.hub-card {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        html[data-portal-tab] #portalHub { display: none !important; }
+        html[data-portal-tab] #portalWorkspace { display: block !important; }
+        html[data-portal-tab='intake'] #intakePanel { display: block !important; }
+        html[data-portal-tab='intake'] #resultsPanel { display: none !important; }
+        html[data-portal-tab='results'] #resultsPanel { display: block !important; }
+        html[data-portal-tab='results'] #intakePanel { display: none !important; }
+        html[data-portal-tab='results'] #intakeJobPanel { display: none !important; }
+        html[data-portal-tab='intake'] #intakeJobPanel { display: block !important; }
+
+        #fatalError {
+            display: none;
+            margin: 16px 0;
+            padding: 14px;
+            border-radius: 10px;
+            background: rgba(248, 113, 113, 0.15);
+            color: #fecaca;
+            font-size: 14px;
+        }
+
+        #fatalError.show { display: block; }
+    </style>
+    <script>
+        (function () {
+            var t = new URLSearchParams(location.search).get('tab');
+            if (t === 'intake' || t === 'results') {
+                document.documentElement.setAttribute('data-portal-tab', t);
+            }
+        })();
+    </script>
+</head>
+<body>
+    <header class="site-header">
+        <a href="index.html" class="brand">
+            <span class="brand-mark">TA</span>
+            <span>
+                <span class="brand-text">Talent Acquisition</span>
+                <span class="brand-sub">Recruiter workspace</span>
+            </span>
+        </a>
+        <a href="index.html" class="header-link">Candidate portal</a>
+    </header>
+
+    <main class="site-main">
+    <div class="wrap">
+        <div class="card">
+            <div id="portalHero" class="portal-hero">
+                <span class="badge">AI-powered hiring</span>
+                <h1>Recruiter Portal</h1>
+                <p class="subtitle">
+                    Screen CVs with your job description, review AI scores and reasons, and send assessments — all in one place.
+                </p>
+            </div>
+            <div id="fatalError" role="alert"></div>
+
+            <div id="portalHub">
+                <div class="hub-grid">
+                    <a href="?tab=intake" class="hub-card screening" id="hubIntakeBtn">
+                        <span class="hub-icon" aria-hidden="true">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        </span>
+                        <h2>CV Screening</h2>
+                        <p>Upload one or many CVs against a single JD. AI scores each candidate and shortlists for assessment.</p>
+                        <span class="hub-cta">Start screening →</span>
+                    </a>
+                    <a href="?tab=results" class="hub-card results" id="hubResultsBtn">
+                        <span class="hub-icon" aria-hidden="true">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                        </span>
+                        <h2>Screening Results</h2>
+                        <p>Review every screening record — scores, outcomes, and AI reasoning pulled from your database.</p>
+                        <span class="hub-cta">View results →</span>
+                    </a>
+                </div>
+            </div>
+
+            <div id="portalWorkspace" class="hidden">
+            <div class="workspace-header">
+                <button type="button" class="hub-back" id="hubBackBtn">← Back to home</button>
+                <h2 class="workspace-title" id="workspaceTitle">CV Screening</h2>
+                <p class="workspace-desc" id="workspaceDesc">Upload CVs and run AI screening for one job.</p>
+            </div>
+
+            <div id="intakePanel" class="portal-panel active">
+            <div class="panel" id="intakeJobPanel">
+                <div class="section-head">
+                    <span class="step-num">1</span>
+                    <div>
+                        <h3>Job description</h3>
+                        <p>Used for AI screening and assessment questions</p>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="jobTitle">Job title</label>
+                    <input type="text" id="jobTitle" placeholder="Junior .NET Full Stack Developer" />
+                </div>
+                <div class="field" style="margin-bottom:0">
+                    <label for="jobRequirements">Requirements (JD)</label>
+                    <textarea
+                        id="jobRequirements"
+                        placeholder="Responsibilities, required skills, nice-to-haves…"
+                    ></textarea>
+                </div>
+            </div>
+            <div id="formView">
+                <details class="panel webhook-panel">
+                    <summary>Integration setup (one-time)</summary>
+                    <div class="webhook-body">
+                        <div class="field">
+                            <label for="webhookUrl">n8n CV ingest URL</label>
+                            <input
+                                type="url"
+                                id="webhookUrl"
+                                placeholder="https://your-n8n.example.com/webhook/talent/cv-ingest"
+                                autocomplete="off"
+                            />
+                            <p class="hint">
+                                Same as Postman: <code style="color:#a5b4fc">POST …/webhook/talent/cv-ingest</code> — saved in this browser.
+                            </p>
+                            <button type="button" class="save-webhook" id="saveWebhookBtn">Save URL locally</button>
+                        </div>
+                    </div>
+                </details>
+
+                <form id="intakeForm" novalidate>
+                    <div class="section-head" style="margin-top:4px">
+                        <span class="step-num">2</span>
+                        <div>
+                            <h3>Candidates</h3>
+                            <p>Single CV or batch upload for the same role</p>
+                        </div>
+                    </div>
+                    <div class="mode-toggle">
+                        <button type="button" class="mode-btn active" data-mode="single">Single candidate</button>
+                        <button type="button" class="mode-btn" data-mode="batch">Multiple CVs (same JD)</button>
+                    </div>
+
+                    <div id="singleEmailField" class="field">
+                        <label for="candidateEmail">Candidate email</label>
+                        <input type="email" id="candidateEmail" placeholder="candidate@example.com" />
+                    </div>
+
+                    <div class="field">
+                        <label>CV</label>
+                        <div class="tabs" id="cvTabs">
+                            <button type="button" class="tab active" data-tab="pdf">PDF upload</button>
+                            <button type="button" class="tab" data-tab="text" id="textTabBtn">Paste text</button>
+                        </div>
+                        <div class="cv-panel active" id="panelPdf">
+                            <div class="file-zone" id="fileZone">
+                                <input type="file" id="cvFile" accept=".pdf,application/pdf" />
+                                <div class="file-zone-icon" aria-hidden="true">
+                                    <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                </div>
+                                <div class="file-zone-label" id="fileZoneLabel">Drop PDF here or click to browse</div>
+                                <div class="file-zone-hint">PDF only · emails auto-detected in batch mode</div>
+                                <div class="file-name" id="fileName"></div>
+                            </div>
+                            <div id="batchList" class="batch-list hidden"></div>
+                        </div>
+                        <div class="cv-panel" id="panelText">
+                            <textarea id="cvText" placeholder="Paste CV plain text (single candidate only)…"></textarea>
+                        </div>
+                        <p class="hint hidden" id="batchHint">
+                            Select multiple PDFs — emails are read from each CV automatically (first 2 pages). Edit any row if needed.
+                        </p>
+                    </div>
+
+                    <div class="progress-bar" id="progressBar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+
+                    <button type="submit" class="btn" id="submitBtn">Run AI screening</button>
+                    <div class="status" id="statusBox" role="status"></div>
+                </form>
+            </div>
+
+            <div id="successView">
+                <div class="success-icon">✓</div>
+                <h1 style="text-align:center">Done</h1>
+                <p class="subtitle" id="successMessage" style="text-align:center"></p>
+                <div id="resultsWrap"></div>
+                <button type="button" class="btn" id="viewResultsBtn">View screening results</button>
+                <button type="button" class="btn btn-secondary" id="anotherBtn" style="margin-top:12px">Submit more candidates</button>
+            </div>
+            </div>
+
+            <div id="resultsPanel" class="portal-panel">
+                <div class="section-head">
+                    <span class="step-num">◎</span>
+                    <div>
+                        <h3>Screening dashboard</h3>
+                        <p>All records from your candidates table</p>
+                    </div>
+                </div>
+                <div id="resultsStatusBox" class="results-status"></div>
+                <div class="results-toolbar">
+                    <div class="field" style="flex:1;min-width:200px;margin:0">
+                        <label for="resultsFilter">Filter by job title (optional)</label>
+                        <input type="text" id="resultsFilter" placeholder="Leave empty to show all screened candidates" />
+                    </div>
+                    <button type="button" class="btn btn-inline" id="loadResultsBtn">Refresh results</button>
+                </div>
+                <div class="stats" id="statsRow" style="display:none">
+                    <div class="stat"><div class="n" id="statTotal">0</div><div class="l">Screened</div></div>
+                    <div class="stat ok"><div class="n" id="statShort">0</div><div class="l">Shortlisted</div></div>
+                    <div class="stat bad"><div class="n" id="statReject">0</div><div class="l">Rejected</div></div>
+                    <div class="stat warn"><div class="n" id="statReview">0</div><div class="l">Review</div></div>
+                    <div class="stat dup"><div class="n" id="statDup">0</div><div class="l">Duplicate</div></div>
+                </div>
+                <div class="panel screen-table-wrap">
+                    <table class="screen-table">
+                        <thead>
+                            <tr>
+                                <th>Candidate</th>
+                                <th>Role</th>
+                                <th>Score</th>
+                                <th>Outcome</th>
+                                <th>Reason</th>
+                                <th>When</th>
+                            </tr>
+                        </thead>
+                        <tbody id="screenTableBody">
+                            <tr><td colspan="6" class="table-empty">Loading candidates from database…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            </div>
+        </div>
+    </div>
+    </main>
+
+    <footer class="site-footer">
+        Talent Acquisition · <a href="index.html">Candidate assessment portal</a>
+    </footer>
+
+    <script>
+        (function () {
+            var t = new URLSearchParams(location.search).get('tab');
+            if (t !== 'intake' && t !== 'results') return;
+            var hub = document.getElementById('portalHub');
+            var ws = document.getElementById('portalWorkspace');
+            if (hub) hub.classList.add('hidden');
+            if (ws) ws.classList.remove('hidden');
+        })();
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+
+        function showFatal(err) {
+            const box = document.getElementById('fatalError');
+            if (!box) return;
+            box.textContent = 'Page error: ' + (err && err.message ? err.message : String(err));
+            box.classList.add('show');
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+        try {
+
+        const STORAGE_KEY = 'ta_cv_ingest_webhook';
+        const STORAGE_JD_TITLE = 'ta_screening_jd_title';
+        const STORAGE_JD_REQ = 'ta_screening_jd_req';
+
+        function slugFromTitle(title) {
+            return String(title || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '')
+                .slice(0, 64);
+        }
+
+        const SUPABASE_URL = 'https://vnxstyadacgntnsvcvzn.supabase.co';
+        const SUPABASE_ANON_KEY =
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
+        let supabase = null;
+        try {
+            if (window.supabase) {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+        } catch (e) {
+            console.error('Supabase init failed', e);
+        }
+
+        const savedTitle = localStorage.getItem(STORAGE_JD_TITLE);
+        const savedReq = localStorage.getItem(STORAGE_JD_REQ);
+        const jobTitleEl = document.getElementById('jobTitle');
+        const jobReqEl = document.getElementById('jobRequirements');
+        if (savedTitle && jobTitleEl) jobTitleEl.value = savedTitle;
+        if (savedReq && jobReqEl) jobReqEl.value = savedReq;
+        const resultsFilterEl = document.getElementById('resultsFilter');
+
+        function showResultsStatus(msg, type) {
+            const box = document.getElementById('resultsStatusBox');
+            if (!box) return;
+            box.textContent = msg;
+            box.className = 'results-status show ' + (type || '');
+        }
+
+        function enterWorkspace(tab) {
+            const t = tab === 'results' ? 'results' : 'intake';
+            document.documentElement.setAttribute('data-portal-tab', t);
+            document.getElementById('portalHub').classList.add('hidden');
+            document.getElementById('portalWorkspace').classList.remove('hidden');
+            setPortalTab(t);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function showHub() {
+            document.documentElement.removeAttribute('data-portal-tab');
+            document.getElementById('portalHub').classList.remove('hidden');
+            document.getElementById('portalWorkspace').classList.add('hidden');
+            location.href = location.pathname;
+        }
+
+        function setPortalTab(tab) {
+            const t = tab === 'results' ? 'results' : 'intake';
+            document.getElementById('intakePanel').classList.toggle('active', t === 'intake');
+            document.getElementById('resultsPanel').classList.toggle('active', t === 'results');
+            document.documentElement.setAttribute('data-portal-tab', t);
+            const wt = document.getElementById('workspaceTitle');
+            const wd = document.getElementById('workspaceDesc');
+            if (wt && wd) {
+                if (t === 'results') {
+                    wt.textContent = 'Screening Results';
+                    wd.textContent = 'Every screening record from your database — scores, outcomes, and AI reasoning.';
+                } else {
+                    wt.textContent = 'CV Screening';
+                    wd.textContent = 'Define the role, upload CVs, and let AI score candidates against your JD.';
+                }
+            }
+            const url = new URL(location.href);
+            url.searchParams.set('tab', t);
+            try {
+                history.replaceState(null, '', url.pathname + url.search);
+            } catch (_) {
+                /* ignore */
+            }
+            if (t === 'results') {
+                setTimeout(() => {
+                    loadScreeningResults().catch((err) => {
+                        showResultsStatus(err.message || 'Could not load results.', 'err');
+                    });
+                }, 0);
+            }
+        }
+
+        const hubBack = document.getElementById('hubBackBtn');
+        if (hubBack) {
+            hubBack.addEventListener('click', (e) => {
+                e.preventDefault();
+                showHub();
+            });
+        }
+
+        const params = new URLSearchParams(window.location.search);
+
+        const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
+        const BLOCKED_LOCAL = /^(noreply|no-reply|donotreply|mailer|bounce|info|hr|jobs|careers|support|admin|contact|hello|office)$/i;
+        const BLOCKED_DOMAIN = /(@example\.|@test\.|@linkedin\.|@facebook\.)/i;
+        let batchExtractGen = 0;
+        const webhookInput = document.getElementById('webhookUrl');
+        const saved =
+            params.get('webhook') ||
+            localStorage.getItem(STORAGE_KEY) ||
+            '';
+        if (saved && webhookInput) webhookInput.value = saved;
+
+        let intakeMode = 'single';
+        let activeCvTab = 'pdf';
+
+        function showStatus(msg, type) {
+            const box = document.getElementById('statusBox');
+            if (!box) return;
+            box.textContent = msg;
+            box.className = 'status show ' + (type || '');
+        }
+
+        function setMode(mode) {
+            intakeMode = mode;
+            document.querySelectorAll('.mode-btn').forEach((b) => {
+                b.classList.toggle('active', b.dataset.mode === mode);
+            });
+            const singleEmail = document.getElementById('singleEmailField');
+            const batchList = document.getElementById('batchList');
+            const batchHint = document.getElementById('batchHint');
+            const textTab = document.getElementById('textTabBtn');
+            const cvFile = document.getElementById('cvFile');
+            const fileZoneLabel = document.getElementById('fileZoneLabel');
+
+            if (mode === 'batch') {
+                if (singleEmail) singleEmail.classList.add('hidden');
+                if (batchHint) batchHint.classList.remove('hidden');
+                if (textTab) textTab.style.display = 'none';
+                if (activeCvTab === 'text') {
+                    activeCvTab = 'pdf';
+                    document.getElementById('panelPdf').classList.add('active');
+                    document.getElementById('panelText').classList.remove('active');
+                    document.querySelectorAll('.tab').forEach((b) => {
+                        b.classList.toggle('active', b.dataset.tab === 'pdf');
+                    });
+                }
+                if (cvFile) cvFile.multiple = true;
+                if (fileZoneLabel) fileZoneLabel.textContent = 'Drop multiple PDFs here or click to browse';
+                renderBatchList();
+            } else {
+                if (singleEmail) singleEmail.classList.remove('hidden');
+                if (batchHint) batchHint.classList.add('hidden');
+                if (batchList) batchList.classList.add('hidden');
+                if (textTab) textTab.style.display = '';
+                if (cvFile) cvFile.multiple = false;
+                if (fileZoneLabel) fileZoneLabel.textContent = 'Drop PDF here or click to browse';
+            }
+            if (cvFile) cvFile.value = '';
+            const fn = document.getElementById('fileName');
+            if (fn) fn.textContent = '';
+        }
+
+        function setCvTab(tab) {
+            if (intakeMode === 'batch' && tab === 'text') return;
+            activeCvTab = tab;
+            document.querySelectorAll('#cvTabs .tab').forEach((b) => {
+                b.classList.toggle('active', b.dataset.tab === tab);
+            });
+            const panelPdf = document.getElementById('panelPdf');
+            const panelText = document.getElementById('panelText');
+            if (panelPdf) panelPdf.classList.toggle('active', tab === 'pdf');
+            if (panelText) panelText.classList.toggle('active', tab === 'text');
+        }
+
+        function saveWebhookLocal() {
+            if (!webhookInput) return;
+            const url = webhookInput.value.trim();
+            if (!url) {
+                showStatus('Enter a webhook URL first.', 'error');
+                return;
+            }
+            localStorage.setItem(STORAGE_KEY, url);
+            showStatus('Webhook URL saved in this browser.', 'success');
+        }
+
+        document.addEventListener('click', function (e) {
+            const el = e.target;
+            if (!el || !el.closest) return;
+
+            const modeBtn = el.closest('.mode-btn');
+            if (modeBtn && modeBtn.dataset.mode) {
+                e.preventDefault();
+                setMode(modeBtn.dataset.mode);
+                return;
+            }
+
+            const tabBtn = el.closest('#cvTabs .tab');
+            if (tabBtn && tabBtn.dataset.tab) {
+                e.preventDefault();
+                setCvTab(tabBtn.dataset.tab);
+                return;
+            }
+
+            if (el.closest('#saveWebhookBtn')) {
+                e.preventDefault();
+                saveWebhookLocal();
+                return;
+            }
+
+            if (el.closest('#fileZone')) {
+                const cf = document.getElementById('cvFile');
+                if (cf) cf.click();
+                return;
+            }
+
+        });
+
+        const fileZone = document.getElementById('fileZone');
+        const cvFile = document.getElementById('cvFile');
+        const fileName = document.getElementById('fileName');
+
+        function guessEmailFromFilename(name) {
+            const base = String(name || '').replace(/\.pdf$/i, '');
+            const m = base.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+            return m ? m[0].toLowerCase() : '';
+        }
+
+        function collectEmailsFromText(...chunks) {
+            const uniq = [];
+            const addFrom = (source) => {
+                const normalized = String(source || '')
+                    .replace(/\s*@\s*/g, '@')
+                    .replace(/([a-z0-9._%+-])\s+\.\s+([a-z])/gi, '$1.$2');
+                const compact = normalized.replace(/\s+/g, '');
+                for (const blob of [source, normalized, compact]) {
+                    const found = String(blob).match(EMAIL_RE) || [];
+                    for (const e of found) {
+                        const email = e.toLowerCase().trim().replace(/\.+$/g, '');
+                        if (!email || uniq.includes(email)) continue;
+                        const local = email.split('@')[0];
+                        if (BLOCKED_LOCAL.test(local)) continue;
+                        if (BLOCKED_DOMAIN.test(email)) continue;
+                        if (/\.(png|jpg|jpeg|pdf)$/i.test(email)) continue;
+                        uniq.push(email);
+                    }
+                }
+            };
+            chunks.forEach(addFrom);
+            return uniq;
+        }
+
+        function pickBestEmail(...chunks) {
+            const fallbackName = chunks[chunks.length - 1];
+            const sources = chunks.slice(0, -1);
+            const raw = sources.join('\n');
+            const uniq = collectEmailsFromText(...sources);
+            if (!uniq.length) return guessEmailFromFilename(fallbackName);
+
+            const scored = uniq.map((email) => {
+                let score = 0;
+                const pos = raw.toLowerCase().indexOf(email);
+                if (pos >= 0 && pos < 800) score += 30;
+                if (pos >= 0 && pos < 200) score += 20;
+                if (/\.(com|net|org|pk|co\.uk)$/i.test(email)) score += 5;
+                if (/gmail|outlook|hotmail|yahoo|icloud|live\./i.test(email)) score += 8;
+                return { email, score };
+            });
+            scored.sort((a, b) => b.score - a.score);
+            return scored[0].email;
+        }
+
+        function emailFromAnnotationUrl(url) {
+            const u = String(url || '').trim();
+            if (!u) return '';
+            if (/^mailto:/i.test(u)) {
+                return u.replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
+            }
+            const m = u.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+            return m ? m[0].toLowerCase() : '';
+        }
+
+        async function extractTextFromPdf(file, maxPages) {
+            if (!window.pdfjsLib) throw new Error('PDF reader not loaded');
+            const buf = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+            const pages = Math.min(pdf.numPages, maxPages || 2);
+            let text = '';
+            let compact = '';
+            const linkEmails = [];
+            for (let p = 1; p <= pages; p++) {
+                const page = await pdf.getPage(p);
+                const content = await page.getTextContent();
+                const parts = content.items.map((it) => String(it.str || '').trim()).filter(Boolean);
+                text += parts.join(' ') + '\n';
+                compact += parts.join('');
+
+                try {
+                    const annots = await page.getAnnotations();
+                    for (const a of annots || []) {
+                        const fromUrl = emailFromAnnotationUrl(a.url || a.unsafeUrl);
+                        if (fromUrl) linkEmails.push(fromUrl);
+                    }
+                } catch (_) {
+                    /* annotations optional */
+                }
+            }
+            return { text, compact, linkEmails };
+        }
+
+        async function extractEmailFromPdf(file) {
+            const fromName = guessEmailFromFilename(file.name);
+            try {
+                const { text, compact, linkEmails } = await extractTextFromPdf(file, 2);
+                const linkBlob = linkEmails.join(' ');
+                return (
+                    pickBestEmail(text, compact, linkBlob, file.name) ||
+                    fromName
+                );
+            } catch (err) {
+                console.warn('PDF email extract failed', file.name, err);
+                return fromName;
+            }
+        }
+
+        async function fillSingleEmailFromPdf(file) {
+            if (!file) return;
+            const input = document.getElementById('candidateEmail');
+            input.placeholder = 'Reading email from CV…';
+            input.classList.add('extracting');
+            const email = await extractEmailFromPdf(file);
+            input.classList.remove('extracting');
+            if (email) {
+                input.value = email;
+                input.placeholder = 'candidate@example.com';
+            } else {
+                input.placeholder = 'Email not found in PDF — enter manually';
+            }
+        }
+
+        function renderBatchList() {
+            const list = document.getElementById('batchList');
+            const files = Array.from(cvFile.files || []);
+            if (intakeMode !== 'batch' || !files.length) {
+                list.classList.add('hidden');
+                list.innerHTML = '';
+                fileName.textContent = files.length ? files.length + ' PDF(s) selected' : '';
+                return;
+            }
+            list.classList.remove('hidden');
+            fileName.textContent = files.length + ' PDF(s) — extracting emails from CVs…';
+            list.innerHTML = files
+                .map((file, i) => (
+                    '<div class="batch-row" data-index="' +
+                    i +
+                    '">' +
+                    '<span class="fname" title="' +
+                    escapeHtml(file.name) +
+                    '">' +
+                    escapeHtml(file.name) +
+                    '</span>' +
+                    '<input type="email" required placeholder="Reading CV…" data-batch-email="' +
+                    i +
+                    '" class="extracting" disabled />' +
+                    '</div>'
+                ))
+                .join('');
+            runBatchEmailExtraction(files);
+        }
+
+        async function runBatchEmailExtraction(files) {
+            const gen = ++batchExtractGen;
+            let found = 0;
+            for (let i = 0; i < files.length; i++) {
+                if (gen !== batchExtractGen) return;
+                const input = document.querySelector('[data-batch-email="' + i + '"]');
+                if (!input) continue;
+                const email = await extractEmailFromPdf(files[i]);
+                if (gen !== batchExtractGen) return;
+                input.disabled = false;
+                input.classList.remove('extracting');
+                if (email) {
+                    input.value = email;
+                    input.classList.add('extracted');
+                    input.classList.remove('missing');
+                    input.placeholder = 'email@example.com';
+                    found++;
+                } else {
+                    input.value = '';
+                    input.classList.add('missing');
+                    input.classList.remove('extracted');
+                    input.placeholder = 'Not found — type email';
+                }
+            }
+            if (gen === batchExtractGen) {
+                fileName.textContent =
+                    files.length +
+                    ' PDF(s) — ' +
+                    found +
+                    ' email(s) auto-detected' +
+                    (found < files.length ? ' (fill rest manually)' : '');
+            }
+        }
+
+        function escapeHtml(s) {
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        if (fileZone && cvFile && fileName) {
+            fileZone.addEventListener('click', () => cvFile.click());
+            cvFile.addEventListener('change', async () => {
+                if (intakeMode === 'batch') {
+                    renderBatchList();
+                } else {
+                    const file = cvFile.files[0];
+                    fileName.textContent = file ? file.name : '';
+                    if (file && activeCvTab === 'pdf') await fillSingleEmailFromPdf(file);
+                }
+            });
+            fileZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                fileZone.classList.add('dragover');
+            });
+            fileZone.addEventListener('dragleave', () => fileZone.classList.remove('dragover'));
+            fileZone.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                fileZone.classList.remove('dragover');
+                if (e.dataTransfer.files.length) {
+                    cvFile.files = e.dataTransfer.files;
+                    if (intakeMode === 'batch') renderBatchList();
+                    else {
+                        const file = cvFile.files[0];
+                        fileName.textContent = file ? file.name : '';
+                        if (file && activeCvTab === 'pdf') await fillSingleEmailFromPdf(file);
+                    }
+                }
+            });
+        }
+
+        function normalizeWebhookUrl(raw) {
+            let url = String(raw || '').trim();
+            if (!url) return '';
+            if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+            return url.replace(/\/+$/, '');
+        }
+
+        async function screenOneCandidate(webhook, { email, title, requirements, file, cvText }) {
+            const formData = new FormData();
+            formData.append('candidate_email', email);
+            formData.append('requisition_title', title);
+            formData.append('requisition_requirements', requirements);
+            formData.append('requisition_id', slugFromTitle(title));
+            if (file) formData.append('cv_file', file, file.name);
+            else if (cvText) formData.append('cv_text', cvText);
+
+            const res = await fetch(webhook, {
+                method: 'POST',
+                body: formData,
+                headers: { 'ngrok-skip-browser-warning': '1' },
+            });
+            if (!res.ok) {
+                const errText = await res.text().catch(() => '');
+                throw new Error(
+                    'HTTP ' + res.status + (errText ? ': ' + errText.slice(0, 120) : '')
+                );
+            }
+            return res;
+        }
+
+        function showBatchResults(results) {
+            const ok = results.filter((r) => r.ok).length;
+            const fail = results.length - ok;
+            document.getElementById('successMessage').textContent =
+                'Screened ' +
+                results.length +
+                ' candidate(s): ' +
+                ok +
+                ' succeeded, ' +
+                fail +
+                ' failed. Open the Results tab for scores and reasons (may take a few seconds in Supabase).';
+
+            const rows = results
+                .map(
+                    (r) =>
+                        '<tr><td>' +
+                        escapeHtml(r.email) +
+                        '</td><td>' +
+                        escapeHtml(r.label) +
+                        '</td><td class="' +
+                        (r.ok ? 'pill-ok">OK' : 'pill-err">' + escapeHtml(r.error || 'Failed')) +
+                        '</td></tr>'
+                )
+                .join('');
+
+            document.getElementById('resultsWrap').innerHTML =
+                '<table class="results-table"><thead><tr><th>Email</th><th>CV</th><th>Status</th></tr></thead><tbody>' +
+                rows +
+                '</tbody></table>';
+        }
+
+        const intakeFormEl = document.getElementById('intakeForm');
+        if (!intakeFormEl) {
+            showFatal({ message: 'Form not found — refresh the page.' });
+        } else intakeFormEl.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const webhook = normalizeWebhookUrl(webhookInput.value);
+            if (!webhook) {
+                showStatus('Set the n8n CV ingest webhook URL above.', 'error');
+                return;
+            }
+            localStorage.setItem(STORAGE_KEY, webhook);
+
+            const title = document.getElementById('jobTitle').value.trim();
+            const requirements = document.getElementById('jobRequirements').value.trim();
+
+            if (!title || !requirements) {
+                showStatus('Job title and JD are required.', 'error');
+                return;
+            }
+
+            localStorage.setItem(STORAGE_JD_TITLE, title);
+            localStorage.setItem(STORAGE_JD_REQ, requirements);
+
+            const btn = document.getElementById('submitBtn');
+            const progressBar = document.getElementById('progressBar');
+            const progressFill = document.getElementById('progressFill');
+            btn.disabled = true;
+            progressBar.classList.remove('show');
+
+            try {
+                if (intakeMode === 'batch') {
+                    const files = Array.from(cvFile.files || []);
+                    if (!files.length) {
+                        showStatus('Select at least one PDF.', 'error');
+                        return;
+                    }
+
+                    const jobs = [];
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        const input = document.querySelector('[data-batch-email="' + i + '"]');
+                        let email = (input && input.value.trim().toLowerCase()) || '';
+                        if (!email) {
+                            showStatus('Extracting email from ' + file.name + '…', 'pending');
+                            email = await extractEmailFromPdf(file);
+                            if (input && email) {
+                                input.value = email;
+                                input.classList.add('extracted');
+                            }
+                        }
+                        if (!email) {
+                            showStatus(
+                                'Could not find email in: ' + file.name + '. Type it manually or rename PDF to include email.',
+                                'error'
+                            );
+                            return;
+                        }
+                        jobs.push({ file, email, label: file.name });
+                    }
+
+                    progressBar.classList.add('show');
+                    const results = [];
+                    for (let i = 0; i < jobs.length; i++) {
+                        const job = jobs[i];
+                        const pct = Math.round(((i + 0.5) / jobs.length) * 100);
+                        progressFill.style.width = pct + '%';
+                        showStatus(
+                            'Screening ' +
+                                (i + 1) +
+                                ' of ' +
+                                jobs.length +
+                                ': ' +
+                                job.label +
+                                ' … (30–90s each)',
+                            'pending'
+                        );
+                        try {
+                            await screenOneCandidate(webhook, {
+                                email: job.email,
+                                title,
+                                requirements,
+                                file: job.file,
+                            });
+                            results.push({ ...job, ok: true });
+                        } catch (err) {
+                            results.push({ ...job, ok: false, error: err.message || 'Failed' });
+                        }
+                    }
+                    progressFill.style.width = '100%';
+
+                    document.getElementById('formView').classList.add('hide');
+                    document.getElementById('successView').classList.add('show');
+                    showBatchResults(results);
+                    document.getElementById('statusBox').classList.remove('show');
+                    setTimeout(() => { location.href = location.pathname + '?tab=results'; }, 800);
+                } else {
+                    const email = document.getElementById('candidateEmail').value.trim().toLowerCase();
+                    if (!email) {
+                        showStatus('Candidate email is required.', 'error');
+                        return;
+                    }
+
+                    if (activeCvTab === 'pdf') {
+                        const file = cvFile.files[0];
+                        if (!file) {
+                            showStatus('Select a PDF CV or switch to Paste text.', 'error');
+                            return;
+                        }
+                        showStatus('Sending to n8n… 30–90 seconds while AI screens the CV.', 'pending');
+                        await screenOneCandidate(webhook, { email, title, requirements, file });
+                    } else {
+                        const text = document.getElementById('cvText').value.trim();
+                        if (!text) {
+                            showStatus('Paste CV text or switch to PDF upload.', 'error');
+                            return;
+                        }
+                        showStatus('Sending to n8n… 30–90 seconds while AI screens the CV.', 'pending');
+                        await screenOneCandidate(webhook, { email, title, requirements, cvText: text });
+                    }
+
+                    document.getElementById('formView').classList.add('hide');
+                    document.getElementById('successView').classList.add('show');
+                    document.getElementById('resultsWrap').innerHTML = '';
+                    document.getElementById('successMessage').textContent =
+                        'Submitted for ' +
+                        email +
+                        '. Results tab will show score once n8n finishes (~30–90s).';
+                    document.getElementById('statusBox').classList.remove('show');
+                    setTimeout(() => { location.href = location.pathname + '?tab=results'; }, 800);
+                }
+            } catch (err) {
+                console.error(err);
+                let msg = err.message || 'Request failed.';
+                if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+                    msg =
+                        'Network or CORS error. Use a public n8n URL, enable CORS on the webhook, or see setup guide.';
+                }
+                showStatus(msg, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        function parseNotes(raw) {
+            if (!raw) return {};
+            if (typeof raw === 'object') return raw;
+            try {
+                return JSON.parse(raw);
+            } catch {
+                return {};
+            }
+        }
+
+        function stageLabel(stage) {
+            const s = String(stage || '');
+            if (s === 'Shortlisted') return { text: 'Shortlisted', cls: 'pill-short', why: 'Selected for assessment' };
+            if (s === 'Rejected') return { text: 'Rejected', cls: 'pill-reject', why: 'Not a fit for this JD' };
+            if (s === 'ReviewQueue') return { text: 'Review', cls: 'pill-review', why: 'Needs recruiter review' };
+            if (s === 'DuplicateSkipped') return { text: 'Duplicate', cls: 'pill-dup', why: 'Already applied for this job with same CV' };
+            if (s === 'ScreeningTransportFailed') return { text: 'Error', cls: 'pill-fail', why: 'AI/transport failed' };
+            return { text: s || 'Unknown', cls: 'pill-dup', why: '' };
+        }
+
+        function scoreClass(n) {
+            if (n == null || !Number.isFinite(n)) return '';
+            if (n >= 70) return 'high';
+            if (n >= 45) return 'mid';
+            return 'low';
+        }
+
+        function formatDate(iso) {
+            if (!iso) return '—';
+            try {
+                return new Date(iso).toLocaleString();
+            } catch {
+                return iso;
+            }
+        }
+
+        function rowMatchesJob(row, title, slug) {
+            if (!title) return true;
+            if (row.requisition_id && row.requisition_id === slug) return true;
+            const notes = parseNotes(row.notes);
+            const nTitle = notes.requisition_title || notes.config?.requisition_title || '';
+            if (nTitle && nTitle.toLowerCase().trim() === title.toLowerCase().trim()) return true;
+            return false;
+        }
+
+        function extractReason(notes, stage) {
+            const n = parseNotes(notes);
+            const rec = String(n.recommendation || n.decision || '').toUpperCase();
+            const parts = [];
+            if (rec === 'SHORTLIST' || stage === 'Shortlisted') parts.push('Why selected:');
+            else if (rec === 'REJECT' || stage === 'Rejected') parts.push('Why rejected:');
+            else if (rec === 'REVIEW' || stage === 'ReviewQueue') parts.push('Needs review:');
+            if (n.summary) parts.push(n.summary);
+            else if (n.recommendation && parts.length < 2) parts.push(n.recommendation);
+            if (n.feedback) parts.push(n.feedback);
+            if (n.error) parts.push('Error: ' + n.error);
+            if (n.reason) parts.push(n.reason);
+            if (!parts.length && stage === 'Shortlisted') parts.push('Passed CV screening for this role.');
+            if (!parts.length && stage === 'Rejected') parts.push('Did not meet JD requirements.');
+            return parts.join(' ').trim() || '—';
+        }
+
+        async function loadSessionsByEmails(emails) {
+            if (!emails.length) return {};
+            const { data, error } = await supabase
+                .from('assessment_sessions')
+                .select('id, candidate_email, status, current_phase, result, score, config')
+                .in('candidate_email', emails);
+            if (error) {
+                console.warn('sessions', error);
+                return {};
+            }
+            const map = {};
+            for (const row of data || []) {
+                const em = String(row.candidate_email || '').toLowerCase();
+                if (!map[em]) map[em] = row;
+            }
+            return map;
+        }
+
+        async function loadScreeningResults() {
+            if (!supabase) {
+                showResultsStatus('Supabase failed to load. Check internet or refresh.', 'err');
+                return;
+            }
+
+            const filterInput = document.getElementById('resultsFilter');
+            const title = filterInput ? filterInput.value.trim() : '';
+            const slug = slugFromTitle(title);
+
+            if (loadResultsBtn) loadResultsBtn.disabled = true;
+            showResultsStatus('Loading all records from database…', 'ok');
+
+            const { data: allRows, error } = await supabase
+                .from('candidates')
+                .select('id, candidate_email, stage, score, requisition_id, notes, created_at')
+                .order('created_at', { ascending: false })
+                .limit(500);
+
+            if (loadResultsBtn) loadResultsBtn.disabled = false;
+
+            if (error) {
+                showResultsStatus(
+                    'Database error: ' + error.message + ' — run supabase_rls_candidates_read.sql in Supabase.',
+                    'err'
+                );
+                return;
+            }
+
+            let rows = allRows || [];
+            if (title) {
+                rows = rows.filter((r) => rowMatchesJob(r, title, slug));
+            }
+
+            if (!rows.length) {
+                document.getElementById('statsRow').style.display = 'none';
+                document.getElementById('screenTableBody').innerHTML =
+                    '<tr><td colspan="6" class="table-empty">' +
+                    (title
+                        ? 'No candidates for this job filter. Clear filter or screen CVs first.'
+                        : 'No candidates in database yet. Screen CVs on the other tab.') +
+                    '</td></tr>';
+                showResultsStatus(
+                    title ? 'No rows for filter «' + title + '».' : 'No candidates in database yet.',
+                    'err'
+                );
+                return;
+            }
+
+            const emails = rows.map((r) => String(r.candidate_email || '').toLowerCase()).filter(Boolean);
+            const sessions = await loadSessionsByEmails(emails);
+            let short = 0, reject = 0, review = 0, dup = 0;
+            rows.forEach((r) => {
+                if (r.stage === 'Shortlisted') short++;
+                else if (r.stage === 'Rejected') reject++;
+                else if (r.stage === 'DuplicateSkipped') dup++;
+                else if (r.stage === 'ReviewQueue' || r.stage === 'ScreeningTransportFailed') review++;
+            });
+
+            document.getElementById('statTotal').textContent = String(rows.length);
+            document.getElementById('statShort').textContent = String(short);
+            document.getElementById('statReject').textContent = String(reject);
+            document.getElementById('statReview').textContent = String(review);
+            const statDup = document.getElementById('statDup');
+            if (statDup) statDup.textContent = String(dup);
+            document.getElementById('statsRow').style.display = 'grid';
+
+            const tbody = document.getElementById('screenTableBody');
+            tbody.innerHTML = rows
+                .map((row, idx) => {
+                    const email = row.candidate_email || '—';
+                    const st = stageLabel(row.stage);
+                    const sc = row.score != null ? Number(row.score) : null;
+                    const notes = parseNotes(row.notes);
+                    const reason = extractReason(row.notes, row.stage);
+                    const sess = sessions[String(email).toLowerCase()];
+                    let assess = '';
+                    if (sess) {
+                        assess =
+                            '<div class="row-meta">Assessment: ' +
+                            escapeHtml(sess.status || '—') +
+                            (sess.result ? ' (' + escapeHtml(sess.result) + ')' : '') +
+                            '</div>';
+                    }
+                    const q = notes.phase_1_question
+                        ? '<div class="row-meta"><strong>Phase 1 Q:</strong> ' + escapeHtml(notes.phase_1_question) + '</div>'
+                        : '';
+                    const detailId = 'scr' + idx;
+                    const role = row.requisition_id || notes.requisition_title || '—';
+                    return (
+                        '<tr><td><div class="row-email">' + escapeHtml(email) + '</div>' + assess + '</td>' +
+                        '<td class="row-meta">' + escapeHtml(String(role).replace(/-/g, ' ')) + '</td>' +
+                        '<td><span class="cv-score ' + scoreClass(sc) + '">' +
+                        (sc != null && Number.isFinite(sc) ? sc : '—') + '</span></td>' +
+                        '<td><span class="pill ' + st.cls + '">' + st.text + '</span>' +
+                        '<div class="row-meta">' + escapeHtml(st.why) + '</div></td>' +
+                        '<td><div class="reason-cell">' + escapeHtml(reason.slice(0, 260)) +
+                        (reason.length > 260 ? '…' : '') + '</div>' +
+                        '<button type="button" class="expand-btn" data-detail="' + detailId + '">Full details</button>' +
+                        '<div class="detail-box" id="' + detailId + '">' + escapeHtml(reason) + q + '</div></td>' +
+                        '<td class="row-meta">' + formatDate(row.created_at) + '</td></tr>'
+                    );
+                })
+                .join('');
+
+            tbody.querySelectorAll('.expand-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const el = document.getElementById(btn.dataset.detail);
+                    if (el) el.classList.toggle('open');
+                    btn.textContent = el.classList.contains('open') ? 'Hide' : 'Full details';
+                });
+            });
+
+            const totalInDb = (allRows || []).length;
+            const label = title ? ' for «' + title + '»' : '';
+            showResultsStatus(
+                'Showing ' + rows.length + ' record(s)' + label + (totalInDb ? ' — ' + totalInDb + ' total in database.' : '.'),
+                'ok'
+            );
+        }
+
+        const viewResultsBtn = document.getElementById('viewResultsBtn');
+        if (viewResultsBtn) {
+            viewResultsBtn.addEventListener('click', () => {
+                location.href = location.pathname + '?tab=results';
+            });
+        }
+
+        const anotherBtn = document.getElementById('anotherBtn');
+        if (anotherBtn) anotherBtn.addEventListener('click', () => {
+            document.getElementById('formView').classList.remove('hide');
+            document.getElementById('successView').classList.remove('show');
+            document.getElementById('statusBox').classList.remove('show');
+            document.getElementById('progressBar').classList.remove('show');
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('intakeForm').reset();
+            document.getElementById('batchList').classList.add('hidden');
+            if (fileName) fileName.textContent = '';
+            setMode('single');
+            setPortalTab('intake');
+        });
+
+        document.addEventListener('click', function (e) {
+            if (e.target && e.target.closest && e.target.closest('#loadResultsBtn')) {
+                e.preventDefault();
+                loadScreeningResults().catch((err) =>
+                    showResultsStatus(err.message || 'Load failed', 'err')
+                );
+            }
+        });
+
+        const deepTab = params.get('tab');
+        if (deepTab === 'results' || deepTab === 'intake') {
+            enterWorkspace(deepTab);
+        }
+
+        } catch (err) {
+            showFatal(err);
+            console.error(err);
+        }
+        });
+
+        window.addEventListener('error', (ev) => showFatal(ev.error || { message: ev.message }));
+        window.addEventListener('unhandledrejection', (ev) => showFatal(ev.reason || { message: 'Unhandled error' }));
+    </script>
+</body>
+</html>

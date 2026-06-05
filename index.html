@@ -1,0 +1,2224 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Convo · Technical Assessment</title>
+    <meta name="description" content="Secure multi-phase technical assessment portal for candidates." />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['"DM Sans"', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        surface: { DEFAULT: '#121a27', elevated: '#1a2433', border: '#2a3a4f' },
+                        accent: { DEFAULT: '#6366f1', hover: '#4f46e5', muted: 'rgba(99, 102, 241, 0.14)' },
+                    },
+                    boxShadow: {
+                        card: '0 4px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255,255,255,0.04)',
+                        glow: '0 0 40px -8px rgba(99, 102, 241, 0.35)',
+                    },
+                },
+            },
+        };
+    </script>
+    <style>
+        :root {
+            --bg: #080b10;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+        }
+
+        * { box-sizing: border-box; }
+
+        html {
+            scroll-behavior: smooth;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'DM Sans', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        #root {
+            width: 100%;
+            max-width: 100%;
+            min-height: 100vh;
+        }
+
+        ::selection {
+            background: rgba(99, 102, 241, 0.35);
+            color: #fff;
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f1419; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .app-bg {
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 0%, rgba(59, 130, 246, 0.06), transparent);
+        }
+
+        .panel {
+            background: linear-gradient(180deg, rgba(26, 36, 51, 0.95) 0%, rgba(18, 26, 39, 0.98) 100%);
+            border: 1px solid #2a3a4f;
+            box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03);
+        }
+
+        .panel-elevated {
+            background: #1a2433;
+            border: 1px solid #2a3a4f;
+        }
+
+        .input-field {
+            background: #0f1620;
+            border: 1px solid #2a3a4f;
+            color: #f1f5f9;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            -webkit-user-select: text;
+            user-select: text;
+        }
+
+        .input-field::placeholder { color: #64748b; }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22);
+        }
+
+        .btn-primary {
+            background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
+            color: #fff;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 14px -2px rgba(99, 102, 241, 0.45);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            filter: brightness(1.08);
+            box-shadow: 0 4px 20px -2px rgba(99, 102, 241, 0.55);
+        }
+
+        .btn-primary:active:not(:disabled) { transform: scale(0.98); }
+
+        .btn-secondary {
+            background: rgba(15, 22, 32, 0.6);
+            border: 1px solid #2a3a4f;
+            color: #cbd5e1;
+            font-weight: 500;
+            transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            border-color: #475569;
+            background: rgba(26, 36, 51, 0.8);
+            color: #f8fafc;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.65rem;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            border-radius: 9999px;
+            border: 1px solid transparent;
+        }
+
+        .badge-accent {
+            background: rgba(99, 102, 241, 0.12);
+            border-color: rgba(99, 102, 241, 0.35);
+            color: #a5b4fc;
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.12);
+            border-color: rgba(16, 185, 129, 0.35);
+            color: #6ee7b7;
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.12);
+            border-color: rgba(245, 158, 11, 0.35);
+            color: #fcd34d;
+        }
+
+        .onboarding-hero {
+            background: linear-gradient(165deg, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+                linear-gradient(180deg, #141c28 0%, #0f1419 100%);
+            border: 1px solid #2a3a4f;
+            border-radius: 1rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .fade-in { animation: fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .assessment-lock, .portal-lock {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .question-protected {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        .question-masked {
+            filter: blur(14px);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .timer-ring-track { stroke: #1e293b; }
+        .timer-ring-progress { stroke: #6366f1; transition: stroke-dashoffset 1s linear; }
+        .timer-ring-progress.low { stroke: #f59e0b; }
+        .timer-ring-progress.critical { stroke: #ef4444; }
+
+        .assessment-workspace {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: calc(100vh - 4rem);
+            min-height: calc(100vh - 4rem);
+        }
+
+        @media (min-width: 1024px) {
+            .assessment-workspace { flex-direction: row; }
+        }
+
+        .assessment-sidebar {
+            flex-shrink: 0;
+            width: 100%;
+            border-bottom: 1px solid #2a3a4f;
+            background: linear-gradient(180deg, #0c121a 0%, #0a0f16 100%);
+            padding: 1rem 1.25rem;
+            overflow-y: auto;
+            max-height: 42vh;
+        }
+
+        @media (min-width: 1024px) {
+            .assessment-sidebar {
+                width: 18.5rem;
+                min-width: 18.5rem;
+                max-height: none;
+                height: 100%;
+                border-bottom: none;
+                border-right: 1px solid #2a3a4f;
+                padding: 1.25rem 1rem 1.5rem;
+            }
+        }
+
+        @media (min-width: 1280px) {
+            .assessment-sidebar { width: 20rem; min-width: 20rem; }
+        }
+
+        .sidebar-section {
+            padding-bottom: 1.125rem;
+            margin-bottom: 1.125rem;
+            border-bottom: 1px solid rgba(42, 58, 79, 0.65);
+        }
+
+        .sidebar-section:last-child {
+            padding-bottom: 0;
+            margin-bottom: 0;
+            border-bottom: none;
+        }
+
+        .sidebar-label {
+            font-size: 0.625rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 0.75rem;
+        }
+
+        .phase-list-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.625rem 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid transparent;
+            margin-bottom: 0.375rem;
+        }
+
+        .phase-list-item:last-child { margin-bottom: 0; }
+
+        .phase-list-item.active {
+            border-color: rgba(99, 102, 241, 0.45);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .phase-list-item.done { opacity: 0.7; }
+
+        .phase-list-item.pending { opacity: 0.5; }
+
+        .phase-list-num {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8125rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .assessment-main {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        @media print {
+            html, body, #root { display: none !important; }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        const MAX_INTEGRITY_VIOLATIONS = 3;
+        const VIOLATION_DEBOUNCE_MS = 1200;
+        const DEVTOOLS_SIZE_THRESHOLD = 140;
+        const DEVTOOLS_POLL_MS = 350;
+        const DEBUGGER_PAUSE_MS = 90;
+
+        const VIOLATION_LABELS = {
+            tab_switch: 'leaving the assessment tab',
+            window_blur: 'switching to another window or app',
+            devtools: 'opening developer tools (Inspect Element)',
+            fullscreen_exit: 'exiting fullscreen mode',
+            blocked_shortcut: 'using blocked keyboard shortcuts (F12, Inspect, View Source)',
+            screenshot: 'attempting to take a screenshot (Print Screen)',
+            snipping_tool: 'attempting to open Snipping Tool or screen capture (Win+Shift+S)',
+            print_attempt: 'attempting to print or save the page',
+        };
+
+        const hasWinModifier = (e) => (
+            e.metaKey ||
+            (typeof e.getModifierState === 'function' && (
+                e.getModifierState('Meta') ||
+                e.getModifierState('OS') ||
+                e.getModifierState('Super')
+            ))
+        );
+
+        const clearClipboardBestEffort = async () => {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText('');
+                }
+            } catch (err) { /* permission or unsupported */ }
+        };
+
+        const isInFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+
+        const enterAssessmentFullscreen = async () => {
+            const el = document.documentElement;
+            try {
+                if (document.fullscreenElement) return true;
+                if (el.requestFullscreen) {
+                    await el.requestFullscreen();
+                } else if (el.webkitRequestFullscreen) {
+                    await el.webkitRequestFullscreen();
+                } else if (el.msRequestFullscreen) {
+                    await el.msRequestFullscreen();
+                }
+                return !!document.fullscreenElement;
+            } catch (e) {
+                return false;
+            }
+        };
+
+        const exitAssessmentFullscreen = () => {
+            try {
+                if (document.fullscreenElement && document.exitFullscreen) {
+                    document.exitFullscreen().catch(() => {});
+                } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
+            } catch (e) {}
+        };
+
+        const isDevToolsLikelyOpenBySize = () => (
+            window.outerWidth - window.innerWidth > DEVTOOLS_SIZE_THRESHOLD ||
+            window.outerHeight - window.innerHeight > DEVTOOLS_SIZE_THRESHOLD
+        );
+
+        const isDevToolsLikelyOpenByConsole = () => {
+            let detected = false;
+            const bait = new Image();
+            try {
+                Object.defineProperty(bait, 'id', {
+                    get() {
+                        detected = true;
+                        return 'devtools-probe';
+                    },
+                    configurable: true,
+                });
+                console.debug(bait);
+                console.clear?.();
+            } catch (err) { /* ignore */ }
+            return detected;
+        };
+
+        const isDevToolsLikelyOpenByDebugger = () => {
+            try {
+                const start = performance.now();
+                // eslint-disable-next-line no-debugger
+                debugger;
+                return performance.now() - start > DEBUGGER_PAUSE_MS;
+            } catch (err) {
+                return false;
+            }
+        };
+
+        const isDevToolsLikelyOpen = () => (
+            isDevToolsLikelyOpenBySize() ||
+            isDevToolsLikelyOpenByConsole()
+        );
+
+        const isBlockedDevToolsShortcut = (e) => {
+            if (e.key === 'F12') return true;
+            const key = (e.key || '').toLowerCase();
+            if (e.ctrlKey && e.shiftKey && ['i', 'j', 'c', 'k', 'u'].includes(key)) return true;
+            if (e.ctrlKey && !e.shiftKey && (key === 'u' || key === 's')) return true;
+            if (e.metaKey && e.altKey && ['i', 'j', 'c', 'u'].includes(key)) return true;
+            if (e.metaKey && e.shiftKey && ['i', 'j', 'c', 'k'].includes(key)) return true;
+            if (hasWinModifier(e) && e.altKey && key === 'i') return true;
+            return false;
+        };
+
+        const isBlockedFullscreenEscapeShortcut = (e) => {
+            if (e.key === 'F11') return true;
+            const key = (e.key || '').toLowerCase();
+            if (hasWinModifier(e) && key === 'enter') return true;
+            return false;
+        };
+
+        const isBlockedTabSwitchShortcut = (e) => {
+            const key = (e.key || '').toLowerCase();
+            if (e.altKey && (key === 'tab' || e.keyCode === 9)) return true;
+            if (e.ctrlKey && (key === 'tab' || key === 'pageup' || key === 'pagedown')) return true;
+            if (e.ctrlKey && e.shiftKey && key === 'tab') return true;
+            return false;
+        };
+
+        const isBlockedScreenshotShortcut = (e) => {
+            const key = (e.key || '').toLowerCase();
+            const code = e.code || '';
+            if (e.key === 'PrintScreen' || e.keyCode === 44) return true;
+            if (e.altKey && (e.key === 'PrintScreen' || e.keyCode === 44)) return true;
+            if (hasWinModifier(e) && (e.key === 'PrintScreen' || e.keyCode === 44)) return true;
+            if (e.metaKey && e.shiftKey && ['3', '4', '5', 's'].includes(key)) return true;
+            if (hasWinModifier(e) && e.shiftKey && (key === 's' || code === 'KeyS')) return true;
+            if (hasWinModifier(e) && e.shiftKey && code === 'KeyS') return true;
+            if (hasWinModifier(e) && key === 'g') return true;
+            if (hasWinModifier(e) && e.altKey && key === 'r') return true;
+            return false;
+        };
+
+        const isBlockedPrintShortcut = (e) => {
+            const key = (e.key || '').toLowerCase();
+            if (e.ctrlKey && key === 'p') return true;
+            if (e.metaKey && key === 'p') return true;
+            return false;
+        };
+
+        const handleBlockedSecurityKey = (e, recordViolation) => {
+            if (isBlockedTabSwitchShortcut(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                recordViolation?.('blocked_shortcut');
+                return true;
+            }
+            if (isBlockedDevToolsShortcut(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                recordViolation?.('devtools');
+                return true;
+            }
+            if (isBlockedFullscreenEscapeShortcut(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                recordViolation?.('blocked_shortcut');
+                return true;
+            }
+            if (isBlockedPrintShortcut(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                recordViolation?.('print_attempt');
+                return true;
+            }
+            if (isBlockedScreenshotShortcut(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                clearClipboardBestEffort();
+                const key = (e.key || '').toLowerCase();
+                const code = e.code || '';
+                const isSnip = hasWinModifier(e) && e.shiftKey && (key === 's' || code === 'KeyS');
+                recordViolation?.(isSnip ? 'snipping_tool' : 'screenshot');
+                return true;
+            }
+            return false;
+        };
+
+        const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'assessment'];
+        const isPortalLockedView = (v) => PORTAL_LOCKED_VIEWS.includes(v);
+
+        const FullscreenRequiredOverlay = ({ onRestore, onSecurityKeyDown }) => (
+            <div
+                className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-[#080b10]/95 backdrop-blur-2xl px-4 portal-lock"
+                onContextMenu={(e) => e.preventDefault()}
+                onCopy={(e) => e.preventDefault()}
+                onCut={(e) => e.preventDefault()}
+                onPaste={(e) => e.preventDefault()}
+                onKeyDown={onSecurityKeyDown}
+                tabIndex={-1}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Fullscreen required"
+                style={{ top: 0, left: 0, width: '100vw', height: '100vh' }}
+            >
+                <div className="panel max-w-md w-full rounded-2xl p-8 sm:p-10 text-center shadow-card border border-accent/30">
+                    <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/15 border border-amber-500/30">
+                        <svg className="h-7 w-7 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <span className="badge badge-warning mb-4">Session paused</span>
+                    <h2 className="text-xl font-bold text-white mb-3 tracking-tight">Fullscreen required</h2>
+                    <p className="text-sm text-slate-400 leading-relaxed mb-2">
+                        You cannot exit or go back during this session. Developer Tools, Snipping Tool, screenshots, and browser menus are blocked until you return.
+                    </p>
+                    <p className="text-sm text-slate-500 leading-relaxed mb-8">
+                        Close Developer Tools if open, then click below to re-enter fullscreen and continue.
+                    </p>
+                    <button
+                        type="button"
+                        autoFocus
+                        onClick={onRestore}
+                        className="btn-primary w-full py-3.5 rounded-xl text-sm"
+                    >
+                        Return to fullscreen
+                    </button>
+                </div>
+            </div>
+        );
+
+        // Update when ngrok restarts (free tier gets a new subdomain each time).
+        // Must match: ngrok URL + n8n path on TRG - Assessment Answer (assessment-answer).
+        const WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
+
+        const Shell = ({ children, subtitle, footerNote, fullWidth = false, headerExtra = null }) => (
+            <div className="min-h-screen flex flex-col w-full">
+                <header className="sticky top-0 z-40 border-b border-surface-border/80 bg-[#080b10]/90 backdrop-blur-md w-full">
+                    <div className={`w-full h-16 flex items-center justify-between gap-3 ${fullWidth ? 'px-4 lg:px-5' : 'max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8'}`}>
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent/30 to-accent/5 border border-accent/40 flex items-center justify-center shrink-0 shadow-glow">
+                                <svg className="w-5 h-5 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-sm font-bold text-white tracking-tight leading-tight">Convo Assessment</p>
+                                {subtitle && <p className="text-xs text-slate-500 truncate leading-tight mt-0.5">{subtitle}</p>}
+                            </div>
+                        </div>
+                        {headerExtra ? (
+                            <div className="shrink-0 flex items-center" aria-label="Time remaining">
+                                {headerExtra}
+                            </div>
+                        ) : (
+                            <span className="badge badge-accent shrink-0 hidden sm:inline-flex">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
+                                Secure session
+                            </span>
+                        )}
+                    </div>
+                </header>
+                <main className={`flex-1 w-full ${fullWidth ? 'min-h-0 flex flex-col' : ''}`}>{children}</main>
+                {footerNote && (
+                    <footer className="border-t border-surface-border/60 py-4">
+                        <p className="text-center text-xs text-slate-600 max-w-xl mx-auto px-4 leading-relaxed">{footerNote}</p>
+                    </footer>
+                )}
+            </div>
+        );
+
+        const TimerRing = ({ seconds, totalSeconds, compact = false, prominent = false }) => {
+            const size = prominent ? 64 : compact ? 52 : 88;
+            const stroke = prominent ? 5 : compact ? 4 : 6;
+            const r = (size - stroke) / 2;
+            const c = 2 * Math.PI * r;
+            const total = totalSeconds && totalSeconds > 0 ? totalSeconds : seconds || 1;
+            const pct = seconds != null ? Math.max(0, Math.min(1, seconds / total)) : 0;
+            const offset = c * (1 - pct);
+            const low = seconds != null && seconds < 30;
+            const critical = seconds != null && seconds < 10;
+            const progClass = critical ? 'timer-ring-progress critical' : low ? 'timer-ring-progress low' : 'timer-ring-progress';
+            const mm = seconds != null ? `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}` : '—';
+            const wrapClass = prominent
+                ? 'flex items-center gap-3 shrink-0 rounded-xl border border-accent/30 bg-[#0f1620]/95 px-3.5 py-2.5 shadow-glow'
+                : compact
+                ? 'flex items-center gap-2.5 shrink-0 rounded-lg border border-surface-border bg-[#0f1620]/80 px-3 py-2'
+                : 'flex items-center gap-4 panel rounded-xl px-5 py-3 shrink-0';
+            const timeClass = prominent
+                ? `font-mono text-xl font-bold tabular-nums ${critical ? 'text-red-400' : low ? 'text-amber-400' : 'text-white'}`
+                : compact
+                ? `font-mono text-lg font-bold tabular-nums ${critical ? 'text-red-400' : low ? 'text-amber-400' : 'text-white'}`
+                : `font-mono text-2xl font-bold tabular-nums tracking-tight ${critical ? 'text-red-400' : low ? 'text-amber-400' : 'text-white'}`;
+            return (
+                <div className={wrapClass}>
+                    <svg width={size} height={size} className="-rotate-90 shrink-0" aria-hidden="true">
+                        <circle className="timer-ring-track" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} />
+                        <circle
+                            className={progClass}
+                            cx={size / 2}
+                            cy={size / 2}
+                            r={r}
+                            fill="none"
+                            strokeWidth={stroke}
+                            strokeLinecap="round"
+                            strokeDasharray={c}
+                            strokeDashoffset={offset}
+                        />
+                    </svg>
+                    <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Time left</p>
+                        <p className={timeClass}>{mm}</p>
+                    </div>
+                </div>
+            );
+        };
+
+        const ASSESSMENT_INSTRUCTIONS = [
+            'Answer in the text box — aim for clear, complete responses.',
+            'Submit before the timer runs out; partial text is saved on timeout.',
+            'Stay in fullscreen and keep this tab focused.',
+            'Copy-paste, right-click, and developer tools are disabled.',
+        ];
+
+        const AssessmentSidebar = ({
+            phases,
+            currentStep,
+            totalSteps,
+            candidateEmail,
+            integrityViolationCount,
+            pct,
+        }) => (
+            <aside className="assessment-sidebar" aria-label="Assessment sidebar">
+                <div className="sidebar-section">
+                    <p className="sidebar-label">Question count</p>
+                    <p className="text-3xl font-bold text-white tabular-nums leading-none">
+                        {currentStep}
+                        <span className="text-slate-500 text-xl font-semibold"> / {totalSteps}</span>
+                    </p>
+                    <p className="text-sm text-slate-400 mt-2">Technical questions in this session</p>
+                    <div className="h-1.5 bg-surface-elevated rounded-full overflow-hidden mt-4">
+                        <div
+                            className="h-full bg-gradient-to-r from-accent to-indigo-400 rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                        />
+                    </div>
+                </div>
+
+                <div className="sidebar-section">
+                    <p className="sidebar-label">All phases</p>
+                    <ul className="list-none p-0 m-0" role="list">
+                        {phases.map((p) => {
+                            const done = p < currentStep;
+                            const active = p === currentStep;
+                            const rowClass = active ? 'active' : done ? 'done' : 'pending';
+                            const statusLabel = active ? 'In progress' : done ? 'Completed' : 'Upcoming';
+                            return (
+                                <li
+                                    key={p}
+                                    role="listitem"
+                                    className={`phase-list-item ${rowClass}`}
+                                    aria-current={active ? 'step' : undefined}
+                                >
+                                    <span
+                                        className={`phase-list-num ${active ? 'bg-accent text-white' : done ? 'bg-slate-600 text-white' : 'bg-[#0f1620] text-slate-500 border border-surface-border'}`}
+                                    >
+                                        {done ? (
+                                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        ) : (
+                                            p
+                                        )}
+                                    </span>
+                                    <div className="min-w-0 flex-1 pt-0.5">
+                                        <p className={`text-sm font-semibold leading-tight ${active ? 'text-white' : 'text-slate-300'}`}>
+                                            Question {p}
+                                        </p>
+                                        <p className={`text-xs mt-1 ${active ? 'text-indigo-300' : 'text-slate-500'}`}>{statusLabel}</p>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+
+                <div className="sidebar-section">
+                    <p className="sidebar-label">Session</p>
+                    {candidateEmail ? (
+                        <div className="mb-3">
+                            <p className="text-xs text-slate-500 mb-1">Candidate</p>
+                            <p className="text-sm text-slate-200 break-all leading-snug">{candidateEmail}</p>
+                        </div>
+                    ) : null}
+                    <div>
+                        <p className="text-xs text-slate-500 mb-1">Integrity monitor</p>
+                        <p className="text-sm text-slate-200 tabular-nums">
+                            <span className={integrityViolationCount > 0 ? 'text-amber-400 font-semibold' : 'font-medium'}>
+                                {integrityViolationCount}
+                            </span>
+                            <span className="text-slate-500"> / {MAX_INTEGRITY_VIOLATIONS - 1} warnings</span>
+                        </p>
+                    </div>
+                </div>
+
+                <div className="sidebar-section">
+                    <p className="sidebar-label">Instructions</p>
+                    <ul className="space-y-2.5 m-0 p-0 list-none">
+                        {ASSESSMENT_INSTRUCTIONS.map((line, i) => (
+                            <li key={i} className="flex gap-2.5 text-xs text-slate-400 leading-relaxed">
+                                <span className="text-accent font-bold shrink-0 mt-px">{i + 1}.</span>
+                                <span>{line}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            </aside>
+        );
+
+        const scoreTone = (score) => {
+            const n = Number(score);
+            if (!Number.isFinite(n)) return 'text-slate-400';
+            if (n >= 75) return 'text-emerald-400';
+            if (n >= 60) return 'text-indigo-300';
+            if (n >= 40) return 'text-amber-400';
+            return 'text-red-400';
+        };
+
+        const LoginView = ({ sessionId, setSessionId, setView, supabase }) => {
+            const [localLoading, setLocalLoading] = React.useState(false);
+            const [errorMsg, setErrorMsg] = React.useState('');
+
+            const handleLoginSubmit = async (e) => {
+                e.preventDefault();
+                setErrorMsg('');
+                const sId = sessionId.trim();
+                if (!sId) {
+                    setErrorMsg('Please enter a session ID.');
+                    return;
+                }
+
+                if (sId.length < 10) {
+                    setErrorMsg('The session ID you entered is incomplete or invalid.');
+                    return;
+                }
+
+                setLocalLoading(true);
+                try {
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sId);
+                    let query = supabase.from('assessment_sessions').select('id, status');
+                    if (isUuid) {
+                        query = query.eq('id', sId);
+                    } else {
+                        query = query.eq('gmail_thread_id', sId);
+                    }
+                    const { data, error } = await query.single();
+
+                    if (error || !data) {
+                        setErrorMsg('Invalid Session ID. Please check your invitation link.');
+                        return;
+                    }
+
+                    const statusStr = (data.status || '').toLowerCase();
+                    if (statusStr.includes('completed') || statusStr.includes('terminated')) {
+                        setErrorMsg('This assessment session has already been completed or terminated.');
+                        return;
+                    }
+
+                    sessionStorage.setItem('current_session_id', data.id);
+                    sessionStorage.removeItem('assessment_started');
+                    setSessionId(data.id);
+                    await enterAssessmentFullscreen();
+                    setView('instructions');
+                } catch (err) {
+                    console.error('Session verification error:', err);
+                    setErrorMsg('Invalid Session ID. Please check your invitation link.');
+                } finally {
+                    setLocalLoading(false);
+                }
+            };
+
+            const steps = [
+                { t: 'Guidelines', d: 'Short checklist before timed questions.' },
+                { t: 'Phases', d: 'Answer each prompt; stay in this tab.' },
+                { t: 'Review', d: 'Your hiring team evaluates submissions.' },
+            ];
+
+            return (
+                <Shell subtitle="Candidate access" footerNote="Encrypted session · Proctored environment · Do not share your session ID">
+                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in portal-lock">
+                        <div className="onboarding-hero max-w-lg w-full rounded-2xl p-8 sm:p-10">
+                            <p className="badge badge-accent mb-4">Enterprise screening</p>
+                            <div className="flex items-start gap-3 mb-4">
+                                <div className="h-10 w-10 rounded-lg bg-surface-elevated border border-surface-border flex items-center justify-center shrink-0">
+                                    <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">Welcome</h1>
+                                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                                        Enter the session ID from your invitation email. You will review guidelines, then begin a timed technical assessment in fullscreen.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="rounded-lg border border-surface-border bg-surface/60 p-4 mb-6">
+                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">What happens next</p>
+                                <ul className="space-y-2.5">
+                                    {steps.map((s, i) => (
+                                        <li key={i} className="flex gap-3 text-sm">
+                                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/15 text-[10px] font-bold text-accent">
+                                                {i + 1}
+                                            </span>
+                                            <span>
+                                                <span className="font-medium text-slate-200">{s.t}</span>
+                                                <span className="text-slate-500"> — {s.d}</span>
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <form
+                                onSubmit={handleLoginSubmit}
+                                className="space-y-4"
+                            >
+                                <div>
+                                    <label htmlFor="session" className="block text-xs font-medium text-slate-400 mb-2">Session identifier</label>
+                                    <input
+                                        id="session"
+                                        required
+                                        autoComplete="off"
+                                        spellCheck="false"
+                                        className="input-field w-full px-4 py-3.5 rounded-xl text-sm font-mono"
+                                        placeholder="Paste your session ID"
+                                        value={sessionId}
+                                        onChange={(e) => setSessionId(e.target.value)}
+                                        disabled={localLoading}
+                                    />
+                                </div>
+                                {errorMsg && (
+                                    <div className="text-red-400 text-xs font-medium bg-red-950/30 border border-red-900/50 rounded-lg p-3">
+                                        {errorMsg}
+                                    </div>
+                                )}
+                                <button type="submit" disabled={localLoading} className="btn-primary w-full py-3.5 rounded-xl text-sm flex items-center justify-center gap-2">
+                                    {localLoading ? (
+                                        <>
+                                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                            </svg>
+                                            Verifying...
+                                        </>
+                                    ) : (
+                                        'Continue to guidelines'
+                                    )}
+                                </button>
+                            </form>
+                            <div className="mt-8 pt-8 border-t border-surface-border">
+                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-4 text-center">Recruiter</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <a
+                                        href="recruiter-intake.html?tab=intake"
+                                        className="group rounded-2xl p-6 min-h-[168px] flex flex-col text-left border border-indigo-500/30 bg-gradient-to-br from-indigo-600/25 to-surface/80 hover:border-indigo-400/50 hover:shadow-glow transition-all"
+                                    >
+                                        <span className="text-3xl mb-3" aria-hidden="true">📄</span>
+                                        <span className="text-lg font-bold text-white group-hover:text-indigo-100">CV Screening</span>
+                                        <span className="text-sm text-slate-400 mt-2 leading-relaxed flex-1">
+                                            Upload CVs, run AI screening against your JD, and send assessments.
+                                        </span>
+                                        <span className="text-sm font-semibold text-indigo-300 mt-4">Open screening →</span>
+                                    </a>
+                                    <a
+                                        href="recruiter-intake.html?tab=results"
+                                        className="group rounded-2xl p-6 min-h-[168px] flex flex-col text-left border border-emerald-500/30 bg-gradient-to-br from-emerald-600/20 to-surface/80 hover:border-emerald-400/50 transition-all"
+                                    >
+                                        <span className="text-3xl mb-3" aria-hidden="true">📊</span>
+                                        <span className="text-lg font-bold text-white group-hover:text-emerald-100">Screening Results</span>
+                                        <span className="text-sm text-slate-400 mt-2 leading-relaxed flex-1">
+                                            Scores, shortlist / reject status, and AI reasons per candidate.
+                                        </span>
+                                        <span className="text-sm font-semibold text-emerald-300 mt-4">View results →</span>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Shell>
+            );
+        };
+
+        const InstructionsView = ({ onStart }) => {
+            const [agreed, setAgreed] = React.useState(false);
+            const rules = [
+                {
+                    title: 'Timed Phases & Auto-Save',
+                    body: 'Each phase has its own countdown timer (set by question difficulty). If the timer runs out, whatever you have typed will be automatically saved and submitted.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    ),
+                },
+                {
+                    title: 'Focus & Fullscreen Rules',
+                    body: 'The portal stays in fullscreen from sign-in. Alt+Tab, Ctrl+Tab, F11, Win+Shift+S (Snipping Tool), Print Screen, and screenshot shortcuts are blocked. Pressing Esc blurs the screen and hides question content until you return. Developer Tools are detected even while blurred.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    ),
+                },
+                {
+                    title: 'No Copying or Right-Clicking',
+                    body: 'Text selection, right-clicking, copy-paste, cut, drag, and print are disabled on questions. Answers must be typed manually in the answer box.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    ),
+                },
+                {
+                    title: 'Developer Tools Blocked',
+                    body: 'F12, Inspect, View Source, and DevTools docking are detected. If DevTools opens, the question is hidden and a violation is recorded during the assessment.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    ),
+                },
+                {
+                    title: 'Avoid Page Refreshing',
+                    body: 'Do not manually reload or refresh the browser. While your session is automatically restored if you refresh, the timer will not reset.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89H18V4" />
+                    ),
+                },
+                {
+                    title: 'Integrity Monitoring',
+                    body: 'All active actions, response patterns, and screen movements are logged for evaluation. Stay focused on the test tab.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    ),
+                },
+            ];
+            return (
+                <Shell subtitle="Guidelines & integrity" footerNote="By starting, you agree to proctored session rules below">
+                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in portal-lock">
+                        <div className="onboarding-hero max-w-2xl w-full rounded-2xl overflow-hidden">
+                            <div className="p-8 sm:p-10 border-b border-surface-border bg-surface-elevated/40">
+                                <p className="badge badge-accent mb-3">Before you begin</p>
+                                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Assessment guidelines</h1>
+                                <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                                    The assessment runs in timed phases (often five). Read the rules below, then confirm to begin.
+                                </p>
+                                <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                                    <div className="flex-1 rounded-lg border border-surface-border bg-surface/50 px-4 py-3">
+                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Format</p>
+                                        <p className="text-sm text-slate-200 mt-0.5">Multi-phase technical prompts</p>
+                                    </div>
+                                    <div className="flex-1 rounded-lg border border-surface-border bg-surface/50 px-4 py-3">
+                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Help</p>
+                                        <p className="text-sm text-slate-200 mt-0.5">Contact your recruiter for access issues</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-8 sm:p-10 space-y-3 bg-surface/30">
+                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Rules</p>
+                                {rules.map((rule, i) => (
+                                    <div
+                                        key={i}
+                                        className="flex gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg border border-surface-border bg-surface-elevated/50"
+                                    >
+                                        <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 border border-accent/20 text-accent">
+                                            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                {rule.icon}
+                                            </svg>
+                                        </div>
+                                        <div className="min-w-0 pt-0.5">
+                                            <p className="text-sm font-medium text-white">
+                                                <span className="text-slate-500 font-normal tabular-nums mr-1.5">{i + 1}.</span>
+                                                {rule.title}
+                                            </p>
+                                            <p className="text-sm text-slate-400 mt-1 leading-relaxed">{rule.body}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="px-8 sm:px-10 pb-8 sm:pb-10 pt-2 space-y-5">
+                                <label className="flex items-start gap-3 cursor-pointer group rounded-lg p-2 -m-2 hover:bg-surface-elevated/30 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        className="mt-0.5 w-4 h-4 rounded border-surface-border bg-surface-elevated text-accent focus:ring-accent focus:ring-offset-0 focus:ring-2 shrink-0"
+                                        checked={agreed}
+                                        onChange={(e) => setAgreed(e.target.checked)}
+                                    />
+                                    <span className="text-sm text-slate-400 group-hover:text-slate-300 leading-relaxed">
+                                        I have read and agree to follow these guidelines for the duration of the assessment.
+                                    </span>
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={onStart}
+                                    disabled={!agreed}
+                                    className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
+                                >
+                                    Start assessment
+                                </button>
+                                <p className="text-xs text-center text-slate-600 leading-relaxed">
+                                    You may close this page before starting; your session ID will work when you return.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </Shell>
+            );
+        };
+
+        const AdminView = ({ setView }) => {
+            const [jobTitle, setJobTitle] = useState('');
+            const [jd, setJd] = useState('');
+            const [isCreating, setIsCreating] = useState(false);
+            const [generatedLink, setGeneratedLink] = useState('');
+            const [copied, setCopied] = useState(false);
+
+            const copyLink = async () => {
+                if (!generatedLink) return;
+                try {
+                    await navigator.clipboard.writeText(generatedLink);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2500);
+                } catch {
+                    alert('Copy failed — select the link and copy manually.');
+                }
+            };
+
+            const handleCreateJob = async (e) => {
+                e.preventDefault();
+                setIsCreating(true);
+                try {
+                    const response = await fetch(`${WEBHOOK_BASE}/job-create`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+                        body: JSON.stringify({ title: jobTitle, description: jd }),
+                    });
+                    const data = await response.json();
+                    if (data.jobUrl) setGeneratedLink(data.jobUrl);
+                    else alert('Role created. Use your standard invitation flow if no link was returned.');
+                } catch (e) {
+                    alert('Could not reach the automation endpoint. Check your n8n tunnel and workflow.');
+                } finally {
+                    setIsCreating(false);
+                }
+            };
+
+            return (
+                <Shell subtitle="Recruiter portal" footerNote="New roles sync to your n8n talent acquisition workflow">
+                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in">
+                        <div className="onboarding-hero max-w-xl w-full rounded-2xl p-8 sm:p-10">
+                            <div className="flex items-start justify-between gap-4 mb-8">
+                                <div>
+                                    <p className="badge badge-accent mb-3">Talent operations</p>
+                                    <h2 className="text-2xl font-bold text-white tracking-tight">Publish a role</h2>
+                                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                                        Create a job posting and share the generated application link with candidates.
+                                    </p>
+                                </div>
+                                <button type="button" onClick={() => setView('login')} className="btn-secondary px-4 py-2 rounded-xl text-sm shrink-0">
+                                    Back
+                                </button>
+                            </div>
+
+                            {!generatedLink ? (
+                                <form onSubmit={handleCreateJob} className="space-y-5">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-400 mb-2">Job title</label>
+                                        <input
+                                            required
+                                            className="input-field w-full px-4 py-3.5 rounded-xl text-sm"
+                                            placeholder="e.g. Senior software engineer"
+                                            value={jobTitle}
+                                            onChange={(e) => setJobTitle(e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-400 mb-2">Job description</label>
+                                        <textarea
+                                            required
+                                            className="input-field w-full px-4 py-3.5 rounded-xl text-sm h-44 resize-y min-h-[140px] leading-relaxed"
+                                            placeholder="Paste the full job description — used for CV screening and assessment questions."
+                                            value={jd}
+                                            onChange={(e) => setJd(e.target.value)}
+                                        />
+                                    </div>
+                                    <button type="submit" disabled={isCreating} className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-50">
+                                        {isCreating ? 'Publishing…' : 'Publish and generate link'}
+                                    </button>
+                                </form>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="flex items-start gap-3 p-5 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
+                                        <svg className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                        <div>
+                                            <p className="text-sm font-medium text-emerald-200">Role published successfully</p>
+                                            <p className="text-xs text-slate-400 mt-1">Share the invitation link with applicants.</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Invitation link</p>
+                                        <div className="input-field p-4 rounded-xl font-mono text-xs break-all text-slate-300 leading-relaxed">
+                                            {generatedLink}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row gap-3">
+                                        <button type="button" onClick={copyLink} className="btn-primary flex-1 py-3 rounded-xl text-sm">
+                                            {copied ? 'Copied to clipboard' : 'Copy link'}
+                                        </button>
+                                        <button type="button" onClick={() => { setGeneratedLink(''); setCopied(false); }} className="btn-secondary flex-1 py-3 rounded-xl text-sm">
+                                            Publish another
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </Shell>
+            );
+        };
+
+        const AssessmentView = ({
+            currentStep,
+            totalSteps,
+            timeLeft,
+            phaseTimeLimit,
+            question,
+            answer,
+            setAnswer,
+            handleAssessmentSubmit,
+            isLoading,
+            candidateEmail,
+            integrityViolationCount,
+            contentMasked,
+        }) => {
+            const pct = totalSteps > 0 ? Math.min(100, (currentStep / totalSteps) * 100) : 0;
+            const phases = Array.from({ length: totalSteps }, (_, i) => i + 1);
+            const charCount = answer.trim().length;
+            const canSubmit = charCount >= 5 && !contentMasked && !isLoading;
+            return (
+                <Shell subtitle={`Phase ${currentStep} of ${totalSteps} · Technical assessment`} fullWidth>
+                    <div className="assessment-workspace fade-in assessment-lock">
+                        <AssessmentSidebar
+                            phases={phases}
+                            currentStep={currentStep}
+                            totalSteps={totalSteps}
+                            candidateEmail={candidateEmail}
+                            integrityViolationCount={integrityViolationCount}
+                            pct={pct}
+                        />
+
+                        <div className="assessment-main">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-surface-border/60">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="min-w-0 flex-1">
+                                        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight">
+                                            Question {currentStep}
+                                        </h1>
+                                        <p className="text-sm text-slate-500 mt-1">Answer in your own words — reviewed after you submit</p>
+                                    </div>
+                                    {phaseTimeLimit != null && timeLeft != null ? (
+                                        <TimerRing
+                                            seconds={timeLeft}
+                                            totalSeconds={phaseTimeLimit}
+                                            prominent
+                                        />
+                                    ) : null}
+                                </div>
+                            </div>
+
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
+                            <div className="flex-1 min-h-[280px] flex flex-col rounded-xl border border-surface-border bg-[#0f1419]/80 relative">
+                                {isLoading && (
+                                    <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
+                                        <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
+                                        <p className="text-sm text-slate-400">Processing your response…</p>
+                                    </div>
+                                )}
+                                <div className="shrink-0 px-5 sm:px-6 pt-5 pb-4 border-b border-surface-border/80">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Question</p>
+                                    {contentMasked ? (
+                                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-5 py-8 text-center">
+                                            <p className="text-base font-semibold text-amber-100 mb-2">Content protected</p>
+                                            <p className="text-sm text-slate-400 leading-relaxed">
+                                                Return to fullscreen and close developer tools to continue.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div
+                                            className="question-protected text-base sm:text-lg text-slate-100 leading-relaxed"
+                                            onCopy={(e) => e.preventDefault()}
+                                            onCut={(e) => e.preventDefault()}
+                                            onContextMenu={(e) => e.preventDefault()}
+                                            onDragStart={(e) => e.preventDefault()}
+                                        >
+                                            {question}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex-1 flex flex-col min-h-0 px-5 sm:px-6 py-4">
+                                    <label htmlFor="answer" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Your answer</label>
+                                    <textarea
+                                        id="answer"
+                                        className="input-field w-full flex-1 min-h-[180px] px-4 py-4 rounded-lg text-sm sm:text-base leading-relaxed resize-none"
+                                        placeholder="Type your answer here."
+                                        value={answer}
+                                        onChange={(e) => setAnswer(e.target.value)}
+                                        onPaste={(e) => e.preventDefault()}
+                                        onCopy={(e) => e.preventDefault()}
+                                        onCut={(e) => e.preventDefault()}
+                                        onDrop={(e) => e.preventDefault()}
+                                        autoComplete="off"
+                                        autoCorrect="off"
+                                        autoCapitalize="off"
+                                        spellCheck="false"
+                                        disabled={contentMasked || isLoading}
+                                    />
+                                </div>
+                                <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-surface-border bg-[#0c121a]/50 rounded-b-xl">
+                                    <div>
+                                        <p className="text-xs text-slate-500">
+                                            {canSubmit ? 'Ready to submit' : 'Type at least 5 characters'}
+                                        </p>
+                                        <p className="text-xs text-slate-600 mt-0.5 tabular-nums">{charCount} characters</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleAssessmentSubmit}
+                                        disabled={!canSubmit}
+                                        className="btn-primary px-10 py-3.5 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed w-full sm:w-auto"
+                                    >
+                                        Submit answer
+                                    </button>
+                                </div>
+                            </div>
+                            </div>
+                        </div>
+                    </div>
+                </Shell>
+            );
+        };
+
+        const cleanUrlParam = (value) => {
+            if (!value) return '';
+            return decodeURIComponent(String(value)).trim().split(/\n/)[0].split(/\s+regards/i)[0].trim();
+        };
+
+        const parseInterviewHistory = (raw) => {
+            let history = raw || [];
+            if (typeof history === 'string') {
+                try { history = JSON.parse(history); } catch (e) { history = []; }
+            }
+            return Array.isArray(history) ? history : [];
+        };
+
+        const getAiTimeLimitSeconds = (phaseRow) => {
+            const limit = Number(phaseRow?.time_limit_seconds);
+            return Number.isFinite(limit) && limit > 0 ? limit : null;
+        };
+
+        const computeRemainingFromPhase = (phaseRow) => {
+            if (!phaseRow) return null;
+            if (phaseRow.deadline_at) {
+                return Math.max(0, Math.floor((new Date(phaseRow.deadline_at).getTime() - Date.now()) / 1000));
+            }
+            return getAiTimeLimitSeconds(phaseRow);
+        };
+
+        const normalizeInterviewHistory = (raw) => {
+            let history = raw || [];
+            if (typeof history === 'string') {
+                try { history = JSON.parse(history); } catch (e) { history = []; }
+            }
+            if (!Array.isArray(history)) return [];
+            return history
+                .map((item, index) => ({
+                    phase: item.phase ?? index + 1,
+                    question_text: item.question_text || item.question || '—',
+                    answer_text: item.answer_text ?? item.answer ?? '',
+                    score: item.score != null ? item.score : '—',
+                    feedback: (item.feedback && String(item.feedback).trim())
+                        ? String(item.feedback).trim()
+                        : '—',
+                    suggested_answer: (item.suggested_answer && String(item.suggested_answer).trim())
+                        ? String(item.suggested_answer).trim()
+                        : (item.suggestedAnswer && String(item.suggestedAnswer).trim())
+                            ? String(item.suggestedAnswer).trim()
+                            : '—',
+                }))
+                .sort((a, b) => Number(a.phase) - Number(b.phase));
+        };
+
+        const pickLatestFeedback = (history, fallback = '') => {
+            if (fallback && String(fallback).trim() && fallback !== 'Assessment completed.') {
+                return String(fallback).trim();
+            }
+            if (!Array.isArray(history) || history.length === 0) return '';
+            for (let i = history.length - 1; i >= 0; i--) {
+                const f = history[i].feedback;
+                if (f && String(f).trim() && f !== '—') return String(f).trim();
+            }
+            return '';
+        };
+
+        const FinishedView = ({ result, overallScore, feedback, onReview, isLoading }) => {
+            const passed = result === 'PASS';
+            const scoreNum = Number(overallScore);
+            const showScore = Number.isFinite(scoreNum);
+            return (
+            <Shell subtitle="Assessment complete">
+                <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in">
+                    <div className="panel max-w-xl w-full rounded-2xl p-8 sm:p-12 text-center shadow-card">
+                        <div className={`w-16 h-16 mx-auto mb-6 rounded-2xl flex items-center justify-center ${passed ? 'bg-emerald-500/15 border border-emerald-500/30' : 'bg-slate-700/30 border border-surface-border'}`}>
+                            {passed ? (
+                                <svg className="w-9 h-9 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                            ) : (
+                                <svg className="w-9 h-9 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            )}
+                        </div>
+                        <span className={`badge mb-4 ${passed ? 'badge-success' : 'badge-warning'}`}>
+                            {passed ? 'Proceed to next stage' : 'Under review'}
+                        </span>
+                        {showScore && (
+                            <p className={`text-4xl font-bold tabular-nums mb-2 ${scoreTone(scoreNum)}`}>
+                                {Math.round(scoreNum)}<span className="text-lg text-slate-500 font-medium">/100</span>
+                            </p>
+                        )}
+                        <h1 className="text-2xl font-bold text-white mb-3 tracking-tight">
+                            {passed ? 'Strong performance' : 'Thank you for completing'}
+                        </h1>
+                        <p className="text-sm text-slate-400 leading-relaxed mb-8 max-w-md mx-auto">
+                            {passed
+                                ? 'You met the screening bar. Our team will contact you with scheduling and next steps.'
+                                : 'Your responses have been recorded. The hiring team will review your submission.'}
+                        </p>
+                        {feedback && String(feedback).trim() && feedback !== 'Assessment completed.' && (
+                            <div className="text-left mb-8 p-5 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">Evaluator notes</p>
+                                <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{feedback}</p>
+                            </div>
+                        )}
+                        <button
+                            type="button"
+                            onClick={onReview}
+                            disabled={isLoading}
+                            className="btn-primary w-full py-3.5 rounded-xl text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60"
+                        >
+                            {isLoading ? (
+                                <>
+                                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    Loading review…
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                                    Review responses and notes
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </Shell>
+            );
+        };
+
+        const ReviewView = ({ history, onBack, overallFeedback }) => (
+            <Shell subtitle="Response review">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10 fade-in">
+                    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
+                        <div>
+                            <h2 className="text-2xl font-bold text-white tracking-tight">Your responses</h2>
+                            <p className="text-sm text-slate-400 mt-1">Per-phase scores, feedback, and reference answers.</p>
+                        </div>
+                        <button type="button" onClick={onBack} className="btn-secondary px-5 py-2.5 rounded-xl text-sm self-start sm:self-auto">
+                            Back to results
+                        </button>
+                    </div>
+
+                    {overallFeedback && (
+                        <div className="panel rounded-2xl p-6 mb-8 border border-indigo-500/20 bg-indigo-500/5">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">Overall feedback</p>
+                            <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{overallFeedback}</p>
+                        </div>
+                    )}
+
+                    {history.length === 0 ? (
+                        <div className="panel rounded-2xl p-12 text-center text-slate-400 text-sm">
+                            No response history for this session.
+                        </div>
+                    ) : (
+                        <div className="space-y-5">
+                            {history.map((item, index) => (
+                                <article key={`${item.phase}-${index}`} className="panel rounded-2xl p-6 sm:p-8">
+                                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-surface-border">
+                                        <span className="badge badge-accent">Phase {item.phase}</span>
+                                        <span className={`text-lg font-bold tabular-nums ${scoreTone(item.score)}`}>
+                                            {item.score !== '—' ? `${item.score}/100` : '—'}
+                                        </span>
+                                    </div>
+                                    <div className="grid gap-5 sm:grid-cols-1">
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Question</p>
+                                            <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{item.question_text}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Your answer</p>
+                                            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap panel-elevated rounded-xl p-4">
+                                                {item.answer_text?.trim() ? item.answer_text : '—'}
+                                            </p>
+                                        </div>
+                                        {item.feedback && item.feedback !== '—' && (
+                                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-400/90 mb-2">Feedback</p>
+                                                <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{item.feedback}</p>
+                                            </div>
+                                        )}
+                                        {item.suggested_answer && item.suggested_answer !== '—' && (
+                                            <div className="rounded-xl border border-surface-border bg-surface-elevated/40 p-4">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Reference answer</p>
+                                                <p className="text-sm text-slate-400 leading-relaxed whitespace-pre-wrap">{item.suggested_answer}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="text-center py-12 mt-8">
+                        <button type="button" onClick={() => window.location.reload()} className="btn-secondary px-8 py-3 rounded-xl text-sm">
+                            Exit portal
+                        </button>
+                    </div>
+                </div>
+            </Shell>
+        );
+
+        const App = () => {
+            const [view, setView] = useState('login');
+            const [sessionId, setSessionId] = useState('');
+            const [candidateEmail, setCandidateEmail] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+            const [currentStep, setCurrentStep] = useState(1);
+            const [totalSteps, setTotalSteps] = useState(5);
+            const [timeLeft, setTimeLeft] = useState(null);
+            const [phaseTimeLimit, setPhaseTimeLimit] = useState(null);
+            const deadlineAtRef = useRef(null);
+            const [question, setQuestion] = useState('Loading question…');
+            const [answer, setAnswer] = useState('');
+            const [result, setResult] = useState(null);
+            const [overallScore, setOverallScore] = useState(null);
+            const [feedback, setFeedback] = useState('');
+            const [integrityViolationCount, setIntegrityViolationCount] = useState(0);
+            const [assessmentHistory, setAssessmentHistory] = useState([]);
+
+            const viewRef = useRef(view);
+            const sessionIdRef = useRef(sessionId);
+            const candidateEmailRef = useRef(candidateEmail);
+            const currentStepRef = useRef(currentStep);
+            const integrityViolationCountRef = useRef(0);
+            const terminatingRef = useRef(false);
+            const lastViolationAtRef = useRef(0);
+            const devToolsOpenRef = useRef(false);
+            const escExitRef = useRef(false);
+            const fullscreenRequiredRef = useRef(false);
+            const devToolsWarnedRef = useRef(false);
+            const debuggerCheckCounterRef = useRef(0);
+            const [fullscreenRequired, setFullscreenRequired] = useState(false);
+            const [devToolsDetected, setDevToolsDetected] = useState(false);
+
+            const isSecurityActive = useCallback(() => (
+                isPortalLockedView(viewRef.current) || fullscreenRequiredRef.current
+            ), []);
+
+            const runDevToolsProbe = useCallback(() => {
+                debuggerCheckCounterRef.current += 1;
+                let open = isDevToolsLikelyOpen();
+                if (!open && viewRef.current === 'assessment' && debuggerCheckCounterRef.current % 3 === 0) {
+                    open = isDevToolsLikelyOpenByDebugger();
+                }
+                return open;
+            }, []);
+
+            const syncFullscreenState = useCallback(() => {
+                if (!isPortalLockedView(viewRef.current)) {
+                    setFullscreenRequired(false);
+                    fullscreenRequiredRef.current = false;
+                    return;
+                }
+                const required = !isInFullscreen();
+                setFullscreenRequired(required);
+                fullscreenRequiredRef.current = required;
+            }, []);
+
+            const restorePortalFullscreen = useCallback(async () => {
+                escExitRef.current = false;
+                devToolsWarnedRef.current = false;
+                if (runDevToolsProbe()) {
+                    devToolsOpenRef.current = true;
+                    setDevToolsDetected(true);
+                    alert('Close Developer Tools (F12) completely, then click Return to fullscreen.');
+                    return;
+                }
+                await enterAssessmentFullscreen();
+                syncFullscreenState();
+            }, [syncFullscreenState, runDevToolsProbe]);
+
+            useEffect(() => { viewRef.current = view; }, [view]);
+            useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+            useEffect(() => { candidateEmailRef.current = candidateEmail; }, [candidateEmail]);
+            useEffect(() => { currentStepRef.current = currentStep; }, [currentStep]);
+            useEffect(() => { integrityViolationCountRef.current = integrityViolationCount; }, [integrityViolationCount]);
+
+            const supabaseUrl = 'https://vnxstyadacgntnsvcvzn.supabase.co';
+            const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
+            const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+            const applyTimerFromPhase = useCallback((phaseRow) => {
+                const remaining = computeRemainingFromPhase(phaseRow);
+                if (remaining == null) {
+                    deadlineAtRef.current = null;
+                    sessionStorage.removeItem('deadline_at');
+                    sessionStorage.removeItem('time_left');
+                    setTimeLeft(null);
+                    setPhaseTimeLimit(null);
+                    return null;
+                }
+                if (phaseRow?.deadline_at) {
+                    deadlineAtRef.current = phaseRow.deadline_at;
+                    sessionStorage.setItem('deadline_at', phaseRow.deadline_at);
+                } else {
+                    deadlineAtRef.current = null;
+                    sessionStorage.removeItem('deadline_at');
+                }
+                setTimeLeft(remaining);
+                const limit = getAiTimeLimitSeconds(phaseRow);
+                if (limit) setPhaseTimeLimit(limit);
+                sessionStorage.setItem('time_left', String(remaining));
+                return remaining;
+            }, []);
+
+            const startPhaseTimerInDatabase = useCallback(async (sessionDbId, history, phaseIndex) => {
+                const row = { ...(history[phaseIndex] || {}) };
+                const seconds = getAiTimeLimitSeconds(row);
+                if (seconds == null) {
+                    throw new Error('This question has no AI time_limit_seconds. Re-run screening or assessment workflow.');
+                }
+                const sent_at = new Date().toISOString();
+                const deadline_at = new Date(Date.now() + seconds * 1000).toISOString();
+                const updatedHistory = history.map((item, i) => (
+                    i === phaseIndex
+                        ? { ...item, time_limit_seconds: seconds, sent_at, deadline_at }
+                        : item
+                ));
+
+                const { error } = await supabase
+                    .from('assessment_sessions')
+                    .update({
+                        interview_history: updatedHistory,
+                        updated_at: sent_at,
+                        last_question_sent_at: sent_at,
+                    })
+                    .eq('id', sessionDbId);
+
+                if (error) throw error;
+                applyTimerFromPhase(updatedHistory[phaseIndex]);
+                return updatedHistory[phaseIndex];
+            }, [supabase, applyTimerFromPhase]);
+
+            useEffect(() => {
+                if (isPortalLockedView(view) || fullscreenRequired) {
+                    document.documentElement.classList.add('portal-lock');
+                } else {
+                    document.documentElement.classList.remove('portal-lock');
+                }
+                return () => document.documentElement.classList.remove('portal-lock');
+            }, [view, fullscreenRequired]);
+
+            useEffect(() => {
+                if (!isPortalLockedView(view) && !fullscreenRequired) return;
+                const preventActions = (e) => e.preventDefault();
+                const preventSelect = (e) => {
+                    if (viewRef.current === 'assessment' && e.target && e.target.closest && e.target.closest('textarea')) {
+                        return;
+                    }
+                    e.preventDefault();
+                };
+                const preventDrag = (e) => e.preventDefault();
+                document.addEventListener('contextmenu', preventActions);
+                document.addEventListener('copy', preventActions);
+                document.addEventListener('cut', preventActions);
+                document.addEventListener('paste', preventActions);
+                document.addEventListener('selectstart', preventSelect);
+                document.addEventListener('dragstart', preventDrag);
+                return () => {
+                    document.removeEventListener('contextmenu', preventActions);
+                    document.removeEventListener('copy', preventActions);
+                    document.removeEventListener('cut', preventActions);
+                    document.removeEventListener('paste', preventActions);
+                    document.removeEventListener('selectstart', preventSelect);
+                    document.removeEventListener('dragstart', preventDrag);
+                };
+            }, [view, fullscreenRequired]);
+
+            const terminateTestDueToCheating = useCallback(async (reason, currentCount) => {
+                if (terminatingRef.current) return;
+                terminatingRef.current = true;
+                setView('finished');
+                setResult('FAIL');
+                const reasonText = VIOLATION_LABELS[reason] || reason;
+                setFeedback(`Test terminated automatically due to integrity violations (${reasonText}).`);
+                sessionStorage.removeItem('current_session_id');
+                sessionStorage.removeItem('candidate_email');
+                sessionStorage.removeItem('time_left');
+                sessionStorage.removeItem('deadline_at');
+                sessionStorage.removeItem('assessment_started');
+                deadlineAtRef.current = null;
+                try {
+                    await supabase
+                        .from('assessment_sessions')
+                        .update({
+                            status: 'completed',
+                            score: 0,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', sessionIdRef.current);
+
+                    await fetch(`${WEBHOOK_BASE}/assessment-answer`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+                        body: JSON.stringify({
+                            sessionId: sessionIdRef.current,
+                            answer: `[SYSTEM TERMINATION: Integrity violation #${currentCount} (${reason}). Cheating detected.]`,
+                            phase: currentStepRef.current,
+                            email: candidateEmailRef.current,
+                            tabSwitches: currentCount,
+                            integrityViolations: currentCount,
+                            violationReason: reason,
+                        }),
+                    });
+                } catch (e) {
+                    console.error('Cheating submit error:', e);
+                }
+            }, [supabase]);
+
+            const recordIntegrityViolation = useCallback((reason) => {
+                if (viewRef.current !== 'assessment' || terminatingRef.current) return;
+                const now = Date.now();
+                if (now - lastViolationAtRef.current < VIOLATION_DEBOUNCE_MS) return;
+                lastViolationAtRef.current = now;
+
+                const newCount = integrityViolationCountRef.current + 1;
+                integrityViolationCountRef.current = newCount;
+                setIntegrityViolationCount(newCount);
+
+                const reasonText = VIOLATION_LABELS[reason] || reason;
+                if (newCount >= MAX_INTEGRITY_VIOLATIONS) {
+                    terminateTestDueToCheating(reason, newCount);
+                    return;
+                }
+
+                const remaining = MAX_INTEGRITY_VIOLATIONS - newCount;
+                alert(
+                    `Integrity warning ${newCount} of ${MAX_INTEGRITY_VIOLATIONS - 1}: ${reasonText}. ` +
+                    `${remaining} more violation${remaining === 1 ? '' : 's'} will terminate and fail your assessment.`
+                );
+            }, [terminateTestDueToCheating]);
+
+            const handleSecurityKeyDown = useCallback((e) => {
+                if (!isSecurityActive()) return;
+
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+
+                const record = (reason) => {
+                    if (viewRef.current === 'assessment') {
+                        recordIntegrityViolation(reason);
+                    }
+                };
+
+                if (handleBlockedSecurityKey(e, record)) return;
+
+                if (viewRef.current === 'assessment') {
+                    const key = (e.key || '').toLowerCase();
+                    if (e.ctrlKey && (key === 'c' || key === 'x' || key === 'a')) {
+                        if (!e.target || !e.target.closest || !e.target.closest('textarea')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+                    }
+                    if (e.metaKey && (key === 'c' || key === 'x' || key === 'a')) {
+                        if (!e.target || !e.target.closest || !e.target.closest('textarea')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+                    }
+                }
+            }, [isSecurityActive, recordIntegrityViolation]);
+
+            useEffect(() => {
+                const handleVisibilityChange = () => {
+                    if (!isSecurityActive() || terminatingRef.current) return;
+
+                    if (document.visibilityState === 'hidden') {
+                        if (viewRef.current === 'assessment' && !escExitRef.current) {
+                            recordIntegrityViolation('tab_switch');
+                        }
+                        return;
+                    }
+
+                    if (!isInFullscreen()) {
+                        fullscreenRequiredRef.current = true;
+                        setFullscreenRequired(true);
+                    }
+                };
+                document.addEventListener('visibilitychange', handleVisibilityChange);
+                return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+            }, [recordIntegrityViolation, isSecurityActive]);
+
+            useEffect(() => {
+                const handleWindowBlur = () => {
+                    if (!isSecurityActive() || terminatingRef.current) return;
+                    if (escExitRef.current) return;
+                    if (viewRef.current === 'assessment' && document.visibilityState === 'visible') {
+                        recordIntegrityViolation('window_blur');
+                    }
+                };
+
+                const handleFullscreenChange = () => {
+                    if (!isPortalLockedView(viewRef.current) || terminatingRef.current) return;
+                    if (!isInFullscreen()) {
+                        escExitRef.current = true;
+                        fullscreenRequiredRef.current = true;
+                        setFullscreenRequired(true);
+                        setTimeout(() => { escExitRef.current = false; }, 2000);
+                    } else {
+                        escExitRef.current = false;
+                        fullscreenRequiredRef.current = false;
+                        setFullscreenRequired(false);
+                        devToolsWarnedRef.current = false;
+                    }
+                };
+
+                window.addEventListener('blur', handleWindowBlur);
+                document.addEventListener('fullscreenchange', handleFullscreenChange);
+                document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+                syncFullscreenState();
+                return () => {
+                    window.removeEventListener('blur', handleWindowBlur);
+                    document.removeEventListener('fullscreenchange', handleFullscreenChange);
+                    document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+                };
+            }, [view, recordIntegrityViolation, syncFullscreenState, isSecurityActive]);
+
+            useEffect(() => {
+                const handleContextMenu = (e) => {
+                    if (!isSecurityActive()) return;
+                    e.preventDefault();
+                };
+
+                const handleBeforePrint = (e) => {
+                    if (!isSecurityActive()) return;
+                    e.preventDefault();
+                    if (viewRef.current === 'assessment') {
+                        recordIntegrityViolation('print_attempt');
+                    }
+                };
+
+                const handleClipboardClear = (e) => {
+                    if (!isSecurityActive() || viewRef.current !== 'assessment') return;
+                    if (e.key === 'PrintScreen' || e.keyCode === 44) {
+                        clearClipboardBestEffort();
+                    }
+                };
+
+                document.addEventListener('contextmenu', handleContextMenu);
+                document.addEventListener('keydown', handleSecurityKeyDown, true);
+                window.addEventListener('keydown', handleSecurityKeyDown, true);
+                document.addEventListener('keyup', handleClipboardClear, true);
+                window.addEventListener('beforeprint', handleBeforePrint);
+
+                return () => {
+                    document.removeEventListener('contextmenu', handleContextMenu);
+                    document.removeEventListener('keydown', handleSecurityKeyDown, true);
+                    window.removeEventListener('keydown', handleSecurityKeyDown, true);
+                    document.removeEventListener('keyup', handleClipboardClear, true);
+                    window.removeEventListener('beforeprint', handleBeforePrint);
+                };
+            }, [view, fullscreenRequired, handleSecurityKeyDown, isSecurityActive, recordIntegrityViolation]);
+
+            useEffect(() => {
+                const checkDevTools = () => {
+                    if (!isSecurityActive() || terminatingRef.current) return;
+                    const open = runDevToolsProbe();
+                    devToolsOpenRef.current = open;
+                    setDevToolsDetected(open);
+
+                    if (!open) {
+                        devToolsWarnedRef.current = false;
+                        return;
+                    }
+
+                    if (viewRef.current === 'assessment') {
+                        if (!devToolsWarnedRef.current) {
+                            devToolsWarnedRef.current = true;
+                            recordIntegrityViolation('devtools');
+                        }
+                        return;
+                    }
+
+                    if (fullscreenRequiredRef.current && !devToolsWarnedRef.current) {
+                        devToolsWarnedRef.current = true;
+                        alert('Developer Tools are not allowed. Close them to continue.');
+                    }
+                };
+
+                checkDevTools();
+                const interval = setInterval(checkDevTools, DEVTOOLS_POLL_MS);
+                return () => clearInterval(interval);
+            }, [view, fullscreenRequired, recordIntegrityViolation, isSecurityActive, runDevToolsProbe]);
+
+            useEffect(() => {
+                if (!isPortalLockedView(view)) {
+                    exitAssessmentFullscreen();
+                    setFullscreenRequired(false);
+                    return;
+                }
+
+                enterAssessmentFullscreen().then(() => syncFullscreenState());
+            }, [view, syncFullscreenState]);
+
+            useEffect(() => {
+                const requestOnGesture = () => {
+                    if (isPortalLockedView(viewRef.current) && !isInFullscreen()) {
+                        enterAssessmentFullscreen().then(() => syncFullscreenState());
+                    }
+                };
+                document.addEventListener('click', requestOnGesture, { once: true });
+                enterAssessmentFullscreen().then(() => syncFullscreenState());
+                return () => document.removeEventListener('click', requestOnGesture);
+            }, [syncFullscreenState]);
+
+            const restoreSession = async (sId, email, { resumeOnly = false } = {}) => {
+                if (!sId) return;
+                setIsLoading(true);
+                try {
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sId);
+                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, status, result, score');
+                    if (isUuid) {
+                        query = query.eq('id', sId);
+                    } else {
+                        query = query.eq('gmail_thread_id', sId);
+                    }
+                    const { data, error } = await query.single();
+                    if (error || !data) return;
+
+                    const statusStr = (data.status || '').toLowerCase();
+                    if (statusStr.includes('completed') || statusStr.includes('terminated')) {
+                        sessionStorage.removeItem('assessment_started');
+                        if (!resumeOnly) return;
+                        const resolvedId = data.id || sId;
+                        setSessionId(resolvedId);
+                        sessionStorage.setItem('current_session_id', resolvedId);
+                        setResult(data.result || (Number(data.score) > 60 ? 'PASS' : 'FAIL'));
+                        if (data.score != null) setOverallScore(Number(data.score));
+                        setFeedback('Assessment completed.');
+                        const restoredHistory = normalizeInterviewHistory(data.interview_history);
+                        setAssessmentHistory(restoredHistory);
+                        setFeedback(pickLatestFeedback(restoredHistory, ''));
+                        setView('finished');
+                        sessionStorage.removeItem('time_left');
+                        sessionStorage.removeItem('deadline_at');
+                        deadlineAtRef.current = null;
+                        return;
+                    }
+
+                    if (!resumeOnly) return;
+
+                    sessionStorage.setItem('current_session_id', data.id);
+                    sessionStorage.setItem('candidate_email', email || '');
+
+                    const history = parseInterviewHistory(data.interview_history);
+                    if (history.length === 0) return;
+
+                    let currentStepIndex = history.findIndex(h => h.answer_text === null || h.answer_text === undefined);
+                    if (currentStepIndex === -1) {
+                        return;
+                    }
+
+                    const currentPhaseData = history[currentStepIndex];
+                    if (currentPhaseData) {
+                        setQuestion(currentPhaseData.question_text || currentPhaseData.question);
+                        setTotalSteps(data.max_phases || 5);
+                        setCurrentStep(currentStepIndex + 1);
+                        applyTimerFromPhase(currentPhaseData);
+                        setView('assessment');
+                    }
+                } catch (e) {
+                    console.error('Session Restoration Error:', e);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                let sId = cleanUrlParam(params.get('session'));
+                let email = cleanUrlParam(params.get('email'));
+                if (sId) {
+                    setSessionId(sId);
+                    setCandidateEmail(email || '');
+                    if (email) sessionStorage.setItem('candidate_email', email);
+                } else {
+                    sId = cleanUrlParam(sessionStorage.getItem('current_session_id'));
+                    email = cleanUrlParam(sessionStorage.getItem('candidate_email'));
+                    if (sId) setSessionId(sId);
+                    if (email) setCandidateEmail(email);
+                }
+
+                const started = sessionStorage.getItem('assessment_started') === 'true';
+                if (started && sId) {
+                    restoreSession(sId, email, { resumeOnly: true });
+                }
+            }, []);
+
+            useEffect(() => {
+                const handleBeforeUnload = (e) => {
+                    if (view === 'assessment') {
+                        e.preventDefault();
+                        e.returnValue = 'Assessment is in progress. Are you sure you want to leave? Your progress will be saved but time will continue to run.';
+                        return e.returnValue;
+                    }
+                };
+                window.addEventListener('beforeunload', handleBeforeUnload);
+                return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+            }, [view]);
+
+            const handleStartAssessment = async () => {
+                setIsLoading(true);
+                try {
+                    await enterAssessmentFullscreen();
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId);
+                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases');
+                    if (isUuid) {
+                        query = query.eq('id', sessionId);
+                    } else {
+                        query = query.eq('gmail_thread_id', sessionId);
+                    }
+                    const { data, error } = await query.single();
+
+                    if (error) throw error;
+
+                    const history = parseInterviewHistory(data.interview_history);
+
+                    const firstUnanswered = history.findIndex(
+                        (h) => h.answer_text === null || h.answer_text === undefined
+                    );
+                    const phaseIndex = firstUnanswered >= 0 ? firstUnanswered : 0;
+                    const currentPhaseData = history[phaseIndex];
+
+                    if (currentPhaseData) {
+                        setQuestion(currentPhaseData.question_text || currentPhaseData.question);
+                        setTotalSteps(data.max_phases || 5);
+                        setCurrentStep(phaseIndex + 1);
+                        setIntegrityViolationCount(0);
+                        integrityViolationCountRef.current = 0;
+                        terminatingRef.current = false;
+                        lastViolationAtRef.current = 0;
+                        devToolsOpenRef.current = false;
+
+                        const resolvedId = data.id || sessionId;
+                        setSessionId(resolvedId);
+                        sessionStorage.setItem('current_session_id', resolvedId);
+                        sessionStorage.setItem('candidate_email', candidateEmail || '');
+                        sessionStorage.setItem('assessment_started', 'true');
+
+                        await startPhaseTimerInDatabase(resolvedId, history, phaseIndex);
+                        setView('assessment');
+                    } else {
+                        throw new Error("No initial question found in session history.");
+                    }
+                } catch (e) {
+                    console.error('Start Assessment Error:', e);
+                    alert('Failed to load the first question. Please refresh.');
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const handleAssessmentSubmit = async (isTimeout = false) => {
+                if (isLoading) return;
+                const finalAnswer = answer.trim() || (isTimeout ? "[Timeout - No response provided]" : "");
+                if (!finalAnswer) return;
+
+                setIsLoading(true);
+                try {
+                    const response = await fetch(`${WEBHOOK_BASE}/assessment-answer`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+                        body: JSON.stringify({
+                            sessionId,
+                            answer: finalAnswer,
+                            phase: currentStep,
+                            email: candidateEmail,
+                            tabSwitches: integrityViolationCount,
+                            integrityViolations: integrityViolationCount,
+                        }),
+                    });
+
+                    let textData = await response.text();
+                    let sanitizedText = textData.trim();
+                    if (sanitizedText.startsWith('=')) sanitizedText = sanitizedText.substring(1).trim();
+
+                    let data;
+                    try {
+                        data = JSON.parse(sanitizedText);
+                    } catch (e) {
+                        data = { output: sanitizedText };
+                    }
+
+                    if (data.isFinal === true || currentStep >= totalSteps) {
+                        setView('finished');
+                        sessionStorage.removeItem('assessment_started');
+                        setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));
+                        if (data.score != null) setOverallScore(Number(data.score));
+                        setFeedback(data.feedback || 'Assessment completed.');
+                        sessionStorage.removeItem('time_left');
+                        sessionStorage.removeItem('deadline_at');
+                        deadlineAtRef.current = null;
+                        if (sessionId) sessionStorage.setItem('current_session_id', sessionId);
+                        if (candidateEmail) sessionStorage.setItem('candidate_email', candidateEmail);
+                    } else {
+                        let nextQ = data.nextQuestion || data.question || data.output || data.text || '';
+
+                        if (typeof nextQ === 'string' && nextQ.trim().startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(nextQ);
+                                nextQ = parsed.nextQuestion || parsed.question || parsed.text || nextQ;
+                            } catch (e) { }
+                        }
+
+                        if (nextQ) {
+                            setQuestion(nextQ);
+                            setCurrentStep((prev) => prev + 1);
+                            setAnswer('');
+                            applyTimerFromPhase({
+                                time_limit_seconds: data.time_limit_seconds,
+                                deadline_at: data.deadline_at,
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error('Submit Error:', e);
+                    alert('Connection error. Please try submitting again.');
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                if (view !== 'assessment' || isLoading) return;
+
+                const tick = () => {
+                    const deadline = deadlineAtRef.current || sessionStorage.getItem('deadline_at');
+                    let remaining;
+                    if (deadline) {
+                        remaining = Math.max(0, Math.floor((new Date(deadline).getTime() - Date.now()) / 1000));
+                    } else {
+                        const stored = sessionStorage.getItem('time_left');
+                        const parsed = stored != null ? parseInt(stored, 10) : NaN;
+                        remaining = Number.isFinite(parsed) ? Math.max(0, parsed) : null;
+                    }
+                    setTimeLeft(remaining);
+                    if (remaining != null) sessionStorage.setItem('time_left', String(remaining));
+                };
+
+                tick();
+                const interval = setInterval(tick, 1000);
+                return () => clearInterval(interval);
+            }, [view, isLoading]);
+
+            useEffect(() => {
+                if (view === 'assessment' && timeLeft === 0 && !isLoading && deadlineAtRef.current) {
+                    handleAssessmentSubmit(true);
+                }
+            }, [timeLeft, view, isLoading]);
+
+            const resolveSessionIdForReview = () => {
+                const params = new URLSearchParams(window.location.search);
+                const fromUrl = cleanUrlParam(params.get('session'));
+                const fromStorage = cleanUrlParam(sessionStorage.getItem('current_session_id'));
+                const fromState = cleanUrlParam(sessionId);
+                return fromUrl || fromStorage || fromState;
+            };
+
+            const fetchAndShowReview = async () => {
+                const sid = resolveSessionIdForReview();
+                if (!sid) {
+                    alert('Session ID missing. Open the assessment link from your email again.');
+                    return;
+                }
+                setIsLoading(true);
+                try {
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid);
+                    let query = supabase
+                        .from('assessment_sessions')
+                        .select('id, interview_history, result, status, score');
+                    if (isUuid) {
+                        query = query.eq('id', sid);
+                    } else {
+                        query = query.eq('gmail_thread_id', sid);
+                    }
+                    const { data, error } = await query.maybeSingle();
+
+                    if (error) throw error;
+                    if (!data) {
+                        alert('Session not found. Check the link or contact support.');
+                        return;
+                    }
+
+                    const rows = normalizeInterviewHistory(data.interview_history);
+                    if (rows.length === 0) {
+                        alert('No interview history saved yet for this session.');
+                        return;
+                    }
+
+                    setSessionId(data.id || sid);
+                    sessionStorage.setItem('current_session_id', data.id || sid);
+                    setAssessmentHistory(rows);
+                    setFeedback(pickLatestFeedback(rows, feedback));
+                    if (data.score != null) setOverallScore(Number(data.score));
+                    if (data.result) setResult(data.result);
+                    setView('review');
+                } catch (e) {
+                    console.error('Supabase Fetch Error:', e);
+                    alert(`Could not load interview history: ${e.message}`);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const renderView = () => {
+                switch (view) {
+                    case 'login':
+                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} />;
+                    case 'instructions':
+                        return <InstructionsView onStart={handleStartAssessment} />;
+                    case 'assessment':
+                        return (
+                            <AssessmentView
+                                currentStep={currentStep}
+                                totalSteps={totalSteps}
+                                timeLeft={timeLeft}
+                                phaseTimeLimit={phaseTimeLimit}
+                                question={question}
+                                answer={answer}
+                                setAnswer={setAnswer}
+                                handleAssessmentSubmit={handleAssessmentSubmit}
+                                isLoading={isLoading}
+                                candidateEmail={candidateEmail}
+                                integrityViolationCount={integrityViolationCount}
+                                contentMasked={devToolsDetected || fullscreenRequired}
+                            />
+                        );
+                    case 'finished':
+                        return <FinishedView result={result} overallScore={overallScore} feedback={feedback} onReview={fetchAndShowReview} isLoading={isLoading} />;
+                    case 'review':
+                        return (
+                            <ReviewView
+                                history={assessmentHistory}
+                                overallFeedback={pickLatestFeedback(assessmentHistory, feedback)}
+                                onBack={() => setView('finished')}
+                            />
+                        );
+                    case 'admin':
+                        return <AdminView setView={setView} />;
+                    default:
+                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} />;
+                }
+            };
+
+            return (
+                <div className="min-h-screen w-full max-w-full app-bg text-slate-200 antialiased">
+                    {renderView()}
+                    {fullscreenRequired && isPortalLockedView(view) && (
+                        <FullscreenRequiredOverlay
+                            onRestore={restorePortalFullscreen}
+                            onSecurityKeyDown={handleSecurityKeyDown}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>

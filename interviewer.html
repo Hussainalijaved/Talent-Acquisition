@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Propose interview dates</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(20, 28, 47, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary-glow: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 24px 16px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 70%, transparent 100%);
+            top: 15%;
+            left: 25%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .container {
+            position: relative;
+            z-index: 10;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 32px;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 480px;
+            box-sizing: border-box;
+        }
+
+        h2 {
+            font-weight: 800;
+            margin: 0 0 8px;
+            background: linear-gradient(135deg, #ffffff 50%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 26px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 24px;
+            font-weight: 300;
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 12px;
+            line-height: 1.45;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        #calendarPicker {
+            width: 100%;
+            padding: 12px 14px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+            box-sizing: border-box;
+            cursor: pointer;
+        }
+
+        input[type="time"] {
+            padding: 10px 12px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 15px;
+            box-sizing: border-box;
+            min-width: 120px;
+        }
+
+        .slot-times {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .slot-time-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 14px;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+        }
+
+        .slot-time-row .date-label {
+            flex: 1;
+            font-size: 13px;
+            color: #cbd5e1;
+            line-height: 1.35;
+        }
+
+        .slot-time-row .time-wrap {
+            flex-shrink: 0;
+        }
+
+        .slot-time-row .time-wrap label {
+            font-size: 10px;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .empty-times {
+            font-size: 13px;
+            color: #64748b;
+            padding: 12px;
+            text-align: center;
+            background: rgba(15, 23, 42, 0.35);
+            border-radius: 10px;
+        }
+
+        .flatpickr-calendar {
+            background: #1e293b !important;
+            border-color: rgba(255,255,255,0.1) !important;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.45) !important;
+        }
+
+        .flatpickr-day.selected,
+        .flatpickr-day.startRange,
+        .flatpickr-day.endRange {
+            background: #4f46e5 !important;
+            border-color: #4f46e5 !important;
+        }
+
+        .flatpickr-day:hover {
+            background: rgba(79, 70, 229, 0.35) !important;
+        }
+
+        .flatpickr-day.flatpickr-disabled {
+            color: #475569 !important;
+        }
+
+        .slot-list {
+            margin: 16px 0 0;
+            padding: 0;
+            list-style: none;
+            max-height: 160px;
+            overflow-y: auto;
+        }
+
+        .slot-list li {
+            font-size: 13px;
+            color: #cbd5e1;
+            padding: 8px 12px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            margin-bottom: 6px;
+            border-left: 3px solid #4f46e5;
+        }
+
+        .slot-count {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-top: 8px;
+        }
+
+        .slot-count.ok { color: #86efac; }
+        .slot-count.warn { color: #fbbf24; }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            background: var(--primary-glow);
+            color: white;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+            margin-top: 8px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+            filter: brightness(1.1);
+        }
+
+        button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .footer {
+            margin-top: 20px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            opacity: 0.6;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Propose interview dates</h2>
+        <p class="subtitle">Select <strong>at least 2</strong> weekdays (Mon–Fri). The candidate will pick one.</p>
+
+        <div class="input-group">
+            <label>Calendar — click multiple dates</label>
+            <p class="hint">Weekends are disabled. Today and past dates cannot be selected.</p>
+            <input type="text" id="calendarPicker" placeholder="Click to open calendar…" readonly>
+        </div>
+
+        <div class="input-group">
+            <label>Time for each selected day</label>
+            <p class="hint">Pick a date on the calendar, then set a different start time per day if needed.</p>
+            <div id="slotTimesContainer" class="slot-times"></div>
+        </div>
+
+        <div class="input-group">
+            <label>Preview</label>
+            <ul class="slot-list" id="slotList"></ul>
+            <p class="slot-count warn" id="slotCount">0 dates selected — need at least 2</p>
+        </div>
+
+        <button type="button" id="submitBtn" onclick="submitSlots()" disabled>Send options to candidate</button>
+
+        <div class="footer">Talent Acquisition · Interviewer portal</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const resumeUrl = urlParams.get('resumeUrl');
+        const DURATION_MIN = 60;
+
+        const slotListEl = document.getElementById('slotList');
+        const slotCountEl = document.getElementById('slotCount');
+        const submitBtn = document.getElementById('submitBtn');
+        const slotTimesContainer = document.getElementById('slotTimesContainer');
+
+        let selectedDates = [];
+        /** @type {Record<string, string>} dateKey YYYY-MM-DD -> HH:mm */
+        const timesByDate = {};
+
+        function dateKey(d) {
+            const y = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const da = String(d.getDate()).padStart(2, '0');
+            return `${y}-${mo}-${da}`;
+        }
+
+        function formatDateOnly(date) {
+            return date.toLocaleDateString('en-PK', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                timeZone: 'Asia/Karachi',
+            });
+        }
+
+        function isWeekday(date) {
+            const d = date.getDay();
+            return d >= 1 && d <= 5;
+        }
+
+        function formatLabel(date) {
+            return date.toLocaleString('en-PK', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                timeZone: 'Asia/Karachi',
+            });
+        }
+
+        function renderTimeRows() {
+            const sorted = [...selectedDates].sort((a, b) => a - b);
+            slotTimesContainer.innerHTML = '';
+
+            if (!sorted.length) {
+                slotTimesContainer.innerHTML =
+                    '<p class="empty-times">Select dates on the calendar to set a time for each day.</p>';
+                return;
+            }
+
+            sorted.forEach((day) => {
+                const key = dateKey(day);
+                if (!timesByDate[key]) timesByDate[key] = '14:00';
+
+                const row = document.createElement('div');
+                row.className = 'slot-time-row';
+
+                const dateSpan = document.createElement('div');
+                dateSpan.className = 'date-label';
+                dateSpan.textContent = formatDateOnly(day);
+
+                const timeWrap = document.createElement('div');
+                timeWrap.className = 'time-wrap';
+                const timeLbl = document.createElement('label');
+                timeLbl.textContent = 'Start time';
+                const timeInp = document.createElement('input');
+                timeInp.type = 'time';
+                timeInp.value = timesByDate[key];
+                timeInp.required = true;
+                timeInp.dataset.dateKey = key;
+                timeInp.addEventListener('change', () => {
+                    timesByDate[key] = timeInp.value || '14:00';
+                    refreshUI();
+                });
+
+                timeWrap.appendChild(timeLbl);
+                timeWrap.appendChild(timeInp);
+                row.appendChild(dateSpan);
+                row.appendChild(timeWrap);
+                slotTimesContainer.appendChild(row);
+            });
+        }
+
+        function buildSlots() {
+            const slots = [];
+
+            for (const day of selectedDates) {
+                const key = dateKey(day);
+                const timeVal = timesByDate[key];
+                if (!timeVal) continue;
+
+                const [h, m] = timeVal.split(':').map(Number);
+                const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m, 0, 0);
+                if (!isWeekday(start)) continue;
+
+                const end = new Date(start.getTime() + DURATION_MIN * 60 * 1000);
+                slots.push({
+                    start_iso: start.toISOString(),
+                    end_iso: end.toISOString(),
+                    label: formatLabel(start),
+                });
+            }
+
+            slots.sort((a, b) => new Date(a.start_iso) - new Date(b.start_iso));
+            return slots;
+        }
+
+        function refreshUI() {
+            renderTimeRows();
+
+            const slots = buildSlots();
+            slotListEl.innerHTML = '';
+
+            slots.forEach((s, i) => {
+                const li = document.createElement('li');
+                li.textContent = `${i + 1}. ${s.label}`;
+                slotListEl.appendChild(li);
+            });
+
+            const n = slots.length;
+            const allHaveTime = selectedDates.every((d) => timesByDate[dateKey(d)]);
+
+            if (n >= 2 && allHaveTime) {
+                slotCountEl.textContent = `${n} weekday slots ready (each with its own time)`;
+                slotCountEl.className = 'slot-count ok';
+                submitBtn.disabled = false;
+            } else {
+                slotCountEl.textContent =
+                    n < 2
+                        ? `${n} date(s) — select at least 2 weekdays`
+                        : 'Set a time for each selected day';
+                slotCountEl.className = 'slot-count warn';
+                submitBtn.disabled = true;
+            }
+        }
+
+        flatpickr('#calendarPicker', {
+            mode: 'multiple',
+            dateFormat: 'Y-m-d',
+            minDate: 'today',
+            disable: [
+                function (date) {
+                    return date.getDay() === 0 || date.getDay() === 6;
+                },
+            ],
+            onChange: function (dates) {
+                const nextKeys = new Set(dates.map(dateKey));
+                Object.keys(timesByDate).forEach((k) => {
+                    if (!nextKeys.has(k)) delete timesByDate[k];
+                });
+                dates.forEach((d) => {
+                    const k = dateKey(d);
+                    if (!timesByDate[k]) timesByDate[k] = '14:00';
+                });
+                selectedDates = dates;
+                refreshUI();
+            },
+        });
+
+        const SUCCESS_PAGE = 'https://talent-acquisition-six.vercel.app/scheduling-success.html';
+
+        async function resumeWorkflow(url) {
+            try {
+                await fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
+            } catch (e) {
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = url;
+                document.body.appendChild(iframe);
+            }
+        }
+
+        async function submitSlots() {
+            if (!resumeUrl) {
+                alert('Resume URL missing. Open this page from the interviewer email link.');
+                return;
+            }
+
+            const slots = buildSlots();
+            if (slots.length < 2) {
+                alert('Please select at least 2 weekdays (Monday–Friday).');
+                return;
+            }
+
+            for (const s of slots) {
+                const d = new Date(s.start_iso);
+                if (!isWeekday(d)) {
+                    alert('Only Monday–Friday are allowed.');
+                    return;
+                }
+            }
+
+            const missingTime = selectedDates.some((d) => !timesByDate[dateKey(d)]);
+            if (missingTime) {
+                alert('Please set a start time for each selected day.');
+                return;
+            }
+
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.textContent = 'Submitting…';
+
+            const sep = resumeUrl.includes('?') ? '&' : '?';
+            const params = new URLSearchParams();
+            params.set('slots_json', JSON.stringify(slots));
+            const webhookUrl = resumeUrl + sep + params.toString();
+
+            await resumeWorkflow(webhookUrl);
+
+            const successUrl =
+                SUCCESS_PAGE +
+                '?role=interviewer&count=' +
+                encodeURIComponent(String(slots.length));
+            window.location.replace(successUrl);
+        }
+    </script>
+</body>
+</html>

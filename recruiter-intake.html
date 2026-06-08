@@ -446,6 +446,7 @@
         input[type="email"],
         input[type="url"],
         input[type="text"],
+        select,
         textarea {
             width: 100%;
             padding: 12px 14px;
@@ -466,7 +467,17 @@
             line-height: 1.5;
         }
 
+        select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+
         input:focus,
+        select:focus,
         textarea:focus {
             outline: none;
             border-color: var(--accent);
@@ -1242,11 +1253,7 @@
                     <div class="field">
                         <label for="newJobTitle">Job title</label>
                         <input type="text" id="newJobTitle" placeholder="Junior .NET Full Stack Developer" />
-                    </div>
-                    <div class="field">
-                        <label for="newJobSlug">Job ID (URL slug)</label>
-                        <input type="text" id="newJobSlug" placeholder="junior-net-developer" />
-                        <p class="hint">Auto-generated from title — apply link: <code style="color:#a5b4fc">apply.html?job=<span id="slugPreview">…</span></code></p>
+                        <p class="hint">Apply link auto-generated: <code style="color:#a5b4fc">apply.html?job=<span id="slugPreview">…</span></code></p>
                     </div>
                     <div class="field">
                         <label for="newJobInterviewer">Interviewer email</label>
@@ -1255,11 +1262,25 @@
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                         <div class="field" style="margin:0">
                             <label for="newJobLocation">Location</label>
-                            <input type="text" id="newJobLocation" placeholder="Remote" value="Remote" />
+                            <select id="newJobLocation">
+                                <option value="Remote">Remote</option>
+                                <option value="Hybrid">Hybrid</option>
+                                <option value="On-site">On-site</option>
+                                <option value="Karachi">Karachi</option>
+                                <option value="Lahore">Lahore</option>
+                                <option value="Islamabad">Islamabad</option>
+                            </select>
                         </div>
                         <div class="field" style="margin:0">
                             <label for="newJobType">Employment type</label>
-                            <input type="text" id="newJobType" placeholder="Full-time" value="Full-time" />
+                            <select id="newJobType">
+                                <option value="Full-time">Full-time</option>
+                                <option value="Part-time">Part-time</option>
+                                <option value="Contract">Contract</option>
+                                <option value="Temporary">Temporary</option>
+                                <option value="Internship">Internship</option>
+                                <option value="Freelance">Freelance</option>
+                            </select>
                         </div>
                     </div>
                     <div class="field">
@@ -2350,33 +2371,62 @@
             if (statusEl) statusEl.textContent = 'Saved — apply.html ab is URL use karega.';
         }
 
+        function setSelectValue(selectEl, value, fallback) {
+            if (!selectEl) return;
+            const v = value || fallback;
+            const has = Array.from(selectEl.options).some((o) => o.value === v);
+            if (!has && v) {
+                const opt = document.createElement('option');
+                opt.value = v;
+                opt.textContent = v;
+                selectEl.appendChild(opt);
+            }
+            selectEl.value = v || fallback;
+        }
+
+        function updateSlugPreview() {
+            const titleEl = document.getElementById('newJobTitle');
+            const editId = document.getElementById('editJobId').value;
+            const sp = document.getElementById('slugPreview');
+            if (!sp) return;
+            if (editId && sp.dataset.editSlug) {
+                sp.textContent = sp.dataset.editSlug;
+                return;
+            }
+            sp.textContent = slugFromTitle(titleEl ? titleEl.value : '') || '…';
+        }
+
         function clearJobForm() {
             document.getElementById('editJobId').value = '';
             document.getElementById('newJobTitle').value = '';
-            document.getElementById('newJobSlug').value = '';
             document.getElementById('newJobInterviewer').value = '';
-            document.getElementById('newJobLocation').value = 'Remote';
-            document.getElementById('newJobType').value = 'Full-time';
+            setSelectValue(document.getElementById('newJobLocation'), 'Remote', 'Remote');
+            setSelectValue(document.getElementById('newJobType'), 'Full-time', 'Full-time');
             document.getElementById('newJobDept').value = '';
             document.getElementById('newJobJd').value = '';
             document.getElementById('jobFormTitle').textContent = 'Create new job';
             const sp = document.getElementById('slugPreview');
-            if (sp) sp.textContent = '…';
+            if (sp) {
+                delete sp.dataset.editSlug;
+                sp.textContent = '…';
+            }
             showJobFormStatus('', '');
         }
 
         function fillJobForm(job) {
             document.getElementById('editJobId').value = job.id;
             document.getElementById('newJobTitle').value = job.title || '';
-            document.getElementById('newJobSlug').value = job.job_id || '';
             document.getElementById('newJobInterviewer').value = job.interviewer_email || '';
-            document.getElementById('newJobLocation').value = job.location || 'Remote';
-            document.getElementById('newJobType').value = job.employment_type || 'Full-time';
+            setSelectValue(document.getElementById('newJobLocation'), job.location, 'Remote');
+            setSelectValue(document.getElementById('newJobType'), job.employment_type, 'Full-time');
             document.getElementById('newJobDept').value = job.department || '';
             document.getElementById('newJobJd').value = job.jd_text || '';
             document.getElementById('jobFormTitle').textContent = 'Edit job';
             const sp = document.getElementById('slugPreview');
-            if (sp) sp.textContent = job.job_id || '…';
+            if (sp) {
+                sp.dataset.editSlug = job.job_id || '';
+                sp.textContent = job.job_id || '…';
+            }
             showJobFormStatus('Editing «' + job.title + '» — save or publish to update.', 'ok');
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -2387,11 +2437,10 @@
                 return;
             }
             const title = document.getElementById('newJobTitle').value.trim();
-            const jobId = document.getElementById('newJobSlug').value.trim().toLowerCase() || slugFromTitle(title);
             const jd = document.getElementById('newJobJd').value.trim();
             const interviewer = document.getElementById('newJobInterviewer').value.trim().toLowerCase();
-            const locationVal = document.getElementById('newJobLocation').value.trim() || 'Remote';
-            const empType = document.getElementById('newJobType').value.trim() || 'Full-time';
+            const locationVal = document.getElementById('newJobLocation').value || 'Remote';
+            const empType = document.getElementById('newJobType').value || 'Full-time';
             const dept = document.getElementById('newJobDept').value.trim();
             const editId = document.getElementById('editJobId').value;
 
@@ -2399,13 +2448,8 @@
                 showJobFormStatus('Title and JD are required.', 'err');
                 return;
             }
-            if (!jobId) {
-                showJobFormStatus('Job ID (slug) is required.', 'err');
-                return;
-            }
 
             const payload = {
-                job_id: jobId,
                 title,
                 jd_text: jd,
                 interviewer_email: interviewer || null,
@@ -2419,7 +2463,12 @@
             if (editId) {
                 ({ error } = await supabase.from('jobs').update(payload).eq('id', editId));
             } else {
-                ({ error } = await supabase.from('jobs').insert(payload));
+                const jobId = slugFromTitle(title);
+                if (!jobId) {
+                    showJobFormStatus('Title se valid apply link nahi bani — title mein letters/numbers use karein.', 'err');
+                    return;
+                }
+                ({ error } = await supabase.from('jobs').insert({ ...payload, job_id: jobId }));
             }
 
             if (error) {
@@ -2528,22 +2577,8 @@
         }
 
         const newJobTitleEl = document.getElementById('newJobTitle');
-        const newJobSlugEl = document.getElementById('newJobSlug');
-        const slugPreviewEl = document.getElementById('slugPreview');
         if (newJobTitleEl) {
-            newJobTitleEl.addEventListener('input', () => {
-                if (newJobSlugEl && !newJobSlugEl.dataset.manual) {
-                    const slug = slugFromTitle(newJobTitleEl.value);
-                    newJobSlugEl.value = slug;
-                    if (slugPreviewEl) slugPreviewEl.textContent = slug || '…';
-                }
-            });
-        }
-        if (newJobSlugEl) {
-            newJobSlugEl.addEventListener('input', () => {
-                newJobSlugEl.dataset.manual = '1';
-                if (slugPreviewEl) slugPreviewEl.textContent = newJobSlugEl.value || '…';
-            });
+            newJobTitleEl.addEventListener('input', updateSlugPreview);
         }
 
         const publishJobBtn = document.getElementById('publishJobBtn');

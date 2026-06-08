@@ -162,6 +162,49 @@
             flex-direction: column;
         }
 
+        /* Manage Jobs — JD left, details right */
+        .job-create-split {
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+            min-height: 460px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-top: 12px;
+        }
+        @media (max-width: 768px) {
+            .job-create-split { grid-template-columns: 1fr; min-height: 0; }
+        }
+        .job-create-jd {
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.45);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+        @media (max-width: 768px) {
+            .job-create-jd { border-right: none; border-bottom: 1px solid var(--border); }
+        }
+        .job-create-fields {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            background: rgba(18, 26, 39, 0.5);
+        }
+        .job-create-jd textarea {
+            flex: 1;
+            min-height: 380px;
+            resize: vertical;
+        }
+        .job-col-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #64748b;
+            margin: 0 0 14px;
+        }
+
         .portal-hero {
             text-align: center;
             margin-bottom: 32px;
@@ -1285,19 +1328,19 @@
                     <span id="jobsWebhookStatus" style="margin-left:10px;font-size:13px;color:var(--muted)"></span>
                 </div>
 
-                <div class="panel">
+                <div class="panel" style="padding-bottom:22px">
                     <div class="panel-title" id="jobFormTitle">Create new job</div>
                     <input type="hidden" id="editJobId" value="" />
-                    <div class="split-layout">
-                        <div class="split-col split-col-jd">
-                            <div class="split-col-label">Job description</div>
-                            <div class="field" style="margin-bottom:0">
-                                <label for="newJobJd">Requirements (JD)</label>
-                                <textarea id="newJobJd" class="jd-textarea" placeholder="Responsibilities, required skills, nice-to-haves…" style="min-height:360px"></textarea>
+                    <div class="job-create-split">
+                        <div class="job-create-jd">
+                            <p class="job-col-title">Job description (JD)</p>
+                            <div class="field" style="margin-bottom:0;flex:1;display:flex;flex-direction:column">
+                                <label for="newJobJd">Requirements</label>
+                                <textarea id="newJobJd" placeholder="Responsibilities, required skills, nice-to-haves… Paste full JD here — shown on apply page &amp; used for AI screening."></textarea>
                             </div>
                         </div>
-                        <div class="split-col split-col-form">
-                            <div class="split-col-label">Job details</div>
+                        <div class="job-create-fields">
+                            <p class="job-col-title">Job details &amp; publish</p>
                             <div class="field">
                                 <label for="newJobTitle">Job title</label>
                                 <input type="text" id="newJobTitle" placeholder="Junior .NET Full Stack Developer" />
@@ -1335,7 +1378,7 @@
                                 <label for="newJobDept">Department (optional)</label>
                                 <input type="text" id="newJobDept" placeholder="Engineering" />
                             </div>
-                            <div style="display:flex;flex-wrap:wrap;gap:10px">
+                            <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:auto;padding-top:8px">
                                 <button type="button" class="btn btn-inline" id="publishJobBtn">Publish (Open)</button>
                                 <button type="button" class="btn btn-inline btn-ghost" id="draftJobBtn">Save as draft</button>
                                 <button type="button" class="btn btn-inline btn-ghost" id="clearJobFormBtn">Clear form</button>

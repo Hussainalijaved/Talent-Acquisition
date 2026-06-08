@@ -80,7 +80,7 @@
             border: 1px solid var(--border);
         }
         .header-link:hover { color: #e2e8f0; border-color: #475569; }
-        .wrap { max-width: 820px; margin: 0 auto; padding: 40px 20px 64px; }
+        .wrap { max-width: 960px; margin: 0 auto; padding: 40px 20px 64px; }
         .hero { text-align: center; margin-bottom: 36px; }
         .badge {
             display: inline-flex;
@@ -117,13 +117,23 @@
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
-            padding: 24px 26px;
             box-shadow: var(--shadow);
             transition: border-color 0.2s, transform 0.2s;
+            overflow: hidden;
         }
         .job-card:hover {
             border-color: rgba(99, 102, 241, 0.45);
             transform: translateY(-2px);
+        }
+        .job-card-inner {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 20px;
+            align-items: center;
+            padding: 24px 26px;
+        }
+        @media (max-width: 720px) {
+            .job-card-inner { grid-template-columns: 1fr; }
         }
         .job-card h2 {
             margin: 0 0 8px;
@@ -135,7 +145,7 @@
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
         .meta-pill {
             font-size: 11px;
@@ -150,17 +160,28 @@
             font-size: 14px;
             color: #cbd5e1;
             line-height: 1.55;
-            margin: 0 0 18px;
+            margin: 0;
             display: -webkit-box;
-            -webkit-line-clamp: 3;
+            -webkit-line-clamp: 4;
             -webkit-box-orient: vertical;
             overflow: hidden;
+        }
+        .job-card-action {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        @media (max-width: 720px) {
+            .job-card-action { align-items: flex-start; }
         }
         .apply-btn {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 11px 20px;
+            padding: 12px 22px;
+            white-space: nowrap;
             border-radius: 12px;
             background: linear-gradient(135deg, var(--accent), var(--accent-hover));
             color: #fff;
@@ -297,13 +318,17 @@
                     ].filter(Boolean);
                     return (
                         '<article class="job-card">' +
+                        '<div class="job-card-inner">' +
+                        '<div class="job-card-body">' +
                         '<h2>' + escapeHtml(job.title) + '</h2>' +
                         '<div class="job-meta">' +
                         meta.map((m) => '<span class="meta-pill">' + escapeHtml(m) + '</span>').join('') +
                         '</div>' +
-                        '<p class="job-excerpt">' + escapeHtml(excerpt(job.jd_text, 220)) + '</p>' +
+                        '<p class="job-excerpt">' + escapeHtml(excerpt(job.jd_text, 280)) + '</p>' +
+                        '</div>' +
+                        '<div class="job-card-action">' +
                         '<a class="apply-btn" href="' + applyUrl + '">Apply now →</a>' +
-                        '</article>'
+                        '</div></div></article>'
                     );
                 })
                 .join('');

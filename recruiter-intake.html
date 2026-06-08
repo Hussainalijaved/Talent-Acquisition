@@ -127,8 +127,39 @@
         .site-footer a:hover { text-decoration: underline; }
 
         .wrap {
-            max-width: 1080px;
+            max-width: 1140px;
             margin: 0 auto;
+        }
+
+        .split-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+        @media (max-width: 900px) {
+            .split-layout { grid-template-columns: 1fr; }
+        }
+        .split-col-jd .jd-textarea {
+            min-height: 380px;
+            max-height: calc(100vh - 300px);
+        }
+        .split-col-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 12px;
+        }
+        .split-col-jd.panel,
+        .split-col-form.panel {
+            margin-bottom: 0;
+            height: 100%;
+        }
+        .split-col-jd {
+            display: flex;
+            flex-direction: column;
         }
 
         .portal-hero {
@@ -938,7 +969,8 @@
         html[data-portal-tab='jobs'] #jobsPanel { display: block !important; }
         html[data-portal-tab='jobs'] #intakePanel,
         html[data-portal-tab='jobs'] #resultsPanel { display: none !important; }
-        html[data-portal-tab='jobs'] #intakeJobPanel { display: none !important; }
+        html[data-portal-tab='jobs'] #intakeJobPanel,
+        html[data-portal-tab='jobs'] #formView { display: none !important; }
 
         .guide-panel { margin-bottom: 20px; }
         .guide-panel summary {
@@ -1104,11 +1136,13 @@
             </div>
 
             <div id="intakePanel" class="portal-panel active">
-            <div class="panel" id="intakeJobPanel">
+            <div class="split-layout" id="intakeSplit">
+            <div class="split-col split-col-jd panel" id="intakeJobPanel">
+                <div class="split-col-label">Job description</div>
                 <div class="section-head">
                     <span class="step-num">1</span>
                     <div>
-                        <h3>Job description</h3>
+                        <h3>Role &amp; requirements</h3>
                         <p>Used for AI screening and assessment questions</p>
                     </div>
                 </div>
@@ -1116,21 +1150,19 @@
                     <label for="jobTitle">Job title</label>
                     <input type="text" id="jobTitle" placeholder="Junior .NET Full Stack Developer" />
                 </div>
-                <div class="field">
-                    <label for="interviewerEmail">Interviewer email</label>
-                    <input type="email" id="interviewerEmail" placeholder="interviewer@company.com" autocomplete="email" />
-                    <p class="hint">Assessment complete hone par is email par notify jayega.</p>
-                </div>
-                <div class="field" style="margin-bottom:0">
+                <div class="field" style="margin-bottom:0;flex:1;display:flex;flex-direction:column">
                     <label for="jobRequirements">Requirements (JD)</label>
                     <textarea
                         id="jobRequirements"
+                        class="jd-textarea"
                         placeholder="Responsibilities, required skills, nice-to-haves…"
+                        style="flex:1;min-height:380px"
                     ></textarea>
                 </div>
             </div>
-            <div id="formView">
-                <details class="panel webhook-panel">
+            <div class="split-col split-col-form panel" id="formView">
+                <div class="split-col-label">Candidate intake</div>
+                <details class="webhook-panel" style="margin-bottom:16px">
                     <summary>Integration setup (one-time)</summary>
                     <div class="webhook-body">
                         <div class="field">
@@ -1150,12 +1182,17 @@
                 </details>
 
                 <form id="intakeForm" novalidate>
-                    <div class="section-head" style="margin-top:4px">
+                    <div class="section-head" style="margin-top:0">
                         <span class="step-num">2</span>
                         <div>
                             <h3>Candidates</h3>
                             <p>Single CV or batch upload for the same role</p>
                         </div>
+                    </div>
+                    <div class="field">
+                        <label for="interviewerEmail">Interviewer email</label>
+                        <input type="email" id="interviewerEmail" placeholder="interviewer@company.com" autocomplete="email" />
+                        <p class="hint">Assessment complete hone par is email par notify jayega.</p>
                     </div>
                     <div class="mode-toggle">
                         <button type="button" class="mode-btn active" data-mode="single">Single candidate</button>
@@ -1200,6 +1237,7 @@
                     <button type="submit" class="btn" id="submitBtn">Run AI screening</button>
                     <div class="status" id="statusBox" role="status"></div>
                 </form>
+            </div>
             </div>
 
             <div id="successView">
@@ -1250,51 +1288,59 @@
                 <div class="panel">
                     <div class="panel-title" id="jobFormTitle">Create new job</div>
                     <input type="hidden" id="editJobId" value="" />
-                    <div class="field">
-                        <label for="newJobTitle">Job title</label>
-                        <input type="text" id="newJobTitle" placeholder="Junior .NET Full Stack Developer" />
-                        <p class="hint">Apply link auto-generated: <code style="color:#a5b4fc">apply.html?job=<span id="slugPreview">…</span></code></p>
-                    </div>
-                    <div class="field">
-                        <label for="newJobInterviewer">Interviewer email</label>
-                        <input type="email" id="newJobInterviewer" placeholder="interviewer@company.com" />
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                        <div class="field" style="margin:0">
-                            <label for="newJobLocation">Location</label>
-                            <select id="newJobLocation">
-                                <option value="Remote">Remote</option>
-                                <option value="Hybrid">Hybrid</option>
-                                <option value="On-site">On-site</option>
-                                <option value="Karachi">Karachi</option>
-                                <option value="Lahore">Lahore</option>
-                                <option value="Islamabad">Islamabad</option>
-                            </select>
+                    <div class="split-layout">
+                        <div class="split-col split-col-jd">
+                            <div class="split-col-label">Job description</div>
+                            <div class="field" style="margin-bottom:0">
+                                <label for="newJobJd">Requirements (JD)</label>
+                                <textarea id="newJobJd" class="jd-textarea" placeholder="Responsibilities, required skills, nice-to-haves…" style="min-height:360px"></textarea>
+                            </div>
                         </div>
-                        <div class="field" style="margin:0">
-                            <label for="newJobType">Employment type</label>
-                            <select id="newJobType">
-                                <option value="Full-time">Full-time</option>
-                                <option value="Part-time">Part-time</option>
-                                <option value="Contract">Contract</option>
-                                <option value="Temporary">Temporary</option>
-                                <option value="Internship">Internship</option>
-                                <option value="Freelance">Freelance</option>
-                            </select>
+                        <div class="split-col split-col-form">
+                            <div class="split-col-label">Job details</div>
+                            <div class="field">
+                                <label for="newJobTitle">Job title</label>
+                                <input type="text" id="newJobTitle" placeholder="Junior .NET Full Stack Developer" />
+                                <p class="hint">Apply link: <code style="color:#a5b4fc">apply.html?job=<span id="slugPreview">…</span></code></p>
+                            </div>
+                            <div class="field">
+                                <label for="newJobInterviewer">Interviewer email</label>
+                                <input type="email" id="newJobInterviewer" placeholder="interviewer@company.com" />
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                                <div class="field" style="margin:0">
+                                    <label for="newJobLocation">Location</label>
+                                    <select id="newJobLocation">
+                                        <option value="Remote">Remote</option>
+                                        <option value="Hybrid">Hybrid</option>
+                                        <option value="On-site">On-site</option>
+                                        <option value="Karachi">Karachi</option>
+                                        <option value="Lahore">Lahore</option>
+                                        <option value="Islamabad">Islamabad</option>
+                                    </select>
+                                </div>
+                                <div class="field" style="margin:0">
+                                    <label for="newJobType">Employment type</label>
+                                    <select id="newJobType">
+                                        <option value="Full-time">Full-time</option>
+                                        <option value="Part-time">Part-time</option>
+                                        <option value="Contract">Contract</option>
+                                        <option value="Temporary">Temporary</option>
+                                        <option value="Internship">Internship</option>
+                                        <option value="Freelance">Freelance</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="newJobDept">Department (optional)</label>
+                                <input type="text" id="newJobDept" placeholder="Engineering" />
+                            </div>
+                            <div style="display:flex;flex-wrap:wrap;gap:10px">
+                                <button type="button" class="btn btn-inline" id="publishJobBtn">Publish (Open)</button>
+                                <button type="button" class="btn btn-inline btn-ghost" id="draftJobBtn">Save as draft</button>
+                                <button type="button" class="btn btn-inline btn-ghost" id="clearJobFormBtn">Clear form</button>
+                            </div>
                         </div>
-                    </div>
-                    <div class="field">
-                        <label for="newJobDept">Department (optional)</label>
-                        <input type="text" id="newJobDept" placeholder="Engineering" />
-                    </div>
-                    <div class="field">
-                        <label for="newJobJd">Job description (JD)</label>
-                        <textarea id="newJobJd" placeholder="Responsibilities, required skills, nice-to-haves…" style="min-height:140px"></textarea>
-                    </div>
-                    <div style="display:flex;flex-wrap:wrap;gap:10px">
-                        <button type="button" class="btn btn-inline" id="publishJobBtn">Publish (Open)</button>
-                        <button type="button" class="btn btn-inline btn-ghost" id="draftJobBtn">Save as draft</button>
-                        <button type="button" class="btn btn-inline btn-ghost" id="clearJobFormBtn">Clear form</button>
                     </div>
                     <div id="jobFormStatus" class="results-status" style="margin-top:14px"></div>
                 </div>

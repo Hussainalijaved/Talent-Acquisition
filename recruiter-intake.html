@@ -768,12 +768,12 @@
 
         .hub-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(3, 1fr);
             gap: 20px;
             margin-top: 8px;
         }
 
-        @media (max-width: 720px) {
+        @media (max-width: 960px) {
             .hub-grid { grid-template-columns: 1fr; }
         }
 
@@ -814,6 +814,10 @@
             background: radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.18), transparent 55%);
         }
 
+        .hub-card.jobs::before {
+            background: radial-gradient(circle at 100% 0%, rgba(245, 158, 11, 0.2), transparent 55%);
+        }
+
         .hub-card:hover {
             transform: translateY(-4px);
             box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.5);
@@ -821,6 +825,7 @@
 
         .hub-card.screening:hover { border-color: rgba(99, 102, 241, 0.5); }
         .hub-card.results:hover { border-color: rgba(16, 185, 129, 0.45); }
+        .hub-card.jobs:hover { border-color: rgba(245, 158, 11, 0.5); }
         .hub-card:hover::before { opacity: 1; }
 
         .hub-icon {
@@ -842,6 +847,11 @@
         .hub-card.results .hub-icon {
             background: rgba(16, 185, 129, 0.15);
             color: #6ee7b7;
+        }
+
+        .hub-card.jobs .hub-icon {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fcd34d;
         }
 
         .hub-icon svg { width: 24px; height: 24px; }
@@ -878,6 +888,7 @@
 
         .hub-card.screening .hub-cta { color: #a5b4fc; }
         .hub-card.results .hub-cta { color: #6ee7b7; }
+        .hub-card.jobs .hub-cta { color: #fcd34d; }
 
         .hub-back {
             display: inline-flex;
@@ -913,6 +924,89 @@
         html[data-portal-tab='results'] #intakePanel { display: none !important; }
         html[data-portal-tab='results'] #intakeJobPanel { display: none !important; }
         html[data-portal-tab='intake'] #intakeJobPanel { display: block !important; }
+        html[data-portal-tab='jobs'] #jobsPanel { display: block !important; }
+        html[data-portal-tab='jobs'] #intakePanel,
+        html[data-portal-tab='jobs'] #resultsPanel { display: none !important; }
+        html[data-portal-tab='jobs'] #intakeJobPanel { display: none !important; }
+
+        .guide-panel { margin-bottom: 20px; }
+        .guide-panel summary {
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: #fcd34d;
+            list-style: none;
+        }
+        .guide-panel summary::-webkit-details-marker { display: none; }
+        .guide-panel summary::before {
+            content: '▸';
+            margin-right: 8px;
+            transition: transform 0.2s;
+            display: inline-block;
+        }
+        .guide-panel[open] summary::before { transform: rotate(90deg); }
+        .guide-steps {
+            margin-top: 14px;
+            font-size: 13px;
+            color: #cbd5e1;
+            line-height: 1.65;
+        }
+        .guide-steps ol { margin: 0; padding-left: 20px; }
+        .guide-steps li { margin-bottom: 8px; }
+        .guide-steps code {
+            background: rgba(15, 23, 42, 0.8);
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #a5b4fc;
+        }
+        .link-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-top: 8px;
+        }
+        .link-input {
+            flex: 1;
+            min-width: 200px;
+            font-size: 12px !important;
+            padding: 8px 10px !important;
+        }
+        .btn-copy {
+            width: auto;
+            padding: 8px 14px;
+            font-size: 12px;
+            margin-top: 0;
+        }
+        .status-pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .status-pill.open { background: rgba(52, 211, 153, 0.15); color: #6ee7b7; }
+        .status-pill.closed { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; }
+        .status-pill.draft { background: rgba(251, 191, 36, 0.15); color: #fde68a; }
+        .jobs-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+        .jobs-actions button {
+            padding: 6px 10px;
+            font-size: 11px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.6);
+            color: #cbd5e1;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 600;
+        }
+        .jobs-actions button:hover { border-color: #475569; color: #fff; }
+        .jobs-actions button.primary {
+            border-color: rgba(99, 102, 241, 0.5);
+            color: #a5b4fc;
+        }
 
         #fatalError {
             display: none;
@@ -929,7 +1023,7 @@
     <script>
         (function () {
             var t = new URLSearchParams(location.search).get('tab');
-            if (t === 'intake' || t === 'results') {
+            if (t === 'intake' || t === 'results' || t === 'jobs') {
                 document.documentElement.setAttribute('data-portal-tab', t);
             }
         })();
@@ -944,7 +1038,10 @@
                 <span class="brand-sub">Recruiter workspace</span>
             </span>
         </a>
-        <a href="index.html" class="header-link">Candidate portal</a>
+        <div style="display:flex;gap:8px;align-items:center">
+            <a href="careers.html" class="header-link">Careers page</a>
+            <a href="index.html" class="header-link">Candidate portal</a>
+        </div>
     </header>
 
     <main class="site-main">
@@ -976,6 +1073,14 @@
                         <h2>Screening Results</h2>
                         <p>Review every screening record — scores, outcomes, and AI reasoning pulled from your database.</p>
                         <span class="hub-cta">View results →</span>
+                    </a>
+                    <a href="?tab=jobs" class="hub-card jobs" id="hubJobsBtn">
+                        <span class="hub-icon" aria-hidden="true">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                        </span>
+                        <h2>Post &amp; Manage Jobs</h2>
+                        <p>Create job posts, copy apply links for LinkedIn, and let candidates apply 24/7 via your careers page.</p>
+                        <span class="hub-cta">Manage jobs →</span>
                     </a>
                 </div>
             </div>
@@ -1096,6 +1201,102 @@
             </div>
             </div>
 
+            <div id="jobsPanel" class="portal-panel">
+                <div class="section-head">
+                    <span class="step-num">★</span>
+                    <div>
+                        <h3>Job postings</h3>
+                        <p>Publish roles on your careers page — share apply links on LinkedIn</p>
+                    </div>
+                </div>
+
+                <details class="panel guide-panel">
+                    <summary>LinkedIn par job kaise post karein (guide)</summary>
+                    <div class="guide-steps">
+                        <ol>
+                            <li>Yahan job <strong>Publish</strong> karein — status <em>Open</em> hona chahiye.</li>
+                            <li><strong>Copy apply link</strong> dabayein — yeh URL LinkedIn par paste hogi.</li>
+                            <li>LinkedIn → <strong>Jobs → Create job</strong> — title aur JD portal se copy karein.</li>
+                            <li><strong>Easy Apply band</strong> karein → <em>Apply on company website</em> select karein.</li>
+                            <li>External URL mein apply link paste karein, e.g. <code>apply.html?job=junior-net-developer</code></li>
+                            <li>Candidate Apply dabayega → aapki site → CV → AI screening (24/7).</li>
+                        </ol>
+                        <p style="margin-top:12px;color:var(--muted)">Full guide: <a href="LINKEDIN_JOBS_GUIDE.md" style="color:#818cf8">LINKEDIN_JOBS_GUIDE.md</a> · Public careers: <a href="careers.html" style="color:#818cf8">careers.html</a></p>
+                    </div>
+                </details>
+
+                <div class="panel" style="margin-bottom:20px">
+                    <div class="panel-title">Application webhook (one-time)</div>
+                    <div class="field" style="margin-bottom:10px">
+                        <label for="jobsWebhookUrl">n8n CV ingest URL — candidates ki apply is par jati hai</label>
+                        <input type="url" id="jobsWebhookUrl" placeholder="https://your-n8n.example.com/webhook/talent/cv-ingest" />
+                        <p class="hint">Same URL jo CV Screening mein hai. Save karein taake <code>apply.html</code> kaam kare.</p>
+                    </div>
+                    <button type="button" class="btn btn-inline" id="saveJobsWebhookBtn">Save webhook</button>
+                    <span id="jobsWebhookStatus" style="margin-left:10px;font-size:13px;color:var(--muted)"></span>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-title" id="jobFormTitle">Create new job</div>
+                    <input type="hidden" id="editJobId" value="" />
+                    <div class="field">
+                        <label for="newJobTitle">Job title</label>
+                        <input type="text" id="newJobTitle" placeholder="Junior .NET Full Stack Developer" />
+                    </div>
+                    <div class="field">
+                        <label for="newJobSlug">Job ID (URL slug)</label>
+                        <input type="text" id="newJobSlug" placeholder="junior-net-developer" />
+                        <p class="hint">Auto-generated from title — apply link: <code style="color:#a5b4fc">apply.html?job=<span id="slugPreview">…</span></code></p>
+                    </div>
+                    <div class="field">
+                        <label for="newJobInterviewer">Interviewer email</label>
+                        <input type="email" id="newJobInterviewer" placeholder="interviewer@company.com" />
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div class="field" style="margin:0">
+                            <label for="newJobLocation">Location</label>
+                            <input type="text" id="newJobLocation" placeholder="Remote" value="Remote" />
+                        </div>
+                        <div class="field" style="margin:0">
+                            <label for="newJobType">Employment type</label>
+                            <input type="text" id="newJobType" placeholder="Full-time" value="Full-time" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="newJobDept">Department (optional)</label>
+                        <input type="text" id="newJobDept" placeholder="Engineering" />
+                    </div>
+                    <div class="field">
+                        <label for="newJobJd">Job description (JD)</label>
+                        <textarea id="newJobJd" placeholder="Responsibilities, required skills, nice-to-haves…" style="min-height:140px"></textarea>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:10px">
+                        <button type="button" class="btn btn-inline" id="publishJobBtn">Publish (Open)</button>
+                        <button type="button" class="btn btn-inline btn-ghost" id="draftJobBtn">Save as draft</button>
+                        <button type="button" class="btn btn-inline btn-ghost" id="clearJobFormBtn">Clear form</button>
+                    </div>
+                    <div id="jobFormStatus" class="results-status" style="margin-top:14px"></div>
+                </div>
+
+                <div class="panel screen-table-wrap" style="margin-top:20px">
+                    <div class="panel-title">Your jobs</div>
+                    <div id="jobsListStatus" class="results-status"></div>
+                    <table class="screen-table">
+                        <thead>
+                            <tr>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Apply link</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobsTableBody">
+                            <tr><td colspan="4" class="table-empty">Loading jobs…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <div id="resultsPanel" class="portal-panel">
                 <div class="section-head">
                     <span class="step-num">◎</span>
@@ -1143,13 +1344,13 @@
     </main>
 
     <footer class="site-footer">
-        Talent Acquisition · <a href="index.html">Candidate assessment portal</a>
+        Talent Acquisition · <a href="careers.html">Careers</a> · <a href="index.html">Candidate assessment portal</a>
     </footer>
 
     <script>
         (function () {
             var t = new URLSearchParams(location.search).get('tab');
-            if (t !== 'intake' && t !== 'results') return;
+            if (t !== 'intake' && t !== 'results' && t !== 'jobs') return;
             var hub = document.getElementById('portalHub');
             var ws = document.getElementById('portalWorkspace');
             if (hub) hub.classList.add('hidden');
@@ -1218,7 +1419,7 @@
         }
 
         function enterWorkspace(tab) {
-            const t = tab === 'results' ? 'results' : 'intake';
+            const t = tab === 'results' ? 'results' : tab === 'jobs' ? 'jobs' : 'intake';
             document.documentElement.setAttribute('data-portal-tab', t);
             document.getElementById('portalHub').classList.add('hidden');
             document.getElementById('portalWorkspace').classList.remove('hidden');
@@ -1234,9 +1435,11 @@
         }
 
         function setPortalTab(tab) {
-            const t = tab === 'results' ? 'results' : 'intake';
+            const t = tab === 'results' ? 'results' : tab === 'jobs' ? 'jobs' : 'intake';
             document.getElementById('intakePanel').classList.toggle('active', t === 'intake');
             document.getElementById('resultsPanel').classList.toggle('active', t === 'results');
+            const jobsPanel = document.getElementById('jobsPanel');
+            if (jobsPanel) jobsPanel.classList.toggle('active', t === 'jobs');
             document.documentElement.setAttribute('data-portal-tab', t);
             const wt = document.getElementById('workspaceTitle');
             const wd = document.getElementById('workspaceDesc');
@@ -1244,6 +1447,9 @@
                 if (t === 'results') {
                     wt.textContent = 'Screening Results';
                     wd.textContent = 'Every screening record from your database — scores, outcomes, and AI reasoning.';
+                } else if (t === 'jobs') {
+                    wt.textContent = 'Post & Manage Jobs';
+                    wd.textContent = 'Create jobs, publish to careers page, and share apply links on LinkedIn.';
                 } else {
                     wt.textContent = 'CV Screening';
                     wd.textContent = 'Define the role, upload CVs, and let AI score candidates against your JD.';
@@ -1260,6 +1466,13 @@
                 setTimeout(() => {
                     loadScreeningResults().catch((err) => {
                         showResultsStatus(err.message || 'Could not load results.', 'err');
+                    });
+                }, 0);
+            }
+            if (t === 'jobs') {
+                setTimeout(() => {
+                    loadJobsPanel().catch((err) => {
+                        showJobListStatus(err.message || 'Could not load jobs.', 'err');
                     });
                 }, 0);
             }
@@ -2059,8 +2272,291 @@
             }
         });
 
+        function showJobFormStatus(msg, type) {
+            const box = document.getElementById('jobFormStatus');
+            if (!box) return;
+            box.textContent = msg;
+            box.className = 'results-status show ' + (type || '');
+        }
+
+        function showJobListStatus(msg, type) {
+            const box = document.getElementById('jobsListStatus');
+            if (!box) return;
+            box.textContent = msg;
+            box.className = 'results-status show ' + (type || '');
+        }
+
+        function getApplyLink(jobId) {
+            const origin = location.origin || 'https://talent-acquisition-six.vercel.app';
+            return origin + '/apply.html?job=' + encodeURIComponent(jobId);
+        }
+
+        function getCareersLink() {
+            const origin = location.origin || 'https://talent-acquisition-six.vercel.app';
+            return origin + '/careers.html';
+        }
+
+        async function copyText(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (_) {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return ok;
+            }
+        }
+
+        async function loadAppWebhook() {
+            const input = document.getElementById('jobsWebhookUrl');
+            if (!input) return;
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) input.value = saved;
+            if (!supabase) return;
+            const { data } = await supabase
+                .from('app_config')
+                .select('value')
+                .eq('key', 'cv_ingest_webhook')
+                .maybeSingle();
+            if (data && data.value) input.value = data.value;
+        }
+
+        async function saveAppWebhook() {
+            const input = document.getElementById('jobsWebhookUrl');
+            const statusEl = document.getElementById('jobsWebhookStatus');
+            const url = normalizeWebhookUrl(input ? input.value : '');
+            if (!url) {
+                if (statusEl) statusEl.textContent = 'Enter a valid webhook URL.';
+                return;
+            }
+            localStorage.setItem(STORAGE_KEY, url);
+            if (webhookInput) webhookInput.value = url;
+            if (!supabase) {
+                if (statusEl) statusEl.textContent = 'Saved locally (Supabase unavailable).';
+                return;
+            }
+            const { error } = await supabase.from('app_config').upsert(
+                { key: 'cv_ingest_webhook', value: url, updated_at: new Date().toISOString() },
+                { onConflict: 'key' }
+            );
+            if (error) {
+                if (statusEl) statusEl.textContent = 'Save failed: ' + error.message;
+                return;
+            }
+            if (statusEl) statusEl.textContent = 'Saved — apply.html ab is URL use karega.';
+        }
+
+        function clearJobForm() {
+            document.getElementById('editJobId').value = '';
+            document.getElementById('newJobTitle').value = '';
+            document.getElementById('newJobSlug').value = '';
+            document.getElementById('newJobInterviewer').value = '';
+            document.getElementById('newJobLocation').value = 'Remote';
+            document.getElementById('newJobType').value = 'Full-time';
+            document.getElementById('newJobDept').value = '';
+            document.getElementById('newJobJd').value = '';
+            document.getElementById('jobFormTitle').textContent = 'Create new job';
+            const sp = document.getElementById('slugPreview');
+            if (sp) sp.textContent = '…';
+            showJobFormStatus('', '');
+        }
+
+        function fillJobForm(job) {
+            document.getElementById('editJobId').value = job.id;
+            document.getElementById('newJobTitle').value = job.title || '';
+            document.getElementById('newJobSlug').value = job.job_id || '';
+            document.getElementById('newJobInterviewer').value = job.interviewer_email || '';
+            document.getElementById('newJobLocation').value = job.location || 'Remote';
+            document.getElementById('newJobType').value = job.employment_type || 'Full-time';
+            document.getElementById('newJobDept').value = job.department || '';
+            document.getElementById('newJobJd').value = job.jd_text || '';
+            document.getElementById('jobFormTitle').textContent = 'Edit job';
+            const sp = document.getElementById('slugPreview');
+            if (sp) sp.textContent = job.job_id || '…';
+            showJobFormStatus('Editing «' + job.title + '» — save or publish to update.', 'ok');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function saveJobRecord(status) {
+            if (!supabase) {
+                showJobFormStatus('Supabase not connected. Run supabase_jobs.sql first.', 'err');
+                return;
+            }
+            const title = document.getElementById('newJobTitle').value.trim();
+            const jobId = document.getElementById('newJobSlug').value.trim().toLowerCase() || slugFromTitle(title);
+            const jd = document.getElementById('newJobJd').value.trim();
+            const interviewer = document.getElementById('newJobInterviewer').value.trim().toLowerCase();
+            const locationVal = document.getElementById('newJobLocation').value.trim() || 'Remote';
+            const empType = document.getElementById('newJobType').value.trim() || 'Full-time';
+            const dept = document.getElementById('newJobDept').value.trim();
+            const editId = document.getElementById('editJobId').value;
+
+            if (!title || !jd) {
+                showJobFormStatus('Title and JD are required.', 'err');
+                return;
+            }
+            if (!jobId) {
+                showJobFormStatus('Job ID (slug) is required.', 'err');
+                return;
+            }
+
+            const payload = {
+                job_id: jobId,
+                title,
+                jd_text: jd,
+                interviewer_email: interviewer || null,
+                location: locationVal,
+                employment_type: empType,
+                department: dept || null,
+                status: status || 'draft',
+            };
+
+            let error;
+            if (editId) {
+                ({ error } = await supabase.from('jobs').update(payload).eq('id', editId));
+            } else {
+                ({ error } = await supabase.from('jobs').insert(payload));
+            }
+
+            if (error) {
+                showJobFormStatus(error.message, 'err');
+                return;
+            }
+
+            const msg =
+                status === 'open'
+                    ? 'Published! Copy apply link below for LinkedIn.'
+                    : 'Saved as draft.';
+            showJobFormStatus(msg, 'ok');
+            clearJobForm();
+            await loadJobsTable();
+        }
+
+        async function updateJobStatusById(id, status) {
+            if (!supabase) return;
+            const { error } = await supabase.from('jobs').update({ status }).eq('id', id);
+            if (error) {
+                showJobListStatus(error.message, 'err');
+                return;
+            }
+            showJobListStatus('Job status updated to ' + status + '.', 'ok');
+            await loadJobsTable();
+        }
+
+        async function loadJobsTable() {
+            const tbody = document.getElementById('jobsTableBody');
+            if (!tbody) return;
+            if (!supabase) {
+                tbody.innerHTML =
+                    '<tr><td colspan="4" class="table-empty">Supabase not connected — run supabase_jobs.sql</td></tr>';
+                return;
+            }
+            const { data, error } = await supabase
+                .from('jobs')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                tbody.innerHTML = '<tr><td colspan="4" class="table-empty">' + escapeHtml(error.message) + '</td></tr>';
+                showJobListStatus('Could not load jobs. Run supabase_jobs.sql in Supabase.', 'err');
+                return;
+            }
+
+            if (!data || !data.length) {
+                tbody.innerHTML =
+                    '<tr><td colspan="4" class="table-empty">No jobs yet — create one above.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data
+                .map((job) => {
+                    const link = getApplyLink(job.job_id);
+                    const st = job.status || 'draft';
+                    const statusCls = st === 'open' ? 'open' : st === 'closed' ? 'closed' : 'draft';
+                    let actions =
+                        '<button type="button" class="primary" data-job-edit="' + escapeHtml(job.id) + '">Edit</button>';
+                    if (st !== 'open') {
+                        actions +=
+                            ' <button type="button" data-job-publish="' + escapeHtml(job.id) + '">Publish</button>';
+                    }
+                    if (st === 'open') {
+                        actions +=
+                            ' <button type="button" data-job-close="' + escapeHtml(job.id) + '">Close</button>';
+                    }
+                    actions +=
+                        ' <button type="button" data-job-copy="' + escapeHtml(job.job_id) + '">Copy link</button>';
+                    return (
+                        '<tr>' +
+                        '<td><div class="row-email">' + escapeHtml(job.title) + '</div>' +
+                        '<div class="row-meta">' + escapeHtml(job.job_id) + '</div></td>' +
+                        '<td><span class="status-pill ' + statusCls + '">' + escapeHtml(st) + '</span></td>' +
+                        '<td><input type="text" class="link-input" readonly value="' + escapeHtml(link) + '" /></td>' +
+                        '<td><div class="jobs-actions">' + actions + '</div></td></tr>'
+                    );
+                })
+                .join('');
+
+            tbody.querySelectorAll('[data-job-edit]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const job = data.find((j) => j.id === btn.dataset.jobEdit);
+                    if (job) fillJobForm(job);
+                });
+            });
+            tbody.querySelectorAll('[data-job-publish]').forEach((btn) => {
+                btn.addEventListener('click', () => updateJobStatusById(btn.dataset.jobPublish, 'open'));
+            });
+            tbody.querySelectorAll('[data-job-close]').forEach((btn) => {
+                btn.addEventListener('click', () => updateJobStatusById(btn.dataset.jobClose, 'closed'));
+            });
+            tbody.querySelectorAll('[data-job-copy]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const ok = await copyText(getApplyLink(btn.dataset.jobCopy));
+                    showJobListStatus(ok ? 'Apply link copied!' : 'Copy failed — select link manually.', ok ? 'ok' : 'err');
+                });
+            });
+
+            showJobListStatus(data.length + ' job(s) — careers: ' + getCareersLink(), 'ok');
+        }
+
+        async function loadJobsPanel() {
+            await loadAppWebhook();
+            await loadJobsTable();
+        }
+
+        const newJobTitleEl = document.getElementById('newJobTitle');
+        const newJobSlugEl = document.getElementById('newJobSlug');
+        const slugPreviewEl = document.getElementById('slugPreview');
+        if (newJobTitleEl) {
+            newJobTitleEl.addEventListener('input', () => {
+                if (newJobSlugEl && !newJobSlugEl.dataset.manual) {
+                    const slug = slugFromTitle(newJobTitleEl.value);
+                    newJobSlugEl.value = slug;
+                    if (slugPreviewEl) slugPreviewEl.textContent = slug || '…';
+                }
+            });
+        }
+        if (newJobSlugEl) {
+            newJobSlugEl.addEventListener('input', () => {
+                newJobSlugEl.dataset.manual = '1';
+                if (slugPreviewEl) slugPreviewEl.textContent = newJobSlugEl.value || '…';
+            });
+        }
+
+        const publishJobBtn = document.getElementById('publishJobBtn');
+        if (publishJobBtn) publishJobBtn.addEventListener('click', () => saveJobRecord('open'));
+        const draftJobBtn = document.getElementById('draftJobBtn');
+        if (draftJobBtn) draftJobBtn.addEventListener('click', () => saveJobRecord('draft'));
+        const clearJobFormBtn = document.getElementById('clearJobFormBtn');
+        if (clearJobFormBtn) clearJobFormBtn.addEventListener('click', clearJobForm);
+        const saveJobsWebhookBtn = document.getElementById('saveJobsWebhookBtn');
+        if (saveJobsWebhookBtn) saveJobsWebhookBtn.addEventListener('click', () => saveAppWebhook());
+
         const deepTab = params.get('tab');
-        if (deepTab === 'results' || deepTab === 'intake') {
+        if (deepTab === 'results' || deepTab === 'intake' || deepTab === 'jobs') {
             enterWorkspace(deepTab);
         }
 

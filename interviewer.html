@@ -286,6 +286,26 @@
         const resumeUrl = urlParams.get('resumeUrl');
         const DURATION_MIN = 60;
 
+        function isLocalResumeUrl(url) {
+            if (!url) return false;
+            try {
+                const h = new URL(url, window.location.origin).hostname;
+                return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+            } catch (e) {
+                return /localhost|127\.0\.0\.1/i.test(url);
+            }
+        }
+
+        if (resumeUrl && isLocalResumeUrl(resumeUrl) && !isLocalResumeUrl(window.location.href)) {
+            const warn = document.createElement('p');
+            warn.className = 'hint';
+            warn.style.color = '#fbbf24';
+            warn.style.marginBottom = '16px';
+            warn.textContent =
+                'Warning: this link points to localhost n8n. Set WEBHOOK_URL on your n8n server to a public URL (ngrok/cloud), then send a fresh interviewer email.';
+            document.querySelector('.container').insertBefore(warn, document.querySelector('.input-group'));
+        }
+
         const slotListEl = document.getElementById('slotList');
         const slotCountEl = document.getElementById('slotCount');
         const submitBtn = document.getElementById('submitBtn');
@@ -450,15 +470,37 @@
 
         const SUCCESS_PAGE = 'https://talent-acquisition-six.vercel.app/scheduling-success.html';
 
-        async function resumeWorkflow(url) {
-            try {
-                await fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
-            } catch (e) {
+        function resumeWorkflow(url) {
+            return new Promise((resolve, reject) => {
+                if (isLocalResumeUrl(url) && !isLocalResumeUrl(window.location.href)) {
+                    reject(new Error('Resume URL is localhost — n8n WAIT cannot be reached from this site.'));
+                    return;
+                }
+
+                let settled = false;
+                const done = () => {
+                    if (!settled) {
+                        settled = true;
+                        resolve();
+                    }
+                };
+
                 const iframe = document.createElement('iframe');
                 iframe.style.display = 'none';
+                iframe.onload = () => setTimeout(done, 400);
+                iframe.onerror = () => {
+                    if (!settled) {
+                        settled = true;
+                        reject(new Error('Could not reach n8n resume webhook.'));
+                    }
+                };
                 iframe.src = url;
                 document.body.appendChild(iframe);
-            }
+
+                fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' }).then(done).catch(() => {});
+
+                setTimeout(done, 2500);
+            });
         }
 
         async function submitSlots() {
@@ -496,7 +538,17 @@
             params.set('slots_json', JSON.stringify(slots));
             const webhookUrl = resumeUrl + sep + params.toString();
 
-            await resumeWorkflow(webhookUrl);
+            try {
+                await resumeWorkflow(webhookUrl);
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Send options to candidate';
+                alert(
+                    (err && err.message) ||
+                        'Could not resume n8n workflow. Check that n8n WEBHOOK_URL is a public URL (not localhost).'
+                );
+                return;
+            }
 
             const successUrl =
                 SUCCESS_PAGE +

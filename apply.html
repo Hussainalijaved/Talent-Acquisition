@@ -89,35 +89,38 @@
 
         .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; }
 
-        /* JD left · form right — always 2 cols on desktop */
+        /* JD left · form right — desktop side-by-side */
         .page-split {
-            display: grid;
-            grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-            min-height: 520px;
+            display: flex;
+            flex-direction: row;
             align-items: stretch;
-        }
-        @media (max-width: 768px) {
-            .page-split { grid-template-columns: 1fr; min-height: 0; }
+            min-height: 520px;
         }
         .page-split-left {
+            flex: 1.15;
+            min-width: 0;
             padding: 28px 26px;
             background: rgba(15, 23, 42, 0.45);
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            gap: 0;
-        }
-        @media (max-width: 768px) {
-            .page-split-left {
-                border-right: none;
-                border-bottom: 1px solid var(--border);
-            }
         }
         .page-split-right {
+            flex: 1;
+            min-width: 300px;
+            max-width: 46%;
             padding: 28px 26px;
             display: flex;
             flex-direction: column;
             background: rgba(18, 26, 39, 0.6);
+        }
+        @media (max-width: 768px) {
+            .page-split { flex-direction: column; min-height: 0; }
+            .page-split-right { max-width: none; min-width: 0; }
+            .page-split-left {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
         }
         .col-heading {
             font-size: 11px;
@@ -486,6 +489,7 @@
 
     <footer class="site-footer">
         Talent Acquisition · <a href="careers.html">Careers</a> · <a href="index.html">Assessment portal</a>
+        <span style="display:block;margin-top:6px;font-size:10px;color:#475569">Build: split-layout-v2</span>
     </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>

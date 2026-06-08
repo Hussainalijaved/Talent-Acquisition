@@ -162,30 +162,30 @@
             flex-direction: column;
         }
 
-        /* Manage Jobs — JD left, details right */
+        /* Manage Jobs — JD left, details right (desktop) */
         .job-create-split {
-            display: grid;
-            grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-            min-height: 460px;
+            display: flex;
+            flex-direction: row;
+            align-items: stretch;
+            min-height: 480px;
             border: 1px solid var(--border);
             border-radius: var(--radius);
             overflow: hidden;
             margin-top: 12px;
         }
-        @media (max-width: 768px) {
-            .job-create-split { grid-template-columns: 1fr; min-height: 0; }
-        }
         .job-create-jd {
+            flex: 1.2;
+            min-width: 0;
             padding: 20px;
             background: rgba(15, 23, 42, 0.45);
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
         }
-        @media (max-width: 768px) {
-            .job-create-jd { border-right: none; border-bottom: 1px solid var(--border); }
-        }
         .job-create-fields {
+            flex: 1;
+            min-width: 320px;
+            max-width: 48%;
             padding: 20px;
             display: flex;
             flex-direction: column;
@@ -193,8 +193,13 @@
         }
         .job-create-jd textarea {
             flex: 1;
-            min-height: 380px;
+            min-height: 400px;
             resize: vertical;
+        }
+        @media (max-width: 768px) {
+            .job-create-split { flex-direction: column; min-height: 0; }
+            .job-create-fields { max-width: none; min-width: 0; }
+            .job-create-jd { border-right: none; border-bottom: 1px solid var(--border); }
         }
         .job-col-title {
             font-size: 11px;
@@ -1455,6 +1460,7 @@
 
     <footer class="site-footer">
         Talent Acquisition · <a href="careers.html">Careers</a> · <a href="index.html">Candidate assessment portal</a>
+        <span id="buildTag" style="display:block;margin-top:6px;font-size:10px;color:#475569">Build: split-layout-v2</span>
     </footer>
 
     <script>

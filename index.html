@@ -198,6 +198,15 @@
             -webkit-touch-callout: none;
         }
 
+        /* TEMP testing mode: allow text selection / copy when proctoring is disabled */
+        html.proctor-off .assessment-lock,
+        html.proctor-off .portal-lock,
+        html.proctor-off .question-protected {
+            -webkit-user-select: text !important;
+            user-select: text !important;
+            -webkit-touch-callout: default !important;
+        }
+
         .question-masked {
             filter: blur(14px);
             pointer-events: none;
@@ -358,6 +367,7 @@
         const isInFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
 
         const enterAssessmentFullscreen = async () => {
+            if (typeof PROCTORING_DISABLED !== 'undefined' && PROCTORING_DISABLED) return true;
             const el = document.documentElement;
             try {
                 if (document.fullscreenElement) return true;
@@ -509,6 +519,17 @@
 
         const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'assessment'];
         const isPortalLockedView = (v) => PORTAL_LOCKED_VIEWS.includes(v);
+
+        // ===== TEMP TESTING MODE =====
+        // true => all proctoring OFF (copy-paste, tab-switch, window-blur, fullscreen, devtools allowed).
+        // Set back to false before production. Can also force OFF via URL: ?test=1 / ?noproctor / ?proctor=off
+        const FORCE_DISABLE_PROCTORING = true;
+        const PROCTORING_DISABLED = FORCE_DISABLE_PROCTORING ||
+            /[?&](test=1|noproctor|proctor=off)/i.test(location.search);
+        if (PROCTORING_DISABLED) {
+            document.documentElement.classList.add('proctor-off');
+            console.warn('[Assessment] Proctoring DISABLED (testing mode). Set FORCE_DISABLE_PROCTORING=false for production.');
+        }
 
         const FullscreenRequiredOverlay = ({ onRestore, onSecurityKeyDown }) => (
             <div
@@ -1182,10 +1203,10 @@
                                     ) : (
                                         <div
                                             className="question-protected text-base sm:text-lg text-slate-100 leading-relaxed"
-                                            onCopy={(e) => e.preventDefault()}
-                                            onCut={(e) => e.preventDefault()}
-                                            onContextMenu={(e) => e.preventDefault()}
-                                            onDragStart={(e) => e.preventDefault()}
+                                            onCopy={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                            onCut={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                            onContextMenu={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                            onDragStart={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
                                         >
                                             {question}
                                         </div>
@@ -1199,10 +1220,10 @@
                                         placeholder="Type your answer here."
                                         value={answer}
                                         onChange={(e) => setAnswer(e.target.value)}
-                                        onPaste={(e) => e.preventDefault()}
-                                        onCopy={(e) => e.preventDefault()}
-                                        onCut={(e) => e.preventDefault()}
-                                        onDrop={(e) => e.preventDefault()}
+                                        onPaste={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                        onCopy={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                        onCut={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                        onDrop={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
                                         autoComplete="off"
                                         autoCorrect="off"
                                         autoCapitalize="off"
@@ -1463,7 +1484,8 @@
             const [devToolsDetected, setDevToolsDetected] = useState(false);
 
             const isSecurityActive = useCallback(() => (
-                isPortalLockedView(viewRef.current) || fullscreenRequiredRef.current
+                !PROCTORING_DISABLED &&
+                (isPortalLockedView(viewRef.current) || fullscreenRequiredRef.current)
             ), []);
 
             const runDevToolsProbe = useCallback(() => {
@@ -1476,7 +1498,7 @@
             }, []);
 
             const syncFullscreenState = useCallback(() => {
-                if (!isPortalLockedView(viewRef.current)) {
+                if (PROCTORING_DISABLED || !isPortalLockedView(viewRef.current)) {
                     setFullscreenRequired(false);
                     fullscreenRequiredRef.current = false;
                     return;
@@ -1571,6 +1593,7 @@
             }, [view, fullscreenRequired]);
 
             useEffect(() => {
+                if (PROCTORING_DISABLED) return;
                 if (!isPortalLockedView(view) && !fullscreenRequired) return;
                 const preventActions = (e) => e.preventDefault();
                 const preventSelect = (e) => {
@@ -1650,6 +1673,7 @@
             }, []);
 
             const recordIntegrityViolation = useCallback((reason) => {
+                if (PROCTORING_DISABLED) return;
                 if (viewRef.current !== 'assessment' || terminatingRef.current) return;
                 const now = Date.now();
                 if (now - lastViolationAtRef.current < VIOLATION_DEBOUNCE_MS) return;
@@ -1829,6 +1853,10 @@
             }, [view, fullscreenRequired, recordIntegrityViolation, isSecurityActive, runDevToolsProbe]);
 
             useEffect(() => {
+                if (PROCTORING_DISABLED) {
+                    setFullscreenRequired(false);
+                    return;
+                }
                 if (!isPortalLockedView(view)) {
                     exitAssessmentFullscreen();
                     setFullscreenRequired(false);

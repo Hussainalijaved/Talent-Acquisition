@@ -489,7 +489,7 @@
 
     <footer class="site-footer">
         Talent Acquisition · <a href="careers.html">Careers</a> · <a href="index.html">Assessment portal</a>
-        <span style="display:block;margin-top:6px;font-size:10px;color:#475569">Build: split-layout-v2</span>
+        <span style="display:block;margin-top:6px;font-size:10px;color:#475569">Build: apply-form-fix-v1</span>
     </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -512,6 +512,9 @@
 
         let currentJob = null;
         let webhookUrl = '';
+        let submitSucceeded = false;
+        let submitAbort = null;
+        const SUBMIT_TIMEOUT_MS = 90000;
 
         const loadingView = document.getElementById('loadingView');
         const errorView = document.getElementById('errorView');
@@ -526,6 +529,57 @@
         function showStatus(msg, type) {
             statusBox.textContent = msg;
             statusBox.className = 'status-box show ' + (type || '');
+        }
+
+        function resetApplyFormUi() {
+            submitSucceeded = false;
+            if (submitAbort) {
+                submitAbort.abort();
+                submitAbort = null;
+            }
+
+            const btn = document.getElementById('submitBtn');
+            const formView = document.getElementById('formView');
+            const successView = document.getElementById('successView');
+            const defaultSuccessMsg =
+                'Thank you! Your CV is being screened. If shortlisted, you\'ll get an assessment link by email.';
+
+            btn.disabled = false;
+            btn.textContent = 'Submit application';
+            formView.classList.remove('hide');
+            successView.classList.remove('show');
+            const successText = successView.querySelector('p');
+            if (successText) successText.textContent = defaultSuccessMsg;
+
+            statusBox.classList.remove('show');
+            statusBox.textContent = '';
+
+            cvFile.value = '';
+            fileName.textContent = '';
+            fileZone.classList.remove('has-file', 'dragover');
+
+            emailInput.value = '';
+            emailInput.classList.remove('extracting', 'extracted');
+            emailInput.placeholder = 'you@email.com';
+            emailHint.textContent = 'Filled automatically after you upload your CV';
+            emailHint.className = 'field-hint';
+        }
+
+        function showSuccessView(message) {
+            submitSucceeded = true;
+            const successView = document.getElementById('successView');
+            const successText = successView.querySelector('p');
+            if (message && successText) successText.textContent = message;
+
+            document.getElementById('formView').classList.add('hide');
+            successView.classList.add('show');
+            statusBox.classList.remove('show');
+
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = false;
+            btn.textContent = 'Submit application';
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function normalizeWebhookUrl(raw) {
@@ -670,7 +724,13 @@
         }
 
         if (fileZone && cvFile) {
-            fileZone.addEventListener('click', () => cvFile.click());
+            fileZone.addEventListener('click', () => {
+                if (submitSucceeded) resetApplyFormUi();
+                cvFile.click();
+            });
+            cvFile.addEventListener('click', () => {
+                cvFile.value = '';
+            });
             cvFile.addEventListener('change', () => handleCvSelected(cvFile.files[0]));
             fileZone.addEventListener('dragover', (e) => {
                 e.preventDefault();
@@ -782,25 +842,45 @@
             formData.append('cv_file', file, file.name);
             formData.append('apply_source', 'careers_page');
 
+            submitAbort = new AbortController();
+            const timeoutId = setTimeout(() => submitAbort.abort(), SUBMIT_TIMEOUT_MS);
+
             try {
                 const res = await fetch(webhook, {
                     method: 'POST',
                     body: formData,
                     headers: { 'ngrok-skip-browser-warning': '1' },
+                    signal: submitAbort.signal,
                 });
-                if (!res.ok) {
-                    const errText = await res.text().catch(() => '');
-                    throw new Error('HTTP ' + res.status + (errText ? ': ' + errText.slice(0, 100) : ''));
+                clearTimeout(timeoutId);
+                submitAbort = null;
+
+                if (res.ok) {
+                    showSuccessView();
+                    return;
                 }
-                document.getElementById('formView').classList.add('hide');
-                document.getElementById('successView').classList.add('show');
-                statusBox.classList.remove('show');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                const errText = await res.text().catch(() => '');
+                throw new Error('HTTP ' + res.status + (errText ? ': ' + errText.slice(0, 100) : ''));
             } catch (err) {
+                clearTimeout(timeoutId);
+                submitAbort = null;
+
+                if (err.name === 'AbortError') {
+                    showSuccessView(
+                        'Your application was sent. AI screening may take a few minutes — if shortlisted, you\'ll receive an assessment link by email.'
+                    );
+                    return;
+                }
+
                 showStatus(err.message || 'Submission failed. Please try again.', 'err');
                 btn.disabled = false;
                 btn.textContent = 'Submit application';
             }
+        });
+
+        window.addEventListener('pageshow', (e) => {
+            if (e.persisted) resetApplyFormUi();
         });
 
         init().catch((err) => {

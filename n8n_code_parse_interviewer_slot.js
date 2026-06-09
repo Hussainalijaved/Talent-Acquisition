@@ -1,11 +1,35 @@
 // n8n: CODE - Parse interviewer slot
 // After WAIT - Interviewer availability — normalizes slots from interviewer portal
 
+function pickNodeJson(...names) {
+  for (const name of names) {
+    if (!name) continue;
+    try {
+      const raw = $(name).first().json;
+      if (raw && typeof raw === 'object') return raw;
+    } catch (_) {}
+  }
+  return {};
+}
+
 const wait = $input.first().json;
 const body = wait.body || wait;
-const base = $('CODE - Prep scheduling from PASS').first().json;
+const query = wait.query || body.query || {};
+const base = pickNodeJson(
+  'CODE - Prep scheduling from PASS',
+  'CODE - Prep scheduling from PASS1',
+  'CODE - Build interviewer mail context',
+  'CODE - Build interviewer mail context1'
+);
 
-let slots = body.slots || body.proposed_slots || body.availability || [];
+let slots =
+  body.slots ||
+  body.proposed_slots ||
+  body.availability ||
+  body.slots_json ||
+  query.slots_json ||
+  wait.slots_json ||
+  [];
 if (typeof slots === 'string') {
   try {
     slots = JSON.parse(slots);

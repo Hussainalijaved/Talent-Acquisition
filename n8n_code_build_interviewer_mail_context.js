@@ -19,42 +19,75 @@ function extractConfig(row) {
   return out;
 }
 
+function pickNodeJson(...names) {
+  for (const name of names) {
+    if (!name) continue;
+    try {
+      const raw = $(name).first().json;
+      if (raw && typeof raw === 'object') return raw;
+    } catch (_) {}
+  }
+  return null;
+}
+
+function mergeConfig(...sources) {
+  const out = {};
+  for (const src of sources) {
+    if (!src || typeof src !== 'object') continue;
+    Object.assign(out, extractConfig(src));
+    if (src.config && typeof src.config === 'object') {
+      for (const [k, v] of Object.entries(src.config)) {
+        if (v != null && String(v).trim()) out[k] = String(v).trim();
+      }
+    }
+    for (const [k, v] of Object.entries(src)) {
+      if (k.startsWith('config.') && v != null && String(v).trim()) {
+        out[k.slice(7)] = String(v).trim();
+      }
+    }
+  }
+  return out;
+}
+
 function loadWorkflowConfig() {
   const names = [
     'CFG - Workflow configuration',
+    'CFG - Workflow configuration1',
     'CFG - Workflow',
     'CFG - Assessment Config',
+    'CFG - Assessment Config1',
     'CFG - Reply track (merge)',
     'CODE - Normalize Data',
+    'CODE - Normalize Data1',
     'CODE - Prep scheduling from PASS',
+    'CODE - Prep scheduling from PASS1',
     'CODE - Parse Result',
+    'CODE - Parse Result1',
   ];
-  let merged = {};
-  for (const name of names) {
-    try {
-      merged = { ...merged, ...extractConfig($(name).first().json) };
-    } catch (_) {}
-  }
-  return merged;
+  const rows = names.map((n) => pickNodeJson(n)).filter(Boolean);
+  return mergeConfig(...rows);
 }
 
 function pickAssessmentContext() {
+  const input = $input.first().json || {};
   const names = [
-    'CODE - Parse Result',
     'CODE - Prep scheduling from PASS',
+    'CODE - Prep scheduling from PASS1',
+    'CODE - Parse Result',
+    'CODE - Parse Result1',
     'CODE - Normalize Data',
+    'CODE - Normalize Data1',
     'HTTP - SB PATCH session interview_history',
+    'HTTP - SB PATCH session interview_history1',
     'CODE - Update interview_history',
   ];
+  const rows = [input, ...names.map((n) => pickNodeJson(n)).filter(Boolean)];
   let merged = {};
-  for (const name of names) {
-    try {
-      const row = $(name).first().json || {};
-      merged = { ...merged, ...row };
-      if (row.config && typeof row.config === 'object') {
-        merged = { ...merged, ...row.config };
-      }
-    } catch (_) {}
+  for (const row of rows) {
+    merged = { ...merged, ...row };
+    if (row.config && typeof row.config === 'object') {
+      merged = { ...merged, ...row.config };
+    }
   }
   return merged;
 }
@@ -105,14 +138,11 @@ function nameFromEmail(email) {
     .trim() || e;
 }
 
-const base = $input.first().json;
+const base = $input.first().json || {};
 const ctx = pickAssessmentContext();
 const cfg = {
   ...loadWorkflowConfig(),
-  ...extractConfig(base),
-  ...extractConfig(ctx),
-  ...(base.config || {}),
-  ...(ctx.config || {}),
+  ...mergeConfig(base, ctx),
 };
 
 const portalBase = String(
@@ -174,7 +204,12 @@ const role = String(
 ).trim();
 
 const interviewerEmail = String(
-  base.interviewer_email || ctx.interviewer_email || cfg.interviewer_email || ''
+  base.interviewer_email ||
+    ctx.interviewer_email ||
+    cfg.interviewer_email ||
+    base.config?.interviewer_email ||
+    ctx.config?.interviewer_email ||
+    ''
 ).trim();
 
 if (!candidateEmail) {

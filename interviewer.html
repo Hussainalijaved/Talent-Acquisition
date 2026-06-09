@@ -501,6 +501,20 @@
                 return;
             }
 
+            if (res.status === 404) {
+                throw new Error(
+                    'n8n resume URL not found (HTTP 404). ' +
+                        'ngrok may have restarted (new URL), n8n is offline, or this email link is from an old execution. ' +
+                        'Keep ngrok + n8n running, set WEBHOOK_URL to your current ngrok URL, then send a fresh interviewer email.'
+                );
+            }
+            if (res.status === 409) {
+                throw new Error(
+                    'This scheduling link is no longer active (HTTP 409). ' +
+                        'Usually the n8n workflow failed before the WAIT step (e.g. Supabase PATCH error) or the link was already used. ' +
+                        'Fix the failed n8n node, then send a fresh interviewer email from a new PASS run.'
+                );
+            }
             throw new Error('n8n returned HTTP ' + res.status + ' — workflow may still be waiting.');
         }
 

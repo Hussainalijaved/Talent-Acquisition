@@ -123,14 +123,26 @@
         const SUCCESS_PAGE = 'https://talent-acquisition-six.vercel.app/scheduling-success.html';
 
         async function resumeWorkflow(url) {
+            const headers = { 'ngrok-skip-browser-warning': '1' };
+            let res;
             try {
-                await fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
-            } catch (e) {
-                const iframe = document.createElement('iframe');
-                iframe.style.display = 'none';
-                iframe.src = url;
-                document.body.appendChild(iframe);
+                res = await fetch(url, { method: 'GET', cache: 'no-store', headers });
+            } catch (networkErr) {
+                throw new Error(
+                    'Could not reach n8n (network/CORS). Keep ngrok running and retry.'
+                );
             }
+            const ct = (res.headers.get('content-type') || '').toLowerCase();
+            if (res.ok || res.status === 204 || res.status === 302) {
+                if (ct.includes('text/html')) {
+                    const snippet = (await res.text()).slice(0, 500);
+                    if (/ngrok|Visit Site|ERR_NGROK/i.test(snippet)) {
+                        throw new Error('ngrok blocked the resume call — use a fresh email link and retry.');
+                    }
+                }
+                return;
+            }
+            throw new Error('n8n returned HTTP ' + res.status);
         }
 
         async function submitChoice() {
@@ -149,7 +161,14 @@
             if (chosen.end_iso) q.set('chosen_end_iso', chosen.end_iso);
             const webhookUrl = resumeUrl + sep + q.toString();
 
-            await resumeWorkflow(webhookUrl);
+            try {
+                await resumeWorkflow(webhookUrl);
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Confirm this slot';
+                alert((err && err.message) || 'Could not resume n8n workflow. Try again.');
+                return;
+            }
 
             const label = encodeURIComponent(chosen.label || chosen.start_iso);
             window.location.replace(SUCCESS_PAGE + '?role=candidate&label=' + label);

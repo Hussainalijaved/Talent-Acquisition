@@ -478,28 +478,36 @@
                 }
 
                 let settled = false;
-                const done = () => {
-                    if (!settled) {
-                        settled = true;
-                        resolve();
-                    }
+                const finish = (ok, err) => {
+                    if (settled) return;
+                    settled = true;
+                    ok ? resolve() : reject(err || new Error('Could not reach n8n resume webhook.'));
                 };
 
-                const iframe = document.createElement('iframe');
-                iframe.style.display = 'none';
-                iframe.onload = () => setTimeout(done, 400);
-                iframe.onerror = () => {
-                    if (!settled) {
-                        settled = true;
-                        reject(new Error('Could not reach n8n resume webhook.'));
-                    }
-                };
-                iframe.src = url;
-                document.body.appendChild(iframe);
-
-                fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' }).then(done).catch(() => {});
-
-                setTimeout(done, 2500);
+                fetch(url, { method: 'GET', cache: 'no-store' })
+                    .then((res) => {
+                        if (res.ok || res.status === 204 || res.status === 302) finish(true);
+                        else finish(false, new Error('n8n returned HTTP ' + res.status));
+                    })
+                    .catch(() => {
+                        const iframe = document.createElement('iframe');
+                        iframe.style.display = 'none';
+                        iframe.onload = () => setTimeout(() => finish(true), 600);
+                        iframe.onerror = () =>
+                            finish(false, new Error('Could not reach n8n resume webhook.'));
+                        iframe.src = url;
+                        document.body.appendChild(iframe);
+                        setTimeout(() => {
+                            if (!settled) {
+                                finish(
+                                    false,
+                                    new Error(
+                                        'n8n did not respond. Check workflow is Waiting at WAIT - Interviewer availability.'
+                                    )
+                                );
+                            }
+                        }, 12000);
+                    });
             });
         }
 

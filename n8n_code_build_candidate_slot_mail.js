@@ -3,8 +3,71 @@
 // Place BEFORE: MAIL - Candidate pick slot
 // IMPORTANT: Disable or bypass "MAIL - Pass" — candidate gets ONLY this mail.
 
+function extractConfig(row) {
+  const out = {};
+  if (!row || typeof row !== 'object') return out;
+  if (row.config && typeof row.config === 'object') Object.assign(out, row.config);
+  for (const [k, v] of Object.entries(row)) {
+    if (k.startsWith('config.') && v != null && String(v).trim()) {
+      out[k.slice(7)] = String(v).trim();
+    }
+  }
+  return out;
+}
+
+function loadWorkflowConfig() {
+  const names = [
+    'CFG - Workflow configuration',
+    'CFG - Workflow',
+    'CFG - Assessment Config',
+    'CFG - Reply track (merge)',
+    'CODE - Normalize Data',
+    'CODE - Prep scheduling from PASS',
+  ];
+  let merged = {};
+  for (const name of names) {
+    try {
+      merged = { ...merged, ...extractConfig($(name).first().json) };
+    } catch (_) {}
+  }
+  return merged;
+}
+
+function publicBaseFromHeaders(obj) {
+  const h = obj?.headers || {};
+  const host = String(h['x-forwarded-host'] || h.host || '').split(',')[0].trim();
+  if (!host || /localhost|127\.0\.0\.1/i.test(host)) return '';
+  return `https://${host}`.replace(/\/+$/, '');
+}
+
+function resolvePublicBase(base, cfg) {
+  let envWebhook = '';
+  try {
+    envWebhook = String($env.WEBHOOK_URL || $env.N8N_WEBHOOK_URL || '').trim();
+  } catch (_) {}
+  const candidates = [
+    cfg.n8n_public_url,
+    cfg.n8n_webhook_url,
+    cfg.public_n8n_url,
+    envWebhook,
+    publicBaseFromHeaders(base),
+  ];
+  for (const name of ['TRG - Assessment Answer', 'CFG - Workflow', 'CFG - Assessment Config']) {
+    try {
+      candidates.push(publicBaseFromHeaders($(name).first().json));
+      const rowCfg = extractConfig($(name).first().json);
+      candidates.push(rowCfg.n8n_public_url, rowCfg.n8n_webhook_url);
+    } catch (_) {}
+  }
+  for (const raw of candidates) {
+    const v = String(raw || '').trim().replace(/\/+$/, '');
+    if (v && !/localhost|127\.0\.0\.1/i.test(v)) return v;
+  }
+  return '';
+}
+
 const base = $input.first().json;
-const cfg = base.config || {};
+const cfg = { ...loadWorkflowConfig(), ...extractConfig(base), ...(base.config || {}) };
 
 const portalBase = String(
   cfg.portal_base_url || cfg.candidate_portal_base || 'https://talent-acquisition-six.vercel.app'
@@ -13,7 +76,7 @@ const portalBase = String(
 const pickPortal = portalBase + '/candidate-pick.html';
 
 let resumeUrl = String($execution.resumeUrl || base.candidate_resume_url || base.resume_url || '').trim();
-const publicBase = String(cfg.n8n_public_url || cfg.n8n_webhook_url || '').replace(/\/+$/, '');
+const publicBase = resolvePublicBase(base, cfg);
 
 function rewriteLocalResume(url) {
   if (!url) return url;

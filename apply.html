@@ -342,22 +342,93 @@
         .status-box.ok { background: rgba(52, 211, 153, 0.1); color: #a7f3d0; border: 1px solid rgba(52, 211, 153, 0.3); }
         .status-box.info { background: rgba(99, 102, 241, 0.1); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.25); }
 
-        .success-view { display: none; text-align: center; padding: 24px 0 8px; }
-        .success-view.show { display: block; }
-        .success-icon {
-            width: 64px;
-            height: 64px;
+        .form-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .form-view.hide { display: none !important; }
+
+        .result-view {
+            display: none;
+            flex: 1;
+            text-align: center;
+            padding: 32px 12px 16px;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .result-view.show { display: flex; }
+
+        .result-icon {
+            width: 72px;
+            height: 72px;
             border-radius: 50%;
-            background: rgba(52, 211, 153, 0.15);
-            color: var(--ok);
-            font-size: 30px;
+            font-size: 34px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 18px;
-            box-shadow: 0 0 0 8px rgba(52, 211, 153, 0.08);
+            margin: 0 auto 20px;
         }
-        .form-view.hide { display: none; }
+        .result-icon.ok {
+            background: rgba(52, 211, 153, 0.15);
+            color: var(--ok);
+            box-shadow: 0 0 0 10px rgba(52, 211, 153, 0.08);
+        }
+        .result-icon.err {
+            background: rgba(248, 113, 113, 0.15);
+            color: var(--danger);
+            box-shadow: 0 0 0 10px rgba(248, 113, 113, 0.08);
+        }
+        .result-icon.wait {
+            background: rgba(99, 102, 241, 0.15);
+            color: #a5b4fc;
+            box-shadow: 0 0 0 10px rgba(99, 102, 241, 0.08);
+            animation: pulse-ring 1.4s ease-in-out infinite;
+        }
+        @keyframes pulse-ring {
+            0%, 100% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0.08); }
+            50% { box-shadow: 0 0 0 16px rgba(99, 102, 241, 0.14); }
+        }
+        .result-title {
+            margin: 0 0 10px;
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            color: #fff;
+        }
+        .result-msg {
+            color: var(--muted);
+            line-height: 1.65;
+            margin: 0 0 24px;
+            max-width: 360px;
+            font-size: 15px;
+        }
+        .result-detail {
+            display: inline-block;
+            margin-bottom: 20px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--border);
+            color: #cbd5e1;
+            word-break: break-all;
+        }
+        .btn-secondary {
+            width: auto;
+            padding: 12px 22px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: #e2e8f0;
+            box-shadow: none;
+            margin-top: 10px;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            border-color: #64748b;
+            background: rgba(15, 23, 42, 0.5);
+        }
 
         .trust-row {
             display: flex;
@@ -438,8 +509,15 @@
                         <p class="col-heading">Your application</p>
                         <div id="statusBox" class="status-box"></div>
 
-                        <div id="formView" class="form-view" style="flex:1;display:flex;flex-direction:column">
-                            <form id="applyForm" style="flex:1;display:flex;flex-direction:column">
+                        <div id="submittingView" class="result-view">
+                            <div class="result-icon wait" aria-hidden="true">⏳</div>
+                            <h2 class="result-title">Sending your CV…</h2>
+                            <p class="result-msg" id="submittingMsg">Uploading your application. Please keep this page open.</p>
+                            <div class="result-detail" id="submittingDetail"></div>
+                        </div>
+
+                        <div id="formView" class="form-view">
+                            <form id="applyForm">
                                 <div class="field">
                                     <div class="step-label">
                                         <span class="step-num">1</span>
@@ -473,13 +551,21 @@
                             </form>
                         </div>
 
-                        <div id="successView" class="success-view">
-                            <div class="success-icon">✓</div>
-                            <h1>Application received</h1>
-                            <p style="color:var(--muted);line-height:1.65;margin:0 0 20px">
-                                Thank you! Your CV is being screened. If shortlisted, you'll get an assessment link by email.
+                        <div id="successView" class="result-view">
+                            <div class="result-icon ok" aria-hidden="true">✓</div>
+                            <h2 class="result-title">CV sent successfully</h2>
+                            <p class="result-msg" id="successMsg">
+                                Your application has been received and is being screened by AI. If shortlisted, you'll get an assessment link by email.
                             </p>
-                            <a href="careers.html" class="btn" style="display:inline-block;text-align:center;text-decoration:none">Browse other roles</a>
+                            <div class="result-detail" id="successDetail"></div>
+                            <a href="careers.html" class="btn" style="display:inline-block;width:auto;padding:12px 28px;text-decoration:none">Browse other roles</a>
+                        </div>
+
+                        <div id="failureView" class="result-view">
+                            <div class="result-icon err" aria-hidden="true">✕</div>
+                            <h2 class="result-title">CV could not be sent</h2>
+                            <p class="result-msg" id="failureMsg">Something went wrong. Please try again.</p>
+                            <button type="button" class="btn" id="retryBtn" style="width:auto;padding:12px 28px">Try again</button>
                         </div>
                     </section>
                 </div>
@@ -489,7 +575,7 @@
 
     <footer class="site-footer">
         Talent Acquisition · <a href="careers.html">Careers</a> · <a href="index.html">Assessment portal</a>
-        <span style="display:block;margin-top:6px;font-size:10px;color:#475569">Build: apply-form-fix-v1</span>
+        <span style="display:block;margin-top:6px;font-size:10px;color:#475569">Build: apply-feedback-v2</span>
     </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -514,44 +600,70 @@
         let webhookUrl = '';
         let submitSucceeded = false;
         let submitAbort = null;
-        const SUBMIT_TIMEOUT_MS = 90000;
+        let progressTimer = null;
+        let ignoreSubmitResult = false;
+        const SUBMIT_TIMEOUT_MS = 45000;
 
         const loadingView = document.getElementById('loadingView');
         const errorView = document.getElementById('errorView');
         const applyView = document.getElementById('applyView');
         const statusBox = document.getElementById('statusBox');
+        const formView = document.getElementById('formView');
+        const submittingView = document.getElementById('submittingView');
+        const successView = document.getElementById('successView');
+        const failureView = document.getElementById('failureView');
         const fileZone = document.getElementById('fileZone');
         const cvFile = document.getElementById('cvFile');
         const fileName = document.getElementById('fileName');
         const emailInput = document.getElementById('email');
         const emailHint = document.getElementById('emailHint');
 
+        const DEFAULT_SUCCESS_MSG =
+            'Your application has been received and is being screened by AI. If shortlisted, you\'ll get an assessment link by email.';
+
         function showStatus(msg, type) {
             statusBox.textContent = msg;
             statusBox.className = 'status-box show ' + (type || '');
         }
 
-        function resetApplyFormUi() {
-            submitSucceeded = false;
+        function hideAllPanels() {
+            formView.classList.add('hide');
+            submittingView.classList.remove('show');
+            successView.classList.remove('show');
+            failureView.classList.remove('show');
+            statusBox.classList.remove('show');
+        }
+
+        function clearSubmitTimers() {
+            if (progressTimer) {
+                clearTimeout(progressTimer);
+                progressTimer = null;
+            }
             if (submitAbort) {
                 submitAbort.abort();
                 submitAbort = null;
             }
+        }
+
+        function resetApplyFormUi() {
+            ignoreSubmitResult = true;
+            submitSucceeded = false;
+            clearSubmitTimers();
 
             const btn = document.getElementById('submitBtn');
-            const formView = document.getElementById('formView');
-            const successView = document.getElementById('successView');
-            const defaultSuccessMsg =
-                'Thank you! Your CV is being screened. If shortlisted, you\'ll get an assessment link by email.';
-
             btn.disabled = false;
             btn.textContent = 'Submit application';
-            formView.classList.remove('hide');
-            successView.classList.remove('show');
-            const successText = successView.querySelector('p');
-            if (successText) successText.textContent = defaultSuccessMsg;
 
-            statusBox.classList.remove('show');
+            hideAllPanels();
+            formView.classList.remove('hide');
+
+            document.getElementById('successMsg').textContent = DEFAULT_SUCCESS_MSG;
+            document.getElementById('successDetail').textContent = '';
+            document.getElementById('failureMsg').textContent = 'Something went wrong. Please try again.';
+            document.getElementById('submittingMsg').textContent =
+                'Uploading your application. Please keep this page open.';
+            document.getElementById('submittingDetail').textContent = '';
+
             statusBox.textContent = '';
 
             cvFile.value = '';
@@ -565,15 +677,43 @@
             emailHint.className = 'field-hint';
         }
 
-        function showSuccessView(message) {
-            submitSucceeded = true;
-            const successView = document.getElementById('successView');
-            const successText = successView.querySelector('p');
-            if (message && successText) successText.textContent = message;
+        function showSubmittingView(email, fileNameText) {
+            hideAllPanels();
+            submittingView.classList.add('show');
+            document.getElementById('submittingDetail').textContent =
+                fileNameText + ' · ' + email;
+            document.getElementById('submittingMsg').textContent =
+                'Uploading your CV to our screening system…';
 
-            document.getElementById('formView').classList.add('hide');
+            progressTimer = setTimeout(() => {
+                document.getElementById('submittingMsg').textContent =
+                    'CV received. AI screening is running — this can take up to a minute.';
+            }, 4000);
+        }
+
+        function showSuccessView(message, detail) {
+            submitSucceeded = true;
+            clearSubmitTimers();
+            hideAllPanels();
             successView.classList.add('show');
-            statusBox.classList.remove('show');
+
+            if (message) document.getElementById('successMsg').textContent = message;
+            if (detail) document.getElementById('successDetail').textContent = detail;
+
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = false;
+            btn.textContent = 'Submit application';
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function showFailureView(message) {
+            submitSucceeded = false;
+            clearSubmitTimers();
+            hideAllPanels();
+            failureView.classList.add('show');
+            document.getElementById('failureMsg').textContent =
+                message || 'Your CV could not be sent. Please check your connection and try again.';
 
             const btn = document.getElementById('submitBtn');
             btn.disabled = false;
@@ -826,10 +966,12 @@
                 return;
             }
 
+            ignoreSubmitResult = false;
+
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
             btn.textContent = 'Submitting…';
-            showStatus('Sending your application for AI screening…', 'info');
+            showSubmittingView(email, file.name);
 
             const formData = new FormData();
             formData.append('candidate_email', email);
@@ -855,29 +997,40 @@
                 clearTimeout(timeoutId);
                 submitAbort = null;
 
+                if (ignoreSubmitResult) return;
+
                 if (res.ok) {
-                    showSuccessView();
-                    return;
-                }
-
-                const errText = await res.text().catch(() => '');
-                throw new Error('HTTP ' + res.status + (errText ? ': ' + errText.slice(0, 100) : ''));
-            } catch (err) {
-                clearTimeout(timeoutId);
-                submitAbort = null;
-
-                if (err.name === 'AbortError') {
                     showSuccessView(
-                        'Your application was sent. AI screening may take a few minutes — if shortlisted, you\'ll receive an assessment link by email.'
+                        DEFAULT_SUCCESS_MSG,
+                        file.name + ' · ' + email + ' · ' + currentJob.title
                     );
                     return;
                 }
 
-                showStatus(err.message || 'Submission failed. Please try again.', 'err');
-                btn.disabled = false;
-                btn.textContent = 'Submit application';
+                const errText = await res.text().catch(() => '');
+                throw new Error('Server returned error ' + res.status + (errText ? ': ' + errText.slice(0, 120) : ''));
+            } catch (err) {
+                clearTimeout(timeoutId);
+                submitAbort = null;
+                if (ignoreSubmitResult) return;
+
+                if (err.name === 'AbortError') {
+                    showSuccessView(
+                        'Your CV was sent successfully. AI screening is still running in the background — if shortlisted, you\'ll receive an assessment link by email.',
+                        file.name + ' · ' + email + ' · ' + currentJob.title
+                    );
+                    return;
+                }
+
+                const friendly =
+                    err.message && err.message.includes('Failed to fetch')
+                        ? 'Could not reach the application server. Your CV may not have been sent — please try again.'
+                        : (err.message || 'Submission failed. Please try again.');
+                showFailureView(friendly);
             }
         });
+
+        document.getElementById('retryBtn').addEventListener('click', resetApplyFormUi);
 
         window.addEventListener('pageshow', (e) => {
             if (e.persisted) resetApplyFormUi();

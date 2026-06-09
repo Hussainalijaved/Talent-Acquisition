@@ -2024,6 +2024,68 @@
                 }
             };
 
+            const extractNextQuestion = (data) => {
+                let nextQ = data?.nextQuestion || data?.question || data?.output || data?.text || '';
+                if (typeof nextQ === 'string' && nextQ.trim().startsWith('{')) {
+                    try {
+                        const parsed = JSON.parse(nextQ);
+                        nextQ = parsed.nextQuestion || parsed.question || parsed.text || nextQ;
+                    } catch (e) { /* keep raw */ }
+                }
+                return String(nextQ || '').trim();
+            };
+
+            const postAssessmentAnswer = async (payload) => {
+                const response = await fetch(`${WEBHOOK_BASE}/assessment-answer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+                    body: JSON.stringify(payload),
+                });
+                let textData = await response.text();
+                let sanitizedText = textData.trim();
+                if (sanitizedText.startsWith('=')) sanitizedText = sanitizedText.substring(1).trim();
+                try {
+                    return JSON.parse(sanitizedText);
+                } catch (e) {
+                    return { output: sanitizedText };
+                }
+            };
+
+            const loadNextQuestionFromSession = async (sId, nextPhaseNum) => {
+                if (!sId) return null;
+                const { data, error } = await supabase
+                    .from('assessment_sessions')
+                    .select('interview_history, current_phase')
+                    .eq('id', sId)
+                    .maybeSingle();
+                if (error || !data) return null;
+                let hist = data.interview_history;
+                if (typeof hist === 'string') {
+                    try { hist = JSON.parse(hist); } catch (e) { hist = []; }
+                }
+                if (!Array.isArray(hist)) hist = [];
+                const row = hist.find((h) => Number(h.phase) === nextPhaseNum);
+                const question = String(row?.question_text || row?.question || '').trim();
+                if (!question) return null;
+                return {
+                    nextQuestion: question,
+                    time_limit_seconds: row.time_limit_seconds,
+                    deadline_at: row.deadline_at,
+                    complexity_tier: row.complexity_tier,
+                };
+            };
+
+            const resolveNextQuestionPayload = async (data, sId, nextPhaseNum) => {
+                let nextQ = extractNextQuestion(data);
+                if (nextQ) return { data, nextQ };
+
+                const fromDb = await loadNextQuestionFromSession(sId, nextPhaseNum);
+                if (fromDb?.nextQuestion) {
+                    return { data: { ...data, ...fromDb }, nextQ: fromDb.nextQuestion };
+                }
+                return { data, nextQ: '' };
+            };
+
             const handleAssessmentSubmit = async (isTimeout = false) => {
                 if (isLoading) return;
                 const finalAnswer = answer.trim() || (isTimeout ? "[Timeout - No response provided]" : "");
@@ -2031,28 +2093,30 @@
 
                 setIsLoading(true);
                 try {
-                    const response = await fetch(`${WEBHOOK_BASE}/assessment-answer`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-                        body: JSON.stringify({
-                            sessionId,
-                            answer: finalAnswer,
-                            phase: currentStep,
-                            email: candidateEmail,
-                            tabSwitches: integrityViolationCount,
-                            integrityViolations: integrityViolationCount,
-                        }),
-                    });
+                    const payload = {
+                        sessionId,
+                        answer: finalAnswer,
+                        phase: currentStep,
+                        email: candidateEmail,
+                        tabSwitches: integrityViolationCount,
+                        integrityViolations: integrityViolationCount,
+                    };
 
-                    let textData = await response.text();
-                    let sanitizedText = textData.trim();
-                    if (sanitizedText.startsWith('=')) sanitizedText = sanitizedText.substring(1).trim();
+                    let data = await postAssessmentAnswer(payload);
+                    const maxAttempts = 5;
+                    const nextPhaseNum = currentStep + 1;
 
-                    let data;
-                    try {
-                        data = JSON.parse(sanitizedText);
-                    } catch (e) {
-                        data = { output: sanitizedText };
+                    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                        if (data.isFinal === true || currentStep >= totalSteps) break;
+
+                        const resolved = await resolveNextQuestionPayload(data, sessionId, nextPhaseNum);
+                        data = resolved.data;
+                        if (resolved.nextQ) break;
+
+                        if (attempt < maxAttempts - 1) {
+                            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+                            data = await postAssessmentAnswer(payload);
+                        }
                     }
 
                     if (data.isFinal === true || currentStep >= totalSteps) {
@@ -2067,14 +2131,7 @@
                         if (sessionId) sessionStorage.setItem('current_session_id', sessionId);
                         if (candidateEmail) sessionStorage.setItem('candidate_email', candidateEmail);
                     } else {
-                        let nextQ = data.nextQuestion || data.question || data.output || data.text || '';
-
-                        if (typeof nextQ === 'string' && nextQ.trim().startsWith('{')) {
-                            try {
-                                const parsed = JSON.parse(nextQ);
-                                nextQ = parsed.nextQuestion || parsed.question || parsed.text || nextQ;
-                            } catch (e) { }
-                        }
+                        const nextQ = extractNextQuestion(data);
 
                         if (nextQ) {
                             setQuestion(nextQ);
@@ -2085,7 +2142,10 @@
                                 deadline_at: data.deadline_at,
                             });
                         } else {
-                            alert('No next question received. Please submit your answer again or refresh the page.');
+                            alert(
+                                'AI did not return the next question yet. Please click Submit once more — ' +
+                                'your answer for this phase is already saved.'
+                            );
                         }
                     }
                 } catch (e) {

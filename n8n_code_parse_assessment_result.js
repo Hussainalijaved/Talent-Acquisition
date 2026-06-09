@@ -380,6 +380,18 @@ let nextQ = String(content.nextQuestion || content.next_question || '').trim();
 let timeLimitSeconds = null;
 let complexityTier = null;
 
+// LLM sometimes omits next_question (esp. phase 4→5). Recover from history on retry.
+if (!nextQ && ph < maxQ && !integrityTerminated) {
+  const existingNext = history.find(
+    (x) => Number(x.phase) === ph + 1 && String(x.question_text || x.question || '').trim()
+  );
+  if (existingNext) {
+    nextQ = String(existingNext.question_text || existingNext.question || '').trim();
+    timeLimitSeconds = existingNext.time_limit_seconds ?? null;
+    complexityTier = existingNext.complexity_tier ?? null;
+  }
+}
+
 const isActualFinalPhase = ph >= maxQ;
 
 // Ignore premature LLM finished/PASS/FAIL before the last phase.
@@ -410,8 +422,10 @@ if (nextQ && ph < maxQ && !integrityTerminated) {
 
 if (nextQ && !isFinal) {
   const sentAt = iso;
-  history.push({
-    phase: ph + 1,
+  const nextPhase = ph + 1;
+  const existingIdx = history.findIndex((x) => Number(x.phase) === nextPhase);
+  const nextEntry = {
+    phase: nextPhase,
     question_text: nextQ,
     answer_text: null,
     sent_at: sentAt,
@@ -422,7 +436,12 @@ if (nextQ && !isFinal) {
     time_limit_seconds: timeLimitSeconds,
     complexity_tier: complexityTier,
     deadline_at: timeLimitSeconds ? buildDeadline(sentAt, timeLimitSeconds) : null,
-  });
+  };
+  if (existingIdx >= 0) {
+    history[existingIdx] = { ...history[existingIdx], ...nextEntry };
+  } else {
+    history.push(nextEntry);
+  }
 }
 
 // Before final phase: missing next question must not end the assessment.

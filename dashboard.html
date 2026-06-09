@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Talent Acquisition — Recruiter Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #f4f6fb;
+            --surface: #ffffff;
+            --surface-2: #f8fafc;
+            --border: #e6eaf2;
+            --text: #0f172a;
+            --text-soft: #64748b;
+            --text-faint: #94a3b8;
+            --primary: #2563eb;
+            --primary-soft: #dbeafe;
+            --primary-grad: linear-gradient(135deg, #1d4ed8, #3b82f6);
+            --green: #16a34a;
+            --green-soft: #dcfce7;
+            --red: #dc2626;
+            --red-soft: #fee2e2;
+            --amber: #d97706;
+            --amber-soft: #fef3c7;
+            --violet: #7c3aed;
+            --violet-soft: #ede9fe;
+            --slate-soft: #eef2f7;
+            --shadow-sm: 0 1px 2px rgba(15, 23, 42, .06);
+            --shadow: 0 4px 16px rgba(15, 23, 42, .08);
+            --shadow-lg: 0 18px 48px rgba(15, 23, 42, .18);
+            --radius: 16px;
+            --radius-sm: 10px;
+        }
+        html[data-theme="dark"] {
+            --bg: #0b1120;
+            --surface: #121a2b;
+            --surface-2: #0f1726;
+            --border: #1f2a3e;
+            --text: #e7edf7;
+            --text-soft: #94a3b8;
+            --text-faint: #64748b;
+            --primary: #3b82f6;
+            --primary-soft: #1e293b;
+            --slate-soft: #1a2336;
+            --green-soft: #14331f;
+            --red-soft: #3a1517;
+            --amber-soft: #3a2a0c;
+            --violet-soft: #241a40;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+            --shadow: 0 4px 16px rgba(0, 0, 0, .4);
+            --shadow-lg: 0 18px 48px rgba(0, 0, 0, .55);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+            display: flex;
+            min-height: 100vh;
+        }
+        a { color: inherit; }
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+
+        /* ---------- Sidebar ---------- */
+        .sidebar {
+            width: 248px;
+            flex-shrink: 0;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 22px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px 8px 20px;
+        }
+        .brand-logo {
+            width: 38px; height: 38px;
+            border-radius: 11px;
+            background: var(--primary-grad);
+            display: grid; place-items: center;
+            color: #fff; font-weight: 800; font-size: 18px;
+            box-shadow: 0 6px 16px rgba(37, 99, 235, .4);
+        }
+        .brand-name { font-size: 15px; font-weight: 700; line-height: 1.2; }
+        .brand-sub { font-size: 11px; color: var(--text-faint); }
+        .nav-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 11px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 14px; font-weight: 500;
+            color: var(--text-soft);
+            cursor: pointer;
+            border: none; background: none; width: 100%; text-align: left;
+            transition: all .15s ease;
+        }
+        .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+        .nav-item:hover { background: var(--surface-2); color: var(--text); }
+        .nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+        .sidebar-foot { margin-top: auto; font-size: 11px; color: var(--text-faint); padding: 8px; }
+
+        /* ---------- Main ---------- */
+        .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .topbar {
+            display: flex; align-items: center; gap: 16px;
+            padding: 16px 28px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; z-index: 20;
+        }
+        .page-title { font-size: 19px; font-weight: 700; }
+        .page-sub { font-size: 12.5px; color: var(--text-faint); margin-top: 2px; }
+        .search {
+            margin-left: auto;
+            display: flex; align-items: center; gap: 8px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 12px;
+            min-width: 260px;
+        }
+        .search svg { width: 16px; height: 16px; color: var(--text-faint); }
+        .search input { border: none; background: none; outline: none; color: var(--text); font-size: 13.5px; width: 100%; font-family: inherit; }
+        .icon-btn {
+            width: 40px; height: 40px;
+            display: grid; place-items: center;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--surface-2);
+            color: var(--text-soft);
+            cursor: pointer;
+            transition: all .15s;
+        }
+        .icon-btn:hover { color: var(--primary); border-color: var(--primary); }
+        .icon-btn svg { width: 18px; height: 18px; }
+        .content { padding: 26px 28px 60px; }
+
+        /* ---------- KPI ---------- */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .kpi {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px 20px;
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            overflow: hidden;
+        }
+        .kpi-top { display: flex; align-items: center; justify-content: space-between; }
+        .kpi-label { font-size: 12.5px; color: var(--text-soft); font-weight: 500; }
+        .kpi-ic { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; }
+        .kpi-ic svg { width: 18px; height: 18px; }
+        .kpi-val { font-size: 30px; font-weight: 800; margin-top: 10px; letter-spacing: -.5px; }
+        .kpi-foot { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; }
+        .ic-blue { background: var(--primary-soft); color: var(--primary); }
+        .ic-green { background: var(--green-soft); color: var(--green); }
+        .ic-red { background: var(--red-soft); color: var(--red); }
+        .ic-amber { background: var(--amber-soft); color: var(--amber); }
+        .ic-violet { background: var(--violet-soft); color: var(--violet); }
+
+        /* ---------- Cards / charts ---------- */
+        .grid-2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 22px;
+            box-shadow: var(--shadow-sm);
+        }
+        .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .card-title { font-size: 15px; font-weight: 700; }
+        .card-title small { display: block; font-size: 11.5px; color: var(--text-faint); font-weight: 400; margin-top: 2px; }
+        .chart-wrap { position: relative; height: 260px; }
+
+        /* ---------- Filters ---------- */
+        .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+        select.filter, .seg {
+            font-family: inherit; font-size: 13px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            border-radius: 9px;
+            padding: 9px 12px;
+            cursor: pointer; outline: none;
+        }
+        .count-tag { margin-left: auto; font-size: 12.5px; color: var(--text-faint); }
+
+        /* ---------- Table ---------- */
+        .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        thead th {
+            text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em;
+            color: var(--text-faint); font-weight: 600;
+            padding: 14px 18px; border-bottom: 1px solid var(--border);
+            background: var(--surface-2);
+            position: sticky; top: 0;
+        }
+        tbody td { padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 13.5px; vertical-align: middle; }
+        tbody tr { cursor: pointer; transition: background .12s; }
+        tbody tr:hover { background: var(--surface-2); }
+        tbody tr:last-child td { border-bottom: none; }
+        .c-email { font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 700; color: #fff; flex-shrink: 0; }
+        .c-role { color: var(--text-soft); font-size: 12.5px; }
+        .empty, .loading-row { text-align: center; color: var(--text-faint); padding: 48px 18px; font-size: 14px; }
+
+        .score-badge { display: inline-grid; place-items: center; min-width: 42px; height: 28px; padding: 0 8px; border-radius: 8px; font-weight: 700; font-size: 13px; }
+        .sc-high { background: var(--green-soft); color: var(--green); }
+        .sc-mid { background: var(--amber-soft); color: var(--amber); }
+        .sc-low { background: var(--red-soft); color: var(--red); }
+        .sc-none { background: var(--slate-soft); color: var(--text-faint); }
+
+        .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+        .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        .p-short { background: var(--green-soft); color: var(--green); }
+        .p-reject { background: var(--red-soft); color: var(--red); }
+        .p-review { background: var(--amber-soft); color: var(--amber); }
+        .p-dup { background: var(--slate-soft); color: var(--text-soft); }
+        .p-fail { background: var(--red-soft); color: var(--red); }
+        .p-assess { background: var(--violet-soft); color: var(--violet); }
+        .p-pass { background: var(--green-soft); color: var(--green); }
+        .p-pending { background: var(--primary-soft); color: var(--primary); }
+
+        /* ---------- Drawer ---------- */
+        .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 90; backdrop-filter: blur(2px); }
+        .overlay.show { opacity: 1; pointer-events: auto; }
+        .drawer {
+            position: fixed; top: 0; right: 0; height: 100vh; width: 560px; max-width: 94vw;
+            background: var(--bg); box-shadow: var(--shadow-lg);
+            transform: translateX(100%); transition: transform .3s cubic-bezier(.4,0,.2,1);
+            z-index: 100; display: flex; flex-direction: column;
+        }
+        .drawer.show { transform: translateX(0); }
+        .drawer-head { padding: 22px 24px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; gap: 14px; align-items: flex-start; }
+        .drawer-head .avatar { width: 46px; height: 46px; font-size: 16px; }
+        .drawer-close { margin-left: auto; cursor: pointer; border: none; background: var(--surface-2); color: var(--text-soft); width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; }
+        .drawer-close:hover { color: var(--red); }
+        .drawer-body { padding: 22px 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 18px; }
+        .d-title { font-size: 17px; font-weight: 700; word-break: break-all; }
+        .d-sub { font-size: 12.5px; color: var(--text-soft); margin-top: 3px; }
+        .section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+        .section-h { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-soft); margin-bottom: 14px; }
+        .section-h svg { width: 16px; height: 16px; color: var(--primary); }
+        .kv { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; font-size: 13.5px; border-bottom: 1px dashed var(--border); }
+        .kv:last-child { border-bottom: none; }
+        .kv .k { color: var(--text-soft); }
+        .kv .v { font-weight: 600; text-align: right; }
+        .reason { font-size: 13.5px; line-height: 1.6; color: var(--text); background: var(--surface-2); border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 4px; white-space: pre-wrap; }
+        .qblock { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 12px; background: var(--surface-2); }
+        .qblock:last-child { margin-bottom: 0; }
+        .qphase { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+        .qphase strong { font-size: 12.5px; }
+        .qlabel { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); margin: 10px 0 3px; font-weight: 600; }
+        .qtext { font-size: 13px; line-height: 1.55; }
+        .qtext.ans { color: var(--text-soft); }
+        .integrity { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--red); background: var(--red-soft); padding: 3px 9px; border-radius: 6px; }
+        .mini-bars { display: flex; gap: 4px; align-items: flex-end; height: 22px; }
+        .mini-bars i { width: 7px; border-radius: 2px 2px 0 0; background: var(--primary); display: block; }
+
+        .banner { padding: 11px 16px; border-radius: 10px; font-size: 13px; margin-bottom: 18px; display: none; }
+        .banner.show { display: block; }
+        .banner.err { background: var(--red-soft); color: var(--red); }
+        .banner.ok { background: var(--green-soft); color: var(--green); }
+
+        .skel { background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 37%, var(--surface-2) 63%); background-size: 400% 100%; animation: sh 1.3s ease infinite; border-radius: 6px; }
+        @keyframes sh { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+        .view { display: none; }
+        .view.active { display: block; }
+
+        @media (max-width: 980px) {
+            .sidebar { display: none; }
+            .grid-2 { grid-template-columns: 1fr; }
+            .search { min-width: 0; flex: 1; }
+        }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-logo">TA</div>
+            <div>
+                <div class="brand-name">Talent Acquisition</div>
+                <div class="brand-sub">Recruiter Console</div>
+            </div>
+        </div>
+        <button class="nav-item active" data-view="overview">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+            Overview
+        </button>
+        <button class="nav-item" data-view="candidates">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Candidates
+        </button>
+        <button class="nav-item" data-view="pipeline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
+            Pipeline
+        </button>
+        <a class="nav-item" href="recruiter-intake.html">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            Screen New CV
+        </a>
+        <div class="sidebar-foot">v1.0 · Live data from Supabase</div>
+    </aside>
+
+    <div class="main">
+        <header class="topbar">
+            <div>
+                <div class="page-title" id="pageTitle">Overview</div>
+                <div class="page-sub" id="pageSub">Hiring pipeline at a glance</div>
+            </div>
+            <div class="search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input id="globalSearch" type="text" placeholder="Search candidates by email or role…" />
+            </div>
+            <button class="icon-btn" id="refreshBtn" title="Refresh">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+            <button class="icon-btn" id="themeBtn" title="Toggle theme">
+                <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+        </header>
+
+        <div class="content">
+            <div id="banner" class="banner"></div>
+
+            <!-- OVERVIEW -->
+            <section class="view active" id="view-overview">
+                <div class="kpi-grid" id="kpiGrid"></div>
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-head">
+                            <div class="card-title">Screening pipeline<small>How candidates are distributed across stages</small></div>
+                        </div>
+                        <div class="chart-wrap"><canvas id="pipelineChart"></canvas></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-head">
+                            <div class="card-title">CV score distribution<small>Buckets of screening scores</small></div>
+                        </div>
+                        <div class="chart-wrap"><canvas id="scoreChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-head">
+                        <div class="card-title">Recent candidates<small>Latest applications &amp; their status</small></div>
+                        <button class="seg" id="seeAllBtn">View all</button>
+                    </div>
+                    <div class="table-card" style="border:none;box-shadow:none">
+                        <table>
+                            <thead><tr><th>Candidate</th><th>Role</th><th>CV Score</th><th>Stage</th><th>Assessment</th></tr></thead>
+                            <tbody id="recentBody"><tr><td class="loading-row" colspan="5">Loading…</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CANDIDATES -->
+            <section class="view" id="view-candidates">
+                <div class="toolbar">
+                    <select class="filter" id="fStage">
+                        <option value="">All stages</option>
+                        <option value="Shortlisted">Shortlisted</option>
+                        <option value="Rejected">Rejected</option>
+                        <option value="ReviewQueue">Review queue</option>
+                        <option value="DuplicateSkipped">Duplicate</option>
+                        <option value="ScreeningTransportFailed">Error</option>
+                    </select>
+                    <select class="filter" id="fRole"><option value="">All roles</option></select>
+                    <select class="filter" id="fAssess">
+                        <option value="">Any assessment</option>
+                        <option value="assessment">In assessment</option>
+                        <option value="completed">Completed</option>
+                        <option value="PASS">Passed</option>
+                        <option value="FAIL">Failed</option>
+                        <option value="none">Not started</option>
+                    </select>
+                    <select class="filter" id="fSort">
+                        <option value="date">Newest first</option>
+                        <option value="score_desc">Score: high → low</option>
+                        <option value="score_asc">Score: low → high</option>
+                        <option value="email">Email A → Z</option>
+                    </select>
+                    <span class="count-tag" id="candCount"></span>
+                </div>
+                <div class="table-card">
+                    <table>
+                        <thead><tr><th>Candidate</th><th>Role</th><th>CV Score</th><th>Stage</th><th>Assessment</th><th>Applied</th></tr></thead>
+                        <tbody id="candBody"><tr><td class="loading-row" colspan="6">Loading candidates…</td></tr></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- PIPELINE -->
+            <section class="view" id="view-pipeline">
+                <div class="grid-2" style="grid-template-columns:1fr 1fr">
+                    <div class="card">
+                        <div class="card-head"><div class="card-title">Assessment funnel<small>From shortlist to final result</small></div></div>
+                        <div id="funnel"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-head"><div class="card-title">Roles overview<small>Candidates per requisition</small></div></div>
+                        <div class="chart-wrap"><canvas id="roleChart"></canvas></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Drawer -->
+    <div class="overlay" id="overlay"></div>
+    <aside class="drawer" id="drawer">
+        <div class="drawer-head">
+            <div class="avatar" id="dAvatar">?</div>
+            <div style="min-width:0">
+                <div class="d-title" id="dTitle">—</div>
+                <div class="d-sub" id="dSub">—</div>
+            </div>
+            <button class="drawer-close" id="drawerClose">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="drawer-body" id="drawerBody"></div>
+    </aside>
+
+    <script>
+        const SUPABASE_URL = 'https://vnxstyadacgntnsvcvzn.supabase.co';
+        const SUPABASE_ANON_KEY =
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
+        let sb = null;
+        try { if (window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+        catch (e) { console.error('Supabase init failed', e); }
+
+        let MERGED = [];
+        let charts = {};
+
+        /* ---------- helpers ---------- */
+        function esc(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function parseJson(raw) {
+            if (!raw) return {};
+            if (typeof raw === 'object') return raw;
+            try { return JSON.parse(raw); } catch { return {}; }
+        }
+        function fmtDate(iso) {
+            if (!iso) return '—';
+            try {
+                const d = new Date(iso);
+                return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+            } catch { return iso; }
+        }
+        function fmtDateTime(iso) {
+            if (!iso) return '—';
+            try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
+            catch { return iso; }
+        }
+        function scoreClass(n) {
+            if (n == null || !Number.isFinite(n)) return 'sc-none';
+            if (n >= 70) return 'sc-high';
+            if (n >= 45) return 'sc-mid';
+            return 'sc-low';
+        }
+        function scoreBadge(n) {
+            const v = (n != null && Number.isFinite(Number(n))) ? Math.round(Number(n)) : null;
+            return '<span class="score-badge ' + scoreClass(v) + '">' + (v == null ? '—' : v) + '</span>';
+        }
+        const STAGES = {
+            Shortlisted: { t: 'Shortlisted', c: 'p-short' },
+            Rejected: { t: 'Rejected', c: 'p-reject' },
+            ReviewQueue: { t: 'Review', c: 'p-review' },
+            DuplicateSkipped: { t: 'Duplicate', c: 'p-dup' },
+            ScreeningTransportFailed: { t: 'Error', c: 'p-fail' },
+        };
+        function stagePill(stage) {
+            const s = STAGES[stage] || { t: stage || 'Unknown', c: 'p-dup' };
+            return '<span class="pill ' + s.c + '">' + esc(s.t) + '</span>';
+        }
+        function assessPill(sess) {
+            if (!sess) return '<span class="c-role">—</span>';
+            if (sess.result === 'PASS') return '<span class="pill p-pass">Passed</span>';
+            if (sess.result === 'FAIL') return '<span class="pill p-reject">Failed</span>';
+            if (sess.status === 'completed') return '<span class="pill p-assess">Completed</span>';
+            if (sess.status === 'assessment') return '<span class="pill p-pending">Phase ' + (sess.current_phase || 1) + '</span>';
+            return '<span class="pill p-assess">' + esc(sess.status || 'Active') + '</span>';
+        }
+        const AV_COLORS = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#dc2626', '#0891b2', '#db2777', '#4f46e5'];
+        function avatarFor(email) {
+            const e = String(email || '?');
+            let h = 0; for (let i = 0; i < e.length; i++) h = e.charCodeAt(i) + ((h << 5) - h);
+            const color = AV_COLORS[Math.abs(h) % AV_COLORS.length];
+            const init = e.trim().slice(0, 2).toUpperCase();
+            return { color, init };
+        }
+        function roleLabel(r) { return String(r || '—').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); }
+        function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+        function buildReason(notes, stage) {
+            const n = parseJson(notes);
+            const rec = String(n.recommendation || n.decision || '').toUpperCase();
+            const parts = [];
+            if (rec === 'SHORTLIST' || stage === 'Shortlisted') parts.push('Why selected:');
+            else if (rec === 'REJECT' || stage === 'Rejected') parts.push('Why rejected:');
+            else if (rec === 'REVIEW' || stage === 'ReviewQueue') parts.push('Needs review:');
+            if (n.summary) parts.push(n.summary);
+            else if (n.recommendation && parts.length < 2) parts.push(n.recommendation);
+            if (n.feedback) parts.push(n.feedback);
+            if (n.error) parts.push('Error: ' + n.error);
+            if (n.reason) parts.push(n.reason);
+            if (!parts.length && stage === 'Shortlisted') parts.push('Passed CV screening for this role.');
+            if (!parts.length && stage === 'Rejected') parts.push('Did not meet JD requirements.');
+            return parts.join(' ').trim() || 'No screening notes recorded.';
+        }
+
+        /* ---------- data ---------- */
+        async function loadData() {
+            if (!sb) { banner('Supabase failed to load. Check your connection and refresh.', 'err'); return; }
+            banner('', '');
+            const [candRes, sessRes] = await Promise.all([
+                sb.from('candidates')
+                    .select('id, candidate_email, stage, score, requisition_id, notes, created_at')
+                    .order('created_at', { ascending: false }).limit(1000),
+                sb.from('assessment_sessions')
+                    .select('id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, created_at, updated_at')
+                    .order('updated_at', { ascending: false }).limit(1000),
+            ]);
+
+            if (candRes.error) { banner('Could not read candidates: ' + candRes.error.message + ' — run supabase_rls_candidates_read.sql.', 'err'); }
+
+            const sessByEmail = {};
+            for (const s of (sessRes.data || [])) {
+                const em = String(s.candidate_email || '').toLowerCase();
+                if (em && !sessByEmail[em]) sessByEmail[em] = s;
+            }
+
+            const merged = [];
+            const seen = new Set();
+            for (const c of (candRes.data || [])) {
+                const em = String(c.candidate_email || '').toLowerCase();
+                seen.add(em);
+                const notes = parseJson(c.notes);
+                merged.push({
+                    email: c.candidate_email || '—',
+                    stage: c.stage,
+                    cvScore: c.score != null ? Number(c.score) : (notes.score != null ? Number(notes.score) : null),
+                    role: c.requisition_id || notes.requisition_title || notes.config?.requisition_title || '',
+                    notes,
+                    rawNotes: c.notes,
+                    created_at: c.created_at,
+                    session: sessByEmail[em] || null,
+                });
+            }
+            // sessions without a candidate row (direct applies)
+            for (const s of (sessRes.data || [])) {
+                const em = String(s.candidate_email || '').toLowerCase();
+                if (em && !seen.has(em)) {
+                    seen.add(em);
+                    const cfg = parseJson(s.config);
+                    merged.push({
+                        email: s.candidate_email,
+                        stage: 'Shortlisted',
+                        cvScore: s.score != null ? Number(s.score) : null,
+                        role: cfg.requisition_title || s.requisition_id || '',
+                        notes: parseJson(s.screening),
+                        rawNotes: null,
+                        created_at: s.created_at,
+                        session: s,
+                    });
+                }
+            }
+            MERGED = merged;
+            render();
+            banner('Loaded ' + merged.length + ' candidate record(s) — updated ' + new Date().toLocaleTimeString() + '.', 'ok');
+            setTimeout(() => banner('', ''), 3500);
+        }
+
+        function banner(msg, type) {
+            const b = document.getElementById('banner');
+            if (!msg) { b.className = 'banner'; b.textContent = ''; return; }
+            b.className = 'banner show ' + (type || '');
+            b.textContent = msg;
+        }
+
+        /* ---------- render ---------- */
+        function render() {
+            renderKpis();
+            renderCharts();
+            renderRoleFilter();
+            renderRecent();
+            renderCandidates();
+            renderPipeline();
+        }
+
+        function stats() {
+            let total = MERGED.length, short = 0, reject = 0, review = 0, dup = 0, err = 0;
+            let inAssess = 0, pass = 0, fail = 0, scoreSum = 0, scoreN = 0;
+            for (const m of MERGED) {
+                if (m.stage === 'Shortlisted') short++;
+                else if (m.stage === 'Rejected') reject++;
+                else if (m.stage === 'ReviewQueue') review++;
+                else if (m.stage === 'DuplicateSkipped') dup++;
+                else if (m.stage === 'ScreeningTransportFailed') err++;
+                if (m.cvScore != null && Number.isFinite(m.cvScore)) { scoreSum += m.cvScore; scoreN++; }
+                const s = m.session;
+                if (s) {
+                    if (s.result === 'PASS') pass++;
+                    else if (s.result === 'FAIL') fail++;
+                    else if (s.status === 'assessment') inAssess++;
+                }
+            }
+            return { total, short, reject, review, dup, err, inAssess, pass, fail,
+                avg: scoreN ? Math.round(scoreSum / scoreN) : null };
+        }
+
+        function renderKpis() {
+            const s = stats();
+            const cards = [
+                { label: 'Total candidates', val: s.total, foot: s.dup + ' duplicate(s) skipped', ic: 'blue',
+                  svg: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>' },
+                { label: 'Shortlisted', val: s.short, foot: 'Moved to assessment', ic: 'green',
+                  svg: '<path d="M20 6 9 17l-5-5"/>' },
+                { label: 'In assessment', val: s.inAssess, foot: 'Currently answering', ic: 'violet',
+                  svg: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>' },
+                { label: 'Passed', val: s.pass, foot: s.fail + ' failed assessment', ic: 'green',
+                  svg: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>' },
+                { label: 'Rejected', val: s.reject, foot: s.review + ' in review queue', ic: 'red',
+                  svg: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>' },
+                { label: 'Avg CV score', val: s.avg == null ? '—' : s.avg, foot: 'Across screened CVs', ic: 'amber',
+                  svg: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>' },
+            ];
+            document.getElementById('kpiGrid').innerHTML = cards.map(c =>
+                '<div class="kpi"><div class="kpi-top"><span class="kpi-label">' + c.label + '</span>' +
+                '<span class="kpi-ic ic-' + c.ic + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + c.svg + '</svg></span></div>' +
+                '<div class="kpi-val">' + c.val + '</div><div class="kpi-foot">' + c.foot + '</div></div>'
+            ).join('');
+        }
+
+        function renderCharts() {
+            const s = stats();
+            const tick = cssVar('--text-soft');
+            const grid = cssVar('--border');
+
+            if (charts.pipeline) charts.pipeline.destroy();
+            charts.pipeline = new Chart(document.getElementById('pipelineChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Shortlisted', 'Rejected', 'Review', 'Duplicate', 'Error'],
+                    datasets: [{
+                        data: [s.short, s.reject, s.review, s.dup, s.err],
+                        backgroundColor: ['#16a34a', '#dc2626', '#d97706', '#94a3b8', '#7c3aed'],
+                        borderWidth: 0, hoverOffset: 6,
+                    }],
+                },
+                options: { cutout: '64%', plugins: { legend: { position: 'bottom', labels: { color: tick, usePointStyle: true, padding: 16, font: { size: 12 } } } } },
+            });
+
+            const buckets = [0, 0, 0, 0, 0];
+            for (const m of MERGED) {
+                const v = m.cvScore;
+                if (v == null || !Number.isFinite(v)) continue;
+                if (v < 20) buckets[0]++; else if (v < 40) buckets[1]++; else if (v < 60) buckets[2]++; else if (v < 80) buckets[3]++; else buckets[4]++;
+            }
+            if (charts.score) charts.score.destroy();
+            charts.score = new Chart(document.getElementById('scoreChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['0–19', '20–39', '40–59', '60–79', '80–100'],
+                    datasets: [{ data: buckets, backgroundColor: ['#dc2626', '#f97316', '#d97706', '#22c55e', '#16a34a'], borderRadius: 8, maxBarThickness: 54 }],
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: tick } },
+                        y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
+                    },
+                },
+            });
+
+            const roleMap = {};
+            for (const m of MERGED) { const r = roleLabel(m.role); roleMap[r] = (roleMap[r] || 0) + 1; }
+            const rEntries = Object.entries(roleMap).sort((a, b) => b[1] - a[1]).slice(0, 8);
+            if (charts.role) charts.role.destroy();
+            if (document.getElementById('roleChart')) {
+                charts.role = new Chart(document.getElementById('roleChart'), {
+                    type: 'bar',
+                    data: { labels: rEntries.map(e => e[0]), datasets: [{ data: rEntries.map(e => e[1]), backgroundColor: '#2563eb', borderRadius: 7, maxBarThickness: 26 }] },
+                    options: { indexAxis: 'y', plugins: { legend: { display: false } },
+                        scales: { x: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } }, y: { grid: { display: false }, ticks: { color: tick } } } },
+                });
+            }
+        }
+
+        function renderRoleFilter() {
+            const roles = [...new Set(MERGED.map(m => m.role).filter(Boolean))].sort();
+            const sel = document.getElementById('fRole');
+            const cur = sel.value;
+            sel.innerHTML = '<option value="">All roles</option>' + roles.map(r => '<option value="' + esc(r) + '">' + esc(roleLabel(r)) + '</option>').join('');
+            sel.value = cur;
+        }
+
+        function rowHtml(m, i, withDate) {
+            const av = avatarFor(m.email);
+            return '<tr data-i="' + i + '">' +
+                '<td><div class="c-email"><span class="avatar" style="background:' + av.color + '">' + esc(av.init) + '</span>' + esc(m.email) + '</div></td>' +
+                '<td class="c-role">' + esc(roleLabel(m.role)) + '</td>' +
+                '<td>' + scoreBadge(m.cvScore) + '</td>' +
+                '<td>' + stagePill(m.stage) + '</td>' +
+                '<td>' + assessPill(m.session) + '</td>' +
+                (withDate ? '<td class="c-role">' + fmtDate(m.created_at) + '</td>' : '') +
+                '</tr>';
+        }
+
+        function bindRows(tbody) {
+            tbody.querySelectorAll('tr[data-i]').forEach(tr => {
+                tr.addEventListener('click', () => openDrawer(MERGED[Number(tr.dataset.i)]));
+            });
+        }
+
+        function renderRecent() {
+            const tb = document.getElementById('recentBody');
+            const rows = MERGED.slice(0, 6);
+            if (!rows.length) { tb.innerHTML = '<tr><td class="empty" colspan="5">No candidates yet.</td></tr>'; return; }
+            tb.innerHTML = rows.map((m) => rowHtml(m, MERGED.indexOf(m), false)).join('');
+            bindRows(tb);
+        }
+
+        function filteredCandidates() {
+            const q = (document.getElementById('globalSearch').value || '').toLowerCase().trim();
+            const fStage = document.getElementById('fStage').value;
+            const fRole = document.getElementById('fRole').value;
+            const fAssess = document.getElementById('fAssess').value;
+            const sort = document.getElementById('fSort').value;
+            let list = MERGED.filter(m => {
+                if (q && !((m.email || '').toLowerCase().includes(q) || roleLabel(m.role).toLowerCase().includes(q))) return false;
+                if (fStage && m.stage !== fStage) return false;
+                if (fRole && m.role !== fRole) return false;
+                if (fAssess) {
+                    const s = m.session;
+                    if (fAssess === 'none' && s) return false;
+                    if (fAssess === 'PASS' && !(s && s.result === 'PASS')) return false;
+                    if (fAssess === 'FAIL' && !(s && s.result === 'FAIL')) return false;
+                    if (fAssess === 'assessment' && !(s && s.status === 'assessment')) return false;
+                    if (fAssess === 'completed' && !(s && s.status === 'completed')) return false;
+                }
+                return true;
+            });
+            list.sort((a, b) => {
+                if (sort === 'score_desc') return (b.cvScore ?? -1) - (a.cvScore ?? -1);
+                if (sort === 'score_asc') return (a.cvScore ?? 999) - (b.cvScore ?? 999);
+                if (sort === 'email') return String(a.email).localeCompare(String(b.email));
+                return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            });
+            return list;
+        }
+
+        function renderCandidates() {
+            const tb = document.getElementById('candBody');
+            const list = filteredCandidates();
+            document.getElementById('candCount').textContent = list.length + ' of ' + MERGED.length + ' candidates';
+            if (!list.length) { tb.innerHTML = '<tr><td class="empty" colspan="6">No candidates match these filters.</td></tr>'; return; }
+            tb.innerHTML = list.map(m => rowHtml(m, MERGED.indexOf(m), true)).join('');
+            bindRows(tb);
+        }
+
+        function renderPipeline() {
+            const s = stats();
+            const steps = [
+                { label: 'Applied / screened', n: s.total, c: '#2563eb' },
+                { label: 'Shortlisted', n: s.short, c: '#16a34a' },
+                { label: 'In / completed assessment', n: s.inAssess + s.pass + s.fail, c: '#7c3aed' },
+                { label: 'Passed assessment', n: s.pass, c: '#16a34a' },
+            ];
+            const max = Math.max(1, ...steps.map(x => x.n));
+            document.getElementById('funnel').innerHTML = steps.map(st => {
+                const pct = Math.round((st.n / max) * 100);
+                return '<div style="margin-bottom:16px">' +
+                    '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span style="color:var(--text-soft)">' + st.label + '</span><strong>' + st.n + '</strong></div>' +
+                    '<div style="height:12px;background:var(--surface-2);border-radius:8px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + st.c + ';border-radius:8px;transition:width .5s"></div></div></div>';
+            }).join('');
+        }
+
+        /* ---------- drawer ---------- */
+        function openDrawer(m) {
+            if (!m) return;
+            const av = avatarFor(m.email);
+            document.getElementById('dAvatar').style.background = av.color;
+            document.getElementById('dAvatar').textContent = av.init;
+            document.getElementById('dTitle').textContent = m.email;
+            document.getElementById('dSub').innerHTML = roleLabel(m.role) + ' · Applied ' + fmtDate(m.created_at);
+
+            const n = m.notes || {};
+            const sess = m.session;
+            let html = '';
+
+            // Snapshot
+            html += '<div class="section"><div class="section-h">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"/><path d="M9 7a3 3 0 0 1 6 0v4H9z"/></svg>Snapshot</div>' +
+                kv('Stage', stagePill(m.stage)) +
+                kv('CV score', scoreBadge(m.cvScore)) +
+                kv('Recommendation', esc(String(n.recommendation || n.decision || '—').toUpperCase())) +
+                kv('Role', esc(roleLabel(m.role))) +
+                '</div>';
+
+            // CV screening
+            html += '<div class="section"><div class="section-h">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>CV screening</div>' +
+                '<div class="reason">' + esc(buildReason(m.rawNotes || m.notes, m.stage)) + '</div>';
+            if (n.phase_1_question) {
+                html += '<div class="qlabel">First assessment question</div><div class="qtext">' + esc(n.phase_1_question) + '</div>';
+            }
+            if (n.strengths || n.weaknesses) {
+                if (n.strengths) html += '<div class="qlabel">Strengths</div><div class="qtext">' + esc(Array.isArray(n.strengths) ? n.strengths.join(', ') : n.strengths) + '</div>';
+                if (n.weaknesses) html += '<div class="qlabel">Gaps</div><div class="qtext ans">' + esc(Array.isArray(n.weaknesses) ? n.weaknesses.join(', ') : n.weaknesses) + '</div>';
+            }
+            html += '</div>';
+
+            // Assessment
+            if (sess) {
+                let hist = sess.interview_history;
+                if (typeof hist === 'string') { try { hist = JSON.parse(hist); } catch { hist = []; } }
+                if (!Array.isArray(hist)) hist = [];
+                html += '<div class="section"><div class="section-h">' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Assessment</div>' +
+                    kv('Status', assessPill(sess)) +
+                    kv('Final score', scoreBadge(sess.score)) +
+                    kv('Phase progress', (sess.current_phase || 1) + ' / ' + (sess.max_phases || 5)) +
+                    kv('Last activity', esc(fmtDateTime(sess.updated_at || sess.created_at)));
+
+                if (hist.length) {
+                    html += '<div class="qlabel" style="margin-top:14px">Question timeline</div>';
+                    hist.filter(h => h && (h.question_text || h.answer_text)).forEach(h => {
+                        const integrity = h.integrity_terminated;
+                        html += '<div class="qblock"><div class="qphase"><strong>Phase ' + esc(h.phase ?? '?') + '</strong>' +
+                            (integrity ? '<span class="integrity">Integrity violation</span>' : (h.score != null ? scoreBadge(h.score) : '<span class="c-role">unanswered</span>')) + '</div>';
+                        if (h.question_text) html += '<div class="qlabel">Question</div><div class="qtext">' + esc(h.question_text) + '</div>';
+                        if (h.answer_text) html += '<div class="qlabel">Answer</div><div class="qtext ans">' + esc(h.answer_text) + '</div>';
+                        if (h.feedback) html += '<div class="qlabel">Feedback</div><div class="qtext ans">' + esc(h.feedback) + '</div>';
+                        if (h.suggested_answer) html += '<div class="qlabel">Model answer</div><div class="qtext ans">' + esc(h.suggested_answer) + '</div>';
+                        if (h.time_limit_seconds) html += '<div class="qlabel">Time limit</div><div class="qtext ans">' + Math.round(h.time_limit_seconds) + 's' + (h.complexity_tier ? ' · Tier ' + esc(h.complexity_tier) : '') + '</div>';
+                        html += '</div>';
+                    });
+                }
+                html += '</div>';
+            } else {
+                html += '<div class="section"><div class="section-h">' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Assessment</div>' +
+                    '<div class="qtext ans">No assessment session yet. Candidate either was not shortlisted or has not started the technical assessment.</div></div>';
+            }
+
+            document.getElementById('drawerBody').innerHTML = html;
+            document.getElementById('overlay').classList.add('show');
+            document.getElementById('drawer').classList.add('show');
+        }
+        function kv(k, v) { return '<div class="kv"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>'; }
+        function closeDrawer() {
+            document.getElementById('overlay').classList.remove('show');
+            document.getElementById('drawer').classList.remove('show');
+        }
+
+        /* ---------- nav / events ---------- */
+        const TITLES = {
+            overview: ['Overview', 'Hiring pipeline at a glance'],
+            candidates: ['Candidates', 'Every applicant, score and decision'],
+            pipeline: ['Pipeline', 'Funnel from application to hire'],
+        };
+        function setView(v) {
+            document.querySelectorAll('.nav-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+            document.querySelectorAll('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
+            const t = TITLES[v] || ['', ''];
+            document.getElementById('pageTitle').textContent = t[0];
+            document.getElementById('pageSub').textContent = t[1];
+            if (v === 'overview' || v === 'pipeline') setTimeout(renderCharts, 60);
+        }
+        document.querySelectorAll('.nav-item[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+        document.getElementById('seeAllBtn').addEventListener('click', () => setView('candidates'));
+        document.getElementById('overlay').addEventListener('click', closeDrawer);
+        document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+        document.getElementById('refreshBtn').addEventListener('click', () => { banner('Refreshing…', 'ok'); loadData(); });
+        ['globalSearch', 'fStage', 'fRole', 'fAssess', 'fSort'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => { renderCandidates(); if (id === 'globalSearch') renderRecent(); });
+        });
+
+        // theme
+        const themeBtn = document.getElementById('themeBtn');
+        function applyTheme(t) {
+            document.documentElement.setAttribute('data-theme', t);
+            localStorage.setItem('ta_theme', t);
+            document.getElementById('themeIcon').innerHTML = t === 'dark'
+                ? '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>'
+                : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+            if (MERGED.length) renderCharts();
+        }
+        themeBtn.addEventListener('click', () => applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'));
+        applyTheme(localStorage.getItem('ta_theme') || 'light');
+
+        loadData();
+    </script>
+</body>
+</html>

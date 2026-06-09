@@ -1,7 +1,16 @@
-// n8n: CODE - Build candidate slot mail (PASS + pick interview — ONE email)
+// n8n: CODE - Build candidate slot mail (scheduling — thread reply)
 // Place AFTER:  CODE - Parse interviewer slot (slots ready)
-// Place BEFORE: MAIL - Candidate pick slot
-// IMPORTANT: Disable or bypass "MAIL - Pass" — candidate gets ONLY this mail.
+// Place BEFORE: Gmail Thread Reply node (NOT "Send message")
+//
+// Gmail node settings:
+//   Resource:   thread
+//   Operation:  reply
+//   Thread ID:  {{ $json.gmail_thread_id }}
+//   Message ID: {{ $json.gmail_message_id }}
+//   Email Type: HTML
+//   Message:    {{ $json.mail_body_html }}
+//
+// After reply: CODE - Merge Gmail reply response → HTTP PATCH session
 
 function extractConfig(row) {
   const out = {};
@@ -31,6 +40,23 @@ function loadWorkflowConfig() {
     } catch (_) {}
   }
   return merged;
+}
+
+function pickSessionRow() {
+  const names = [
+    'HTTP - Fetch Session',
+    'CODE - Prep scheduling from PASS',
+    'CODE - Parse Result',
+    'CODE - Build assessment result mail',
+  ];
+  for (const name of names) {
+    try {
+      const raw = $(name).first().json;
+      const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);
+      if (row?.id || row?.gmail_thread_id) return row;
+    } catch (_) {}
+  }
+  return {};
 }
 
 function publicBaseFromHeaders(obj) {
@@ -67,7 +93,17 @@ function resolvePublicBase(base, cfg) {
 }
 
 const base = $input.first().json;
-const cfg = { ...loadWorkflowConfig(), ...extractConfig(base), ...(base.config || {}) };
+const session = pickSessionRow();
+const cfg = { ...loadWorkflowConfig(), ...extractConfig(base), ...(base.config || {}), ...(session.config || {}) };
+
+const threadId = String(session.gmail_thread_id || base.gmail_thread_id || '').trim();
+const msgId = String(session.gmail_message_id || base.gmail_message_id || '').trim();
+if (!threadId || threadId.startsWith('draft-')) {
+  throw new Error('gmail_thread_id missing — shortlist mail must run first.');
+}
+if (!msgId) {
+  throw new Error('gmail_message_id missing — PATCH after shortlist/result mail first.');
+}
 
 const portalBase = String(
   cfg.portal_base_url || cfg.candidate_portal_base || 'https://talent-acquisition-six.vercel.app'
@@ -115,7 +151,7 @@ const score = base.score != null ? base.score : '—';
 const org = String(cfg.organization_name || 'Talent Acquisition Team');
 const role = String(cfg.requisition_title || base.requisition_title || 'the role');
 
-const mailSubject = base.mail_subject || `Congratulations — pick your interview time (${role})`;
+const sessionId = String(session.id || base.session_id || base.session_db_id || '');
 
 const mailBody =
   `Hi,\n\n` +
@@ -137,6 +173,7 @@ const mailBodyHtml =
     <tr><td align="center">
       <table width="100%" style="max-width:560px;background:#fff;border-radius:12px;padding:32px;">
         <tr><td style="color:#334155;font-size:15px;line-height:1.6;">
+          <p style="margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;">── Interview Scheduling ──</p>
           <p>Hi,</p>
           <p><strong>Congratulations!</strong> You passed our technical assessment for <strong>${role.replace(/</g, '&lt;')}</strong> (score: <strong>${score}/100</strong>).</p>
           <p>Next step — pick your interview time:</p>
@@ -156,12 +193,16 @@ return [
   {
     json: {
       ...base,
+      ...session,
       config: cfg,
+      session_id: sessionId,
+      gmail_thread_id: threadId,
+      gmail_message_id: msgId,
       resume_url: resumeUrl,
       scheduling_link: schedulingLink,
-      mail_subject: mailSubject,
       mail_body: mailBody,
       mail_body_html: mailBodyHtml,
+      mail_stage: 'scheduling',
       candidate_email: candidateEmail,
     },
   },

@@ -859,9 +859,9 @@
             if (!sbClient) return null;
             const { data, error } = await sbClient
                 .from('assessment_sessions')
-                .select('id, created_at, config, requisition_id')
-                .eq('candidate_email', email)
-                .order('created_at', { ascending: false })
+                .select('id, updated_at, config, requisition_id')
+                .eq('candidate_email', email.toLowerCase())
+                .order('updated_at', { ascending: false })
                 .limit(12);
             if (error) {
                 console.warn('Session fetch:', error.message);
@@ -872,7 +872,7 @@
             const jid = normalizeJobId(jobId);
             const since = (submitStartedAt || Date.now()) - 20000;
 
-            const recent = data.filter((s) => new Date(s.created_at).getTime() >= since);
+            const recent = data.filter((s) => new Date(s.updated_at || 0).getTime() >= since);
             const pool = recent.length ? recent : data;
 
             const match = pool.find((s) => {
@@ -1006,11 +1006,11 @@
                 const emailQ = 'email=' + encodeURIComponent(email);
                 if (sid) {
                     window.location.href =
-                        'index.html?session=' + encodeURIComponent(sid) + '&' + emailQ;
+                        '/?session=' + encodeURIComponent(sid) + '&' + emailQ;
                     return;
                 }
                 window.location.href =
-                    'index.html?' + emailQ +
+                    '/?' + emailQ +
                     '&job=' + encodeURIComponent(currentJob.job_id) +
                     '&from=apply';
             }
@@ -1042,10 +1042,11 @@
                 detail,
                 score,
                 actionsHtml:
+                    (sessionId
+                        ? '<p class="form-hint" style="margin:0 0 12px;text-align:left">Your session ID: <strong style="word-break:break-all">' + sessionId + '</strong></p>'
+                        : '') +
                     '<div class="btn-row">' +
-                    '<button type="button" class="btn" id="startAssessmentBtn">' +
-                    (sessionId ? 'Yes — continue to assessment' : 'Yes — continue to assessment') +
-                    '</button>' +
+                    '<button type="button" class="btn" id="startAssessmentBtn">Yes — continue to assessment</button>' +
                     '<button type="button" class="btn btn-secondary" id="laterAssessmentBtn">Maybe later — email me the link</button>' +
                     '</div>',
             });

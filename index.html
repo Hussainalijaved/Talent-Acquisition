@@ -904,7 +904,7 @@
             );
         };
 
-        const InstructionsView = ({ onStart }) => {
+        const InstructionsView = ({ onStart, sessionId }) => {
             const [agreed, setAgreed] = React.useState(false);
             const rules = [
                 {
@@ -960,6 +960,11 @@
                                 <p className="text-sm text-slate-400 mt-2 leading-relaxed">
                                     The assessment runs in timed phases (often five). Read the rules below, then confirm to begin.
                                 </p>
+                                {sessionId ? (
+                                    <p className="text-xs text-slate-500 mt-3 break-all">
+                                        Session ID: <span className="text-slate-300 font-mono">{sessionId}</span>
+                                    </p>
+                                ) : null}
                                 <div className="mt-5 flex flex-col sm:flex-row gap-3">
                                     <div className="flex-1 rounded-lg border border-surface-border bg-surface/50 px-4 py-3">
                                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Format</p>
@@ -1292,6 +1297,44 @@
             return match || rows[0];
         };
 
+        const isPhaseUnanswered = (h) => {
+            if (!h) return false;
+            const a = h.answer_text;
+            return a === null || a === undefined || String(a).trim() === '';
+        };
+
+        const buildHistoryFromSession = (data) => {
+            let history = parseInterviewHistory(data?.interview_history);
+            if (history.length) return history;
+
+            let screening = data?.screening;
+            if (typeof screening === 'string') {
+                try { screening = JSON.parse(screening); } catch (e) { screening = {}; }
+            }
+            const cfg = parseSessionConfig(data?.config);
+            const q = String(
+                screening?.phase_1_question ||
+                cfg?.phase_1_question ||
+                ''
+            ).trim();
+            if (!q) return [];
+
+            const sec = Number(
+                screening?.time_limit_seconds ||
+                screening?.phase_1_time_limit_seconds ||
+                cfg?.phase_1_time_limit_seconds ||
+                240
+            ) || 240;
+
+            return [{
+                phase: 1,
+                question_text: q,
+                answer_text: null,
+                time_limit_seconds: sec,
+                deadline_at: null,
+            }];
+        };
+
         const parseInterviewHistory = (raw) => {
             let history = raw || [];
             if (typeof history === 'string') {
@@ -1590,10 +1633,7 @@
 
             const startPhaseTimerInDatabase = useCallback(async (sessionDbId, history, phaseIndex) => {
                 const row = { ...(history[phaseIndex] || {}) };
-                const seconds = getAiTimeLimitSeconds(row);
-                if (seconds == null) {
-                    throw new Error('This question has no AI time_limit_seconds. Re-run screening or assessment workflow.');
-                }
+                const seconds = getAiTimeLimitSeconds(row) ?? 240;
                 const sent_at = new Date().toISOString();
                 const deadline_at = new Date(Date.now() + seconds * 1000).toISOString();
                 const updatedHistory = history.map((item, i) => (
@@ -2013,48 +2053,58 @@
                     await enterAssessmentFullscreen();
                     const activeSessionId = String(overrideSessionId || sessionIdRef.current || sessionId || '').trim();
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeSessionId);
-                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases');
+                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, screening, config');
                     if (isUuid) {
                         query = query.eq('id', activeSessionId);
                     } else {
                         query = query.eq('gmail_thread_id', activeSessionId);
                     }
-                    const { data, error } = await query.single();
+                    const { data, error } = await query.maybeSingle();
 
                     if (error) throw error;
+                    if (!data) throw new Error('Session not found');
 
-                    const history = parseInterviewHistory(data.interview_history);
+                    const history = buildHistoryFromSession(data);
 
-                    const firstUnanswered = history.findIndex(
-                        (h) => h.answer_text === null || h.answer_text === undefined
-                    );
+                    const firstUnanswered = history.findIndex(isPhaseUnanswered);
                     const phaseIndex = firstUnanswered >= 0 ? firstUnanswered : 0;
                     const currentPhaseData = history[phaseIndex];
+                    const questionText = String(
+                        currentPhaseData?.question_text || currentPhaseData?.question || ''
+                    ).trim();
 
-                    if (currentPhaseData) {
-                        setQuestion(currentPhaseData.question_text || currentPhaseData.question);
-                        setTotalSteps(data.max_phases || 5);
-                        setCurrentStep(phaseIndex + 1);
-                        setIntegrityViolationCount(0);
-                        integrityViolationCountRef.current = 0;
-                        terminatingRef.current = false;
-                        lastViolationAtRef.current = 0;
-                        devToolsOpenRef.current = false;
-
-                        const resolvedId = data.id || activeSessionId;
-                        setSessionId(resolvedId);
-                        sessionStorage.setItem('current_session_id', resolvedId);
-                        sessionStorage.setItem('candidate_email', candidateEmailRef.current || candidateEmail || '');
-                        sessionStorage.setItem('assessment_started', 'true');
-
-                        await startPhaseTimerInDatabase(resolvedId, history, phaseIndex);
-                        setView('assessment');
-                    } else {
-                        throw new Error("No initial question found in session history.");
+                    if (!questionText) {
+                        throw new Error('No initial question found in session history.');
                     }
+
+                    setQuestion(questionText);
+                    setTotalSteps(data.max_phases || 5);
+                    setCurrentStep(phaseIndex + 1);
+                    setIntegrityViolationCount(0);
+                    integrityViolationCountRef.current = 0;
+                    terminatingRef.current = false;
+                    lastViolationAtRef.current = 0;
+                    devToolsOpenRef.current = false;
+
+                    const resolvedId = data.id || activeSessionId;
+                    setSessionId(resolvedId);
+                    sessionStorage.setItem('current_session_id', resolvedId);
+                    sessionStorage.setItem('candidate_email', candidateEmailRef.current || candidateEmail || '');
+                    sessionStorage.setItem('assessment_started', 'true');
+
+                    try {
+                        await startPhaseTimerInDatabase(resolvedId, history, phaseIndex);
+                    } catch (timerErr) {
+                        console.warn('Timer sync failed — using local timer', timerErr);
+                        applyTimerFromPhase({
+                            ...currentPhaseData,
+                            time_limit_seconds: getAiTimeLimitSeconds(currentPhaseData) ?? 240,
+                        });
+                    }
+                    setView('assessment');
                 } catch (e) {
                     console.error('Start Assessment Error:', e);
-                    alert('Failed to load the first question. Please refresh.');
+                    alert('Failed to load the first question. Please refresh or re-open the link from your email.');
                 } finally {
                     setIsLoading(false);
                 }
@@ -2076,19 +2126,27 @@
                 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
                 const pollSessionForEmail = async (email, jobId) => {
-                    const deadline = Date.now() + 90000;
+                    const deadline = Date.now() + 60000;
+                    let attempt = 0;
                     while (Date.now() < deadline && !cancelled) {
+                        attempt += 1;
                         const { data, error } = await supabase
                             .from('assessment_sessions')
-                            .select('id, created_at, config, requisition_id, status')
-                            .eq('candidate_email', email)
-                            .order('created_at', { ascending: false })
+                            .select('id, updated_at, config, requisition_id, status')
+                            .eq('candidate_email', email.toLowerCase())
+                            .order('updated_at', { ascending: false })
                             .limit(12);
-                        if (!error && data?.length) {
+                        if (error) {
+                            console.warn('Session poll error:', error.message);
+                        } else if (data?.length) {
                             const row = pickSessionForJob(data, jobId);
                             if (row?.id && !sessionStatusBlocked(row.status)) return row.id;
                         }
-                        await sleep(2500);
+                        const waitEl = document.querySelector('[data-bootstrap-wait]');
+                        if (waitEl) {
+                            waitEl.textContent = 'Waiting for your assessment session… (' + attempt + ')';
+                        }
+                        await sleep(attempt < 5 ? 1500 : 2500);
                     }
                     return null;
                 };
@@ -2109,7 +2167,7 @@
                         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeId);
                         let query = supabase.from('assessment_sessions').select('id, status');
                         query = isUuid ? query.eq('id', activeId) : query.eq('gmail_thread_id', activeId);
-                        const { data, error } = await query.single();
+                        const { data, error } = await query.maybeSingle();
                         if (cancelled) return;
                         if (error || !data) {
                             setUrlEntryError('Could not verify your assessment session. Check the link or contact your recruiter.');
@@ -2127,7 +2185,15 @@
                         }
                         sessionStorage.setItem('current_session_id', data.id);
                         sessionStorage.removeItem('assessment_started');
-                        if (!cancelled) setView('instructions');
+                        if (!cancelled) {
+                            const nextUrl = new URL(window.location.href);
+                            nextUrl.searchParams.set('session', data.id);
+                            if (urlEmail) nextUrl.searchParams.set('email', urlEmail);
+                            nextUrl.searchParams.delete('job');
+                            nextUrl.searchParams.delete('from');
+                            window.history.replaceState({}, '', nextUrl.pathname + nextUrl.search);
+                            setView('instructions');
+                        }
                     } catch (e) {
                         console.error('Session link entry failed:', e);
                         setUrlEntryError('Something went wrong loading your assessment. Please refresh or try again from your email link.');
@@ -2376,7 +2442,7 @@
                     case 'login':
                         return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} />;
                     case 'instructions':
-                        return <InstructionsView onStart={handleStartAssessment} />;
+                        return <InstructionsView onStart={handleStartAssessment} sessionId={sessionId} />;
                     case 'assessment':
                         return (
                             <AssessmentView
@@ -2423,7 +2489,7 @@
                     {isLoading && view === 'login' && hasUrlBootstrap && (
                         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#080b10]/88 backdrop-blur-sm px-6">
                             <div className="w-10 h-10 rounded-full border-2 border-indigo-400/30 border-t-indigo-400 animate-spin mb-4" aria-hidden="true" />
-                            <p className="text-sm text-slate-300">Loading your assessment portal…</p>
+                            <p className="text-sm text-slate-300" data-bootstrap-wait>Loading your assessment portal…</p>
                         </div>
                     )}
                     {renderView()}

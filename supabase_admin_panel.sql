@@ -48,6 +48,10 @@ drop policy if exists "anon_read_assessment_sessions" on public.assessment_sessi
 create policy "anon_read_assessment_sessions"
   on public.assessment_sessions for select to anon using (true);
 
+drop policy if exists "anon_update_assessment_sessions" on public.assessment_sessions;
+create policy "anon_update_assessment_sessions"
+  on public.assessment_sessions for update to anon using (true) with check (true);
+
 drop policy if exists "anon_delete_jobs" on public.jobs;
 create policy "anon_delete_jobs"
   on public.jobs for delete to anon using (true);

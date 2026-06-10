@@ -668,7 +668,8 @@
         let ignoreSubmitResult = false;
         const SUBMIT_TIMEOUT_MS = 45000;
         const POLL_INTERVAL_MS = 3000;
-        const POLL_MAX_MS = 120000;
+        const POLL_MAX_MS = 180000;
+        const SESSION_POLL_MAX_MS = 90000;
 
         const loadingView = document.getElementById('loadingView');
         const errorView = document.getElementById('errorView');
@@ -850,25 +851,78 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        async function fetchAssessmentSessionId(email, jobId) {
+        function normalizeJobId(value) {
+            return String(value || '').trim().toLowerCase();
+        }
+
+        async function fetchAssessmentSessionId(email, jobId, submitStartedAt) {
             if (!sbClient) return null;
             const { data, error } = await sbClient
                 .from('assessment_sessions')
-                .select('id, created_at, config')
+                .select('id, created_at, config, requisition_id')
                 .eq('candidate_email', email)
                 .order('created_at', { ascending: false })
-                .limit(8);
-            if (error || !data?.length) return null;
-            const match = data.find((s) => {
+                .limit(12);
+            if (error) {
+                console.warn('Session fetch:', error.message);
+                return null;
+            }
+            if (!data?.length) return null;
+
+            const jid = normalizeJobId(jobId);
+            const since = (submitStartedAt || Date.now()) - 20000;
+
+            const recent = data.filter((s) => new Date(s.created_at).getTime() >= since);
+            const pool = recent.length ? recent : data;
+
+            const match = pool.find((s) => {
+                const rowRid = normalizeJobId(s.requisition_id);
                 const cfg = parseNotes(s.config);
-                return String(cfg.requisition_id || '') === String(jobId || '');
+                const cfgRid = normalizeJobId(cfg.requisition_id);
+                const cfgSlug = normalizeJobId(
+                    String(cfg.requisition_title || '')
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, '-')
+                        .replace(/^-|-$/g, '')
+                );
+                if (!jid) return true;
+                return rowRid === jid || cfgRid === jid || cfgSlug === jid;
             });
-            return (match || data[0]).id;
+            return (match || pool[0]).id;
         }
+
+        async function pollForSessionId(email, jobId, submitStartedAt, maxMs) {
+            const deadline = Date.now() + (maxMs || SESSION_POLL_MAX_MS);
+            while (Date.now() < deadline && !ignoreSubmitResult) {
+                const id = await fetchAssessmentSessionId(email, jobId, submitStartedAt);
+                if (id) return id;
+                await sleep(POLL_INTERVAL_MS);
+            }
+            return null;
+        }
+
+        async function checkAlreadyApplied(email, jobId) {
+            if (!sbClient || !email || !jobId) return false;
+            const { data, error } = await sbClient
+                .from('candidates')
+                .select('stage')
+                .eq('candidate_email', email)
+                .eq('requisition_id', jobId)
+                .in('stage', ['Shortlisted', 'ReviewQueue', 'DuplicateSkipped'])
+                .limit(1);
+            if (error) return false;
+            return (data || []).length > 0;
+        }
+
+        const TERMINAL_STAGES = new Set([
+            'Shortlisted', 'Rejected', 'ReviewQueue', 'DuplicateSkipped', 'ScreeningTransportFailed',
+        ]);
 
         async function pollScreeningResult(email, jobId, submitStartedAt) {
             const deadline = Date.now() + POLL_MAX_MS;
             let attempt = 0;
+            let sessionId = null;
+
             while (Date.now() < deadline && !ignoreSubmitResult) {
                 attempt += 1;
                 updatePollingMessage(attempt);
@@ -885,23 +939,52 @@
                 if (!error && data) {
                     const created = new Date(data.created_at).getTime();
                     if (created >= submitStartedAt - 8000) {
-                        return data;
+                        if (data.stage === 'Shortlisted') {
+                            sessionId = await fetchAssessmentSessionId(email, jobId, submitStartedAt);
+                            if (sessionId) return { candidate: data, sessionId };
+                        } else if (TERMINAL_STAGES.has(data.stage)) {
+                            return { candidate: data, sessionId: null };
+                        }
                     }
                 }
+
+                if (!sessionId) {
+                    sessionId = await fetchAssessmentSessionId(email, jobId, submitStartedAt);
+                }
+
                 await sleep(POLL_INTERVAL_MS);
             }
             return null;
         }
 
-        function bindPassActions(sessionId, email, detail) {
+        function bindPassActions(sessionId, email, detail, submitStartedAt) {
             const startBtn = document.getElementById('startAssessmentBtn');
             const laterBtn = document.getElementById('laterAssessmentBtn');
-            if (startBtn && sessionId) {
-                startBtn.addEventListener('click', () => {
-                    window.location.href =
-                        'index.html?session=' + encodeURIComponent(sessionId) +
-                        '&email=' + encodeURIComponent(email);
-                });
+
+            async function goToAssessment(existingId) {
+                let sid = existingId;
+                if (!sid) {
+                    if (startBtn) {
+                        startBtn.disabled = true;
+                        startBtn.textContent = 'Preparing assessment…';
+                    }
+                    sid = await pollForSessionId(email, currentJob.job_id, submitStartedAt, SESSION_POLL_MAX_MS);
+                }
+                if (!sid) {
+                    if (startBtn) {
+                        startBtn.disabled = false;
+                        startBtn.textContent = 'Yes — continue to assessment';
+                    }
+                    showStatus('Assessment link is still being created — check your email in a minute or tap again.', 'info');
+                    return;
+                }
+                window.location.href =
+                    'index.html?session=' + encodeURIComponent(sid) +
+                    '&email=' + encodeURIComponent(email);
+            }
+
+            if (startBtn) {
+                startBtn.addEventListener('click', () => goToAssessment(sessionId));
             }
             if (laterBtn) {
                 laterBtn.addEventListener('click', () => {
@@ -917,37 +1000,34 @@
             }
         }
 
-        async function handleScreeningOutcome(result, email, fileNameText) {
+        function showShortlistOutcome(score, summary, detail, sessionId, email, submitStartedAt) {
+            showOutcome({
+                iconClass: 'ok',
+                icon: '✓',
+                title: 'Congratulations — you\'re shortlisted!',
+                message: (summary ? summary + '\n\n' : '') +
+                    'Would you like to continue to the assessment guidelines and begin when ready?',
+                detail,
+                score,
+                actionsHtml:
+                    '<div class="btn-row">' +
+                    '<button type="button" class="btn" id="startAssessmentBtn">' +
+                    (sessionId ? 'Yes — continue to assessment' : 'Yes — continue to assessment') +
+                    '</button>' +
+                    '<button type="button" class="btn btn-secondary" id="laterAssessmentBtn">Maybe later — email me the link</button>' +
+                    '</div>',
+            });
+            bindPassActions(sessionId, email, detail, submitStartedAt);
+        }
+
+        async function handleScreeningOutcome(result, email, fileNameText, submitStartedAt, sessionId) {
             const detail = fileNameText + ' · ' + email + ' · ' + (currentJob?.title || '');
             const stage = result?.stage || '';
             const score = result?.score != null ? Number(result.score) : null;
             const summary = screeningSummary(result?.notes, stage);
 
             if (stage === 'Shortlisted') {
-                let sessionId = await fetchAssessmentSessionId(email, currentJob.job_id);
-                for (let i = 0; i < 12 && !sessionId && !ignoreSubmitResult; i++) {
-                    await sleep(2500);
-                    sessionId = await fetchAssessmentSessionId(email, currentJob.job_id);
-                }
-                const canStart = Boolean(sessionId);
-                showOutcome({
-                    iconClass: 'ok',
-                    icon: '✓',
-                    title: 'Congratulations — you\'re shortlisted!',
-                    message: (summary ? summary + ' ' : '') +
-                        (canStart
-                            ? 'Would you like to continue to the assessment guidelines and begin when ready?'
-                            : 'Your assessment is being prepared — check your email in a few minutes.'),
-                    detail,
-                    score,
-                    actionsHtml: canStart
-                        ? '<div class="btn-row">' +
-                          '<button type="button" class="btn" id="startAssessmentBtn">Yes — continue to assessment</button>' +
-                          '<button type="button" class="btn btn-secondary" id="laterAssessmentBtn">Maybe later — email me the link</button>' +
-                          '</div>'
-                        : '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
-                });
-                if (canStart) bindPassActions(sessionId, email, detail);
+                showShortlistOutcome(score, summary, detail, sessionId, email, submitStartedAt);
                 return;
             }
 
@@ -1007,10 +1087,10 @@
             }
 
             showSubmittingView(email, fileNameText, 'screen');
-            const result = await pollScreeningResult(email, currentJob.job_id, submitStartedAt);
+            const polled = await pollScreeningResult(email, currentJob.job_id, submitStartedAt);
             if (ignoreSubmitResult) return;
 
-            if (!result) {
+            if (!polled || !polled.candidate) {
                 showOutcome({
                     iconClass: 'wait',
                     icon: '⏳',
@@ -1022,7 +1102,13 @@
                 return;
             }
 
-            await handleScreeningOutcome(result, email, fileNameText);
+            await handleScreeningOutcome(
+                polled.candidate,
+                email,
+                fileNameText,
+                submitStartedAt,
+                polled.sessionId
+            );
         }
 
         function showFailureView(message) {
@@ -1281,6 +1367,18 @@
             const file = cvFile.files[0];
             if (!email || !file) {
                 showStatus('Please upload your CV and confirm your email.', 'err');
+                return;
+            }
+
+            if (await checkAlreadyApplied(email, currentJob.job_id)) {
+                showOutcome({
+                    iconClass: 'info',
+                    icon: '↺',
+                    title: 'Already applied',
+                    message: 'You already have an active application for this role. Check your email for the assessment link or contact the hiring team.',
+                    detail: email + ' · ' + currentJob.title,
+                    actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
+                });
                 return;
             }
 

@@ -51,3 +51,8 @@ create policy "anon_read_assessment_sessions"
 drop policy if exists "anon_delete_jobs" on public.jobs;
 create policy "anon_delete_jobs"
   on public.jobs for delete to anon using (true);
+
+-- One active application per email + job (see also supabase_duplicate_guard.sql)
+create unique index if not exists candidates_one_active_per_job_idx
+  on public.candidates (lower(candidate_email), lower(requisition_id))
+  where stage in ('Shortlisted', 'ReviewQueue');

@@ -266,7 +266,7 @@ const nodes = [
     '={{ $json.interviewer_email }}',
     '={{ $json.mail_subject }}',
     [3856, 1240],
-    "={{ $json.mail_body_html.replace('{{RESUME_URL}}', encodeURIComponent($execution.resumeUrl)) }}"
+    "={{ (() => { let u = String($execution.resumeUrl || '').trim(); const b = String($json.config?.n8n_public_url || $json._debug_public_base || '').replace(/\\/+$/, ''); if (b && /localhost|127\\.0\\.0\\.1/i.test(u)) u = u.replace(/^https?:\\/\\/[^/]+/i, b); if (!u) throw new Error('resumeUrl empty — MAIL must wire directly to WAIT'); return $json.mail_body_html.split($json.resume_url).join(encodeURIComponent(u)); })() }}"
   ),
   codeNode('CODE - Merge Gmail interviewer send', 'n8n_code_merge_gmail_interviewer_response.js', [4080, 1240]),
   httpPatch(
@@ -433,13 +433,18 @@ const connections = {
     main: [[{ node: 'MAIL - Candidate pitch mail', type: 'main', index: 0 }]],
   },
   'MAIL - Candidate pitch mail': {
-    main: [[{ node: 'CODE - Merge Gmail reply response (scheduling)', type: 'main', index: 0 }]],
+    main: [
+      [
+        { node: 'WAIT - Candidate slot choice', type: 'main', index: 0 },
+        { node: 'CODE - Merge Gmail reply response (scheduling)', type: 'main', index: 0 },
+      ],
+    ],
   },
   'CODE - Merge Gmail reply response (scheduling)': {
     main: [[{ node: 'HTTP - PATCH candidate gmail (scheduling)', type: 'main', index: 0 }]],
   },
   'HTTP - PATCH candidate gmail (scheduling)': {
-    main: [[{ node: 'WAIT - Candidate slot choice', type: 'main', index: 0 }]],
+    main: [[]],
   },
   'WAIT - Candidate slot choice': {
     main: [[{ node: 'CODE - Parse candidate choice', type: 'main', index: 0 }]],

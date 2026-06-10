@@ -1218,6 +1218,11 @@
       "main": [
         [
           {
+            "node": "WAIT - Candidate slot choice",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "CODE - Merge Gmail reply response (scheduling)",
             "type": "main",
             "index": 0
@@ -1238,13 +1243,7 @@
     },
     "HTTP - PATCH candidate gmail (scheduling)": {
       "main": [
-        [
-          {
-            "node": "WAIT - Candidate slot choice",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "WAIT - Candidate slot choice": {

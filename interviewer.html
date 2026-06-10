@@ -525,12 +525,19 @@
             }
 
             if (res.status === 404) {
+                const execMatch = String(target).match(/webhook-waiting\/(\d+)/i);
+                const execId = execMatch ? execMatch[1] : '?';
                 throw new Error(
-                    'n8n resume URL not found (HTTP 404). ' +
-                        'Usually the workflow sent the interviewer email but failed before WAIT started — ' +
-                        'check execution in n8n for a red HTTP - PATCH interviewer thread (pitch) node ' +
-                        '(run supabase_gmail_thread_columns.sql in Supabase, or wire Merge → WAIT and set PATCH to Continue On Fail). ' +
-                        'Then run a new PASS assessment and use the new interviewer email link.'
+                    'n8n resume URL not found (HTTP 404) for execution ' +
+                        execId +
+                        '. The interviewer email was sent but WAIT never started — this link cannot be reused. ' +
+                        'In live n8n: (1) open Executions → ' +
+                        execId +
+                        ' and check for a failed HTTP - PATCH interviewer thread (pitch) node; ' +
+                        '(2) wire MAIL - Interviewer pitch mail directly to WAIT - Interviewer availability ' +
+                        '(PATCH stays on a side branch); ' +
+                        '(3) run supabase_gmail_thread_columns.sql in Supabase; ' +
+                        '(4) run a new PASS assessment and use the new interviewer email.'
                 );
             }
             if (res.status === 409) {

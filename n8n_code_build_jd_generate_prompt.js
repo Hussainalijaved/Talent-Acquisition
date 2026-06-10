@@ -17,7 +17,14 @@ function bulletLines(raw) {
 }
 
 const raw = $input.first().json;
-const body = raw.body || raw;
+let body = raw.body || raw;
+if (typeof body === 'string') {
+  try {
+    body = JSON.parse(body);
+  } catch (e) {
+    body = raw;
+  }
+}
 
 const title = pick(body, 'title', 'job_title', 'requisition_title') || 'Open Position';
 const department = pick(body, 'department', 'dept') || 'Engineering';
@@ -26,7 +33,8 @@ const employment_type = pick(body, 'employment_type', 'employmentType', 'job_typ
 const criteria = bulletLines(pick(body, 'criteria', 'must_have', 'requirements'));
 const nice = bulletLines(pick(body, 'nice', 'nice_to_have', 'niceToHave'));
 
-const model = pick(body, 'groq_model') || $env.GROQ_JD_MODEL || 'llama-3.3-70b-versatile';
+// Code nodes cannot read $env — model default matches CV screening; override via request body groq_model.
+const model = pick(body, 'groq_model') || 'llama-3.3-70b-versatile';
 
 const systemPrompt = [
   'You are an expert technical recruiter and copywriter who writes job descriptions for LinkedIn and careers pages.',

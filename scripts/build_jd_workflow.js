@@ -13,7 +13,9 @@ const workflow = {
         httpMethod: 'POST',
         path: 'talent/jd-generate',
         responseMode: 'responseNode',
-        options: {},
+        options: {
+          allowedOrigins: '*',
+        },
       },
       id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
       name: 'TRG - Webhook JD generate',
@@ -69,7 +71,16 @@ const workflow = {
         respondWith: 'json',
         responseBody:
           '={{ { success: $json.success, jd_text: $json.jd_text, title: $json.title, error: $json.error || "" } }}',
-        options: { responseCode: 200 },
+        options: {
+          responseCode: 200,
+          responseHeaders: {
+            entries: [
+              { name: 'Access-Control-Allow-Origin', value: '*' },
+              { name: 'Access-Control-Allow-Methods', value: 'POST, OPTIONS' },
+              { name: 'Access-Control-Allow-Headers', value: 'Content-Type, ngrok-skip-browser-warning' },
+            ],
+          },
+        },
       },
       id: 'e5f6a7b8-c9d0-1234-ef01-345678901234',
       name: 'Respond to Admin',

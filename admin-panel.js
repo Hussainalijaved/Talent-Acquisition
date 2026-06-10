@@ -7,6 +7,10 @@
 
     const WEBHOOK_STORAGE = 'ta_cv_ingest_webhook';
     const JD_WEBHOOK_STORAGE = 'ta_jd_generate_webhook';
+    // Update when ngrok restarts (free tier gets a new subdomain each time).
+    const N8N_WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
+    const DEFAULT_JD_WEBHOOK_LOCAL = 'http://localhost:5678/webhook/talent/jd-generate';
+    const DEFAULT_JD_WEBHOOK_PUBLIC = N8N_WEBHOOK_BASE + '/talent/jd-generate';
     let deps = null;
     let JOBS = [];
     let ONSITE = [];
@@ -22,8 +26,54 @@
     function normalizeWebhookUrl(raw) {
         let url = String(raw || '').trim();
         if (!url) return '';
-        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+        if (!/^https?:\/\//i.test(url)) {
+            url = /^(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url) ? 'http://' + url : 'https://' + url;
+        }
         return url.replace(/\/+$/, '');
+    }
+
+    function isLocalHost() {
+        const h = location.hostname;
+        return h === 'localhost' || h === '127.0.0.1' || h === '';
+    }
+
+    function deriveJdWebhookFromCv(cvUrl) {
+        const u = normalizeWebhookUrl(cvUrl);
+        if (!u) return '';
+        if (/\/talent\/cv-ingest$/i.test(u)) return u.replace(/\/talent\/cv-ingest$/i, '/talent/jd-generate');
+        if (/\/webhook\//i.test(u)) return u.replace(/\/[^/]+$/, '/talent/jd-generate');
+        return u + '/webhook/talent/jd-generate';
+    }
+
+    async function resolveJdWebhookUrl() {
+        const fromInput = normalizeWebhookUrl(document.getElementById('admJdWebhook')?.value || '');
+        if (fromInput) return fromInput;
+
+        const fromStorage = normalizeWebhookUrl(localStorage.getItem(JD_WEBHOOK_STORAGE) || '');
+        if (fromStorage) return fromStorage;
+
+        if (deps?.sb) {
+            const { data } = await deps.sb.from('app_config').select('value').eq('key', 'jd_generate_webhook').maybeSingle();
+            const fromDb = normalizeWebhookUrl(data?.value || '');
+            if (fromDb) return fromDb;
+        }
+
+        const cvUrl = normalizeWebhookUrl(
+            document.getElementById('admWebhook')?.value ||
+            localStorage.getItem(WEBHOOK_STORAGE) ||
+            ''
+        );
+        if (!cvUrl && deps?.sb) {
+            const { data } = await deps.sb.from('app_config').select('value').eq('key', 'cv_ingest_webhook').maybeSingle();
+            const derived = deriveJdWebhookFromCv(data?.value || '');
+            if (derived) return derived;
+        }
+        if (cvUrl) {
+            const derived = deriveJdWebhookFromCv(cvUrl);
+            if (derived) return derived;
+        }
+
+        return isLocalHost() ? DEFAULT_JD_WEBHOOK_LOCAL : DEFAULT_JD_WEBHOOK_PUBLIC;
     }
 
     function parseBulletLines(raw) {
@@ -285,11 +335,9 @@
     }
 
     async function loadJdWebhookConfig() {
-        if (!deps?.sb) return '';
-        const { data } = await deps.sb.from('app_config').select('value').eq('key', 'jd_generate_webhook').maybeSingle();
-        const url = normalizeWebhookUrl(data?.value || localStorage.getItem(JD_WEBHOOK_STORAGE) || '');
+        const url = await resolveJdWebhookUrl();
         const inp = document.getElementById('admJdWebhook');
-        if (inp && url) inp.value = url;
+        if (inp && url && !inp.value.trim()) inp.value = url;
         return url;
     }
 
@@ -466,13 +514,11 @@
         };
 
         const btn = document.getElementById('jobGenBtn');
-        const webhook = normalizeWebhookUrl(
-            document.getElementById('admJdWebhook')?.value ||
-            localStorage.getItem(JD_WEBHOOK_STORAGE) ||
-            (await loadJdWebhookConfig())
-        );
+        const webhook = await resolveJdWebhookUrl();
 
         if (webhook) {
+            const jdInp = document.getElementById('admJdWebhook');
+            if (jdInp && !jdInp.value.trim()) jdInp.value = webhook;
             const prevLabel = btn?.textContent || 'Generate with AI';
             if (btn) {
                 btn.disabled = true;
@@ -487,14 +533,17 @@
                     },
                     body: JSON.stringify(payload),
                 });
-                const data = await res.json().catch(() => ({}));
+                const rawText = await res.text();
+                let data = {};
+                try { data = rawText ? JSON.parse(rawText) : {}; } catch (_) { data = { jd_text: rawText }; }
                 const jd = String(data.jd_text || data.output || data.text || '').trim();
                 if (res.ok && jd) {
                     document.getElementById('jobJdIn').value = jd;
                     deps.banner('AI generated professional JD — review before saving.', 'ok');
                     return;
                 }
-                const errMsg = data.error || data.message || ('HTTP ' + res.status);
+                const errMsg = data.error || data.message ||
+                    (!rawText.trim() ? 'Empty response — activate JD Generate workflow in n8n' : ('HTTP ' + res.status));
                 deps.banner('AI generation failed: ' + errMsg + ' — using template fallback.', 'err');
             } catch (e) {
                 deps.banner('AI generation failed — using template fallback.', 'err');

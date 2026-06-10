@@ -995,25 +995,24 @@
             const laterBtn = document.getElementById('laterAssessmentBtn');
 
             async function goToAssessment(existingId) {
+                if (startBtn) {
+                    startBtn.disabled = true;
+                    startBtn.textContent = 'Opening assessment…';
+                }
                 let sid = existingId;
                 if (!sid) {
-                    if (startBtn) {
-                        startBtn.disabled = true;
-                        startBtn.textContent = 'Preparing assessment…';
-                    }
-                    sid = await pollForSessionId(email, currentJob.job_id, submitStartedAt, SESSION_POLL_MAX_MS);
+                    sid = await fetchAssessmentSessionId(email, currentJob.job_id, submitStartedAt);
                 }
-                if (!sid) {
-                    if (startBtn) {
-                        startBtn.disabled = false;
-                        startBtn.textContent = 'Yes — continue to assessment';
-                    }
-                    showStatus('Assessment link is still being created — check your email in a minute or tap again.', 'info');
+                const emailQ = 'email=' + encodeURIComponent(email);
+                if (sid) {
+                    window.location.href =
+                        'index.html?session=' + encodeURIComponent(sid) + '&' + emailQ;
                     return;
                 }
                 window.location.href =
-                    'index.html?session=' + encodeURIComponent(sid) +
-                    '&email=' + encodeURIComponent(email);
+                    'index.html?' + emailQ +
+                    '&job=' + encodeURIComponent(currentJob.job_id) +
+                    '&from=apply';
             }
 
             if (startBtn) {

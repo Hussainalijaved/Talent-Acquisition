@@ -1260,6 +1260,38 @@
             return decodeURIComponent(String(value)).trim().split(/\n/)[0].split(/\s+regards/i)[0].trim();
         };
 
+        const parseSessionConfig = (raw) => {
+            if (!raw) return {};
+            if (typeof raw === 'object') return raw;
+            try { return JSON.parse(raw); } catch (e) { return {}; }
+        };
+
+        const normalizeJobId = (value) => String(value || '').trim().toLowerCase();
+
+        const sessionStatusBlocked = (status) => {
+            const s = String(status || '').toLowerCase();
+            return s.includes('completed') || s.includes('terminated');
+        };
+
+        const pickSessionForJob = (rows, jobId) => {
+            if (!rows?.length) return null;
+            const jid = normalizeJobId(jobId);
+            const match = rows.find((s) => {
+                const rid = normalizeJobId(s.requisition_id);
+                const cfg = parseSessionConfig(s.config);
+                const cfgRid = normalizeJobId(cfg.requisition_id);
+                const cfgSlug = normalizeJobId(
+                    String(cfg.requisition_title || '')
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, '-')
+                        .replace(/^-|-$/g, '')
+                );
+                if (!jid) return true;
+                return rid === jid || cfgRid === jid || cfgSlug === jid;
+            });
+            return match || rows[0];
+        };
+
         const parseInterviewHistory = (raw) => {
             let history = raw || [];
             if (typeof history === 'string') {
@@ -1467,6 +1499,7 @@
             const [feedback, setFeedback] = useState('');
             const [integrityViolationCount, setIntegrityViolationCount] = useState(0);
             const [assessmentHistory, setAssessmentHistory] = useState([]);
+            const [urlEntryError, setUrlEntryError] = useState('');
 
             const viewRef = useRef(view);
             const sessionIdRef = useRef(sessionId);
@@ -1941,19 +1974,21 @@
 
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
-                let sId = cleanUrlParam(params.get('session'));
-                let email = cleanUrlParam(params.get('email'));
-                if (sId) {
-                    setSessionId(sId);
-                    setCandidateEmail(email || '');
-                    if (email) sessionStorage.setItem('candidate_email', email);
-                } else {
-                    sId = cleanUrlParam(sessionStorage.getItem('current_session_id'));
-                    email = cleanUrlParam(sessionStorage.getItem('candidate_email'));
-                    if (sId) setSessionId(sId);
-                    if (email) setCandidateEmail(email);
+                const urlSession = cleanUrlParam(params.get('session'));
+                const urlEmail = cleanUrlParam(params.get('email'));
+
+                if (urlSession) {
+                    sessionStorage.removeItem('assessment_started');
+                    setSessionId(urlSession);
+                    setCandidateEmail(urlEmail || '');
+                    if (urlEmail) sessionStorage.setItem('candidate_email', urlEmail);
+                    return;
                 }
 
+                const sId = cleanUrlParam(sessionStorage.getItem('current_session_id'));
+                const email = cleanUrlParam(sessionStorage.getItem('candidate_email'));
+                if (sId) setSessionId(sId);
+                if (email) setCandidateEmail(email);
                 const started = sessionStorage.getItem('assessment_started') === 'true';
                 if (started && sId) {
                     restoreSession(sId, email, { resumeOnly: true });
@@ -2030,28 +2065,60 @@
                 const params = new URLSearchParams(window.location.search);
                 const urlSession = cleanUrlParam(params.get('session'));
                 const urlEmail = cleanUrlParam(params.get('email')) || '';
-                if (!urlSession || urlSession.length < 10 || urlEnterRanRef.current) return;
-                if (sessionStorage.getItem('assessment_started') === 'true') return;
+                const urlJob = cleanUrlParam(params.get('job')) || '';
+
+                if (urlEnterRanRef.current) return;
+                if (!urlSession && !(urlEmail && urlJob)) return;
+                if (!urlSession && sessionStorage.getItem('assessment_started') === 'true') return;
 
                 urlEnterRanRef.current = true;
                 let cancelled = false;
+                const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+                const pollSessionForEmail = async (email, jobId) => {
+                    const deadline = Date.now() + 90000;
+                    while (Date.now() < deadline && !cancelled) {
+                        const { data, error } = await supabase
+                            .from('assessment_sessions')
+                            .select('id, created_at, config, requisition_id, status')
+                            .eq('candidate_email', email)
+                            .order('created_at', { ascending: false })
+                            .limit(12);
+                        if (!error && data?.length) {
+                            const row = pickSessionForJob(data, jobId);
+                            if (row?.id && !sessionStatusBlocked(row.status)) return row.id;
+                        }
+                        await sleep(2500);
+                    }
+                    return null;
+                };
 
                 (async () => {
                     setIsLoading(true);
+                    setUrlEntryError('');
                     try {
-                        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(urlSession);
-                        let query = supabase.from('assessment_sessions').select('id, status');
-                        if (isUuid) {
-                            query = query.eq('id', urlSession);
-                        } else {
-                            query = query.eq('gmail_thread_id', urlSession);
+                        let activeId = urlSession;
+                        if ((!activeId || activeId.length < 10) && urlEmail && urlJob) {
+                            activeId = await pollSessionForEmail(urlEmail, urlJob);
                         }
+                        if (!activeId || activeId.length < 10) {
+                            setUrlEntryError('Your assessment session is still being created. Please wait a minute and refresh, or use the link in your email.');
+                            return;
+                        }
+
+                        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeId);
+                        let query = supabase.from('assessment_sessions').select('id, status');
+                        query = isUuid ? query.eq('id', activeId) : query.eq('gmail_thread_id', activeId);
                         const { data, error } = await query.single();
                         if (cancelled) return;
-                        if (error || !data) return;
-
-                        const statusStr = (data.status || '').toLowerCase();
-                        if (statusStr.includes('completed') || statusStr.includes('terminated')) return;
+                        if (error || !data) {
+                            setUrlEntryError('Could not verify your assessment session. Check the link or contact your recruiter.');
+                            return;
+                        }
+                        if (sessionStatusBlocked(data.status)) {
+                            setUrlEntryError('This assessment session has already been completed.');
+                            return;
+                        }
 
                         setSessionId(data.id);
                         if (urlEmail) {
@@ -2060,10 +2127,10 @@
                         }
                         sessionStorage.setItem('current_session_id', data.id);
                         sessionStorage.removeItem('assessment_started');
-                        await enterAssessmentFullscreen();
                         if (!cancelled) setView('instructions');
                     } catch (e) {
                         console.error('Session link entry failed:', e);
+                        setUrlEntryError('Something went wrong loading your assessment. Please refresh or try again from your email link.');
                     } finally {
                         if (!cancelled) setIsLoading(false);
                     }
@@ -2344,8 +2411,21 @@
                 }
             };
 
+            const hasUrlBootstrap = /[?&](session|email)=/i.test(window.location.search);
+
             return (
                 <div className="min-h-screen w-full max-w-full app-bg text-slate-200 antialiased">
+                    {urlEntryError && view === 'login' && (
+                        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] max-w-md w-[calc(100%-2rem)] p-4 rounded-xl border border-red-500/40 bg-red-950/90 text-red-100 text-sm shadow-lg">
+                            {urlEntryError}
+                        </div>
+                    )}
+                    {isLoading && view === 'login' && hasUrlBootstrap && (
+                        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#080b10]/88 backdrop-blur-sm px-6">
+                            <div className="w-10 h-10 rounded-full border-2 border-indigo-400/30 border-t-indigo-400 animate-spin mb-4" aria-hidden="true" />
+                            <p className="text-sm text-slate-300">Loading your assessment portal…</p>
+                        </div>
+                    )}
                     {renderView()}
                     {fullscreenRequired && isPortalLockedView(view) && (
                         <FullscreenRequiredOverlay

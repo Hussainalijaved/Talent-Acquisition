@@ -2064,7 +2064,9 @@
                     try { hist = JSON.parse(hist); } catch (e) { hist = []; }
                 }
                 if (!Array.isArray(hist)) hist = [];
-                const row = hist.find((h) => Number(h.phase) === nextPhaseNum);
+                const dbPhase = Number(data.current_phase);
+                const phaseToLoad = Number.isFinite(dbPhase) && dbPhase >= nextPhaseNum ? dbPhase : nextPhaseNum;
+                const row = hist.find((h) => Number(h.phase) === phaseToLoad);
                 const question = String(row?.question_text || row?.question || '').trim();
                 if (!question) return null;
                 return {
@@ -2072,7 +2074,19 @@
                     time_limit_seconds: row.time_limit_seconds,
                     deadline_at: row.deadline_at,
                     complexity_tier: row.complexity_tier,
+                    current_phase: phaseToLoad,
                 };
+            };
+
+            const pollNextQuestionFromSession = async (sId, nextPhaseNum, attempts = 8, delayMs = 1500) => {
+                for (let i = 0; i < attempts; i++) {
+                    const fromDb = await loadNextQuestionFromSession(sId, nextPhaseNum);
+                    if (fromDb?.nextQuestion) return fromDb;
+                    if (i < attempts - 1) {
+                        await new Promise((r) => setTimeout(r, delayMs));
+                    }
+                }
+                return null;
             };
 
             const resolveNextQuestionPayload = async (data, sId, nextPhaseNum) => {
@@ -2103,20 +2117,24 @@
                     };
 
                     let data = await postAssessmentAnswer(payload);
-                    const maxAttempts = 5;
                     const nextPhaseNum = currentStep + 1;
 
-                    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-                        if (data.isFinal === true || currentStep >= totalSteps) break;
+                    let resolved = await resolveNextQuestionPayload(data, sessionId, nextPhaseNum);
+                    data = resolved.data;
 
-                        const resolved = await resolveNextQuestionPayload(data, sessionId, nextPhaseNum);
-                        data = resolved.data;
-                        if (resolved.nextQ) break;
-
-                        if (attempt < maxAttempts - 1) {
-                            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
-                            data = await postAssessmentAnswer(payload);
+                    if (!resolved.nextQ && data.isFinal !== true && currentStep < totalSteps) {
+                        const fromDb = await pollNextQuestionFromSession(sessionId, nextPhaseNum);
+                        if (fromDb?.nextQuestion) {
+                            data = { ...data, ...fromDb };
+                            resolved = { data, nextQ: fromDb.nextQuestion };
                         }
+                    }
+
+                    if (!resolved.nextQ && data.isFinal !== true && currentStep < totalSteps) {
+                        await new Promise((r) => setTimeout(r, 2000));
+                        data = await postAssessmentAnswer(payload);
+                        resolved = await resolveNextQuestionPayload(data, sessionId, nextPhaseNum);
+                        data = resolved.data;
                     }
 
                     if (data.isFinal === true || currentStep >= totalSteps) {
@@ -2131,7 +2149,7 @@
                         if (sessionId) sessionStorage.setItem('current_session_id', sessionId);
                         if (candidateEmail) sessionStorage.setItem('candidate_email', candidateEmail);
                     } else {
-                        const nextQ = extractNextQuestion(data);
+                        const nextQ = resolved?.nextQ || extractNextQuestion(data);
 
                         if (nextQ) {
                             setQuestion(nextQ);

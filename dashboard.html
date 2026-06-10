@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Talent Acquisition — Recruiter Dashboard</title>
+    <title>Talent Acquisition — Admin Console</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -287,9 +287,39 @@
         .view { display: none; }
         .view.active { display: block; }
 
+        /* ---------- Admin forms ---------- */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+        .form-grid.cols-1 { grid-template-columns: 1fr; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group.span-2 { grid-column: 1 / -1; }
+        .form-group label { font-size: 12.5px; font-weight: 600; color: var(--text-soft); }
+        .form-group input, .form-group select, .form-group textarea {
+            font-family: inherit; font-size: 13.5px;
+            border: 1px solid var(--border); background: var(--surface);
+            color: var(--text); border-radius: 9px; padding: 10px 12px; outline: none;
+        }
+        .form-group textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--primary); }
+        .form-hint { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+        .form-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+        .btn-primary, .btn-secondary, .btn-danger, .btn-sm {
+            font-family: inherit; font-size: 13px; font-weight: 600;
+            border-radius: 9px; padding: 10px 16px; cursor: pointer; border: none;
+            display: inline-flex; align-items: center; gap: 6px; transition: opacity .15s;
+        }
+        .btn-primary { background: var(--primary-grad); color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,.3); }
+        .btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+        .btn-danger { background: var(--red-soft); color: var(--red); border: 1px solid transparent; }
+        .btn-sm { padding: 6px 11px; font-size: 12px; background: var(--surface-2); color: var(--text-soft); border: 1px solid var(--border); }
+        .btn-primary:hover, .btn-secondary:hover, .btn-danger:hover, .btn-sm:hover { opacity: .88; }
+        .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+        .admin-split { display: grid; grid-template-columns: 1fr 1.2fr; gap: 18px; align-items: start; }
+        .raw-json { font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.45; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-all; background: var(--surface-2); padding: 12px; border-radius: 9px; color: var(--text-soft); }
+        .drawer-actions { display: flex; gap: 8px; margin-top: 8px; }
+
         @media (max-width: 980px) {
             .sidebar { display: none; }
-            .grid-2 { grid-template-columns: 1fr; }
+            .grid-2, .admin-split, .form-grid { grid-template-columns: 1fr; }
             .search { min-width: 0; flex: 1; }
         }
     </style>
@@ -300,7 +330,7 @@
             <div class="brand-logo">TA</div>
             <div>
                 <div class="brand-name">Talent Acquisition</div>
-                <div class="brand-sub">Recruiter Console</div>
+                <div class="brand-sub">Admin Console</div>
             </div>
         </div>
         <button class="nav-item active" data-view="overview">
@@ -315,11 +345,23 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
             Pipeline
         </button>
-        <a class="nav-item" href="recruiter-intake.html">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-            Screen New CV
-        </a>
-        <div class="sidebar-foot">v1.0 · Live data from Supabase</div>
+        <button class="nav-item" data-view="jobs">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+            Jobs
+        </button>
+        <button class="nav-item" data-view="screen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>
+            Manual CV Screen
+        </button>
+        <button class="nav-item" data-view="onsite">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Onsite Interviews
+        </button>
+        <button class="nav-item" data-view="settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Settings
+        </button>
+        <div class="sidebar-foot">v2.0 · Admin panel</div>
     </aside>
 
     <div class="main">
@@ -423,6 +465,208 @@
                     </div>
                 </div>
             </section>
+
+            <!-- JOBS -->
+            <section class="view" id="view-jobs">
+                <div class="admin-split">
+                    <div class="card">
+                        <div class="card-head"><div class="card-title">Create / edit job<small>Generate JD from criteria, then publish</small></div></div>
+                        <form id="jobForm" onsubmit="return false">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="jobEditId">Editing</label>
+                                    <select id="jobEditId"><option value="">New job</option></select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="jobStatusIn">Status</label>
+                                    <select id="jobStatusIn">
+                                        <option value="draft">Draft</option>
+                                        <option value="open">Open</option>
+                                        <option value="closed">Closed</option>
+                                    </select>
+                                </div>
+                                <div class="form-group span-2">
+                                    <label for="jobTitleIn">Job title *</label>
+                                    <input id="jobTitleIn" type="text" placeholder="Senior Backend Engineer" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="jobDeptIn">Department</label>
+                                    <input id="jobDeptIn" type="text" placeholder="Engineering" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="jobLocIn">Location</label>
+                                    <input id="jobLocIn" type="text" placeholder="Remote / Lahore" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="jobTypeIn">Employment type</label>
+                                    <input id="jobTypeIn" type="text" value="Full-time" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="jobIntIn">Interviewer email</label>
+                                    <input id="jobIntIn" type="email" placeholder="interviewer@company.com" />
+                                </div>
+                                <div class="form-group span-2">
+                                    <label for="jobCriteriaIn">Must-have criteria (one per line)</label>
+                                    <textarea id="jobCriteriaIn" placeholder="5+ years Node.js&#10;PostgreSQL &amp; API design&#10;Team lead experience"></textarea>
+                                    <div class="form-hint">Paste bullet points — click Generate to build full JD</div>
+                                </div>
+                                <div class="form-group span-2">
+                                    <label for="jobNiceIn">Nice to have (optional)</label>
+                                    <textarea id="jobNiceIn" placeholder="AWS / Kubernetes&#10;Open-source contributions"></textarea>
+                                </div>
+                                <div class="form-group span-2">
+                                    <label for="jobJdIn">Job description *</label>
+                                    <textarea id="jobJdIn" style="min-height:200px" placeholder="Full JD text used for screening and assessment…" required></textarea>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn-secondary" id="jobGenBtn">Generate JD from criteria</button>
+                                <button type="button" class="btn-primary" onclick="document.getElementById('jobForm').dispatchEvent(new Event('submit'))">Save job</button>
+                                <button type="button" class="btn-secondary" id="jobResetBtn">Clear form</button>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="table-card">
+                        <table>
+                            <thead><tr><th>Job</th><th>Location</th><th>Status</th><th>Updated</th><th></th><th></th></tr></thead>
+                            <tbody id="jobsBody"><tr><td class="loading-row" colspan="6">Loading jobs…</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- MANUAL CV SCREEN -->
+            <section class="view" id="view-screen">
+                <div class="card" style="max-width:820px">
+                    <div class="card-head"><div class="card-title">Manual CV screening<small>For outsourced or offline CVs — runs same AI pipeline as intake</small></div></div>
+                    <form id="screenForm">
+                        <div class="form-grid">
+                            <div class="form-group span-2">
+                                <label for="scrJob">Link to open job (optional)</label>
+                                <select id="scrJob"><option value="">Select job…</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="scrEmail">Candidate email *</label>
+                                <input id="scrEmail" type="email" required placeholder="candidate@email.com" />
+                            </div>
+                            <div class="form-group">
+                                <label for="scrInt">Interviewer email</label>
+                                <input id="scrInt" type="email" placeholder="From job or override" />
+                            </div>
+                            <div class="form-group span-2">
+                                <label for="scrTitle">Requisition title *</label>
+                                <input id="scrTitle" type="text" required placeholder="Senior Backend Engineer" />
+                            </div>
+                            <div class="form-group span-2">
+                                <label for="scrJd">JD / requirements *</label>
+                                <textarea id="scrJd" required placeholder="Paste job description for AI screening…"></textarea>
+                            </div>
+                            <div class="form-group span-2">
+                                <label for="scrCvText">CV text (paste)</label>
+                                <textarea id="scrCvText" placeholder="Paste CV content if no PDF…"></textarea>
+                            </div>
+                            <div class="form-group span-2">
+                                <label for="scrCvFile">Or upload PDF</label>
+                                <input id="scrCvFile" type="file" accept=".pdf,.doc,.docx,application/pdf" />
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary" id="scrSubmit">Run AI screening</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- ONSITE INTERVIEWS -->
+            <section class="view" id="view-onsite">
+                <div class="admin-split">
+                    <div class="card">
+                        <div class="card-head"><div class="card-title">Record onsite interview<small>Manual entry after in-person / panel round</small></div></div>
+                        <form id="onsiteForm">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="onsEmail">Candidate email *</label>
+                                    <input id="onsEmail" type="email" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="onsName">Candidate name</label>
+                                    <input id="onsName" type="text" />
+                                </div>
+                                <div class="form-group span-2">
+                                    <label for="onsJob">Job</label>
+                                    <select id="onsJob"><option value="">Select job…</option></select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="onsDate">Interview date &amp; time *</label>
+                                    <input id="onsDate" type="datetime-local" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="onsType">Type</label>
+                                    <select id="onsType">
+                                        <option value="onsite">Onsite</option>
+                                        <option value="video">Video</option>
+                                        <option value="phone">Phone</option>
+                                        <option value="panel">Panel</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="onsOutcome">Outcome</label>
+                                    <select id="onsOutcome">
+                                        <option value="pending">Pending</option>
+                                        <option value="passed">Passed</option>
+                                        <option value="failed">Failed</option>
+                                        <option value="offer">Offer</option>
+                                        <option value="rejected">Rejected</option>
+                                        <option value="no_show">No show</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="onsScore">Score (0–100)</label>
+                                    <input id="onsScore" type="number" min="0" max="100" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="onsInterviewer">Interviewer</label>
+                                    <input id="onsInterviewer" type="text" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="onsLocation">Location</label>
+                                    <input id="onsLocation" type="text" placeholder="Office / floor" />
+                                </div>
+                                <div class="form-group span-2">
+                                    <label for="onsNotes">Notes</label>
+                                    <textarea id="onsNotes" placeholder="Feedback, strengths, concerns…"></textarea>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn-primary">Save record</button>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="table-card">
+                        <table>
+                            <thead><tr><th>Candidate</th><th>Job</th><th>When</th><th>Type</th><th>Outcome</th><th></th></tr></thead>
+                            <tbody id="onsiteBody"><tr><td class="loading-row" colspan="6">Loading…</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SETTINGS -->
+            <section class="view" id="view-settings">
+                <div class="card" style="max-width:640px">
+                    <div class="card-head"><div class="card-title">Integration settings<small>Webhook used by Manual CV Screen</small></div></div>
+                    <div class="form-grid cols-1">
+                        <div class="form-group">
+                            <label for="admWebhook">n8n CV ingest webhook URL</label>
+                            <input id="admWebhook" type="url" placeholder="https://your-ngrok.ngrok-free.dev/webhook/talent/cv-ingest" />
+                            <div class="form-hint">Same URL as recruiter intake — stored in Supabase app_config</div>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-primary" id="saveWebhookBtn">Save webhook</button>
+                    </div>
+                </div>
+            </section>
         </div>
     </div>
 
@@ -438,6 +682,9 @@
             <button class="drawer-close" id="drawerClose">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
+        </div>
+        <div style="padding:0 24px 12px;background:var(--surface);border-bottom:1px solid var(--border)">
+            <button type="button" class="btn-danger btn-sm" id="drawerDeleteBtn" style="display:none">Delete candidate &amp; all records</button>
         </div>
         <div class="drawer-body" id="drawerBody"></div>
     </aside>
@@ -562,6 +809,7 @@
                 const notes = parseJson(c.notes);
                 merged.push({
                     email: c.candidate_email || '—',
+                    candidateId: c.id,
                     stage: c.stage,
                     cvScore: c.score != null ? Number(c.score) : (notes.score != null ? Number(notes.score) : null),
                     role: c.requisition_id || notes.requisition_title || notes.config?.requisition_title || '',
@@ -579,6 +827,7 @@
                     const cfg = parseJson(s.config);
                     merged.push({
                         email: s.candidate_email,
+                        candidateId: null,
                         stage: 'Shortlisted',
                         cvScore: s.score != null ? Number(s.score) : null,
                         role: cfg.requisition_title || s.requisition_id || '',
@@ -803,6 +1052,7 @@
         /* ---------- drawer ---------- */
         function openDrawer(m) {
             if (!m) return;
+            if (window.TAAdmin) TAAdmin.setActiveCandidate(m);
             const av = avatarFor(m.email);
             document.getElementById('dAvatar').style.background = av.color;
             document.getElementById('dAvatar').textContent = av.init;
@@ -820,6 +1070,8 @@
                 kv('CV score', scoreBadge(m.cvScore)) +
                 kv('Recommendation', esc(String(n.recommendation || n.decision || '—').toUpperCase())) +
                 kv('Role', esc(roleLabel(m.role))) +
+                kv('Candidate ID', esc(m.candidateId || '—')) +
+                (sess && sess.id ? kv('Session ID', esc(sess.id)) : '') +
                 '</div>';
 
             // CV screening
@@ -868,6 +1120,21 @@
                     '<div class="qtext ans">No assessment session yet. Candidate either was not shortlisted or has not started the technical assessment.</div></div>';
             }
 
+            if (sess) {
+                const cfg = parseJson(sess.config);
+                if (cfg.interviewer_email || sess.gmail_thread_id) {
+                    html += '<div class="section"><div class="section-h">Scheduling</div>' +
+                        (cfg.interviewer_email ? kv('Interviewer', esc(cfg.interviewer_email)) : '') +
+                        (sess.gmail_thread_id ? kv('Gmail thread', esc(sess.gmail_thread_id)) : '') +
+                        '</div>';
+                }
+            }
+
+            if (window.TAAdmin) html += TAAdmin.renderOnsiteForDrawer(m.email);
+
+            html += '<div class="section"><div class="section-h">Raw records</div>' +
+                '<div class="raw-json">' + esc(JSON.stringify({ candidate: { id: m.candidateId, notes: m.rawNotes, stage: m.stage, score: m.cvScore }, session: sess }, null, 2)) + '</div></div>';
+
             document.getElementById('drawerBody').innerHTML = html;
             document.getElementById('overlay').classList.add('show');
             document.getElementById('drawer').classList.add('show');
@@ -876,6 +1143,7 @@
         function closeDrawer() {
             document.getElementById('overlay').classList.remove('show');
             document.getElementById('drawer').classList.remove('show');
+            if (window.TAAdmin) TAAdmin.setActiveCandidate(null);
         }
 
         /* ---------- nav / events ---------- */
@@ -883,6 +1151,10 @@
             overview: ['Overview', 'Hiring pipeline at a glance'],
             candidates: ['Candidates', 'Every applicant, score and decision'],
             pipeline: ['Pipeline', 'Funnel from application to hire'],
+            jobs: ['Jobs', 'Create JDs, publish roles, manage postings'],
+            screen: ['Manual CV Screen', 'Screen outsourced or offline CVs via AI'],
+            onsite: ['Onsite Interviews', 'Record in-person interview outcomes'],
+            settings: ['Settings', 'Webhooks and integrations'],
         };
         function setView(v) {
             document.querySelectorAll('.nav-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
@@ -890,7 +1162,10 @@
             const t = TITLES[v] || ['', ''];
             document.getElementById('pageTitle').textContent = t[0];
             document.getElementById('pageSub').textContent = t[1];
+            const searchWrap = document.querySelector('.search');
+            if (searchWrap) searchWrap.style.display = (v === 'candidates' || v === 'overview') ? 'flex' : 'none';
             if (v === 'overview' || v === 'pipeline') setTimeout(renderCharts, 60);
+            if (window.TAAdmin) TAAdmin.onViewChange(v);
         }
         document.querySelectorAll('.nav-item[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
         document.getElementById('seeAllBtn').addEventListener('click', () => setView('candidates'));
@@ -916,6 +1191,25 @@
         applyTheme(localStorage.getItem('ta_theme') || 'light');
 
         loadData();
+    </script>
+    <script src="admin-panel.js"></script>
+    <script>
+        if (window.TAAdmin) {
+            TAAdmin.init({
+                sb,
+                esc,
+                fmtDate,
+                fmtDateTime,
+                roleLabel,
+                scoreBadge,
+                stagePill,
+                assessPill,
+                banner,
+                loadData,
+                setView,
+                closeDrawer,
+            });
+        }
     </script>
 </body>
 </html>

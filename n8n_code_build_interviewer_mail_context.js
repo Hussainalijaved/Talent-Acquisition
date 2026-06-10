@@ -1,5 +1,6 @@
 // n8n: CODE - Build interviewer mail context
-// Place BEFORE: WAIT - Interviewer availability (resumeUrl generated for next WAIT)
+// Place BEFORE: MAIL - Interviewer pitch mail (MAIL must wire directly to WAIT)
+// MAIL message must use $execution.resumeUrl at send time — see _mail_resume_expr
 // Place BEFORE: MAIL - Interviewer pick slot
 //
 // MAIL node settings:
@@ -154,32 +155,12 @@ const portalBase = String(
 
 const interviewerPortal = portalBase + '/interviewer.html';
 
-let resumeUrl = String($execution.resumeUrl || base.resume_url || ctx.resume_url || '').trim();
 const publicBase = resolvePublicBase(base, cfg);
 
-function rewriteLocalResume(url) {
-  if (!url) return url;
-  if (!/localhost|127\.0\.0\.1/i.test(url)) return url;
-  if (!publicBase) {
-    throw new Error(
-      'resumeUrl is localhost but no public n8n URL found. ' +
-        'Add config.n8n_public_url in CFG - Workflow (exact ngrok URL).'
-    );
-  }
-  return url.replace(/^https?:\/\/[^/]+/i, publicBase);
-}
-
-resumeUrl = rewriteLocalResume(resumeUrl);
-
-if (!resumeUrl) {
-  throw new Error(
-    'Missing $execution.resumeUrl. Node order must be: ' +
-      'CODE (this) → MAIL → WAIT - Interviewer availability'
-  );
-}
-
-const schedulingLink =
-  interviewerPortal + '?resumeUrl=' + encodeURIComponent(resumeUrl);
+// Injected at send time by MAIL node (must be the node immediately before WAIT):
+//   $json.mail_body_html.replace('{{RESUME_URL}}', encodeURIComponent($execution.resumeUrl))
+const RESUME_PLACEHOLDER = '{{RESUME_URL}}';
+const schedulingLink = interviewerPortal + '?resumeUrl=' + RESUME_PLACEHOLDER;
 
 const candidateEmail = String(
   base.candidate_email || ctx.candidate_email || cfg.candidate_email || ''
@@ -280,7 +261,7 @@ return [
       requisition_title: role,
       session_id: sessionId,
       score,
-      resume_url: resumeUrl,
+      resume_url: RESUME_PLACEHOLDER,
       interviewer_portal_base: interviewerPortal,
       scheduling_link: schedulingLink,
       interviewer_email: interviewerEmail,
@@ -288,7 +269,9 @@ return [
       mail_body: mailBody,
       mail_body_html: mailBodyHtml,
       _debug_public_base: publicBase,
-      _debug_resume_url: resumeUrl,
+      // Paste this ENTIRE string into MAIL node → Message field (Expression mode ON):
+      gmail_message_n8n:
+        "={{ (() => { const ru = String($execution.resumeUrl || '').trim(); if (!ru) throw new Error('resumeUrl empty — wire MAIL directly to WAIT only (remove PATCH→WAIT)'); return $json.mail_body_html.split('{{RESUME_URL}}').join(encodeURIComponent(ru)); })() }}",
     },
   },
 ];

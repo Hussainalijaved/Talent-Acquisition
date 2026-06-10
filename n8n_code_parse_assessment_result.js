@@ -91,6 +91,24 @@ function extractLlmText(api) {
   return '';
 }
 
+function salvageNextQuestionFromText(rawText) {
+  const text = String(rawText || '');
+  if (!text.trim()) return '';
+
+  const patterns = [
+    /"next_question"\s*:\s*"((?:\\.|[^"\\])*)"/i,
+    /"nextQuestion"\s*:\s*"((?:\\.|[^"\\])*)"/i,
+    /next_question\s*[:=]\s*"((?:\\.|[^"\\])*)"/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]) {
+      return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
+    }
+  }
+  return '';
+}
+
 function parseLlmContent(api) {
   if (
     api &&
@@ -101,6 +119,13 @@ function parseLlmContent(api) {
       api.result ||
       api.status === 'finished')
   ) {
+    const nextQ = String(api.next_question || api.nextQuestion || api.question || '').trim();
+    if (!nextQ) {
+      const salvaged = salvageNextQuestionFromText(extractLlmText(api));
+      if (salvaged) {
+        return { ...api, next_question: salvaged, nextQuestion: salvaged };
+      }
+    }
     return api;
   }
   const rawText = extractLlmText(api);
@@ -115,16 +140,72 @@ function parseLlmContent(api) {
   }
   try {
     const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-    return JSON.parse(cleaned);
+    const parsed = JSON.parse(cleaned);
+    const nextQ = String(parsed.next_question || parsed.nextQuestion || parsed.question || '').trim();
+    if (!nextQ) {
+      const salvaged = salvageNextQuestionFromText(rawText);
+      if (salvaged) {
+        parsed.next_question = salvaged;
+        parsed.nextQuestion = salvaged;
+      }
+    }
+    return parsed;
   } catch (e) {
+    const salvaged = salvageNextQuestionFromText(rawText);
     return {
       status: 'in_progress',
       score: 0,
-      feedback: 'Could not parse model output.',
-      next_question: '',
-      nextQuestion: '',
+      feedback: salvaged ? 'Recovered question from partial model output.' : 'Could not parse model output.',
+      next_question: salvaged,
+      nextQuestion: salvaged,
     };
   }
+}
+
+function extractJdThemes(text) {
+  const lines = String(text)
+    .split(/\r?\n|(?<=[.;])\s+/)
+    .flatMap((chunk) => chunk.split(/\s*[•\-*]\s+/))
+    .map((s) => s.replace(/^[\s\d.)(]+/, '').trim())
+    .filter((s) => s.length >= 12);
+  return lines.length ? [...new Set(lines)].slice(0, 10) : [String(text).slice(0, 400)];
+}
+
+function extractCvAnchors(text) {
+  const cv = String(text || '');
+  const projects =
+    cv.match(/(?:project|built|developed|engineered|implemented|led)[^.]{10,120}/gi) || [];
+  const skills =
+    cv.match(
+      /\b(React|Angular|Vue|Node\.?js|Python|Django|Flask|SQL|PostgreSQL|MySQL|MongoDB|\.NET|ASP\.NET|C#|Java|Spring|AWS|Azure|GCP|Docker|Kubernetes|Redis|Kafka|REST|GraphQL|TypeScript|JavaScript|EF\s*Core|LINQ|JWT|OAuth|microservices?|APIM|CI\/CD|GitHub Actions)\b/gi
+    ) || [];
+  return [
+    ...new Set([
+      ...projects.slice(0, 5).map((p) => p.trim().slice(0, 80)),
+      ...skills.slice(0, 6),
+    ]),
+  ].filter(Boolean);
+}
+
+function buildFallbackNextQuestion(ph, history, cfg, session) {
+  const role = String(cfg.requisition_title || 'this role').trim();
+  const jdReq = String(cfg.requisition_requirements || '').trim();
+  const cv = String(session.cv_plaintext || '');
+  const nextPhase = ph + 1;
+  const jdThemes = extractJdThemes(jdReq);
+  const jdTheme = jdThemes[(nextPhase - 1) % jdThemes.length] || jdReq.slice(0, 200);
+  const cvAnchors = extractCvAnchors(cv);
+  const cvAnchor = cvAnchors[(nextPhase - 1) % cvAnchors.length] || 'your listed project experience';
+
+  const lanes = [
+    `This role requires: "${jdTheme}". Your CV mentions ${cvAnchor} — describe how you applied this to deliver that JD outcome. What did you build and what was the measurable result?`,
+    `JD expectation: "${jdTheme}". Drawing on ${cvAnchor} from your CV, explain the architecture and integration choices you would make for this ${role} role.`,
+    `For "${jdTheme}" (${role}): Using your experience with ${cvAnchor}, walk through implementation steps, tools, and how you would validate it in production.`,
+    `JD quality bar — "${jdTheme}": With ${cvAnchor} on your CV, what security, performance, or reliability risks would you address and how?`,
+    `Final phase (${role}): JD requires "${jdTheme}" and your CV shows ${cvAnchor}. Synthesise how your experience maps to this role and what you would deliver in the first 90 days.`,
+  ];
+
+  return lanes[Math.min(nextPhase - 1, lanes.length - 1)] || lanes[4];
 }
 
 function isIntegrityTermination(answerText) {
@@ -152,8 +233,35 @@ function buildPhaseSummary(rows) {
     .join(', ');
 }
 
-/** Clamp LLM scores — garbage/generic answers must not get 10–25 "free" points */
-function normalizePhaseScore(answerText, llmScore) {
+function questionRelevanceCap(answerText, questionText) {
+  const question = String(questionText || '').trim();
+  if (!question || question.length < 20) return null;
+
+  const tokens = question
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 4);
+  const stop = new Set([
+    'would', 'could', 'should', 'their', 'there', 'which', 'about', 'describe',
+    'explain', 'candidate', 'please', 'specific', 'technical', 'question',
+    'implement', 'approach', 'system', 'using',
+  ]);
+  const keys = [...new Set(tokens.filter((w) => !stop.has(w)))].slice(0, 18);
+  if (keys.length < 3) return null;
+
+  const lower = String(answerText || '').toLowerCase();
+  const hits = keys.filter((k) => lower.includes(k)).length;
+  const ratio = hits / keys.length;
+
+  if (ratio < 0.06) return 12;
+  if (ratio < 0.12) return 22;
+  if (ratio < 0.2) return 32;
+  return null;
+}
+
+/** Clamp LLM scores — off-topic and garbage answers must not get free points */
+function normalizePhaseScore(answerText, llmScore, questionText) {
   const answer = String(answerText || '').trim();
   let score = Number(llmScore);
   if (!Number.isFinite(score)) score = 0;
@@ -161,6 +269,9 @@ function normalizePhaseScore(answerText, llmScore) {
   if (!answer) return 0;
   if (isIntegrityTermination(answer)) return null;
   if (/^\[timeout/i.test(answer)) return 0;
+
+  const relevanceCap = questionRelevanceCap(answer, questionText);
+  if (relevanceCap != null) score = Math.min(score, relevanceCap);
 
   const lower = answer.toLowerCase().replace(/\s+/g, ' ').trim();
   const compact = answer.replace(/\s+/g, '');
@@ -325,10 +436,17 @@ const rawLlmScore = Number(content.score ?? 0);
 let normalizedScore = null;
 let scoreAdjusted = false;
 
+const questionForPhase = String(
+  history.find((x) => Number(x.phase) === ph)?.question_text ||
+    history.find((x) => Number(x.phase) === ph)?.question ||
+    built.current_question_text ||
+    ''
+).trim();
+
 if (integrityTerminated) {
   normalizedScore = null;
 } else {
-  normalizedScore = normalizePhaseScore(current.answer, rawLlmScore);
+  normalizedScore = normalizePhaseScore(current.answer, rawLlmScore, questionForPhase);
   scoreAdjusted = normalizedScore !== Math.round(rawLlmScore);
 }
 
@@ -345,7 +463,13 @@ if (integrityTerminated) {
   patch.feedback =
     `Integrity violation on phase ${ph} — this phase is not scored. Prior completed phases keep their recorded scores.`;
 } else if (scoreAdjusted && normalizedScore < rawLlmScore) {
-  patch.feedback = [patch.feedback, `[Score adjusted ${rawLlmScore}→${normalizedScore}: answer lacks required technical substance.]`]
+  const relCap = questionRelevanceCap(current.answer, questionForPhase);
+  patch.feedback = [
+    patch.feedback,
+    relCap != null && relCap <= 32
+      ? `[Score adjusted ${rawLlmScore}→${normalizedScore}: answer did not address the question asked.]`
+      : `[Score adjusted ${rawLlmScore}→${normalizedScore}: answer lacks required technical substance.]`,
+  ]
     .filter(Boolean)
     .join(' ');
 }
@@ -380,7 +504,8 @@ let nextQ = String(content.nextQuestion || content.next_question || '').trim();
 let timeLimitSeconds = null;
 let complexityTier = null;
 
-// LLM sometimes omits next_question (esp. phase 4→5). Recover from history on retry.
+// LLM sometimes omits next_question (esp. phase 4→5). Recover from history, then fallback.
+let usedFallbackQuestion = false;
 if (!nextQ && ph < maxQ && !integrityTerminated) {
   const existingNext = history.find(
     (x) => Number(x.phase) === ph + 1 && String(x.question_text || x.question || '').trim()
@@ -389,6 +514,17 @@ if (!nextQ && ph < maxQ && !integrityTerminated) {
     nextQ = String(existingNext.question_text || existingNext.question || '').trim();
     timeLimitSeconds = existingNext.time_limit_seconds ?? null;
     complexityTier = existingNext.complexity_tier ?? null;
+  } else {
+    nextQ = buildFallbackNextQuestion(ph, history, cfg, session);
+    usedFallbackQuestion = Boolean(nextQ);
+    if (usedFallbackQuestion) {
+      content.feedback = [
+        content.feedback || '',
+        `[System: AI omitted phase ${ph + 1} question — auto-generated CV-grounded fallback.]`,
+      ]
+        .filter(Boolean)
+        .join(' ');
+    }
   }
 }
 

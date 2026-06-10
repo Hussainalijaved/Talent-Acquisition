@@ -504,8 +504,10 @@
             if (res.status === 404) {
                 throw new Error(
                     'n8n resume URL not found (HTTP 404). ' +
-                        'ngrok may have restarted (new URL), n8n is offline, or this email link is from an old execution. ' +
-                        'Keep ngrok + n8n running, set WEBHOOK_URL to your current ngrok URL, then send a fresh interviewer email.'
+                        'Usually the workflow sent the interviewer email but failed before WAIT started — ' +
+                        'check execution in n8n for a red HTTP - PATCH interviewer thread (pitch) node ' +
+                        '(run supabase_gmail_thread_columns.sql in Supabase, or wire Merge → WAIT and set PATCH to Continue On Fail). ' +
+                        'Then run a new PASS assessment and use the new interviewer email link.'
                 );
             }
             if (res.status === 409) {
@@ -518,9 +520,23 @@
             throw new Error('n8n returned HTTP ' + res.status + ' — workflow may still be waiting.');
         }
 
+        function isBrokenResumePlaceholder(url) {
+            if (!url) return false;
+            const raw = decodeURIComponent(url);
+            return /\{\{RESUME_URL\}\}|%7B%7BRESUME_URL%7D%7D/i.test(raw);
+        }
+
         async function submitSlots() {
             if (!resumeUrl) {
                 alert('Resume URL missing. Open this page from the interviewer email link.');
+                return;
+            }
+            if (isBrokenResumePlaceholder(resumeUrl)) {
+                alert(
+                    'This email link is broken ({{RESUME_URL}} was not replaced). ' +
+                        'In n8n open MAIL - Interviewer pitch mail → Message field must be an expression that injects $execution.resumeUrl. ' +
+                        'Copy gmail_message_n8n from CODE - Build interviewer mail context output, then send a fresh interviewer email.'
+                );
                 return;
             }
 

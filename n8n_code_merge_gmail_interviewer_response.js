@@ -28,10 +28,7 @@ const threadId = String(gmail.threadId || gmail.thread_id || ctx.interviewer_gma
 const sessionId = String(ctx.session_id || ctx.session_db_id || ctx.id || '').trim();
 const mailSubject = String(ctx.mail_subject || ctx.interviewer_mail_subject || '').trim();
 
-if (!sessionId) throw new Error('Missing session_id for interviewer thread PATCH.');
-if (!threadId) throw new Error('Gmail returned no interviewer thread id.');
-if (!msgId) throw new Error('Gmail returned no interviewer message id.');
-
+const patchReady = Boolean(sessionId && threadId && msgId);
 const b = String(cfg.supabase_url || '').replace(/\/+$/, '');
 const tb = cfg.table_assessment_sessions || 'assessment_sessions';
 
@@ -39,16 +36,30 @@ return [
   {
     json: {
       ...ctx,
-      interviewer_gmail_thread_id: threadId,
-      interviewer_gmail_message_id: msgId,
-      interviewer_mail_subject: mailSubject || ctx.interviewer_mail_subject,
-      _interviewer_patch_url: `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`,
-      _interviewer_patch_body: {
-        interviewer_gmail_thread_id: threadId,
-        interviewer_gmail_message_id: msgId,
-        interviewer_mail_subject: mailSubject || undefined,
-        updated_at: new Date().toISOString(),
-      },
+      interviewer_gmail_thread_id: threadId || ctx.interviewer_gmail_thread_id || null,
+      interviewer_gmail_message_id: msgId || ctx.interviewer_gmail_message_id || null,
+      interviewer_mail_subject: mailSubject || ctx.interviewer_mail_subject || null,
+      _interviewer_patch_skipped: !patchReady,
+      _interviewer_patch_skip_reason: !patchReady
+        ? [
+            !sessionId ? 'missing session_id' : null,
+            !threadId ? 'missing gmail threadId' : null,
+            !msgId ? 'missing gmail message id' : null,
+          ]
+            .filter(Boolean)
+            .join('; ')
+        : '',
+      _interviewer_patch_url: patchReady
+        ? `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`
+        : '',
+      _interviewer_patch_body: patchReady
+        ? {
+            interviewer_gmail_thread_id: threadId,
+            interviewer_gmail_message_id: msgId,
+            interviewer_mail_subject: mailSubject || undefined,
+            updated_at: new Date().toISOString(),
+          }
+        : {},
     },
   },
 ];

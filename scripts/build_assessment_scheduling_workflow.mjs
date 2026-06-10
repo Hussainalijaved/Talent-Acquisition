@@ -64,6 +64,7 @@ function httpPatch(name, urlExpr, bodyExpr, keyExpr, position) {
     type: 'n8n-nodes-base.httpRequest',
     typeVersion: 4.2,
     position,
+    onError: 'continueRegularOutput',
   };
 }
 
@@ -111,13 +112,15 @@ function gmailInterviewerReply(name, position) {
   };
 }
 
-function gmailSend(name, toExpr, subjectExpr, position) {
+function gmailSend(name, toExpr, subjectExpr, position, messageExpr) {
   return {
     parameters: {
       sendTo: toExpr,
       subject: subjectExpr,
       emailType: 'html',
-      message: '={{ $json.mail_body_html }}',
+      message:
+        messageExpr ||
+        "={{ (() => { const ru = String($execution.resumeUrl || '').trim(); if (!ru) throw new Error('resumeUrl empty — MAIL must wire directly to WAIT'); return $json.mail_body_html.split('{{RESUME_URL}}').join(encodeURIComponent(ru)); })() }}",
       options: {},
     },
     id: id(),
@@ -132,7 +135,6 @@ function gmailSend(name, toExpr, subjectExpr, position) {
 }
 
 const old = readJson('Talent Acquisition — Assessment + Scheduling.json');
-const buildLlm = old.nodes.find((n) => n.name === 'CODE - Build LLM context');
 const cfgNode = JSON.parse(JSON.stringify(old.nodes.find((n) => n.name === 'CFG - Assessment Config')));
 const normNode = old.nodes.find((n) => n.name === 'CODE - Normalize Data');
 
@@ -163,7 +165,7 @@ const nodes = [
     name: 'HTTP - Fetch Session',
     position: [928, 1200],
   },
-  { ...buildLlm, position: [1152, 1200] },
+  codeNode('CODE - Build LLM context', 'n8n_code_build_llm_context.js', [1152, 1200]),
   {
     parameters: {
       promptType: 'define',
@@ -263,7 +265,8 @@ const nodes = [
     'MAIL - Interviewer pitch mail',
     '={{ $json.interviewer_email }}',
     '={{ $json.mail_subject }}',
-    [3856, 1240]
+    [3856, 1240],
+    "={{ $json.mail_body_html.replace('{{RESUME_URL}}', encodeURIComponent($execution.resumeUrl)) }}"
   ),
   codeNode('CODE - Merge Gmail interviewer send', 'n8n_code_merge_gmail_interviewer_response.js', [4080, 1240]),
   httpPatch(
@@ -407,13 +410,18 @@ const connections = {
     main: [[{ node: 'MAIL - Interviewer pitch mail', type: 'main', index: 0 }]],
   },
   'MAIL - Interviewer pitch mail': {
-    main: [[{ node: 'CODE - Merge Gmail interviewer send', type: 'main', index: 0 }]],
+    main: [
+      [
+        { node: 'WAIT - Interviewer availability', type: 'main', index: 0 },
+        { node: 'CODE - Merge Gmail interviewer send', type: 'main', index: 0 },
+      ],
+    ],
   },
   'CODE - Merge Gmail interviewer send': {
     main: [[{ node: 'HTTP - PATCH interviewer thread (pitch)', type: 'main', index: 0 }]],
   },
   'HTTP - PATCH interviewer thread (pitch)': {
-    main: [[{ node: 'WAIT - Interviewer availability', type: 'main', index: 0 }]],
+    main: [[]],
   },
   'WAIT - Interviewer availability': {
     main: [[{ node: 'CODE - Parse interviewer slot', type: 'main', index: 0 }]],

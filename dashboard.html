@@ -495,15 +495,28 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="jobLocIn">Location</label>
-                                    <input id="jobLocIn" type="text" placeholder="Remote / Lahore" />
+                                    <select id="jobLocIn">
+                                        <option value="Remote" selected>Remote</option>
+                                        <option value="On-site">On-site</option>
+                                        <option value="Hybrid">Hybrid</option>
+                                        <option value="Lahore, Pakistan">Lahore, Pakistan</option>
+                                        <option value="Karachi, Pakistan">Karachi, Pakistan</option>
+                                        <option value="Islamabad, Pakistan">Islamabad, Pakistan</option>
+                                    </select>
                                 </div>
                                 <div class="form-group">
                                     <label for="jobTypeIn">Employment type</label>
-                                    <input id="jobTypeIn" type="text" value="Full-time" />
+                                    <select id="jobTypeIn">
+                                        <option value="Full-time" selected>Full-time</option>
+                                        <option value="Part-time">Part-time</option>
+                                        <option value="Contract">Contract</option>
+                                        <option value="Internship">Internship</option>
+                                        <option value="Temporary">Temporary</option>
+                                    </select>
                                 </div>
                                 <div class="form-group">
-                                    <label for="jobIntIn">Interviewer email</label>
-                                    <input id="jobIntIn" type="email" placeholder="interviewer@company.com" />
+                                    <label for="jobIntIn">Interviewer email *</label>
+                                    <input id="jobIntIn" type="email" placeholder="interviewer@company.com" required />
                                 </div>
                                 <div class="form-group span-2">
                                     <label for="jobCriteriaIn">Must-have criteria (one per line)</label>

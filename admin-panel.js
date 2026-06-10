@@ -148,14 +148,27 @@
         });
     }
 
+    function setSelectValue(id, value, fallback) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const v = String(value || fallback || '').trim();
+        if (v && ![...el.options].some((o) => o.value === v)) {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = v;
+            el.appendChild(opt);
+        }
+        el.value = v || fallback || el.options[0]?.value || '';
+    }
+
     function fillJobForm(id) {
         const j = JOBS.find((x) => x.id === id);
         if (!j) return;
         document.getElementById('jobEditId').value = j.id;
         document.getElementById('jobTitleIn').value = j.title || '';
         document.getElementById('jobDeptIn').value = j.department || '';
-        document.getElementById('jobLocIn').value = j.location || '';
-        document.getElementById('jobTypeIn').value = j.employment_type || 'Full-time';
+        setSelectValue('jobLocIn', j.location, 'Remote');
+        setSelectValue('jobTypeIn', j.employment_type, 'Full-time');
         document.getElementById('jobIntIn').value = j.interviewer_email || '';
         document.getElementById('jobStatusIn').value = j.status || 'draft';
         document.getElementById('jobCriteriaIn').value = '';
@@ -167,8 +180,13 @@
         const id = document.getElementById('jobEditId').value;
         const title = document.getElementById('jobTitleIn').value.trim();
         const jd_text = document.getElementById('jobJdIn').value.trim();
+        const interviewer_email = document.getElementById('jobIntIn').value.trim().toLowerCase();
         if (!title || !jd_text) {
             deps.banner('Job title and description are required.', 'err');
+            return;
+        }
+        if (!interviewer_email) {
+            deps.banner('Interviewer email is required.', 'err');
             return;
         }
         const row = {
@@ -176,9 +194,9 @@
             jd_text,
             job_id: slugFromTitle(title),
             department: document.getElementById('jobDeptIn').value.trim() || null,
-            location: document.getElementById('jobLocIn').value.trim() || 'Remote',
+            location: document.getElementById('jobLocIn').value || 'Remote',
             employment_type: document.getElementById('jobTypeIn').value || 'Full-time',
-            interviewer_email: document.getElementById('jobIntIn').value.trim() || null,
+            interviewer_email,
             status: document.getElementById('jobStatusIn').value || 'draft',
             updated_at: new Date().toISOString(),
         };

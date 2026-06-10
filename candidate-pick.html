@@ -89,7 +89,24 @@
     <script>
         const params = new URLSearchParams(window.location.search);
         const resumeUrl = params.get('resumeUrl');
+        const N8N_PUBLIC_ORIGIN = 'https://randy-gaunt-bradley.ngrok-free.dev';
         let slots = [];
+
+        function isLocalResumeUrl(url) {
+            if (!url) return false;
+            try {
+                const h = new URL(url, window.location.origin).hostname;
+                return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+            } catch (e) {
+                return /localhost|127\.0\.0\.1/i.test(url);
+            }
+        }
+
+        function resolveResumeUrl(raw) {
+            if (!raw || !isLocalResumeUrl(raw) || isLocalResumeUrl(window.location.href)) return raw;
+            const base = String(N8N_PUBLIC_ORIGIN || '').replace(/\/+$/, '');
+            return base ? raw.replace(/^https?:\/\/[^/]+/i, base) : raw;
+        }
         let chosen = null;
 
         try {
@@ -155,11 +172,12 @@
             btn.disabled = true;
             btn.textContent = 'Confirming…';
 
-            const sep = resumeUrl.includes('?') ? '&' : '?';
+            const effectiveResume = resolveResumeUrl(resumeUrl);
+            const sep = effectiveResume.includes('?') ? '&' : '?';
             const q = new URLSearchParams();
             q.set('chosen_start_iso', chosen.start_iso);
             if (chosen.end_iso) q.set('chosen_end_iso', chosen.end_iso);
-            const webhookUrl = resumeUrl + sep + q.toString();
+            const webhookUrl = effectiveResume + sep + q.toString();
 
             try {
                 await resumeWorkflow(webhookUrl);

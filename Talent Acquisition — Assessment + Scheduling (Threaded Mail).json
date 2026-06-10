@@ -479,7 +479,7 @@
         "sendTo": "={{ $json.interviewer_email }}",
         "subject": "={{ $json.mail_subject }}",
         "emailType": "html",
-        "message": "={{ $json.mail_body_html.replace('{{RESUME_URL}}', encodeURIComponent($execution.resumeUrl)) }}",
+        "message": "={{ (() => { let u = String($execution.resumeUrl || '').trim(); const b = String($json.config?.n8n_public_url || $json._debug_public_base || '').replace(/\\/+$/, ''); if (b && /localhost|127\\.0\\.0\\.1/i.test(u)) u = u.replace(/^https?:\\/\\/[^/]+/i, b); if (!u) throw new Error('resumeUrl empty — MAIL must wire directly to WAIT'); return $json.mail_body_html.split($json.resume_url).join(encodeURIComponent(u)); })() }}",
         "options": {}
       },
       "id": "2eeb502f-a445-488d-bea0-fd2c8551899d",

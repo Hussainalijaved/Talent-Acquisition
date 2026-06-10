@@ -157,9 +157,9 @@ const interviewerPortal = portalBase + '/interviewer.html';
 
 const publicBase = resolvePublicBase(base, cfg);
 
-// Injected at send time by MAIL node (must be the node immediately before WAIT):
-//   $json.mail_body_html.replace('{{RESUME_URL}}', encodeURIComponent($execution.resumeUrl))
-const RESUME_PLACEHOLDER = '{{RESUME_URL}}';
+// Injected at send time by MAIL node (must be the node immediately before WAIT).
+// Do NOT use {{...}} inside the placeholder — n8n treats {{ as expression syntax.
+const RESUME_PLACEHOLDER = '__RESUME_URL_PLACEHOLDER__';
 const schedulingLink = interviewerPortal + '?resumeUrl=' + RESUME_PLACEHOLDER;
 
 const candidateEmail = String(
@@ -269,9 +269,10 @@ return [
       mail_body: mailBody,
       mail_body_html: mailBodyHtml,
       _debug_public_base: publicBase,
-      // Paste this ENTIRE string into MAIL node → Message field (Expression mode ON):
+      // Paste into MAIL → Message (Expression ON). No leading hyphen, no nested {{ }}.
+      // Rewrites localhost $execution.resumeUrl using config.n8n_public_url when WEBHOOK_URL is unset.
       gmail_message_n8n:
-        "={{ (() => { const ru = String($execution.resumeUrl || '').trim(); if (!ru) throw new Error('resumeUrl empty — wire MAIL directly to WAIT only (remove PATCH→WAIT)'); return $json.mail_body_html.split('{{RESUME_URL}}').join(encodeURIComponent(ru)); })() }}",
+        "={{ (() => { let u = String($execution.resumeUrl || '').trim(); const b = String($json.config?.n8n_public_url || $json._debug_public_base || '').replace(/\\/+$/, ''); if (b && /localhost|127\\.0\\.0\\.1/i.test(u)) u = u.replace(/^https?:\\/\\/[^/]+/i, b); if (!u) throw new Error('resumeUrl empty — MAIL must wire directly to WAIT'); return $json.mail_body_html.split($json.resume_url).join(encodeURIComponent(u)); })() }}",
     },
   },
 ];

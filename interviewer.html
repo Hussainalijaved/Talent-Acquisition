@@ -286,6 +286,9 @@
         const resumeUrl = urlParams.get('resumeUrl');
         const DURATION_MIN = 60;
 
+        // Update when ngrok restarts (free tier gets a new subdomain each time).
+        const N8N_PUBLIC_ORIGIN = 'https://randy-gaunt-bradley.ngrok-free.dev';
+
         function isLocalResumeUrl(url) {
             if (!url) return false;
             try {
@@ -296,13 +299,30 @@
             }
         }
 
+        function rewriteLocalResumeUrl(url) {
+            if (!url || !isLocalResumeUrl(url)) return url;
+            const base = String(N8N_PUBLIC_ORIGIN || '').replace(/\/+$/, '');
+            if (!base) return url;
+            return url.replace(/^https?:\/\/[^/]+/i, base);
+        }
+
+        function resolveResumeUrl(raw) {
+            if (!raw) return raw;
+            if (isLocalResumeUrl(raw) && !isLocalResumeUrl(window.location.href)) {
+                return rewriteLocalResumeUrl(raw);
+            }
+            return raw;
+        }
+
         if (resumeUrl && isLocalResumeUrl(resumeUrl) && !isLocalResumeUrl(window.location.href)) {
             const warn = document.createElement('p');
             warn.className = 'hint';
             warn.style.color = '#fbbf24';
             warn.style.marginBottom = '16px';
             warn.textContent =
-                'Warning: this link points to localhost n8n. Set WEBHOOK_URL on your n8n server to a public URL (ngrok/cloud), then send a fresh interviewer email.';
+                'Note: this email link used localhost n8n — calls will be sent via ' +
+                N8N_PUBLIC_ORIGIN +
+                '. Keep ngrok running. For new emails, set WEBHOOK_URL on n8n to the same public URL.';
             document.querySelector('.container').insertBefore(warn, document.querySelector('.input-group'));
         }
 
@@ -471,15 +491,18 @@
         const SUCCESS_PAGE = 'https://talent-acquisition-six.vercel.app/scheduling-success.html';
 
         async function resumeWorkflow(url) {
-            if (isLocalResumeUrl(url) && !isLocalResumeUrl(window.location.href)) {
-                throw new Error('Resume URL is localhost — n8n WAIT cannot be reached from this site.');
+            let target = resolveResumeUrl(url);
+            if (isLocalResumeUrl(target) && !isLocalResumeUrl(window.location.href)) {
+                throw new Error(
+                    'Resume URL is localhost — update N8N_PUBLIC_ORIGIN in interviewer.html or set WEBHOOK_URL on n8n.'
+                );
             }
 
             const headers = { 'ngrok-skip-browser-warning': '1' };
 
             let res;
             try {
-                res = await fetch(url, { method: 'GET', cache: 'no-store', headers });
+                res = await fetch(target, { method: 'GET', cache: 'no-store', headers });
             } catch (networkErr) {
                 throw new Error(
                     'Could not reach n8n (network/CORS). Keep ngrok running and retry. ' +
@@ -564,10 +587,11 @@
             btn.disabled = true;
             btn.textContent = 'Submitting…';
 
-            const sep = resumeUrl.includes('?') ? '&' : '?';
+            const effectiveResume = resolveResumeUrl(resumeUrl);
+            const sep = effectiveResume.includes('?') ? '&' : '?';
             const params = new URLSearchParams();
             params.set('slots_json', JSON.stringify(slots));
-            const webhookUrl = resumeUrl + sep + params.toString();
+            const webhookUrl = effectiveResume + sep + params.toString();
 
             try {
                 await resumeWorkflow(webhookUrl);

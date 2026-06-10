@@ -768,7 +768,7 @@
             return 'text-red-400';
         };
 
-        const LoginView = ({ sessionId, setSessionId, setView, supabase }) => {
+        const LoginView = ({ sessionId, setSessionId, setView, supabase, linkSessionReady }) => {
             const [localLoading, setLocalLoading] = React.useState(false);
             const [errorMsg, setErrorMsg] = React.useState('');
 
@@ -865,6 +865,11 @@
                                 onSubmit={handleLoginSubmit}
                                 className="space-y-4"
                             >
+                                {linkSessionReady && sessionId ? (
+                                    <div className="text-emerald-300/90 text-xs font-medium bg-emerald-950/30 border border-emerald-800/40 rounded-lg p-3 mb-1">
+                                        Session linked from your invitation. Confirm the ID below, then continue to guidelines.
+                                    </div>
+                                ) : null}
                                 <div>
                                     <label htmlFor="session" className="block text-xs font-medium text-slate-400 mb-2">Session identifier</label>
                                     <input
@@ -1012,7 +1017,7 @@
                                 </label>
                                 <button
                                     type="button"
-                                    onClick={onStart}
+                                    onClick={() => onStart()}
                                     disabled={!agreed}
                                     className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
                                 >
@@ -1543,6 +1548,7 @@
             const [integrityViolationCount, setIntegrityViolationCount] = useState(0);
             const [assessmentHistory, setAssessmentHistory] = useState([]);
             const [urlEntryError, setUrlEntryError] = useState('');
+            const [linkSessionReady, setLinkSessionReady] = useState(false);
 
             const viewRef = useRef(view);
             const sessionIdRef = useRef(sessionId);
@@ -2051,7 +2057,13 @@
                 setIsLoading(true);
                 try {
                     await enterAssessmentFullscreen();
-                    const activeSessionId = String(overrideSessionId || sessionIdRef.current || sessionId || '').trim();
+                    const overrideOk = typeof overrideSessionId === 'string' && overrideSessionId.trim().length >= 10;
+                    const activeSessionId = String(
+                        (overrideOk ? overrideSessionId : null) ||
+                        sessionIdRef.current ||
+                        sessionId ||
+                        ''
+                    ).trim();
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeSessionId);
                     let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, screening, config');
                     if (isUuid) {
@@ -2192,7 +2204,8 @@
                             nextUrl.searchParams.delete('job');
                             nextUrl.searchParams.delete('from');
                             window.history.replaceState({}, '', nextUrl.pathname + nextUrl.search);
-                            setView('instructions');
+                            setLinkSessionReady(true);
+                            setView('login');
                         }
                     } catch (e) {
                         console.error('Session link entry failed:', e);
@@ -2440,7 +2453,7 @@
             const renderView = () => {
                 switch (view) {
                     case 'login':
-                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} />;
+                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} linkSessionReady={linkSessionReady} />;
                     case 'instructions':
                         return <InstructionsView onStart={handleStartAssessment} sessionId={sessionId} />;
                     case 'assessment':
@@ -2473,7 +2486,7 @@
                     case 'admin':
                         return <AdminView setView={setView} />;
                     default:
-                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} />;
+                        return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} linkSessionReady={linkSessionReady} />;
                 }
             };
 

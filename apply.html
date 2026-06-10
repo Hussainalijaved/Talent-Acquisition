@@ -638,7 +638,7 @@
 
     <footer class="site-footer">
         Talent Acquisition · <a href="careers.html">Careers</a> · <a href="index.html">Assessment portal</a>
-        <span style="display:block;margin-top:6px;font-size:10px;color:#475569">Build: apply-live-screening-v1</span>
+        <span style="display:block;margin-top:6px;font-size:10px;color:#475569">Build: apply-live-screening-v2</span>
     </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -918,38 +918,71 @@
             'Shortlisted', 'Rejected', 'ReviewQueue', 'DuplicateSkipped', 'ScreeningTransportFailed',
         ]);
 
+        function isFreshTimestamp(iso, submitStartedAt, slackMs) {
+            if (!iso) return true;
+            return new Date(iso).getTime() >= submitStartedAt - (slackMs || 120000);
+        }
+
+        function jobIdMatches(stored, expected) {
+            const a = normalizeJobId(stored);
+            const b = normalizeJobId(expected);
+            if (!b) return true;
+            if (!a) return false;
+            return a === b;
+        }
+
+        async function fetchLatestCandidateRow(email, jobId) {
+            if (!sbClient) return null;
+            const { data: exact, error: exactErr } = await sbClient
+                .from('candidates')
+                .select('stage, score, notes, created_at, requisition_id')
+                .eq('candidate_email', email)
+                .eq('requisition_id', jobId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (!exactErr && exact) return exact;
+
+            const { data: rows, error } = await sbClient
+                .from('candidates')
+                .select('stage, score, notes, created_at, requisition_id')
+                .eq('candidate_email', email)
+                .order('created_at', { ascending: false })
+                .limit(15);
+            if (error || !rows?.length) return null;
+            return rows.find((r) => jobIdMatches(r.requisition_id, jobId)) || null;
+        }
+
         async function pollScreeningResult(email, jobId, submitStartedAt) {
             const deadline = Date.now() + POLL_MAX_MS;
             let attempt = 0;
-            let sessionId = null;
 
             while (Date.now() < deadline && !ignoreSubmitResult) {
                 attempt += 1;
                 updatePollingMessage(attempt);
 
-                const { data, error } = await sbClient
-                    .from('candidates')
-                    .select('stage, score, notes, created_at')
-                    .eq('candidate_email', email)
-                    .eq('requisition_id', jobId)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-
-                if (!error && data) {
-                    const created = new Date(data.created_at).getTime();
-                    if (created >= submitStartedAt - 8000) {
-                        if (data.stage === 'Shortlisted') {
-                            sessionId = await fetchAssessmentSessionId(email, jobId, submitStartedAt);
-                            if (sessionId) return { candidate: data, sessionId };
-                        } else if (TERMINAL_STAGES.has(data.stage)) {
-                            return { candidate: data, sessionId: null };
-                        }
-                    }
+                const data = await fetchLatestCandidateRow(email, jobId);
+                if (data && isFreshTimestamp(data.created_at, submitStartedAt) && TERMINAL_STAGES.has(data.stage)) {
+                    const sessionId = data.stage === 'Shortlisted'
+                        ? await fetchAssessmentSessionId(email, jobId, submitStartedAt)
+                        : null;
+                    return { candidate: data, sessionId: sessionId || null };
                 }
 
-                if (!sessionId) {
-                    sessionId = await fetchAssessmentSessionId(email, jobId, submitStartedAt);
+                const sessionId = await fetchAssessmentSessionId(email, jobId, submitStartedAt);
+                if (sessionId) {
+                    document.getElementById('submittingMsg').textContent =
+                        'Shortlisted — loading your assessment details…';
+                    const row = data && TERMINAL_STAGES.has(data.stage)
+                        ? data
+                        : {
+                            stage: 'Shortlisted',
+                            score: null,
+                            notes: {},
+                            created_at: new Date().toISOString(),
+                            requisition_id: jobId,
+                        };
+                    return { candidate: row, sessionId };
                 }
 
                 await sleep(POLL_INTERVAL_MS);

@@ -244,7 +244,7 @@
         .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 90; backdrop-filter: blur(2px); }
         .overlay.show { opacity: 1; pointer-events: auto; }
         .drawer {
-            position: fixed; top: 0; right: 0; height: 100vh; width: 560px; max-width: 94vw;
+            position: fixed; top: 0; right: 0; height: 100vh; width: 680px; max-width: 96vw;
             background: var(--bg); box-shadow: var(--shadow-lg);
             transform: translateX(100%); transition: transform .3s cubic-bezier(.4,0,.2,1);
             z-index: 100; display: flex; flex-direction: column;
@@ -275,6 +275,71 @@
         .integrity { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--red); background: var(--red-soft); padding: 3px 9px; border-radius: 6px; }
         .mini-bars { display: flex; gap: 4px; align-items: flex-end; height: 22px; }
         .mini-bars i { width: 7px; border-radius: 2px 2px 0 0; background: var(--primary); display: block; }
+
+        /* Assessment report (drawer) */
+        .assess-summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .assess-stat {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 12px 10px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            min-height: 72px;
+            justify-content: center;
+        }
+        .assess-stat-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); font-weight: 600; }
+        .assess-stat strong { font-size: 18px; font-weight: 800; }
+        .phase-bars { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+        .phase-bar-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; }
+        .phase-bar-lbl { font-size: 11px; font-weight: 700; color: var(--text-faint); }
+        .phase-bar-track { height: 8px; background: var(--surface-2); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+        .phase-bar-fill { height: 100%; border-radius: 6px; transition: width .4s ease; }
+        .phase-bar-fill.sc-high { background: var(--green); }
+        .phase-bar-fill.sc-mid { background: var(--amber); }
+        .phase-bar-fill.sc-low { background: var(--red); }
+        .phase-bar-fill.sc-none { background: var(--text-faint); opacity: .35; }
+        .phase-card {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 14px;
+            overflow: hidden;
+            background: var(--surface);
+        }
+        .phase-card-head {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            padding: 12px 14px;
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--border);
+        }
+        .phase-card-head .phase-title { font-size: 13px; font-weight: 700; }
+        .phase-card-head .phase-meta { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+        .phase-card-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+        .qa-block { border-left: 3px solid var(--primary); padding-left: 12px; }
+        .qa-block.answer { border-left-color: var(--violet); }
+        .qa-block.feedback { border-left-color: var(--amber); }
+        .qa-block.model { border-left-color: var(--green); }
+        .qa-block .qa-head { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-faint); margin-bottom: 5px; }
+        .qa-block .qa-body { font-size: 13px; line-height: 1.6; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+        .phase-empty { font-size: 13px; color: var(--text-soft); font-style: italic; padding: 8px 0; }
+        .report-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+        .report-meta .meta-chip {
+            font-size: 11.5px; padding: 5px 10px; border-radius: 999px;
+            background: var(--surface-2); border: 1px solid var(--border); color: var(--text-soft);
+        }
+        details.raw-fold { margin-top: 8px; }
+        details.raw-fold summary { cursor: pointer; font-size: 12px; color: var(--text-faint); font-weight: 600; padding: 8px 0; }
+        @media (max-width: 720px) {
+            .assess-summary { grid-template-columns: repeat(2, 1fr); }
+        }
 
         .banner { padding: 11px 16px; border-radius: 10px; font-size: 13px; margin-bottom: 18px; display: none; }
         .banner.show { display: block; }
@@ -1062,6 +1127,131 @@
             }).join('');
         }
 
+        /* ---------- assessment report ---------- */
+        function parseHistory(sess) {
+            let hist = sess?.interview_history;
+            if (typeof hist === 'string') { try { hist = JSON.parse(hist); } catch { hist = []; } }
+            if (!Array.isArray(hist)) hist = [];
+            return hist.slice().sort((a, b) => Number(a.phase || 0) - Number(b.phase || 0));
+        }
+
+        function avgPhaseScore(hist) {
+            const scores = hist
+                .filter((h) => h && h.answer_text != null && h.score != null && !h.integrity_terminated)
+                .map((h) => Number(h.score))
+                .filter((n) => Number.isFinite(n));
+            if (!scores.length) return null;
+            return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+        }
+
+        function phaseStatusLabel(h) {
+            if (!h) return 'Not started';
+            if (h.integrity_terminated) return 'Integrity violation';
+            if (h.answer_text == null || h.answer_text === '') return 'Awaiting answer';
+            return 'Answered';
+        }
+
+        function renderQaBlock(title, text, variant) {
+            if (!text) return '';
+            return '<div class="qa-block ' + (variant || '') + '">' +
+                '<div class="qa-head">' + esc(title) + '</div>' +
+                '<div class="qa-body">' + esc(String(text)) + '</div></div>';
+        }
+
+        function renderPhaseCard(h, maxPhases) {
+            const phase = Number(h.phase || 0);
+            const q = h.question_text || h.question || '';
+            const status = phaseStatusLabel(h);
+            const meta = [];
+            if (h.time_limit_seconds) meta.push('Limit ' + Math.round(h.time_limit_seconds) + 's');
+            if (h.complexity_tier) meta.push('Tier ' + h.complexity_tier);
+            if (h.sent_at) meta.push('Sent ' + fmtDateTime(h.sent_at));
+            if (h.received_at) meta.push('Answered ' + fmtDateTime(h.received_at));
+
+            let body = '';
+            if (q) body += renderQaBlock('Question', q, '');
+            else body += '<div class="phase-empty">No question text recorded for this phase.</div>';
+
+            if (h.answer_text) {
+                body += renderQaBlock('Candidate answer', h.answer_text, 'answer');
+            } else if (!h.integrity_terminated) {
+                body += '<div class="phase-empty">No answer submitted.</div>';
+            }
+
+            if (h.feedback) body += renderQaBlock('AI evaluator feedback', h.feedback, 'feedback');
+            if (h.suggested_answer) body += renderQaBlock('Model answer reference', h.suggested_answer, 'model');
+
+            const scoreHtml = h.integrity_terminated
+                ? '<span class="integrity">Not scored</span>'
+                : (h.score != null ? scoreBadge(h.score) : '<span class="c-role">—</span>');
+
+            return '<div class="phase-card">' +
+                '<div class="phase-card-head">' +
+                '<div><div class="phase-title">Phase ' + esc(phase || '?') + ' of ' + maxPhases + '</div>' +
+                '<div class="phase-meta">' + esc(status) + (meta.length ? ' · ' + esc(meta.join(' · ')) : '') + '</div></div>' +
+                scoreHtml +
+                '</div><div class="phase-card-body">' + body + '</div></div>';
+        }
+
+        function renderAssessmentReport(sess) {
+            const hist = parseHistory(sess);
+            const maxPh = Number(sess.max_phases || 5);
+            const avg = avgPhaseScore(hist);
+            const answered = hist.filter((h) => h && h.answer_text).length;
+            const cfg = parseJson(sess.config);
+
+            let html = '<div class="section assessment-report"><div class="section-h">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' +
+                'Technical assessment report</div>';
+
+            html += '<div class="assess-summary">' +
+                '<div class="assess-stat">' + assessPill(sess) + '<span class="assess-stat-lbl">Outcome</span></div>' +
+                '<div class="assess-stat">' + scoreBadge(sess.score) + '<span class="assess-stat-lbl">Final score</span></div>' +
+                '<div class="assess-stat">' + (avg != null ? scoreBadge(avg) : '<span class="c-role">—</span>') + '<span class="assess-stat-lbl">Phase average</span></div>' +
+                '<div class="assess-stat"><strong>' + answered + ' / ' + maxPh + '</strong><span class="assess-stat-lbl">Phases answered</span></div>' +
+                '</div>';
+
+            html += '<div class="report-meta">' +
+                '<span class="meta-chip">Status: ' + esc(sess.status || '—') + '</span>' +
+                '<span class="meta-chip">Progress: ' + esc(String(sess.current_phase || 1)) + ' / ' + maxPh + '</span>' +
+                '<span class="meta-chip">Started ' + esc(fmtDateTime(sess.created_at)) + '</span>' +
+                '<span class="meta-chip">Updated ' + esc(fmtDateTime(sess.updated_at || sess.created_at)) + '</span>' +
+                (cfg.requisition_title ? '<span class="meta-chip">' + esc(roleLabel(cfg.requisition_title)) + '</span>' : '') +
+                '</div>';
+
+            html += '<div class="qlabel">Score by phase</div><div class="phase-bars">';
+            for (let p = 1; p <= maxPh; p++) {
+                const row = hist.find((h) => Number(h.phase) === p);
+                const sc = row?.score != null && !row?.integrity_terminated ? Number(row.score) : null;
+                const width = sc != null ? Math.max(4, Math.min(100, sc)) : (row?.question_text || row?.answer_text ? 4 : 0);
+                html += '<div class="phase-bar-row"><span class="phase-bar-lbl">P' + p + '</span>' +
+                    '<div class="phase-bar-track"><div class="phase-bar-fill ' + scoreClass(sc) + '" style="width:' + width + '%"></div></div>' +
+                    (sc != null ? scoreBadge(sc) : '<span class="c-role">—</span>') + '</div>';
+            }
+            html += '</div>';
+
+            if (!hist.length) {
+                html += '<div class="phase-empty">No assessment questions recorded yet.</div>';
+            } else {
+                html += '<div class="qlabel">Questions &amp; answers</div>';
+                const phasesSeen = new Set();
+                hist.forEach((h) => {
+                    if (!h || !(h.question_text || h.question || h.answer_text)) return;
+                    phasesSeen.add(Number(h.phase));
+                    html += renderPhaseCard(h, maxPh);
+                });
+                for (let p = 1; p <= maxPh; p++) {
+                    if (!phasesSeen.has(p)) {
+                        const placeholder = { phase: p };
+                        html += renderPhaseCard(placeholder, maxPh);
+                    }
+                }
+            }
+
+            html += '</div>';
+            return html;
+        }
+
         /* ---------- drawer ---------- */
         function openDrawer(m) {
             if (!m) return;
@@ -1100,33 +1290,9 @@
             }
             html += '</div>';
 
-            // Assessment
+            // Assessment report
             if (sess) {
-                let hist = sess.interview_history;
-                if (typeof hist === 'string') { try { hist = JSON.parse(hist); } catch { hist = []; } }
-                if (!Array.isArray(hist)) hist = [];
-                html += '<div class="section"><div class="section-h">' +
-                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Assessment</div>' +
-                    kv('Status', assessPill(sess)) +
-                    kv('Final score', scoreBadge(sess.score)) +
-                    kv('Phase progress', (sess.current_phase || 1) + ' / ' + (sess.max_phases || 5)) +
-                    kv('Last activity', esc(fmtDateTime(sess.updated_at || sess.created_at)));
-
-                if (hist.length) {
-                    html += '<div class="qlabel" style="margin-top:14px">Question timeline</div>';
-                    hist.filter(h => h && (h.question_text || h.answer_text)).forEach(h => {
-                        const integrity = h.integrity_terminated;
-                        html += '<div class="qblock"><div class="qphase"><strong>Phase ' + esc(h.phase ?? '?') + '</strong>' +
-                            (integrity ? '<span class="integrity">Integrity violation</span>' : (h.score != null ? scoreBadge(h.score) : '<span class="c-role">unanswered</span>')) + '</div>';
-                        if (h.question_text) html += '<div class="qlabel">Question</div><div class="qtext">' + esc(h.question_text) + '</div>';
-                        if (h.answer_text) html += '<div class="qlabel">Answer</div><div class="qtext ans">' + esc(h.answer_text) + '</div>';
-                        if (h.feedback) html += '<div class="qlabel">Feedback</div><div class="qtext ans">' + esc(h.feedback) + '</div>';
-                        if (h.suggested_answer) html += '<div class="qlabel">Model answer</div><div class="qtext ans">' + esc(h.suggested_answer) + '</div>';
-                        if (h.time_limit_seconds) html += '<div class="qlabel">Time limit</div><div class="qtext ans">' + Math.round(h.time_limit_seconds) + 's' + (h.complexity_tier ? ' · Tier ' + esc(h.complexity_tier) : '') + '</div>';
-                        html += '</div>';
-                    });
-                }
-                html += '</div>';
+                html += renderAssessmentReport(sess);
             } else {
                 html += '<div class="section"><div class="section-h">' +
                     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Assessment</div>' +
@@ -1145,8 +1311,8 @@
 
             if (window.TAAdmin) html += TAAdmin.renderOnsiteForDrawer(m.email);
 
-            html += '<div class="section"><div class="section-h">Raw records</div>' +
-                '<div class="raw-json">' + esc(JSON.stringify({ candidate: { id: m.candidateId, notes: m.rawNotes, stage: m.stage, score: m.cvScore }, session: sess }, null, 2)) + '</div></div>';
+            html += '<details class="raw-fold section"><summary>Developer — raw JSON</summary>' +
+                '<div class="raw-json">' + esc(JSON.stringify({ candidate: { id: m.candidateId, notes: m.rawNotes, stage: m.stage, score: m.cvScore }, session: sess }, null, 2)) + '</div></details>';
 
             document.getElementById('drawerBody').innerHTML = html;
             document.getElementById('overlay').classList.add('show');

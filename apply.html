@@ -386,6 +386,63 @@
             box-shadow: 0 0 0 10px rgba(99, 102, 241, 0.08);
             animation: pulse-ring 1.4s ease-in-out infinite;
         }
+        .result-icon.info {
+            background: rgba(99, 102, 241, 0.12);
+            color: #a5b4fc;
+            box-shadow: 0 0 0 10px rgba(99, 102, 241, 0.06);
+        }
+        .result-score {
+            font-size: 42px;
+            font-weight: 800;
+            color: var(--ok);
+            letter-spacing: -0.04em;
+            margin: -8px 0 12px;
+        }
+        .outcome-actions { width: 100%; max-width: 360px; }
+        .btn-row {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: stretch;
+        }
+        .progress-steps {
+            list-style: none;
+            margin: 20px 0 0;
+            padding: 0;
+            text-align: left;
+            max-width: 280px;
+            width: 100%;
+        }
+        .progress-steps li {
+            font-size: 13px;
+            color: #64748b;
+            padding: 8px 0 8px 28px;
+            position: relative;
+            border-left: 2px solid var(--border);
+            margin-left: 8px;
+        }
+        .progress-steps li:last-child { border-left-color: transparent; }
+        .progress-steps li::before {
+            content: '';
+            position: absolute;
+            left: -7px;
+            top: 12px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--surface-elevated);
+            border: 2px solid var(--border);
+        }
+        .progress-steps li.active { color: #e2e8f0; font-weight: 600; }
+        .progress-steps li.active::before {
+            border-color: var(--accent);
+            background: rgba(99, 102, 241, 0.35);
+        }
+        .progress-steps li.done { color: #94a3b8; }
+        .progress-steps li.done::before {
+            background: var(--ok);
+            border-color: var(--ok);
+        }
         @keyframes pulse-ring {
             0%, 100% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0.08); }
             50% { box-shadow: 0 0 0 16px rgba(99, 102, 241, 0.14); }
@@ -511,9 +568,14 @@
 
                         <div id="submittingView" class="result-view">
                             <div class="result-icon wait" aria-hidden="true">⏳</div>
-                            <h2 class="result-title">Sending your CV…</h2>
+                            <h2 class="result-title">Screening your CV…</h2>
                             <p class="result-msg" id="submittingMsg">Uploading your application. Please keep this page open.</p>
                             <div class="result-detail" id="submittingDetail"></div>
+                            <ul class="progress-steps" id="progressSteps">
+                                <li class="active" id="stepUpload">CV uploaded</li>
+                                <li id="stepScreen">AI screening in progress</li>
+                                <li id="stepResult">Result &amp; next step</li>
+                            </ul>
                         </div>
 
                         <div id="formView" class="form-view">
@@ -552,13 +614,14 @@
                         </div>
 
                         <div id="successView" class="result-view">
-                            <div class="result-icon ok" aria-hidden="true">✓</div>
-                            <h2 class="result-title">CV sent successfully</h2>
-                            <p class="result-msg" id="successMsg">
-                                Your application has been received and is being screened by AI. If shortlisted, you'll get an assessment link by email.
+                            <div class="result-icon ok" id="outcomeIcon" aria-hidden="true">✓</div>
+                            <h2 class="result-title" id="outcomeTitle">CV sent successfully</h2>
+                            <div class="result-score" id="outcomeScore" style="display:none"></div>
+                            <p class="result-msg" id="outcomeMsg">
+                                Your application has been received and is being screened by AI.
                             </p>
-                            <div class="result-detail" id="successDetail"></div>
-                            <a href="careers.html" class="btn" style="display:inline-block;width:auto;padding:12px 28px;text-decoration:none">Browse other roles</a>
+                            <div class="result-detail" id="outcomeDetail"></div>
+                            <div class="outcome-actions" id="outcomeActions"></div>
                         </div>
 
                         <div id="failureView" class="result-view">
@@ -575,7 +638,7 @@
 
     <footer class="site-footer">
         Talent Acquisition · <a href="careers.html">Careers</a> · <a href="index.html">Assessment portal</a>
-        <span style="display:block;margin-top:6px;font-size:10px;color:#475569">Build: apply-feedback-v2</span>
+        <span style="display:block;margin-top:6px;font-size:10px;color:#475569">Build: apply-live-screening-v1</span>
     </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -598,11 +661,14 @@
 
         let currentJob = null;
         let webhookUrl = '';
+        let sbClient = null;
         let submitSucceeded = false;
         let submitAbort = null;
         let progressTimer = null;
         let ignoreSubmitResult = false;
         const SUBMIT_TIMEOUT_MS = 45000;
+        const POLL_INTERVAL_MS = 3000;
+        const POLL_MAX_MS = 120000;
 
         const loadingView = document.getElementById('loadingView');
         const errorView = document.getElementById('errorView');
@@ -618,8 +684,45 @@
         const emailInput = document.getElementById('email');
         const emailHint = document.getElementById('emailHint');
 
-        const DEFAULT_SUCCESS_MSG =
-            'Your application has been received and is being screened by AI. If shortlisted, you\'ll get an assessment link by email.';
+        function sleep(ms) {
+            return new Promise((resolve) => setTimeout(resolve, ms));
+        }
+
+        function parseNotes(raw) {
+            if (!raw) return {};
+            if (typeof raw === 'object') return raw;
+            try { return JSON.parse(raw); } catch { return {}; }
+        }
+
+        function screeningSummary(notes, stage) {
+            const n = parseNotes(notes);
+            if (n.summary) return String(n.summary);
+            if (n.feedback) return String(n.feedback);
+            if (n.reason) return String(n.reason);
+            if (stage === 'Shortlisted') return 'Your profile matches the requirements for this role.';
+            if (stage === 'Rejected') return 'Your CV did not meet the minimum requirements for this role at this time.';
+            if (stage === 'ReviewQueue') return 'Your application needs a manual review by our hiring team.';
+            if (stage === 'DuplicateSkipped') return 'You have already applied for this role with the same CV.';
+            return '';
+        }
+
+        function setProgressStep(step) {
+            const upload = document.getElementById('stepUpload');
+            const screen = document.getElementById('stepScreen');
+            const result = document.getElementById('stepResult');
+            if (!upload || !screen || !result) return;
+            [upload, screen, result].forEach((el) => el.classList.remove('active', 'done'));
+            if (step === 'upload') {
+                upload.classList.add('active');
+            } else if (step === 'screen') {
+                upload.classList.add('done');
+                screen.classList.add('active');
+            } else if (step === 'result') {
+                upload.classList.add('done');
+                screen.classList.add('done');
+                result.classList.add('active');
+            }
+        }
 
         function showStatus(msg, type) {
             statusBox.textContent = msg;
@@ -657,12 +760,18 @@
             hideAllPanels();
             formView.classList.remove('hide');
 
-            document.getElementById('successMsg').textContent = DEFAULT_SUCCESS_MSG;
-            document.getElementById('successDetail').textContent = '';
+            document.getElementById('outcomeTitle').textContent = 'CV sent successfully';
+            document.getElementById('outcomeMsg').textContent = '';
+            document.getElementById('outcomeDetail').textContent = '';
+            document.getElementById('outcomeScore').style.display = 'none';
+            document.getElementById('outcomeActions').innerHTML = '';
+            document.getElementById('outcomeIcon').className = 'result-icon ok';
+            document.getElementById('outcomeIcon').textContent = '✓';
             document.getElementById('failureMsg').textContent = 'Something went wrong. Please try again.';
             document.getElementById('submittingMsg').textContent =
                 'Uploading your application. Please keep this page open.';
             document.getElementById('submittingDetail').textContent = '';
+            setProgressStep('upload');
 
             statusBox.textContent = '';
 
@@ -677,34 +786,243 @@
             emailHint.className = 'field-hint';
         }
 
-        function showSubmittingView(email, fileNameText) {
+        function showSubmittingView(email, fileNameText, phase) {
             hideAllPanels();
             submittingView.classList.add('show');
             document.getElementById('submittingDetail').textContent =
                 fileNameText + ' · ' + email;
-            document.getElementById('submittingMsg').textContent =
-                'Uploading your CV to our screening system…';
+            setProgressStep(phase || 'upload');
 
-            progressTimer = setTimeout(() => {
+            if (phase === 'screen') {
                 document.getElementById('submittingMsg').textContent =
-                    'CV received. AI screening is running — this can take up to a minute.';
-            }, 4000);
+                    'AI is reviewing your CV against the job requirements. This usually takes 30–90 seconds.';
+            } else {
+                document.getElementById('submittingMsg').textContent =
+                    'Uploading your CV to our screening system…';
+                progressTimer = setTimeout(() => {
+                    document.getElementById('submittingMsg').textContent =
+                        'CV received. Starting AI screening…';
+                    setProgressStep('screen');
+                }, 3500);
+            }
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        function showSuccessView(message, detail) {
+        function updatePollingMessage(attempt) {
+            const msgs = [
+                'AI is reviewing your CV against the job requirements…',
+                'Checking skills, experience, and role fit…',
+                'Almost there — finalizing your screening result…',
+            ];
+            document.getElementById('submittingMsg').textContent =
+                msgs[Math.min(attempt - 1, msgs.length - 1)];
+        }
+
+        function showOutcome({ iconClass, icon, title, message, detail, score, actionsHtml }) {
             submitSucceeded = true;
             clearSubmitTimers();
             hideAllPanels();
             successView.classList.add('show');
+            setProgressStep('result');
 
-            if (message) document.getElementById('successMsg').textContent = message;
-            if (detail) document.getElementById('successDetail').textContent = detail;
+            const iconEl = document.getElementById('outcomeIcon');
+            iconEl.className = 'result-icon ' + (iconClass || 'ok');
+            iconEl.textContent = icon || '✓';
+            document.getElementById('outcomeTitle').textContent = title || 'Result';
+            document.getElementById('outcomeMsg').textContent = message || '';
+            document.getElementById('outcomeDetail').textContent = detail || '';
+
+            const scoreEl = document.getElementById('outcomeScore');
+            if (score != null && Number.isFinite(Number(score))) {
+                scoreEl.textContent = Math.round(Number(score)) + ' / 100';
+                scoreEl.style.display = 'block';
+            } else {
+                scoreEl.style.display = 'none';
+            }
+
+            document.getElementById('outcomeActions').innerHTML = actionsHtml || '';
 
             const btn = document.getElementById('submitBtn');
             btn.disabled = false;
             btn.textContent = 'Submit application';
 
             window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function fetchAssessmentSessionId(email, jobId) {
+            if (!sbClient) return null;
+            const { data, error } = await sbClient
+                .from('assessment_sessions')
+                .select('id, created_at, config')
+                .eq('candidate_email', email)
+                .order('created_at', { ascending: false })
+                .limit(8);
+            if (error || !data?.length) return null;
+            const match = data.find((s) => {
+                const cfg = parseNotes(s.config);
+                return String(cfg.requisition_id || '') === String(jobId || '');
+            });
+            return (match || data[0]).id;
+        }
+
+        async function pollScreeningResult(email, jobId, submitStartedAt) {
+            const deadline = Date.now() + POLL_MAX_MS;
+            let attempt = 0;
+            while (Date.now() < deadline && !ignoreSubmitResult) {
+                attempt += 1;
+                updatePollingMessage(attempt);
+
+                const { data, error } = await sbClient
+                    .from('candidates')
+                    .select('stage, score, notes, created_at')
+                    .eq('candidate_email', email)
+                    .eq('requisition_id', jobId)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (!error && data) {
+                    const created = new Date(data.created_at).getTime();
+                    if (created >= submitStartedAt - 8000) {
+                        return data;
+                    }
+                }
+                await sleep(POLL_INTERVAL_MS);
+            }
+            return null;
+        }
+
+        function bindPassActions(sessionId, email, detail) {
+            const startBtn = document.getElementById('startAssessmentBtn');
+            const laterBtn = document.getElementById('laterAssessmentBtn');
+            if (startBtn && sessionId) {
+                startBtn.addEventListener('click', () => {
+                    window.location.href =
+                        'index.html?session=' + encodeURIComponent(sessionId) +
+                        '&email=' + encodeURIComponent(email);
+                });
+            }
+            if (laterBtn) {
+                laterBtn.addEventListener('click', () => {
+                    showOutcome({
+                        iconClass: 'ok',
+                        icon: '✉',
+                        title: 'No problem!',
+                        message: 'We\'ve also sent an assessment link to your email. Start whenever you\'re ready.',
+                        detail,
+                        actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
+                    });
+                });
+            }
+        }
+
+        async function handleScreeningOutcome(result, email, fileNameText) {
+            const detail = fileNameText + ' · ' + email + ' · ' + (currentJob?.title || '');
+            const stage = result?.stage || '';
+            const score = result?.score != null ? Number(result.score) : null;
+            const summary = screeningSummary(result?.notes, stage);
+
+            if (stage === 'Shortlisted') {
+                let sessionId = await fetchAssessmentSessionId(email, currentJob.job_id);
+                for (let i = 0; i < 12 && !sessionId && !ignoreSubmitResult; i++) {
+                    await sleep(2500);
+                    sessionId = await fetchAssessmentSessionId(email, currentJob.job_id);
+                }
+                const canStart = Boolean(sessionId);
+                showOutcome({
+                    iconClass: 'ok',
+                    icon: '✓',
+                    title: 'Congratulations — you\'re shortlisted!',
+                    message: (summary ? summary + ' ' : '') +
+                        (canStart
+                            ? 'Would you like to continue to the assessment guidelines and begin when ready?'
+                            : 'Your assessment is being prepared — check your email in a few minutes.'),
+                    detail,
+                    score,
+                    actionsHtml: canStart
+                        ? '<div class="btn-row">' +
+                          '<button type="button" class="btn" id="startAssessmentBtn">Yes — continue to assessment</button>' +
+                          '<button type="button" class="btn btn-secondary" id="laterAssessmentBtn">Maybe later — email me the link</button>' +
+                          '</div>'
+                        : '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
+                });
+                if (canStart) bindPassActions(sessionId, email, detail);
+                return;
+            }
+
+            if (stage === 'Rejected') {
+                showOutcome({
+                    iconClass: 'err',
+                    icon: '✕',
+                    title: 'Not shortlisted this time',
+                    message: summary || 'Thank you for applying. We encourage you to explore other open roles.',
+                    detail,
+                    score,
+                    actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">View other open roles</a>',
+                });
+                return;
+            }
+
+            if (stage === 'ReviewQueue') {
+                showOutcome({
+                    iconClass: 'info',
+                    icon: '◷',
+                    title: 'Under review',
+                    message: summary || 'Our team will review your application and contact you by email.',
+                    detail,
+                    score,
+                    actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
+                });
+                return;
+            }
+
+            if (stage === 'DuplicateSkipped') {
+                showOutcome({
+                    iconClass: 'info',
+                    icon: '↺',
+                    title: 'Already applied',
+                    message: summary || 'We already have your application for this role.',
+                    detail,
+                    actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
+                });
+                return;
+            }
+
+            showOutcome({
+                iconClass: 'info',
+                icon: '✓',
+                title: 'Application received',
+                message: summary || ('Status: ' + (stage || 'processing complete')),
+                detail,
+                score,
+                actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
+            });
+        }
+
+        async function beginScreeningPoll(email, fileNameText, submitStartedAt) {
+            if (!sbClient) {
+                showFailureView('Could not connect to screening status. Please try again.');
+                return;
+            }
+
+            showSubmittingView(email, fileNameText, 'screen');
+            const result = await pollScreeningResult(email, currentJob.job_id, submitStartedAt);
+            if (ignoreSubmitResult) return;
+
+            if (!result) {
+                showOutcome({
+                    iconClass: 'wait',
+                    icon: '⏳',
+                    title: 'Screening is taking longer than usual',
+                    message: 'Your CV was received. We\'ll email you when screening completes — usually within a few minutes.',
+                    detail: fileNameText + ' · ' + email + ' · ' + (currentJob?.title || ''),
+                    actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
+                });
+                return;
+            }
+
+            await handleScreeningOutcome(result, email, fileNameText);
         }
 
         function showFailureView(message) {
@@ -903,11 +1221,11 @@
                 return;
             }
 
-            const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
             const [jobRes, configRes] = await Promise.all([
-                sb.from('jobs').select('*').eq('job_id', jobSlug).eq('status', 'open').maybeSingle(),
-                sb.from('app_config').select('value').eq('key', 'cv_ingest_webhook').maybeSingle(),
+                sbClient.from('jobs').select('*').eq('job_id', jobSlug).eq('status', 'open').maybeSingle(),
+                sbClient.from('app_config').select('value').eq('key', 'cv_ingest_webhook').maybeSingle(),
             ]);
 
             if (jobRes.error) {
@@ -984,8 +1302,11 @@
             formData.append('cv_file', file, file.name);
             formData.append('apply_source', 'careers_page');
 
+            const submitStartedAt = Date.now();
             submitAbort = new AbortController();
             const timeoutId = setTimeout(() => submitAbort.abort(), SUBMIT_TIMEOUT_MS);
+
+            let uploadAccepted = false;
 
             try {
                 const res = await fetch(webhook, {
@@ -1000,33 +1321,30 @@
                 if (ignoreSubmitResult) return;
 
                 if (res.ok) {
-                    showSuccessView(
-                        DEFAULT_SUCCESS_MSG,
-                        file.name + ' · ' + email + ' · ' + currentJob.title
-                    );
-                    return;
+                    uploadAccepted = true;
+                } else {
+                    const errText = await res.text().catch(() => '');
+                    throw new Error('Server returned error ' + res.status + (errText ? ': ' + errText.slice(0, 120) : ''));
                 }
-
-                const errText = await res.text().catch(() => '');
-                throw new Error('Server returned error ' + res.status + (errText ? ': ' + errText.slice(0, 120) : ''));
             } catch (err) {
                 clearTimeout(timeoutId);
                 submitAbort = null;
                 if (ignoreSubmitResult) return;
 
                 if (err.name === 'AbortError') {
-                    showSuccessView(
-                        'Your CV was sent successfully. AI screening is still running in the background — if shortlisted, you\'ll receive an assessment link by email.',
-                        file.name + ' · ' + email + ' · ' + currentJob.title
-                    );
+                    uploadAccepted = true;
+                } else {
+                    const friendly =
+                        err.message && err.message.includes('Failed to fetch')
+                            ? 'Could not reach the application server. Your CV may not have been sent — please try again.'
+                            : (err.message || 'Submission failed. Please try again.');
+                    showFailureView(friendly);
                     return;
                 }
+            }
 
-                const friendly =
-                    err.message && err.message.includes('Failed to fetch')
-                        ? 'Could not reach the application server. Your CV may not have been sent — please try again.'
-                        : (err.message || 'Submission failed. Please try again.');
-                showFailureView(friendly);
+            if (uploadAccepted) {
+                await beginScreeningPoll(email, file.name, submitStartedAt);
             }
         });
 

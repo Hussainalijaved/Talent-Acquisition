@@ -1972,16 +1972,17 @@
                 return () => window.removeEventListener('beforeunload', handleBeforeUnload);
             }, [view]);
 
-            const handleStartAssessment = async () => {
+            const handleStartAssessment = async (overrideSessionId) => {
                 setIsLoading(true);
                 try {
                     await enterAssessmentFullscreen();
-                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId);
+                    const activeSessionId = String(overrideSessionId || sessionIdRef.current || sessionId || '').trim();
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeSessionId);
                     let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases');
                     if (isUuid) {
-                        query = query.eq('id', sessionId);
+                        query = query.eq('id', activeSessionId);
                     } else {
-                        query = query.eq('gmail_thread_id', sessionId);
+                        query = query.eq('gmail_thread_id', activeSessionId);
                     }
                     const { data, error } = await query.single();
 
@@ -2005,10 +2006,10 @@
                         lastViolationAtRef.current = 0;
                         devToolsOpenRef.current = false;
 
-                        const resolvedId = data.id || sessionId;
+                        const resolvedId = data.id || activeSessionId;
                         setSessionId(resolvedId);
                         sessionStorage.setItem('current_session_id', resolvedId);
-                        sessionStorage.setItem('candidate_email', candidateEmail || '');
+                        sessionStorage.setItem('candidate_email', candidateEmailRef.current || candidateEmail || '');
                         sessionStorage.setItem('assessment_started', 'true');
 
                         await startPhaseTimerInDatabase(resolvedId, history, phaseIndex);
@@ -2023,6 +2024,53 @@
                     setIsLoading(false);
                 }
             };
+
+            const urlEnterRanRef = useRef(false);
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                const urlSession = cleanUrlParam(params.get('session'));
+                const urlEmail = cleanUrlParam(params.get('email')) || '';
+                if (!urlSession || urlSession.length < 10 || urlEnterRanRef.current) return;
+                if (sessionStorage.getItem('assessment_started') === 'true') return;
+
+                urlEnterRanRef.current = true;
+                let cancelled = false;
+
+                (async () => {
+                    setIsLoading(true);
+                    try {
+                        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(urlSession);
+                        let query = supabase.from('assessment_sessions').select('id, status');
+                        if (isUuid) {
+                            query = query.eq('id', urlSession);
+                        } else {
+                            query = query.eq('gmail_thread_id', urlSession);
+                        }
+                        const { data, error } = await query.single();
+                        if (cancelled) return;
+                        if (error || !data) return;
+
+                        const statusStr = (data.status || '').toLowerCase();
+                        if (statusStr.includes('completed') || statusStr.includes('terminated')) return;
+
+                        setSessionId(data.id);
+                        if (urlEmail) {
+                            setCandidateEmail(urlEmail);
+                            sessionStorage.setItem('candidate_email', urlEmail);
+                        }
+                        sessionStorage.setItem('current_session_id', data.id);
+                        sessionStorage.removeItem('assessment_started');
+                        await enterAssessmentFullscreen();
+                        if (!cancelled) setView('instructions');
+                    } catch (e) {
+                        console.error('Session link entry failed:', e);
+                    } finally {
+                        if (!cancelled) setIsLoading(false);
+                    }
+                })();
+
+                return () => { cancelled = true; };
+            }, []);
 
             const extractNextQuestion = (data) => {
                 let nextQ = data?.nextQuestion || data?.question || data?.output || data?.text || '';

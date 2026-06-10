@@ -585,8 +585,8 @@
                                 </div>
                                 <div class="form-group span-2">
                                     <label for="jobCriteriaIn">Must-have criteria (one per line)</label>
-                                    <textarea id="jobCriteriaIn" placeholder="5+ years Node.js&#10;PostgreSQL &amp; API design&#10;Team lead experience"></textarea>
-                                    <div class="form-hint">Paste bullet points — click Generate to build full JD</div>
+                                    <textarea id="jobCriteriaIn" placeholder="C# and .NET Core&#10;ASP.NET Core / Web API&#10;SQL Server &amp; Entity Framework&#10;Git and Agile teamwork"></textarea>
+                                    <div class="form-hint">One skill per line — AI writes a LinkedIn-style professional JD from these criteria</div>
                                 </div>
                                 <div class="form-group span-2">
                                     <label for="jobNiceIn">Nice to have (optional)</label>
@@ -598,7 +598,7 @@
                                 </div>
                             </div>
                             <div class="form-actions">
-                                <button type="button" class="btn-secondary" id="jobGenBtn">Generate JD from criteria</button>
+                                <button type="button" class="btn-secondary" id="jobGenBtn">Generate with AI</button>
                                 <button type="button" class="btn-primary" onclick="document.getElementById('jobForm').dispatchEvent(new Event('submit'))">Save job</button>
                                 <button type="button" class="btn-secondary" id="jobResetBtn">Clear form</button>
                             </div>
@@ -732,12 +732,17 @@
             <!-- SETTINGS -->
             <section class="view" id="view-settings">
                 <div class="card" style="max-width:640px">
-                    <div class="card-head"><div class="card-title">Integration settings<small>Webhook used by Manual CV Screen</small></div></div>
+                    <div class="card-head"><div class="card-title">Integration settings<small>n8n webhooks for screening and JD generation</small></div></div>
                     <div class="form-grid cols-1">
                         <div class="form-group">
                             <label for="admWebhook">n8n CV ingest webhook URL</label>
                             <input id="admWebhook" type="url" placeholder="https://your-ngrok.ngrok-free.dev/webhook/talent/cv-ingest" />
-                            <div class="form-hint">Same URL as recruiter intake — stored in Supabase app_config</div>
+                            <div class="form-hint">Used by apply flow and Manual CV Screen</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="admJdWebhook">n8n JD generate webhook URL</label>
+                            <input id="admJdWebhook" type="url" placeholder="https://your-ngrok.ngrok-free.dev/webhook/talent/jd-generate" />
+                            <div class="form-hint">Groq AI job description — Jobs → Generate with AI</div>
                         </div>
                     </div>
                     <div class="form-actions">

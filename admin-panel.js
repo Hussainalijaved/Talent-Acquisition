@@ -6,6 +6,7 @@
     'use strict';
 
     const WEBHOOK_STORAGE = 'ta_cv_ingest_webhook';
+    const JD_WEBHOOK_STORAGE = 'ta_jd_generate_webhook';
     let deps = null;
     let JOBS = [];
     let ONSITE = [];
@@ -25,45 +26,252 @@
         return url.replace(/\/+$/, '');
     }
 
+    function parseBulletLines(raw) {
+        return String(raw || '')
+            .split(/\n/)
+            .map((l) => l.replace(/^[\s\-•*]+/, '').trim())
+            .filter(Boolean);
+    }
+
+    function toBullets(lines) {
+        return lines.map((l) => `• ${l}`).join('\n');
+    }
+
+    function detectSeniority(title) {
+        const t = String(title || '').toLowerCase();
+        if (/\b(intern|trainee|graduate|entry[\s-]?level)\b/.test(t)) return 'intern';
+        if (/\b(junior|jr\.?)\b/.test(t)) return 'junior';
+        if (/\b(senior|sr\.?|lead|principal|staff|architect|head)\b/.test(t)) return 'senior';
+        return 'mid';
+    }
+
+    function detectRoleFamily(title) {
+        const t = String(title || '').toLowerCase();
+        if (/\.net|dotnet|asp\.net|c#|csharp/.test(t)) return 'dotnet';
+        if (/flutter|dart/.test(t)) return 'flutter';
+        if (/react|frontend|front[\s-]?end|vue|angular|ui developer/.test(t)) return 'frontend';
+        if (/node\.?js|backend|back[\s-]?end|api developer|python|java|golang|go developer/.test(t)) return 'backend';
+        if (/devops|sre|platform|cloud/.test(t)) return 'devops';
+        if (/qa|test|quality/.test(t)) return 'qa';
+        return 'general';
+    }
+
+    function roleTemplates() {
+        const dotnetResp = {
+            intern: [
+                'Support the development team in building and testing .NET applications under close mentorship.',
+                'Assist with bug fixes, documentation, and small feature tasks using C# and ASP.NET Core.',
+                'Learn coding standards, Git workflows, and Agile practices through hands-on project work.',
+            ],
+            junior: [
+                'Develop, test, and maintain web applications using C#, ASP.NET Core, and the Microsoft technology stack.',
+                'Write clean, efficient, and well-documented code in line with team standards and best practices.',
+                'Collaborate with senior developers and cross-functional teams to implement features and resolve defects.',
+                'Participate in code reviews, debugging, and troubleshooting to improve application quality and reliability.',
+                'Work with SQL Server and Entity Framework to support data access, queries, and basic database tasks.',
+                'Build and consume RESTful APIs and integrate application components with third-party services.',
+                'Contribute to Agile ceremonies including daily stand-ups, sprint planning, and retrospectives.',
+            ],
+            mid: [
+                'Design and deliver scalable web applications and services using .NET Core, C#, and related technologies.',
+                'Own feature development end-to-end — from requirements analysis through deployment and support.',
+                'Produce maintainable code, unit tests, and technical documentation for production systems.',
+                'Collaborate with product, QA, and engineering peers to ship reliable software on schedule.',
+                'Optimize application performance, database queries, and API integrations.',
+                'Mentor junior developers and uphold engineering best practices across the codebase.',
+            ],
+            senior: [
+                'Lead the design and architecture of enterprise-grade .NET solutions aligned with business goals.',
+                'Drive technical decisions on frameworks, patterns, security, performance, and scalability.',
+                'Deliver complex features and integrations while setting standards for code quality and review.',
+                'Partner with stakeholders to translate requirements into robust technical roadmaps.',
+                'Coach engineers, conduct in-depth code reviews, and improve engineering processes.',
+            ],
+        };
+
+        const dotnetReq = {
+            intern: [
+                'Currently pursuing or recently completed a degree in Computer Science, Software Engineering, or a related field.',
+                'Exposure to C#, object-oriented programming, and basic web development concepts.',
+                'Eagerness to learn .NET, ASP.NET Core, SQL, and modern development tools.',
+                'Strong communication skills and ability to work collaboratively in a team.',
+            ],
+            junior: [
+                "Bachelor's degree in Computer Science, Software Engineering, or a related field (or equivalent practical experience).",
+                '0–2 years of experience with C#, .NET / .NET Core, and object-oriented programming principles.',
+                'Working knowledge of ASP.NET Core, MVC, Web API, and relational databases (SQL Server preferred).',
+                'Familiarity with HTML, CSS, JavaScript, and version control (Git).',
+                'Solid problem-solving skills, attention to detail, and willingness to learn in a fast-paced environment.',
+                'Strong written and verbal communication skills.',
+            ],
+            mid: [
+                "Bachelor's degree in Computer Science or a related discipline.",
+                '2–5 years of professional experience building applications with .NET / .NET Core and C#.',
+                'Strong proficiency in ASP.NET Core, Web API, Entity Framework, and SQL Server.',
+                'Experience with RESTful services, design patterns, and Agile delivery methodologies.',
+                'Demonstrated ability to own features independently and collaborate across teams.',
+            ],
+            senior: [
+                "Bachelor's degree in Computer Science or equivalent experience.",
+                '5+ years of experience designing and building production systems with .NET technologies.',
+                'Deep expertise in C#, ASP.NET Core, cloud-ready architecture, and database design.',
+                'Proven track record leading projects, mentoring developers, and influencing technical direction.',
+            ],
+        };
+
+        const dotnetNice = [
+            'Experience with Microsoft Azure or cloud deployment pipelines.',
+            'Exposure to CI/CD, Docker, or automated testing frameworks.',
+            'Familiarity with front-end frameworks (Angular, React, or Blazor).',
+            'Understanding of microservices, messaging, or event-driven architecture.',
+        ];
+
+        return {
+            dotnet: {
+                about(seniority, title, dept) {
+                    const openers = {
+                        intern: `We are seeking a motivated ${title} to join our ${dept} team. This internship offers hands-on experience building real applications with C#, ASP.NET Core, and modern Microsoft technologies alongside experienced engineers.`,
+                        junior: `We are looking for a talented ${title} to join our growing ${dept} team. You will work alongside experienced developers to build, test, and maintain web applications using C#, ASP.NET Core, and the Microsoft stack — with strong mentorship and room to grow.`,
+                        mid: `We are hiring an experienced ${title} to strengthen our ${dept} team. You will own meaningful product work across the full software lifecycle, from design and implementation through deployment and continuous improvement.`,
+                        senior: `We are seeking a seasoned ${title} to provide technical leadership within our ${dept} organisation. You will shape architecture, guide delivery, and raise the bar for engineering quality across our .NET platform.`,
+                    };
+                    return openers[seniority] || openers.junior;
+                },
+                responsibilities: dotnetResp,
+                requirements: dotnetReq,
+                nice: dotnetNice,
+            },
+            flutter: {
+                about(seniority, title, dept) {
+                    return seniority === 'senior'
+                        ? `We are looking for a ${title} to lead mobile product delivery in our ${dept} team, driving Flutter architecture, performance, and best practices across iOS and Android.`
+                        : `We are looking for a ${title} to join our ${dept} team and help build polished cross-platform mobile experiences using Flutter and Dart.`;
+                },
+                responsibilities: {
+                    junior: [
+                        'Develop and maintain Flutter applications for iOS and Android under guidance from senior mobile engineers.',
+                        'Implement UI screens, state management, and API integrations based on product specifications.',
+                        'Write clean Dart code, fix bugs, and contribute to code reviews and team discussions.',
+                        'Collaborate with designers, backend engineers, and QA to ship reliable mobile releases.',
+                    ],
+                    mid: [
+                        'Own feature delivery across the Flutter codebase — UI, business logic, and third-party integrations.',
+                        'Improve app performance, maintainability, and test coverage across platforms.',
+                        'Work with REST/GraphQL APIs and mobile release processes (build, signing, store submission support).',
+                    ],
+                    senior: [
+                        'Define mobile architecture, patterns, and standards for Flutter applications at scale.',
+                        'Lead complex feature development and mentor mobile engineers on best practices.',
+                    ],
+                },
+                requirements: {
+                    junior: [
+                        "Bachelor's degree in Computer Science or related field (or equivalent experience).",
+                        'Experience building mobile apps with Flutter and Dart.',
+                        'Understanding of REST APIs, Git, and mobile UI/UX principles.',
+                        'Strong problem-solving skills and collaborative mindset.',
+                    ],
+                },
+                nice: ['Firebase experience', 'Native iOS/Android knowledge', 'Automated testing for Flutter'],
+            },
+            general: {
+                about(seniority, title, dept) {
+                    return `We are hiring a ${title} to join our ${dept} team. In this role, you will contribute to the design, development, and delivery of high-quality software solutions that support our business goals and customer experience.`;
+                },
+                responsibilities: {
+                    junior: [
+                        'Support the design, development, testing, and maintenance of software features and fixes.',
+                        'Write clean, maintainable code and participate in code reviews with the engineering team.',
+                        'Collaborate with product, design, and QA to understand requirements and deliver on schedule.',
+                        'Document technical work, troubleshoot issues, and contribute to continuous improvement.',
+                    ],
+                    mid: [
+                        'Own end-to-end delivery of features from requirements through production support.',
+                        'Build scalable, reliable solutions and improve existing systems and processes.',
+                        'Partner with cross-functional stakeholders to prioritise and ship high-impact work.',
+                    ],
+                    senior: [
+                        'Provide technical leadership across projects, architecture, and engineering standards.',
+                        'Drive complex initiatives, mentor team members, and influence product and platform direction.',
+                    ],
+                },
+                requirements: {
+                    junior: [
+                        "Bachelor's degree in a relevant field or equivalent practical experience.",
+                        'Foundational experience in software development and modern engineering practices.',
+                        'Strong analytical, communication, and teamwork skills.',
+                    ],
+                },
+                nice: ['Experience in Agile teams', 'Exposure to CI/CD and automated testing'],
+            },
+        };
+    }
+
+    function pickList(map, seniority, fallbackSeniority) {
+        if (!map) return [];
+        return map[seniority] || map[fallbackSeniority] || map.junior || map.mid || Object.values(map)[0] || [];
+    }
+
     function generateJdFromCriteria(opts) {
         const title = String(opts.title || 'Open Position').trim();
         const dept = String(opts.department || 'Engineering').trim();
         const loc = String(opts.location || 'Remote').trim();
         const emp = String(opts.employment_type || 'Full-time').trim();
-        const criteria = String(opts.criteria || '')
-            .split(/\n/)
-            .map((l) => l.replace(/^[\s\-•*]+/, '').trim())
-            .filter(Boolean);
-        const nice = String(opts.nice || '')
-            .split(/\n/)
-            .map((l) => l.replace(/^[\s\-•*]+/, '').trim())
-            .filter(Boolean);
+        const criteria = parseBulletLines(opts.criteria);
+        const nice = parseBulletLines(opts.nice);
 
-        const must = criteria.length
-            ? criteria.map((c) => `• ${c}`).join('\n')
-            : '• Relevant degree or equivalent practical experience\n• Strong communication and ownership';
+        const seniority = detectSeniority(title);
+        const family = detectRoleFamily(title);
+        const templates = roleTemplates();
+        const tpl = templates[family] || templates.general;
 
-        const optional = nice.length
-            ? nice.map((c) => `• ${c}`).join('\n')
-            : '• Experience in fast-paced product teams\n• Open-source or portfolio contributions';
+        const about =
+            typeof tpl.about === 'function' ? tpl.about(seniority, title, dept) : tpl.about;
+
+        const responsibilities = pickList(tpl.responsibilities, seniority, 'junior');
+        const defaultReq = pickList(tpl.requirements, seniority, 'junior');
+        const requirements = criteria.length ? criteria : defaultReq;
+        const defaultNice = Array.isArray(tpl.nice)
+            ? tpl.nice
+            : (Array.isArray(templates.general.nice) ? templates.general.nice : []);
+        const niceList = nice.length ? nice : defaultNice;
+
+        const expLine = {
+            intern: 'Internship / graduate opportunity',
+            junior: '0–2 years of relevant experience',
+            mid: '2–5 years of relevant experience',
+            senior: '5+ years of relevant experience',
+        }[seniority];
 
         return (
             `${title}\n` +
-            `${dept} · ${emp} · ${loc}\n\n` +
-            `About the role\n` +
-            `We are hiring a ${title} to deliver on core product and engineering outcomes. ` +
-            `You will work closely with stakeholders to ship reliable solutions aligned with business goals.\n\n` +
-            `Key responsibilities\n` +
-            `${must}\n\n` +
-            `Required skills & experience\n` +
-            `${must}\n\n` +
-            `Nice to have\n` +
-            `${optional}\n\n` +
-            `What we offer\n` +
-            `• Collaborative team and clear growth path\n` +
-            `• Modern tooling and structured hiring process\n\n` +
-            `How to apply\n` +
-            `Submit your CV through our careers portal. Shortlisted candidates complete a structured technical assessment before interview scheduling.`
+            `${dept} | ${emp} | ${loc}\n\n` +
+            `About the Role\n` +
+            `${about} You will work in a collaborative environment where quality, ownership, and continuous learning are valued.\n\n` +
+            `What You'll Do\n` +
+            `${toBullets(responsibilities)}\n\n` +
+            `What We're Looking For\n` +
+            `${toBullets(requirements)}\n\n` +
+            `Nice to Have\n` +
+            `${toBullets(niceList)}\n\n` +
+            `Qualifications\n` +
+            `${toBullets([
+                expLine,
+                'Ability to work independently and collaboratively in a professional team environment',
+                'Strong problem-solving skills and attention to detail',
+            ])}\n\n` +
+            `What We Offer\n` +
+            `${toBullets([
+                'Competitive compensation aligned with experience and market standards',
+                'Collaborative culture with mentorship, code review, and structured growth opportunities',
+                'Exposure to modern tooling, Agile delivery, and industry best practices',
+                loc.toLowerCase().includes('remote')
+                    ? 'Flexible remote-friendly working arrangements'
+                    : 'A supportive on-site team environment',
+            ])}\n\n` +
+            `How to Apply\n` +
+            `Ready to join us? Submit your CV through our careers portal. Shortlisted candidates will be invited to complete a structured technical assessment — the next step in our hiring process.\n\n` +
+            `We are an equal opportunity employer and welcome applications from qualified candidates regardless of background.`
         );
     }
 
@@ -76,20 +284,34 @@
         return url;
     }
 
+    async function loadJdWebhookConfig() {
+        if (!deps?.sb) return '';
+        const { data } = await deps.sb.from('app_config').select('value').eq('key', 'jd_generate_webhook').maybeSingle();
+        const url = normalizeWebhookUrl(data?.value || localStorage.getItem(JD_WEBHOOK_STORAGE) || '');
+        const inp = document.getElementById('admJdWebhook');
+        if (inp && url) inp.value = url;
+        return url;
+    }
+
     async function saveWebhookConfig() {
-        const url = normalizeWebhookUrl(document.getElementById('admWebhook')?.value || '');
-        if (!url) {
+        const cvUrl = normalizeWebhookUrl(document.getElementById('admWebhook')?.value || '');
+        const jdUrl = normalizeWebhookUrl(document.getElementById('admJdWebhook')?.value || '');
+        if (!cvUrl) {
             deps.banner('Enter a valid n8n CV ingest webhook URL.', 'err');
             return;
         }
-        localStorage.setItem(WEBHOOK_STORAGE, url);
+        localStorage.setItem(WEBHOOK_STORAGE, cvUrl);
+        if (jdUrl) localStorage.setItem(JD_WEBHOOK_STORAGE, jdUrl);
         if (deps.sb) {
-            await deps.sb.from('app_config').upsert(
-                { key: 'cv_ingest_webhook', value: url, updated_at: new Date().toISOString() },
-                { onConflict: 'key' }
-            );
+            const rows = [
+                { key: 'cv_ingest_webhook', value: cvUrl, updated_at: new Date().toISOString() },
+            ];
+            if (jdUrl) {
+                rows.push({ key: 'jd_generate_webhook', value: jdUrl, updated_at: new Date().toISOString() });
+            }
+            await deps.sb.from('app_config').upsert(rows, { onConflict: 'key' });
         }
-        deps.banner('Webhook URL saved.', 'ok');
+        deps.banner('Webhook URLs saved.', 'ok');
     }
 
     async function loadJobs() {
@@ -227,17 +449,75 @@
         await loadJobs();
     }
 
-    function onJobCriteriaGenerate() {
-        const jd = generateJdFromCriteria({
-            title: document.getElementById('jobTitleIn').value,
-            department: document.getElementById('jobDeptIn').value,
+    async function onJobCriteriaGenerate() {
+        const title = document.getElementById('jobTitleIn').value.trim();
+        if (!title) {
+            deps.banner('Enter a job title first.', 'err');
+            return;
+        }
+
+        const payload = {
+            title,
+            department: document.getElementById('jobDeptIn').value.trim(),
             location: document.getElementById('jobLocIn').value,
             employment_type: document.getElementById('jobTypeIn').value,
             criteria: document.getElementById('jobCriteriaIn').value,
-            nice: document.getElementById('jobNiceIn').value,
+            nice_to_have: document.getElementById('jobNiceIn').value,
+        };
+
+        const btn = document.getElementById('jobGenBtn');
+        const webhook = normalizeWebhookUrl(
+            document.getElementById('admJdWebhook')?.value ||
+            localStorage.getItem(JD_WEBHOOK_STORAGE) ||
+            (await loadJdWebhookConfig())
+        );
+
+        if (webhook) {
+            const prevLabel = btn?.textContent || 'Generate with AI';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'AI generating…';
+            }
+            try {
+                const res = await fetch(webhook, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': '1',
+                    },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json().catch(() => ({}));
+                const jd = String(data.jd_text || data.output || data.text || '').trim();
+                if (res.ok && jd) {
+                    document.getElementById('jobJdIn').value = jd;
+                    deps.banner('AI generated professional JD — review before saving.', 'ok');
+                    return;
+                }
+                const errMsg = data.error || data.message || ('HTTP ' + res.status);
+                deps.banner('AI generation failed: ' + errMsg + ' — using template fallback.', 'err');
+            } catch (e) {
+                deps.banner('AI generation failed — using template fallback.', 'err');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = prevLabel;
+                }
+            }
+        } else {
+            deps.banner('JD webhook not set — using template. Add URL in Settings.', 'err');
+        }
+
+        const jd = generateJdFromCriteria({
+            title: payload.title,
+            department: payload.department,
+            location: payload.location,
+            employment_type: payload.employment_type,
+            criteria: payload.criteria,
+            nice: payload.nice_to_have,
         });
         document.getElementById('jobJdIn').value = jd;
-        deps.banner('Job description generated from criteria — review and edit before saving.', 'ok');
+        deps.banner('Template JD generated — review and tailor before publishing.', 'ok');
     }
 
     function onScreenJobPick() {
@@ -423,13 +703,17 @@
             deps.activeCandidate = null;
             bindEvents();
             loadWebhookConfig();
+            loadJdWebhookConfig();
             loadJobs();
             loadOnsite();
         },
         onViewChange(view) {
             if (view === 'jobs') loadJobs();
             if (view === 'onsite') loadOnsite();
-            if (view === 'settings') loadWebhookConfig();
+            if (view === 'settings') {
+                loadWebhookConfig();
+                loadJdWebhookConfig();
+            }
         },
         setActiveCandidate(m) {
             deps.activeCandidate = m;

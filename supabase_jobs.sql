@@ -66,5 +66,6 @@ create trigger jobs_updated_at
 
 -- Optional seed (edit webhook before running):
 -- insert into public.app_config (key, value) values
---   ('cv_ingest_webhook', 'https://your-n8n.example.com/webhook/talent/cv-ingest')
+--   ('cv_ingest_webhook', 'https://your-n8n.example.com/webhook/talent/cv-ingest'),
+--   ('jd_generate_webhook', 'https://your-n8n.example.com/webhook/talent/jd-generate')
 -- on conflict (key) do update set value = excluded.value, updated_at = now();

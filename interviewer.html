@@ -270,6 +270,46 @@
             text-align: center;
             margin-bottom: 16px;
         }
+
+        .session-recovery {
+            margin-bottom: 20px;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(251, 191, 36, 0.35);
+            background: rgba(251, 191, 36, 0.08);
+        }
+
+        .session-recovery p {
+            margin: 0 0 12px;
+            font-size: 13px;
+            color: #fde68a;
+            line-height: 1.5;
+        }
+
+        .session-recovery input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.7);
+            color: #fff;
+            font-family: ui-monospace, monospace;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+
+        .session-recovery button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #4f46e5, #6366f1);
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="scheduling-portal.js"></script>
@@ -279,6 +319,11 @@
         <h2>Propose interview dates</h2>
         <p class="subtitle">Select <strong>at least 2</strong> weekdays (Mon–Fri). The candidate will pick one.</p>
         <p class="load-err" id="loadErr" hidden></p>
+        <div class="session-recovery" id="sessionRecovery" hidden>
+            <p>Old n8n link detected. Paste the <strong>Session ID</strong> from your interviewer email, then continue.</p>
+            <input type="text" id="sessionInput" placeholder="e.g. 21412d9e-8363-427e-8bfb-65343e49732e" autocomplete="off">
+            <button type="button" id="sessionContinueBtn">Continue with Session ID</button>
+        </div>
         <div class="candidate-card" id="candidateCard" hidden></div>
 
         <div class="input-group">
@@ -307,7 +352,7 @@
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
         const SP = window.SchedulingPortal;
-        const sessionId = SP.parseSessionId();
+        let sessionId = SP.parseSessionId();
         const DURATION_MIN = 60;
         let sessionRow = null;
 
@@ -480,16 +525,25 @@
             document.getElementById('submitBtn').disabled = true;
         }
 
-        async function initSession() {
-            if (!sessionId) {
-                const legacy = new URLSearchParams(window.location.search).get('resumeUrl');
-                showLoadError(
-                    legacy
-                        ? 'This is an old n8n scheduling link. Ask HR to send a fresh interviewer email (new links use ?session=).'
-                        : 'Missing session in URL. Open the link from your interviewer email.'
-                );
-                return;
+        function rewriteUrlWithSession(id) {
+            const u = new URL(window.location.href);
+            u.searchParams.delete('resumeUrl');
+            u.searchParams.set('session', id);
+            window.history.replaceState({}, '', u.pathname + u.search);
+        }
+
+        async function bindSession(id) {
+            const trimmed = String(id || '').trim();
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+                showLoadError('Invalid Session ID — copy the full UUID from your email.');
+                return false;
             }
+
+            sessionId = trimmed;
+            rewriteUrlWithSession(sessionId);
+            document.getElementById('sessionRecovery').hidden = true;
+            document.getElementById('loadErr').hidden = true;
+
             try {
                 sessionRow = await SP.loadSession(sessionId);
                 const card = document.getElementById('candidateCard');
@@ -503,9 +557,28 @@
                     (sessionRow.score ?? '—') +
                     '/100</strong> · ' +
                     sessionRow.candidate_email;
+                return true;
             } catch (err) {
+                sessionRow = null;
                 showLoadError((err && err.message) || 'Could not load session.');
+                return false;
             }
+        }
+
+        async function initSession() {
+            if (sessionId) {
+                await bindSession(sessionId);
+                return;
+            }
+
+            const legacy = new URLSearchParams(window.location.search).get('resumeUrl');
+            if (legacy) {
+                document.getElementById('sessionRecovery').hidden = false;
+                showLoadError('Old link — enter Session ID from email to trigger scheduling webhook.');
+                return;
+            }
+
+            showLoadError('Missing session in URL. Open the link from your interviewer email.');
         }
 
         async function submitSlots() {
@@ -547,14 +620,32 @@
                 return;
             }
 
-            btn.textContent = 'Sending invite…';
+            btn.textContent = 'Triggering webhook…';
             const webhookOk = await SP.notifySlotsReady(sessionId);
+
+            if (!webhookOk) {
+                btn.disabled = false;
+                btn.textContent = 'Send options to candidate';
+                alert(
+                    'Slots saved in Supabase, but n8n webhook did not respond.\n\n' +
+                        'Check:\n' +
+                        '1) n8n workflow "Scheduling Webhooks" is ACTIVE\n' +
+                        '2) ngrok URL in scheduling-portal.js matches your n8n\n' +
+                        '3) Retry this button — webhook path: /webhook/talent/scheduling-slots'
+                );
+                return;
+            }
 
             SP.goSuccess('interviewer', {
                 count: String(slots.length),
-                webhook: webhookOk ? 'ok' : 'delayed',
+                webhook: 'ok',
             });
         }
+
+        document.getElementById('sessionContinueBtn').addEventListener('click', async function () {
+            const input = document.getElementById('sessionInput').value;
+            await bindSession(input);
+        });
 
         initSession();
     </script>

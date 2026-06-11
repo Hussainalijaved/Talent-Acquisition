@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         :root {
             --bg: #f8fafc;
@@ -391,6 +392,25 @@
         .btn-primary:hover, .btn-secondary:hover, .btn-danger:hover, .btn-sm:hover { opacity: .88; }
         .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
         .admin-split { display: grid; grid-template-columns: 1fr 1.2fr; gap: 18px; align-items: start; }
+        .mode-toggle { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+        .mode-btn {
+            padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text-soft); font-size: 13px; font-weight: 600; cursor: pointer;
+        }
+        .mode-btn.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+        .batch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; max-height: 220px; overflow-y: auto; }
+        .batch-row { display: grid; grid-template-columns: 1fr 1.2fr; gap: 10px; align-items: center; font-size: 13px; }
+        .batch-row .fname { color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .batch-row input.extracting { opacity: 0.6; }
+        .batch-row input.extracted { border-color: var(--green); }
+        .batch-row input.missing { border-color: var(--amber); }
+        .screen-progress { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin: 12px 0; display: none; }
+        .screen-progress.show { display: block; }
+        .screen-progress-fill { height: 100%; width: 0; background: var(--primary-grad); transition: width .25s ease; }
+        .guide-panel { margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+        .guide-panel summary { padding: 12px 16px; cursor: pointer; font-weight: 600; font-size: 14px; color: var(--primary); }
+        .guide-panel ol { margin: 0; padding: 0 16px 16px 32px; color: var(--text-soft); font-size: 13px; line-height: 1.65; }
+        .guide-panel li { margin-bottom: 6px; }
         .raw-json { font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.45; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-all; background: var(--surface-2); padding: 12px; border-radius: 9px; color: var(--text-soft); }
         .drawer-actions { display: flex; gap: 8px; margin-top: 8px; }
 
@@ -432,7 +452,7 @@
         </button>
         <button class="nav-item" data-view="screen">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>
-            Manual CV Screen
+            CV Screening
         </button>
         <button class="nav-item" data-view="onsite">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -549,6 +569,17 @@
 
             <!-- JOBS -->
             <section class="view" id="view-jobs">
+                <details class="guide-panel">
+                    <summary>LinkedIn par job kaise post karein (guide)</summary>
+                    <ol>
+                        <li>Yahan job <strong>Save</strong> karein aur status <em>Open</em> rakhein.</li>
+                        <li>Jobs table se <strong>apply link</strong> copy karein — yeh URL LinkedIn par paste hogi.</li>
+                        <li>LinkedIn → <strong>Jobs → Create job</strong> — title aur JD yahan se copy karein.</li>
+                        <li><strong>Easy Apply band</strong> karein → <em>Apply on company website</em> select karein.</li>
+                        <li>External URL mein apply link paste karein, e.g. <code>apply.html?job=junior-backend-developer</code></li>
+                        <li>Candidate apply karega → careers page → CV upload → AI screening (24/7).</li>
+                    </ol>
+                </details>
                 <div class="card" style="margin-bottom:20px">
                     <div class="card-head">
                         <div class="card-title">Live on careers page<small>Open roles candidates see at careers.html — same listings</small></div>
@@ -636,10 +667,10 @@
                 </div>
             </section>
 
-            <!-- MANUAL CV SCREEN -->
+            <!-- CV SCREENING (merged recruiter intake) -->
             <section class="view" id="view-screen">
-                <div class="card" style="max-width:820px">
-                    <div class="card-head"><div class="card-title">Manual CV screening<small>For outsourced or offline CVs — runs same AI pipeline as intake</small></div></div>
+                <div class="card" style="max-width:920px">
+                    <div class="card-head"><div class="card-title">CV screening<small>Single or batch upload — same AI pipeline as careers apply flow</small></div></div>
                     <form id="screenForm">
                         <div class="form-grid">
                             <div class="form-group span-2">
@@ -647,32 +678,43 @@
                                 <select id="scrJob"><option value="">Select job…</option></select>
                             </div>
                             <div class="form-group">
-                                <label for="scrEmail">Candidate email *</label>
-                                <input id="scrEmail" type="email" required placeholder="candidate@email.com" />
-                            </div>
-                            <div class="form-group">
-                                <label for="scrInt">Interviewer email</label>
-                                <input id="scrInt" type="email" placeholder="From job or override" />
-                            </div>
-                            <div class="form-group span-2">
                                 <label for="scrTitle">Requisition title *</label>
                                 <input id="scrTitle" type="text" required placeholder="Senior Backend Engineer" />
                             </div>
-                            <div class="form-group span-2">
-                                <label for="scrJd">JD / requirements *</label>
-                                <textarea id="scrJd" required placeholder="Paste job description for AI screening…"></textarea>
+                            <div class="form-group">
+                                <label for="scrInt">Interviewer email *</label>
+                                <input id="scrInt" type="email" required placeholder="interviewer@company.com" />
                             </div>
                             <div class="form-group span-2">
-                                <label for="scrCvText">CV text (paste)</label>
+                                <label for="scrJd">JD / requirements *</label>
+                                <textarea id="scrJd" required placeholder="Paste job description for AI screening…" style="min-height:160px"></textarea>
+                            </div>
+                            <div class="form-group span-2">
+                                <label>Upload mode</label>
+                                <div class="mode-toggle">
+                                    <button type="button" class="mode-btn active" data-screen-mode="single">Single candidate</button>
+                                    <button type="button" class="mode-btn" data-screen-mode="batch">Multiple CVs (same JD)</button>
+                                </div>
+                            </div>
+                            <div class="form-group" id="scrEmailGroup">
+                                <label for="scrEmail">Candidate email *</label>
+                                <input id="scrEmail" type="email" placeholder="Auto-detected from PDF" />
+                            </div>
+                            <div class="form-group span-2" id="scrCvTextGroup">
+                                <label for="scrCvText">CV text (paste — single mode)</label>
                                 <textarea id="scrCvText" placeholder="Paste CV content if no PDF…"></textarea>
                             </div>
                             <div class="form-group span-2">
-                                <label for="scrCvFile">Or upload PDF</label>
-                                <input id="scrCvFile" type="file" accept=".pdf,.doc,.docx,application/pdf" />
+                                <label for="scrCvFile" id="scrFileLabel">Upload PDF</label>
+                                <input id="scrCvFile" type="file" accept=".pdf,application/pdf" />
+                                <div class="form-hint" id="scrFileHint">PDF only · email auto-detected from CV in single &amp; batch mode</div>
+                                <div id="scrBatchList" class="batch-list"></div>
                             </div>
                         </div>
+                        <div class="screen-progress" id="scrProgress"><div class="screen-progress-fill" id="scrProgressFill"></div></div>
                         <div class="form-actions">
                             <button type="submit" class="btn-primary" id="scrSubmit">Run AI screening</button>
+                            <button type="button" class="btn-secondary" id="scrViewResults">View results</button>
                         </div>
                     </form>
                 </div>
@@ -1141,9 +1183,9 @@
         function renderPipeline() {
             const s = stats();
             const steps = [
-                { label: 'Applied / screened', n: s.total, c: '#2563eb' },
+                { label: 'Applied / screened', n: s.total, c: '#0b5cab' },
                 { label: 'Shortlisted', n: s.short, c: '#16a34a' },
-                { label: 'In / completed assessment', n: s.inAssess + s.pass + s.fail, c: '#7c3aed' },
+                { label: 'In / completed assessment', n: s.inAssess + s.pass + s.fail, c: '#00a0dc' },
                 { label: 'Passed assessment', n: s.pass, c: '#16a34a' },
             ];
             const max = Math.max(1, ...steps.map(x => x.n));
@@ -1359,7 +1401,7 @@
             candidates: ['Candidates', 'Every applicant, score and decision'],
             pipeline: ['Pipeline', 'Funnel from application to hire'],
             jobs: ['Jobs', 'Create JDs, publish roles, manage postings'],
-            screen: ['Manual CV Screen', 'Screen outsourced or offline CVs via AI'],
+            screen: ['CV Screening', 'Screen single or batch CVs via AI — merged recruiter intake'],
             onsite: ['Onsite Interviews', 'Record in-person interview outcomes'],
             settings: ['Settings', 'Webhooks and integrations'],
         };
@@ -1373,8 +1415,20 @@
             if (searchWrap) searchWrap.style.display = (v === 'candidates' || v === 'overview') ? 'flex' : 'none';
             if (v === 'overview' || v === 'pipeline') setTimeout(renderCharts, 60);
             if (window.TAAdmin) TAAdmin.onViewChange(v);
+            try {
+                const url = new URL(location.href);
+                url.searchParams.set('view', v);
+                url.searchParams.delete('tab');
+                history.replaceState({}, '', url);
+            } catch (_) { /* ignore */ }
         }
         document.querySelectorAll('.nav-item[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+        (function applyRouteView() {
+            const p = new URLSearchParams(location.search);
+            const legacy = { intake: 'screen', results: 'candidates', jobs: 'jobs' };
+            const v = p.get('view') || legacy[p.get('tab')] || null;
+            if (v && TITLES[v]) setView(v);
+        })();
         document.getElementById('seeAllBtn').addEventListener('click', () => setView('candidates'));
         document.getElementById('overlay').addEventListener('click', closeDrawer);
         document.getElementById('drawerClose').addEventListener('click', closeDrawer);

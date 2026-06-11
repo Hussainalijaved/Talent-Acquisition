@@ -14,6 +14,18 @@
     let deps = null;
     let JOBS = [];
     let ONSITE = [];
+    let screenMode = 'single';
+    let batchExtractGen = 0;
+    const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    const BLOCKED_LOCAL = /^(noreply|no-reply|donotreply|support|info|admin|contact|hr|careers|jobs|hello)$/i;
+    const BLOCKED_DOMAIN = /@(example\.com|test\.com|domain\.com|email\.com)$/i;
+
+    function initPdfJs() {
+        if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    }
 
     function slugFromTitle(title) {
         return String(title || 'role')
@@ -618,6 +630,195 @@
         document.getElementById('scrInt').value = job.interviewer_email || '';
     }
 
+    function guessEmailFromFilename(name) {
+        const base = String(name || '').replace(/\.pdf$/i, '');
+        const m = base.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+        return m ? m[0].toLowerCase() : '';
+    }
+
+    function collectEmailsFromText(...chunks) {
+        const uniq = [];
+        const addFrom = (source) => {
+            const normalized = String(source || '')
+                .replace(/\s*@\s*/g, '@')
+                .replace(/([a-z0-9._%+-])\s+\.\s+([a-z])/gi, '$1.$2');
+            const compact = normalized.replace(/\s+/g, '');
+            for (const blob of [source, normalized, compact]) {
+                const found = String(blob).match(EMAIL_RE) || [];
+                for (const e of found) {
+                    const email = e.toLowerCase().trim().replace(/\.+$/g, '');
+                    if (!email || uniq.includes(email)) continue;
+                    const local = email.split('@')[0];
+                    if (BLOCKED_LOCAL.test(local)) continue;
+                    if (BLOCKED_DOMAIN.test(email)) continue;
+                    if (/\.(png|jpg|jpeg|pdf)$/i.test(email)) continue;
+                    uniq.push(email);
+                }
+            }
+        };
+        chunks.forEach(addFrom);
+        return uniq;
+    }
+
+    function pickBestEmail(...chunks) {
+        const fallbackName = chunks[chunks.length - 1];
+        const sources = chunks.slice(0, -1);
+        const raw = sources.join('\n');
+        const uniq = collectEmailsFromText(...sources);
+        if (!uniq.length) return guessEmailFromFilename(fallbackName);
+        const scored = uniq.map((email) => {
+            let score = 0;
+            const pos = raw.toLowerCase().indexOf(email);
+            if (pos >= 0 && pos < 800) score += 30;
+            if (pos >= 0 && pos < 200) score += 20;
+            if (/\.(com|net|org|pk|co\.uk)$/i.test(email)) score += 5;
+            if (/gmail|outlook|hotmail|yahoo|icloud|live\./i.test(email)) score += 8;
+            return { email, score };
+        });
+        scored.sort((a, b) => b.score - a.score);
+        return scored[0].email;
+    }
+
+    function emailFromAnnotationUrl(url) {
+        const u = String(url || '').trim();
+        if (!u) return '';
+        if (/^mailto:/i.test(u)) return u.replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
+        const m = u.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+        return m ? m[0].toLowerCase() : '';
+    }
+
+    async function extractTextFromPdf(file, maxPages) {
+        if (!window.pdfjsLib) throw new Error('PDF reader not loaded');
+        const buf = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        const pages = Math.min(pdf.numPages, maxPages || 2);
+        let text = '';
+        let compact = '';
+        const linkEmails = [];
+        for (let p = 1; p <= pages; p++) {
+            const page = await pdf.getPage(p);
+            const content = await page.getTextContent();
+            const parts = content.items.map((it) => String(it.str || '').trim()).filter(Boolean);
+            text += parts.join(' ') + '\n';
+            compact += parts.join('');
+            try {
+                const annots = await page.getAnnotations();
+                for (const a of annots || []) {
+                    const fromUrl = emailFromAnnotationUrl(a.url || a.unsafeUrl);
+                    if (fromUrl) linkEmails.push(fromUrl);
+                }
+            } catch (_) { /* optional */ }
+        }
+        return { text, compact, linkEmails };
+    }
+
+    async function extractEmailFromPdf(file) {
+        const fromName = guessEmailFromFilename(file.name);
+        try {
+            const { text, compact, linkEmails } = await extractTextFromPdf(file, 2);
+            const linkBlob = linkEmails.join(' ');
+            return pickBestEmail(text, compact, linkBlob, file.name) || fromName;
+        } catch (err) {
+            console.warn('PDF email extract failed', file.name, err);
+            return fromName;
+        }
+    }
+
+    function setScreenMode(mode) {
+        screenMode = mode === 'batch' ? 'batch' : 'single';
+        document.querySelectorAll('[data-screen-mode]').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.screenMode === screenMode);
+        });
+        const fileInput = document.getElementById('scrCvFile');
+        const emailGroup = document.getElementById('scrEmailGroup');
+        const textGroup = document.getElementById('scrCvTextGroup');
+        const fileLabel = document.getElementById('scrFileLabel');
+        const fileHint = document.getElementById('scrFileHint');
+        if (fileInput) {
+            fileInput.multiple = screenMode === 'batch';
+            fileInput.value = '';
+        }
+        document.getElementById('scrBatchList').innerHTML = '';
+        if (emailGroup) emailGroup.style.display = screenMode === 'single' ? '' : 'none';
+        if (textGroup) textGroup.style.display = screenMode === 'single' ? '' : 'none';
+        if (fileLabel) fileLabel.textContent = screenMode === 'batch' ? 'Upload PDFs (multiple)' : 'Upload PDF';
+        if (fileHint) {
+            fileHint.textContent = screenMode === 'batch'
+                ? 'Select multiple PDFs — emails auto-detected from each CV (first 2 pages). Edit any row if needed.'
+                : 'PDF only · email auto-detected from CV';
+        }
+    }
+
+    async function renderBatchList() {
+        const list = document.getElementById('scrBatchList');
+        const fileInput = document.getElementById('scrCvFile');
+        const files = Array.from(fileInput?.files || []);
+        if (screenMode !== 'batch' || !files.length) {
+            if (list) list.innerHTML = '';
+            return;
+        }
+        list.innerHTML = files.map((file, i) =>
+            '<div class="batch-row">' +
+            '<span class="fname" title="' + deps.esc(file.name) + '">' + deps.esc(file.name) + '</span>' +
+            '<input type="email" required placeholder="Reading CV…" data-batch-email="' + i + '" class="extracting" disabled />' +
+            '</div>'
+        ).join('');
+        const gen = ++batchExtractGen;
+        for (let i = 0; i < files.length; i++) {
+            if (gen !== batchExtractGen) return;
+            const input = document.querySelector('[data-batch-email="' + i + '"]');
+            if (!input) continue;
+            const email = await extractEmailFromPdf(files[i]);
+            if (gen !== batchExtractGen) return;
+            input.disabled = false;
+            input.classList.remove('extracting');
+            if (email) {
+                input.value = email;
+                input.classList.add('extracted');
+            } else {
+                input.classList.add('missing');
+                input.placeholder = 'Not found — type email';
+            }
+        }
+    }
+
+    async function onScreenFileChange() {
+        const fileInput = document.getElementById('scrCvFile');
+        if (screenMode === 'batch') {
+            await renderBatchList();
+            return;
+        }
+        const file = fileInput?.files?.[0];
+        if (!file) return;
+        const emailInput = document.getElementById('scrEmail');
+        if (!emailInput) return;
+        emailInput.placeholder = 'Reading email from CV…';
+        const email = await extractEmailFromPdf(file);
+        if (email) {
+            emailInput.value = email;
+            emailInput.placeholder = 'candidate@email.com';
+        } else {
+            emailInput.placeholder = 'Email not found — enter manually';
+        }
+    }
+
+    async function screenOneCandidate(webhook, { email, title, requirements, interviewer, file, cvText }) {
+        const fd = new FormData();
+        fd.append('candidate_email', email);
+        fd.append('requisition_title', title);
+        fd.append('requisition_requirements', requirements);
+        fd.append('requisition_id', slugFromTitle(title));
+        fd.append('source', 'admin_cv_screen');
+        if (interviewer) fd.append('interviewer_email', interviewer);
+        if (file) fd.append('cv_file', file, file.name);
+        else if (cvText) fd.append('cv_text', cvText);
+        const res = await fetch(webhook, { method: 'POST', body: fd, headers: { 'ngrok-skip-browser-warning': '1' } });
+        if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            throw new Error('HTTP ' + res.status + (errText ? ': ' + errText.slice(0, 120) : ''));
+        }
+    }
+
     async function submitManualScreen(e) {
         e.preventDefault();
         const webhook = normalizeWebhookUrl(document.getElementById('admWebhook')?.value || localStorage.getItem(WEBHOOK_STORAGE));
@@ -626,45 +827,89 @@
             deps.setView('settings');
             return;
         }
-        const email = document.getElementById('scrEmail').value.trim().toLowerCase();
         const title = document.getElementById('scrTitle').value.trim();
         const requirements = document.getElementById('scrJd').value.trim();
-        const interviewer = document.getElementById('scrInt').value.trim();
-        const cvText = document.getElementById('scrCvText').value.trim();
-        const file = document.getElementById('scrCvFile').files?.[0];
-        if (!email || !title || !requirements) {
-            deps.banner('Email, job title, and JD are required.', 'err');
+        const interviewer = document.getElementById('scrInt').value.trim().toLowerCase();
+        if (!title || !requirements) {
+            deps.banner('Job title and JD are required.', 'err');
             return;
         }
-        if (!cvText && !file) {
-            deps.banner('Paste CV text or upload a PDF.', 'err');
+        if (!interviewer || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(interviewer)) {
+            deps.banner('Valid interviewer email is required.', 'err');
             return;
         }
 
         const btn = document.getElementById('scrSubmit');
+        const progress = document.getElementById('scrProgress');
+        const progressFill = document.getElementById('scrProgressFill');
         btn.disabled = true;
         btn.textContent = 'Screening…';
-        try {
-            const fd = new FormData();
-            fd.append('candidate_email', email);
-            fd.append('requisition_title', title);
-            fd.append('requisition_requirements', requirements);
-            fd.append('requisition_id', slugFromTitle(title));
-            fd.append('source', 'admin_manual_screen');
-            if (interviewer) fd.append('interviewer_email', interviewer);
-            if (file) fd.append('cv_file', file, file.name);
-            else fd.append('cv_text', cvText);
+        progress?.classList.remove('show');
+        if (progressFill) progressFill.style.width = '0';
 
-            const res = await fetch(webhook, { method: 'POST', body: fd, headers: { 'ngrok-skip-browser-warning': '1' } });
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            deps.banner('CV sent for AI screening — refresh Candidates in ~30s.', 'ok');
-            document.getElementById('screenForm').reset();
-            setTimeout(() => deps.loadData(), 4000);
+        try {
+            if (screenMode === 'batch') {
+                const files = Array.from(document.getElementById('scrCvFile')?.files || []);
+                if (!files.length) {
+                    deps.banner('Select at least one PDF.', 'err');
+                    return;
+                }
+                const jobs = [];
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const input = document.querySelector('[data-batch-email="' + i + '"]');
+                    let email = (input?.value || '').trim().toLowerCase();
+                    if (!email) email = await extractEmailFromPdf(file);
+                    if (!email) {
+                        deps.banner('Could not find email in: ' + file.name + '. Enter it manually.', 'err');
+                        return;
+                    }
+                    jobs.push({ file, email });
+                }
+                progress?.classList.add('show');
+                let ok = 0;
+                let fail = 0;
+                for (let i = 0; i < jobs.length; i++) {
+                    const job = jobs[i];
+                    if (progressFill) progressFill.style.width = Math.round(((i + 0.5) / jobs.length) * 100) + '%';
+                    deps.banner('Screening ' + (i + 1) + ' of ' + jobs.length + ': ' + job.file.name + '…', 'ok');
+                    try {
+                        await screenOneCandidate(webhook, { email: job.email, title, requirements, interviewer, file: job.file });
+                        ok++;
+                    } catch (err) {
+                        fail++;
+                        console.error(err);
+                    }
+                }
+                if (progressFill) progressFill.style.width = '100%';
+                deps.banner('Batch done — ' + ok + ' submitted' + (fail ? ', ' + fail + ' failed' : '') + '. Check Candidates in ~30s.', fail ? 'err' : 'ok');
+                document.getElementById('screenForm').reset();
+                setScreenMode('batch');
+                setTimeout(() => { deps.loadData(); deps.setView('candidates'); }, 1500);
+            } else {
+                const email = document.getElementById('scrEmail').value.trim().toLowerCase();
+                const cvText = document.getElementById('scrCvText').value.trim();
+                const file = document.getElementById('scrCvFile').files?.[0];
+                if (!email) {
+                    deps.banner('Candidate email is required.', 'err');
+                    return;
+                }
+                if (!cvText && !file) {
+                    deps.banner('Paste CV text or upload a PDF.', 'err');
+                    return;
+                }
+                await screenOneCandidate(webhook, { email, title, requirements, interviewer, file, cvText });
+                deps.banner('CV sent for AI screening — check Candidates in ~30s.', 'ok');
+                document.getElementById('screenForm').reset();
+                setScreenMode('single');
+                setTimeout(() => { deps.loadData(); deps.setView('candidates'); }, 1500);
+            }
         } catch (err) {
             deps.banner('Screening failed: ' + (err.message || err), 'err');
         } finally {
             btn.disabled = false;
             btn.textContent = 'Run AI screening';
+            setTimeout(() => progress?.classList.remove('show'), 800);
         }
     }
 
@@ -778,6 +1023,11 @@
         });
         document.getElementById('screenForm')?.addEventListener('submit', submitManualScreen);
         document.getElementById('scrJob')?.addEventListener('change', onScreenJobPick);
+        document.getElementById('scrCvFile')?.addEventListener('change', onScreenFileChange);
+        document.getElementById('scrViewResults')?.addEventListener('click', () => deps.setView('candidates'));
+        document.querySelectorAll('[data-screen-mode]').forEach((btn) => {
+            btn.addEventListener('click', () => setScreenMode(btn.dataset.screenMode));
+        });
         document.getElementById('onsiteForm')?.addEventListener('submit', saveOnsite);
         document.getElementById('saveWebhookBtn')?.addEventListener('click', saveWebhookConfig);
         document.getElementById('drawerDeleteBtn')?.addEventListener('click', () => {
@@ -789,11 +1039,20 @@
         init(d) {
             deps = d;
             deps.activeCandidate = null;
+            initPdfJs();
             bindEvents();
+            setScreenMode('single');
             loadWebhookConfig();
             loadJdWebhookConfig();
             loadJobs();
             loadOnsite();
+            const wh = new URLSearchParams(location.search).get('webhook');
+            if (wh) {
+                const decoded = decodeURIComponent(wh);
+                const input = document.getElementById('admWebhook');
+                if (input && !input.value) input.value = decoded;
+                localStorage.setItem(WEBHOOK_STORAGE, decoded);
+            }
         },
         onViewChange(view) {
             if (view === 'jobs') loadJobs();

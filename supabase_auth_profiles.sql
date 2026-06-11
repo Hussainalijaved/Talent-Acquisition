@@ -320,4 +320,4 @@ create policy "staff_write_onsite"
 -- Grants for RPCs
 -- ---------------------------------------------------------------------------
 grant execute on function public.needs_admin_bootstrap() to anon, authenticated;
-grant ex
+grant execute on function public.can_bootstrap_admin(text) to anon, authenticated;

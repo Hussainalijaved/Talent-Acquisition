@@ -25,13 +25,13 @@
             {
               "id": "cfg-1",
               "name": "supabase_url",
-              "value": "https://your-project.supabase.co",
+              "value": "=https://vnxstyadacgntnsvcvzn.supabase.co",
               "type": "string"
             },
             {
               "id": "cfg-2",
               "name": "supabase_key",
-              "value": "your-supabase-service-role-key",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}",
               "type": "string"
             },
             {
@@ -123,17 +123,17 @@
     },
     {
       "parameters": {
-        "url": "={{ $('CODE - Normalize Data').first().json.config.supabase_url.replace(/\\/$/, '') }}/rest/v1/assessment_sessions?id=eq.{{ $('CODE - Normalize Data').first().json.session_id }}&select=*",
+        "url": "={{ $('CFG - Assessment Config').first().json.supabase_url.replace(/\\/$/, '') }}/rest/v1/assessment_sessions?id=eq.{{ $('CODE - Normalize Data').first().json.session_id }}&select=*",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('CODE - Normalize Data').first().json.config.supabase_key }}"
+              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('CODE - Normalize Data').first().json.config.supabase_key }}"
+              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
             }
           ]
         },

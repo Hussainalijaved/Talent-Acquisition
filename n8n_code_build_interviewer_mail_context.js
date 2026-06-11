@@ -1,12 +1,11 @@
 // n8n: CODE - Build interviewer mail context
-// Place BEFORE: MAIL - Interviewer pitch mail (MAIL must wire directly to WAIT)
-// MAIL message must use $execution.resumeUrl at send time — see _mail_resume_expr
-// Place BEFORE: MAIL - Interviewer pick slot
+// Place BEFORE: MAIL - Interviewer pitch mail
+// Frontend scheduling: email link uses ?session=UUID (no n8n WAIT / resumeUrl)
 //
 // MAIL node settings:
 //   To:      {{ $json.interviewer_email }}
 //   Subject: {{ $json.mail_subject }}
-//   Message: {{ $json.mail_body_html }}  (enable HTML / paste as HTML)
+//   Message: {{ $json.mail_body_html }}  (HTML — no expression injection needed)
 
 function extractConfig(row) {
   const out = {};
@@ -93,42 +92,6 @@ function pickAssessmentContext() {
   return merged;
 }
 
-function publicBaseFromHeaders(obj) {
-  const h = obj?.headers || {};
-  const host = String(h['x-forwarded-host'] || h.host || '').split(',')[0].trim();
-  if (!host || /localhost|127\.0\.0\.1/i.test(host)) return '';
-  return `https://${host}`.replace(/\/+$/, '');
-}
-
-function resolvePublicBase(base, cfg) {
-  let envWebhook = '';
-  try {
-    envWebhook = String($env.WEBHOOK_URL || $env.N8N_WEBHOOK_URL || '').trim();
-  } catch (_) {}
-
-  const candidates = [
-    cfg.n8n_public_url,
-    cfg.n8n_webhook_url,
-    cfg.public_n8n_url,
-    envWebhook,
-    publicBaseFromHeaders(base),
-  ];
-
-  for (const name of ['TRG - Assessment Answer', 'CFG - Workflow', 'CFG - Assessment Config']) {
-    try {
-      candidates.push(publicBaseFromHeaders($(name).first().json));
-      const rowCfg = extractConfig($(name).first().json);
-      candidates.push(rowCfg.n8n_public_url, rowCfg.n8n_webhook_url);
-    } catch (_) {}
-  }
-
-  for (const raw of candidates) {
-    const v = String(raw || '').trim().replace(/\/+$/, '');
-    if (v && !/localhost|127\.0\.0\.1/i.test(v)) return v;
-  }
-  return '';
-}
-
 function nameFromEmail(email) {
   const e = String(email || '').trim().toLowerCase();
   if (!e) return 'Candidate';
@@ -150,17 +113,10 @@ const portalBase = String(
   base.interviewer_portal_base ||
     cfg.interviewer_portal_base ||
     cfg.portal_base_url ||
-    'https://talent-acquisition-six.vercel.app/interviewer.html'
+    'https://talent-acquisition-six.vercel.app'
 ).replace(/\/interviewer\.html.*$/i, '').replace(/\/+$/, '');
 
 const interviewerPortal = portalBase + '/interviewer.html';
-
-const publicBase = resolvePublicBase(base, cfg);
-
-// Injected at send time by MAIL node (must be the node immediately before WAIT).
-// Do NOT use {{...}} inside the placeholder — n8n treats {{ as expression syntax.
-const RESUME_PLACEHOLDER = '__RESUME_URL_PLACEHOLDER__';
-const schedulingLink = interviewerPortal + '?resumeUrl=' + RESUME_PLACEHOLDER;
 
 const candidateEmail = String(
   base.candidate_email || ctx.candidate_email || cfg.candidate_email || ''
@@ -203,6 +159,13 @@ if (!interviewerEmail) {
   throw new Error('interviewer_email missing — set in CFG or job/recruiter intake.');
 }
 
+if (!sessionId) {
+  throw new Error('session_id missing — required for frontend scheduling link.');
+}
+
+const schedulingLink =
+  interviewerPortal + '?session=' + encodeURIComponent(sessionId);
+
 const mailSubject =
   base.mail_subject ||
   `Schedule interview — ${candidateName} (${role})`;
@@ -237,7 +200,7 @@ const mailBodyHtml =
           <table style="width:100%;margin:16px 0;font-size:14px;color:#475569;">
             <tr><td style="padding:4px 0;">Email</td><td style="padding:4px 0;"><strong>${esc(candidateEmail)}</strong></td></tr>
             <tr><td style="padding:4px 0;">Score</td><td style="padding:4px 0;"><strong>${esc(score)}/100</strong></td></tr>
-            <tr><td style="padding:4px 0;">Session</td><td style="padding:4px 0;"><strong>${esc(sessionId || '—')}</strong></td></tr>
+            <tr><td style="padding:4px 0;">Session</td><td style="padding:4px 0;"><strong>${esc(sessionId)}</strong></td></tr>
           </table>
           <p>Please propose interview slots (45–60 minutes):</p>
           <p style="text-align:center;margin:28px 0;">
@@ -250,29 +213,35 @@ const mailBodyHtml =
   </table>
 </body></html>`;
 
+const sb = String(cfg.supabase_url || '').replace(/\/+$/, '');
+const tb = cfg.table_assessment_sessions || 'assessment_sessions';
+const nowIso = new Date().toISOString();
+
 return [
   {
     json: {
       ...base,
       ...ctx,
-      config: { ...cfg, n8n_public_url: publicBase || cfg.n8n_public_url || '' },
+      config: cfg,
       candidate_email: candidateEmail,
       candidate_name: candidateName,
       requisition_title: role,
       session_id: sessionId,
       score,
-      resume_url: RESUME_PLACEHOLDER,
       interviewer_portal_base: interviewerPortal,
       scheduling_link: schedulingLink,
       interviewer_email: interviewerEmail,
       mail_subject: mailSubject,
       mail_body: mailBody,
       mail_body_html: mailBodyHtml,
-      _debug_public_base: publicBase,
-      // Paste into MAIL → Message (Expression ON). No leading hyphen, no nested {{ }}.
-      // Rewrites localhost $execution.resumeUrl using config.n8n_public_url when WEBHOOK_URL is unset.
-      gmail_message_n8n:
-        "={{ (() => { let u = String($execution.resumeUrl || '').trim(); const b = String($json.config?.n8n_public_url || $json._debug_public_base || '').replace(/\\/+$/, ''); if (b && /localhost|127\\.0\\.0\\.1/i.test(u)) u = u.replace(/^https?:\\/\\/[^/]+/i, b); if (!u) throw new Error('resumeUrl empty — MAIL must wire directly to WAIT'); return $json.mail_body_html.split($json.resume_url).join(encodeURIComponent(u)); })() }}",
+      _scheduling_patch_url: sessionId
+        ? `${sb}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`
+        : '',
+      _scheduling_patch_body: {
+        scheduling_status: 'pending_interviewer',
+        scheduling_updated_at: nowIso,
+        updated_at: nowIso,
+      },
     },
   },
 ];

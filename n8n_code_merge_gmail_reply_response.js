@@ -28,7 +28,27 @@ function pickSessionContext() {
   return merged;
 }
 
-const gmail = $input.first().json;
+function resolveGmailPayload(input, ...mailNodeNames) {
+  if (input && (input.id || input.messageId || input.threadId || input.thread_id)) {
+    return input;
+  }
+  for (const name of mailNodeNames) {
+    if (!name) continue;
+    try {
+      const raw = $(name).first().json;
+      if (raw && (raw.id || raw.messageId || raw.threadId || raw.thread_id)) return raw;
+    } catch (_) {}
+  }
+  return input || {};
+}
+
+const gmail = resolveGmailPayload(
+  $input.first().json,
+  'MAIL - Candidate pitch mail',
+  'MAIL - Candidate pitch mail1',
+  'MAIL - Notify candidate',
+  'MAIL - Notify candidate1'
+);
 const ctx = pickSessionContext();
 const cfg = ctx.config || {};
 
@@ -39,14 +59,25 @@ const sessionId = String(
   ctx.session_id || ctx.session_db_id || ctx.id || ''
 ).trim();
 
-if (!sessionId) {
-  throw new Error('Missing session_id — cannot update gmail_message_id after reply.');
-}
-if (!threadId) {
-  throw new Error('Missing gmail_thread_id — first shortlist mail must create the thread.');
-}
-if (!msgId) {
-  throw new Error('Gmail reply returned no message id.');
+const patchReady = Boolean(sessionId && threadId && msgId);
+if (!patchReady) {
+  return [
+    {
+      json: {
+        ...ctx,
+        _gmail_patch_skipped: true,
+        _gmail_patch_skip_reason: [
+          !sessionId ? 'missing session_id' : null,
+          !threadId ? 'missing gmail_thread_id' : null,
+          !msgId ? 'missing gmail message id' : null,
+        ]
+          .filter(Boolean)
+          .join('; '),
+        _gmail_patch_url: '',
+        _gmail_patch_body: {},
+      },
+    },
+  ];
 }
 
 const b = String(cfg.supabase_url || '').replace(/\/+$/, '');

@@ -1,19 +1,31 @@
 // n8n: CODE - Prep scheduling from PASS
 // After assessment result mail PATCH — loads session row for scheduling chain
 
-function pickSessionRow() {
-  const names = ['HTTP - Fetch Session', 'CODE - Parse Result'];
+function pickNodeJson(...names) {
   for (const name of names) {
+    if (!name) continue;
     try {
       const raw = $(name).first().json;
-      const row = Array.isArray(raw) ? raw[0] : raw;
-      if (row?.id) return row;
+      if (raw && typeof raw === 'object') return raw;
     } catch (_) {}
   }
+  return null;
+}
+
+function pickSessionRow() {
+  const built =
+    pickNodeJson('CODE - Build LLM context', 'CODE - Build LLM context1') || {};
+  if (built.session?.id) return built.session;
+
+  const fetchRaw = pickNodeJson('HTTP - Fetch Session', 'HTTP - Fetch Session1');
+  const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;
+  if (row?.id) return row;
+
   return {};
 }
 
-const parse = $('CODE - Parse Result').first().json;
+const parse =
+  pickNodeJson('CODE - Parse Result', 'CODE - Parse Result1') || {};
 const session = pickSessionRow();
 const cfg = { ...(session.config || {}), ...(parse.config || {}) };
 

@@ -10,28 +10,49 @@
 //   Email Type: HTML
 //   Message:    {{ $json.mail_body_html }}
 
-function pickSessionRow() {
-  const names = ['HTTP - Fetch Session', 'CODE - Build LLM context'];
+function pickNodeJson(...names) {
   for (const name of names) {
+    if (!name) continue;
     try {
       const raw = $(name).first().json;
-      const row = Array.isArray(raw) ? raw[0] : raw;
-      if (row?.id) return row;
+      if (raw && typeof raw === 'object') return raw;
     } catch (_) {}
   }
+  return null;
+}
+
+function pickSessionRow() {
+  const built =
+    pickNodeJson('CODE - Build LLM context', 'CODE - Build LLM context1') || {};
+  if (built.session?.id) return built.session;
+
+  const fetchRaw = pickNodeJson('HTTP - Fetch Session', 'HTTP - Fetch Session1');
+  const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;
+  if (row?.id) return row;
+
   return {};
 }
 
-const parse = $('CODE - Parse Result').first().json;
+const parse =
+  pickNodeJson('CODE - Parse Result', 'CODE - Parse Result1') || $input.first().json || {};
 const session = pickSessionRow();
 const cfg = parse.config || session.config || {};
 
-const threadId = String(session.gmail_thread_id || parse.gmail_thread_id || '').trim();
-const msgId = String(session.gmail_message_id || parse.gmail_message_id || '').trim();
+const threadId = String(
+  session.gmail_thread_id || parse.gmail_thread_id || ''
+).trim();
+const msgId = String(
+  session.gmail_message_id || parse.gmail_message_id || ''
+).trim();
 
 if (!threadId || threadId.startsWith('draft-')) {
+  const sid = session.id || parse.session_id || 'unknown';
   throw new Error(
-    'gmail_thread_id missing on session — run CV screening shortlist mail first and PATCH thread.'
+    'gmail_thread_id missing on session ' +
+      sid +
+      ' — CV screening shortlist mail must PATCH gmail_thread_id to assessment_sessions. ' +
+      'Check Supabase row, run supabase_gmail_thread_columns.sql, and verify CV Screening workflow: ' +
+      'MAIL - Email outreach agent (shortlist) → HTTP - SB PATCH session gmail thread.'
   );
 }
 if (!msgId) {
@@ -53,8 +74,17 @@ const headline = passed
   ? `Congratulations — you passed the technical assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`
   : `Thank you for completing the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`;
 
+const portalBase = String(
+  cfg.portal_base_url || 'https://talent-acquisition-six.vercel.app'
+).replace(/\/+$/, '');
+const schedulingWaitLink = sessionId
+  ? `${portalBase}/scheduling-wait.html?session=${encodeURIComponent(sessionId)}`
+  : portalBase;
+
 const nextStep = passed
-  ? '<p>Our team will share interview scheduling options in this same email thread shortly.</p>'
+  ? `<p>Next step: schedule your interview. Open this page to pick a time as soon as slots are ready (you can leave and return later):</p>
+     <p style="text-align:center;margin:20px 0;"><a href="${schedulingWaitLink}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">Schedule interview</a></p>
+     <p style="font-size:13px;color:#64748b;">If the interviewer is not available right now, they may add slots later — we will email you when options are ready.</p>`
   : '<p>Unfortunately you did not meet the pass threshold for this role at this time.</p>';
 
 const mailBodyHtml = `<!DOCTYPE html>

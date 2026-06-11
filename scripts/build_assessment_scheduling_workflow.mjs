@@ -143,7 +143,7 @@ cfgNode.parameters.assignments.assignments.push(
   {
     id: 'cfg-n8n',
     name: 'n8n_public_url',
-    value: 'https://YOUR-NGROK-OR-N8N-URL',
+    value: 'https://randy-gaunt-bradley.ngrok-free.dev',
     type: 'string',
   },
   {
@@ -266,7 +266,7 @@ const nodes = [
     '={{ $json.interviewer_email }}',
     '={{ $json.mail_subject }}',
     [3856, 1240],
-    "={{ (() => { let u = String($execution.resumeUrl || '').trim(); const b = String($json.config?.n8n_public_url || $json._debug_public_base || '').replace(/\\/+$/, ''); if (b && /localhost|127\\.0\\.0\\.1/i.test(u)) u = u.replace(/^https?:\\/\\/[^/]+/i, b); if (!u) throw new Error('resumeUrl empty — MAIL must wire directly to WAIT'); return $json.mail_body_html.split($json.resume_url).join(encodeURIComponent(u)); })() }}"
+    "={{ (() => { let u = String($execution.resumeUrl || '').trim(); let b = String($json.config?.n8n_public_url || $json._debug_public_base || '').replace(/\\/+$/, ''); if (!b || /YOUR-NGROK/i.test(b)) b = 'https://randy-gaunt-bradley.ngrok-free.dev'; if (b && /localhost|127\\.0\\.0\\.1/i.test(u)) u = u.replace(/^https?:\\/\\/[^/]+/i, b); if (!u) throw new Error('resumeUrl empty — MAIL must wire directly to WAIT'); return $json.mail_body_html.split($json.resume_url).join(encodeURIComponent(u)); })() }}"
   ),
   codeNode('CODE - Merge Gmail interviewer send', 'n8n_code_merge_gmail_interviewer_response.js', [4080, 1240]),
   httpPatch(
@@ -410,46 +410,36 @@ const connections = {
     main: [[{ node: 'MAIL - Interviewer pitch mail', type: 'main', index: 0 }]],
   },
   'MAIL - Interviewer pitch mail': {
-    main: [
-      [
-        { node: 'WAIT - Interviewer availability', type: 'main', index: 0 },
-        { node: 'CODE - Merge Gmail interviewer send', type: 'main', index: 0 },
-      ],
-    ],
-  },
-  'CODE - Merge Gmail interviewer send': {
-    main: [[{ node: 'HTTP - PATCH interviewer thread (pitch)', type: 'main', index: 0 }]],
-  },
-  'HTTP - PATCH interviewer thread (pitch)': {
-    main: [[]],
+    main: [[{ node: 'WAIT - Interviewer availability', type: 'main', index: 0 }]],
   },
   'WAIT - Interviewer availability': {
     main: [[{ node: 'CODE - Parse interviewer slot', type: 'main', index: 0 }]],
   },
   'CODE - Parse interviewer slot': {
+    main: [[{ node: 'CODE - Merge Gmail interviewer send', type: 'main', index: 0 }]],
+  },
+  'CODE - Merge Gmail interviewer send': {
+    main: [[{ node: 'HTTP - PATCH interviewer thread (pitch)', type: 'main', index: 0 }]],
+  },
+  'HTTP - PATCH interviewer thread (pitch)': {
     main: [[{ node: 'CODE - Build candidate slot mail', type: 'main', index: 0 }]],
   },
   'CODE - Build candidate slot mail': {
     main: [[{ node: 'MAIL - Candidate pitch mail', type: 'main', index: 0 }]],
   },
   'MAIL - Candidate pitch mail': {
-    main: [
-      [
-        { node: 'WAIT - Candidate slot choice', type: 'main', index: 0 },
-        { node: 'CODE - Merge Gmail reply response (scheduling)', type: 'main', index: 0 },
-      ],
-    ],
-  },
-  'CODE - Merge Gmail reply response (scheduling)': {
-    main: [[{ node: 'HTTP - PATCH candidate gmail (scheduling)', type: 'main', index: 0 }]],
-  },
-  'HTTP - PATCH candidate gmail (scheduling)': {
-    main: [[]],
+    main: [[{ node: 'WAIT - Candidate slot choice', type: 'main', index: 0 }]],
   },
   'WAIT - Candidate slot choice': {
     main: [[{ node: 'CODE - Parse candidate choice', type: 'main', index: 0 }]],
   },
   'CODE - Parse candidate choice': {
+    main: [[{ node: 'CODE - Merge Gmail reply response (scheduling)', type: 'main', index: 0 }]],
+  },
+  'CODE - Merge Gmail reply response (scheduling)': {
+    main: [[{ node: 'HTTP - PATCH candidate gmail (scheduling)', type: 'main', index: 0 }]],
+  },
+  'HTTP - PATCH candidate gmail (scheduling)': {
     main: [[{ node: 'CAL - Create interview event', type: 'main', index: 0 }]],
   },
   'CAL - Create interview event': {

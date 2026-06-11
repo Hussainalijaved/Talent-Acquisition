@@ -37,6 +37,12 @@
         }
         h2 { margin: 0 0 8px; font-size: 24px; text-align: center; }
         p.sub { color: var(--muted); font-size: 14px; text-align: center; margin: 0 0 24px; line-height: 1.5; }
+        .role-pill {
+            text-align: center;
+            font-size: 13px;
+            color: #cbd5e1;
+            margin: -12px 0 20px;
+        }
         .slot-btn {
             display: block;
             width: 100%;
@@ -77,59 +83,44 @@
         button.confirm:disabled { opacity: 0.4; cursor: not-allowed; }
         .err { color: #f87171; font-size: 13px; text-align: center; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="scheduling-portal.js"></script>
 </head>
 <body>
     <div class="container">
         <h2>Choose interview time</h2>
         <p class="sub">Pick one option below. Weekdays proposed by your interviewer.</p>
+        <p class="role-pill" id="rolePill" hidden></p>
         <div id="slots"></div>
         <p class="err" id="err" hidden></p>
         <button type="button" class="confirm" id="confirmBtn" disabled onclick="submitChoice()">Confirm this slot</button>
     </div>
     <script>
-        const params = new URLSearchParams(window.location.search);
-        const resumeUrl = params.get('resumeUrl');
-        const N8N_PUBLIC_ORIGIN = 'https://randy-gaunt-bradley.ngrok-free.dev';
+        const SP = window.SchedulingPortal;
+        const sessionId = SP.parseSessionId();
+        let sessionRow = null;
         let slots = [];
-
-        function isLocalResumeUrl(url) {
-            if (!url) return false;
-            try {
-                const h = new URL(url, window.location.origin).hostname;
-                return h === 'localhost' || h === '127.0.0.1' || h === '::1';
-            } catch (e) {
-                return /localhost|127\.0\.0\.1/i.test(url);
-            }
-        }
-
-        function resolveResumeUrl(raw) {
-            if (!raw || !isLocalResumeUrl(raw) || isLocalResumeUrl(window.location.href)) return raw;
-            const base = String(N8N_PUBLIC_ORIGIN || '').replace(/\/+$/, '');
-            return base ? raw.replace(/^https?:\/\/[^/]+/i, base) : raw;
-        }
         let chosen = null;
 
-        try {
-            const raw = params.get('slots_json');
-            if (raw) slots = JSON.parse(decodeURIComponent(raw));
-        } catch (e) {
-            document.getElementById('err').hidden = false;
-            document.getElementById('err').textContent = 'Invalid slot data. Use the link from your email.';
+        const wrap = document.getElementById('slots');
+        const errEl = document.getElementById('err');
+
+        function showErr(msg) {
+            errEl.hidden = false;
+            errEl.textContent = msg;
+            document.getElementById('confirmBtn').disabled = true;
         }
 
-        const wrap = document.getElementById('slots');
-        if (!slots.length) {
-            document.getElementById('err').hidden = false;
-            document.getElementById('err').textContent = 'No time options found. Open the link from your email.';
-        } else {
-            slots.forEach((s, i) => {
+        function renderSlots(list) {
+            wrap.innerHTML = '';
+            list.forEach((s) => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'slot-btn';
                 btn.textContent = s.label || s.start_iso;
                 btn.onclick = () => {
                     chosen = s;
-                    document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+                    document.querySelectorAll('.slot-btn').forEach((b) => b.classList.remove('selected'));
                     btn.classList.add('selected');
                     document.getElementById('confirmBtn').disabled = false;
                 };
@@ -137,60 +128,60 @@
             });
         }
 
-        const SUCCESS_PAGE = 'https://talent-acquisition-six.vercel.app/scheduling-success.html';
-
-        async function resumeWorkflow(url) {
-            const headers = { 'ngrok-skip-browser-warning': '1' };
-            let res;
-            try {
-                res = await fetch(url, { method: 'GET', cache: 'no-store', headers });
-            } catch (networkErr) {
-                throw new Error(
-                    'Could not reach n8n (network/CORS). Keep ngrok running and retry.'
+        async function init() {
+            if (!sessionId) {
+                const legacy = new URLSearchParams(window.location.search).get('resumeUrl');
+                showErr(
+                    legacy
+                        ? 'This is an old scheduling link. Open the latest email from the hiring team (?session= link).'
+                        : 'Missing session in URL. Open the link from your email.'
                 );
-            }
-            const ct = (res.headers.get('content-type') || '').toLowerCase();
-            if (res.ok || res.status === 204 || res.status === 302) {
-                if (ct.includes('text/html')) {
-                    const snippet = (await res.text()).slice(0, 500);
-                    if (/ngrok|Visit Site|ERR_NGROK/i.test(snippet)) {
-                        throw new Error('ngrok blocked the resume call — use a fresh email link and retry.');
-                    }
-                }
                 return;
             }
-            throw new Error('n8n returned HTTP ' + res.status);
+            try {
+                sessionRow = await SP.loadSession(sessionId);
+                slots = sessionRow.proposed_slots || [];
+                if (!slots.length) {
+                    showErr('No time options yet. Your interviewer has not proposed slots — check back soon.');
+                    return;
+                }
+                const pill = document.getElementById('rolePill');
+                pill.hidden = false;
+                pill.textContent = sessionRow.role || 'Interview scheduling';
+                renderSlots(slots);
+            } catch (err) {
+                showErr((err && err.message) || 'Could not load scheduling options.');
+            }
         }
 
         async function submitChoice() {
-            if (!resumeUrl || !chosen?.start_iso) {
-                alert('Missing resume link or selection.');
+            if (!sessionId || !chosen?.start_iso) {
+                alert('Please select a time slot.');
                 return;
             }
 
             const btn = document.getElementById('confirmBtn');
             btn.disabled = true;
-            btn.textContent = 'Confirming…';
-
-            const effectiveResume = resolveResumeUrl(resumeUrl);
-            const sep = effectiveResume.includes('?') ? '&' : '?';
-            const q = new URLSearchParams();
-            q.set('chosen_start_iso', chosen.start_iso);
-            if (chosen.end_iso) q.set('chosen_end_iso', chosen.end_iso);
-            const webhookUrl = effectiveResume + sep + q.toString();
+            btn.textContent = 'Saving…';
 
             try {
-                await resumeWorkflow(webhookUrl);
+                await SP.saveChosenSlot(sessionId, chosen);
             } catch (err) {
                 btn.disabled = false;
                 btn.textContent = 'Confirm this slot';
-                alert((err && err.message) || 'Could not resume n8n workflow. Try again.');
+                alert((err && err.message) || 'Could not save your choice.');
                 return;
             }
 
-            const label = encodeURIComponent(chosen.label || chosen.start_iso);
-            window.location.replace(SUCCESS_PAGE + '?role=candidate&label=' + label);
+            btn.textContent = 'Confirming…';
+            await SP.notifyConfirmed(sessionId);
+
+            SP.goSuccess('candidate', {
+                label: chosen.label || chosen.start_iso,
+            });
         }
+
+        init();
     </script>
 </body>
 </html>

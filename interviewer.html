@@ -250,12 +250,36 @@
             opacity: 0.6;
             text-align: center;
         }
+
+        .candidate-card {
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #cbd5e1;
+            line-height: 1.5;
+        }
+
+        .candidate-card strong { color: #fff; }
+
+        .load-err {
+            color: #f87171;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 16px;
+        }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="scheduling-portal.js"></script>
 </head>
 <body>
     <div class="container">
         <h2>Propose interview dates</h2>
         <p class="subtitle">Select <strong>at least 2</strong> weekdays (Mon–Fri). The candidate will pick one.</p>
+        <p class="load-err" id="loadErr" hidden></p>
+        <div class="candidate-card" id="candidateCard" hidden></div>
 
         <div class="input-group">
             <label>Calendar — click multiple dates</label>
@@ -282,49 +306,10 @@
 
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        const resumeUrl = urlParams.get('resumeUrl');
+        const SP = window.SchedulingPortal;
+        const sessionId = SP.parseSessionId();
         const DURATION_MIN = 60;
-
-        // Update when ngrok restarts (free tier gets a new subdomain each time).
-        const N8N_PUBLIC_ORIGIN = 'https://randy-gaunt-bradley.ngrok-free.dev';
-
-        function isLocalResumeUrl(url) {
-            if (!url) return false;
-            try {
-                const h = new URL(url, window.location.origin).hostname;
-                return h === 'localhost' || h === '127.0.0.1' || h === '::1';
-            } catch (e) {
-                return /localhost|127\.0\.0\.1/i.test(url);
-            }
-        }
-
-        function rewriteLocalResumeUrl(url) {
-            if (!url || !isLocalResumeUrl(url)) return url;
-            const base = String(N8N_PUBLIC_ORIGIN || '').replace(/\/+$/, '');
-            if (!base) return url;
-            return url.replace(/^https?:\/\/[^/]+/i, base);
-        }
-
-        function resolveResumeUrl(raw) {
-            if (!raw) return raw;
-            if (isLocalResumeUrl(raw) && !isLocalResumeUrl(window.location.href)) {
-                return rewriteLocalResumeUrl(raw);
-            }
-            return raw;
-        }
-
-        if (resumeUrl && isLocalResumeUrl(resumeUrl) && !isLocalResumeUrl(window.location.href)) {
-            const warn = document.createElement('p');
-            warn.className = 'hint';
-            warn.style.color = '#fbbf24';
-            warn.style.marginBottom = '16px';
-            warn.textContent =
-                'Note: this email link used localhost n8n — calls will be sent via ' +
-                N8N_PUBLIC_ORIGIN +
-                '. Keep ngrok running. For new emails, set WEBHOOK_URL on n8n to the same public URL.';
-            document.querySelector('.container').insertBefore(warn, document.querySelector('.input-group'));
-        }
+        let sessionRow = null;
 
         const slotListEl = document.getElementById('slotList');
         const slotCountEl = document.getElementById('slotCount');
@@ -488,85 +473,44 @@
             },
         });
 
-        const SUCCESS_PAGE = 'https://talent-acquisition-six.vercel.app/scheduling-success.html';
-
-        async function resumeWorkflow(url) {
-            let target = resolveResumeUrl(url);
-            if (isLocalResumeUrl(target) && !isLocalResumeUrl(window.location.href)) {
-                throw new Error(
-                    'Resume URL is localhost — update N8N_PUBLIC_ORIGIN in interviewer.html or set WEBHOOK_URL on n8n.'
-                );
-            }
-
-            const headers = { 'ngrok-skip-browser-warning': '1' };
-
-            let res;
-            try {
-                res = await fetch(target, { method: 'GET', cache: 'no-store', headers });
-            } catch (networkErr) {
-                throw new Error(
-                    'Could not reach n8n (network/CORS). Keep ngrok running and retry. ' +
-                        (networkErr && networkErr.message ? networkErr.message : '')
-                );
-            }
-
-            const ct = (res.headers.get('content-type') || '').toLowerCase();
-
-            if (res.ok || res.status === 204 || res.status === 302) {
-                if (ct.includes('text/html')) {
-                    const snippet = (await res.text()).slice(0, 500);
-                    if (/ngrok|Visit Site|ERR_NGROK/i.test(snippet)) {
-                        throw new Error(
-                            'ngrok blocked the resume call. Restart ngrok and submit again from a fresh interviewer email.'
-                        );
-                    }
-                }
-                return;
-            }
-
-            if (res.status === 404) {
-                const execMatch = String(target).match(/webhook-waiting\/(\d+)/i);
-                const execId = execMatch ? execMatch[1] : '?';
-                throw new Error(
-                    'n8n resume URL not found (HTTP 404) for execution ' +
-                        execId +
-                        '. The interviewer email was sent but WAIT never started — this link cannot be reused. ' +
-                        'In live n8n: (1) open Executions → ' +
-                        execId +
-                        ' and check for a failed HTTP - PATCH interviewer thread (pitch) node; ' +
-                        '(2) wire MAIL - Interviewer pitch mail directly to WAIT - Interviewer availability ' +
-                        '(PATCH stays on a side branch); ' +
-                        '(3) run supabase_gmail_thread_columns.sql in Supabase; ' +
-                        '(4) run a new PASS assessment and use the new interviewer email.'
-                );
-            }
-            if (res.status === 409) {
-                throw new Error(
-                    'This scheduling link is no longer active (HTTP 409). ' +
-                        'Usually the n8n workflow failed before the WAIT step (e.g. Supabase PATCH error) or the link was already used. ' +
-                        'Fix the failed n8n node, then send a fresh interviewer email from a new PASS run.'
-                );
-            }
-            throw new Error('n8n returned HTTP ' + res.status + ' — workflow may still be waiting.');
+        function showLoadError(msg) {
+            const el = document.getElementById('loadErr');
+            el.hidden = false;
+            el.textContent = msg;
+            document.getElementById('submitBtn').disabled = true;
         }
 
-        function isBrokenResumePlaceholder(url) {
-            if (!url) return false;
-            const raw = decodeURIComponent(url);
-            return /\{\{RESUME_URL\}\}|%7B%7BRESUME_URL%7D%7D/i.test(raw);
+        async function initSession() {
+            if (!sessionId) {
+                const legacy = new URLSearchParams(window.location.search).get('resumeUrl');
+                showLoadError(
+                    legacy
+                        ? 'This is an old n8n scheduling link. Ask HR to send a fresh interviewer email (new links use ?session=).'
+                        : 'Missing session in URL. Open the link from your interviewer email.'
+                );
+                return;
+            }
+            try {
+                sessionRow = await SP.loadSession(sessionId);
+                const card = document.getElementById('candidateCard');
+                card.hidden = false;
+                card.innerHTML =
+                    '<strong>' +
+                    sessionRow.candidate_name +
+                    '</strong> · ' +
+                    sessionRow.role +
+                    '<br>Score: <strong>' +
+                    (sessionRow.score ?? '—') +
+                    '/100</strong> · ' +
+                    sessionRow.candidate_email;
+            } catch (err) {
+                showLoadError((err && err.message) || 'Could not load session.');
+            }
         }
 
         async function submitSlots() {
-            if (!resumeUrl) {
-                alert('Resume URL missing. Open this page from the interviewer email link.');
-                return;
-            }
-            if (isBrokenResumePlaceholder(resumeUrl)) {
-                alert(
-                    'This email link is broken ({{RESUME_URL}} was not replaced). ' +
-                        'In n8n open MAIL - Interviewer pitch mail → Message field must be an expression that injects $execution.resumeUrl. ' +
-                        'Copy gmail_message_n8n from CODE - Build interviewer mail context output, then send a fresh interviewer email.'
-                );
+            if (!sessionId || !sessionRow) {
+                alert('Session not loaded. Refresh from your email link.');
                 return;
             }
 
@@ -592,32 +536,27 @@
 
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
-            btn.textContent = 'Submitting…';
-
-            const effectiveResume = resolveResumeUrl(resumeUrl);
-            const sep = effectiveResume.includes('?') ? '&' : '?';
-            const params = new URLSearchParams();
-            params.set('slots_json', JSON.stringify(slots));
-            const webhookUrl = effectiveResume + sep + params.toString();
+            btn.textContent = 'Saving…';
 
             try {
-                await resumeWorkflow(webhookUrl);
+                await SP.saveProposedSlots(sessionId, slots);
             } catch (err) {
                 btn.disabled = false;
                 btn.textContent = 'Send options to candidate';
-                alert(
-                    (err && err.message) ||
-                        'Could not resume n8n workflow. Check that n8n WEBHOOK_URL is a public URL (not localhost).'
-                );
+                alert((err && err.message) || 'Could not save slots. Try again.');
                 return;
             }
 
-            const successUrl =
-                SUCCESS_PAGE +
-                '?role=interviewer&count=' +
-                encodeURIComponent(String(slots.length));
-            window.location.replace(successUrl);
+            btn.textContent = 'Sending invite…';
+            const webhookOk = await SP.notifySlotsReady(sessionId);
+
+            SP.goSuccess('interviewer', {
+                count: String(slots.length),
+                webhook: webhookOk ? 'ok' : 'delayed',
+            });
         }
+
+        initSession();
     </script>
 </body>
 </html>

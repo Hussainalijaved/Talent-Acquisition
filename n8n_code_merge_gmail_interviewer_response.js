@@ -19,7 +19,21 @@ function pickContext() {
   return merged;
 }
 
-const gmail = $input.first().json;
+function resolveGmailPayload(input, ...mailNodeNames) {
+  if (input && (input.id || input.messageId || input.threadId || input.thread_id)) {
+    return input;
+  }
+  for (const name of mailNodeNames) {
+    if (!name) continue;
+    try {
+      const raw = $(name).first().json;
+      if (raw && (raw.id || raw.messageId || raw.threadId || raw.thread_id)) return raw;
+    } catch (_) {}
+  }
+  return input || {};
+}
+
+const gmail = resolveGmailPayload($input.first().json, 'MAIL - Interviewer pitch mail', 'MAIL - Interviewer pitch mail1', 'MAIL - Notify interviewer', 'MAIL - Notify interviewer1');
 const ctx = pickContext();
 const cfg = ctx.config || {};
 

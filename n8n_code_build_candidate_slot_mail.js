@@ -1,6 +1,6 @@
 // n8n: CODE - Build candidate slot mail (scheduling — thread reply)
-// Place AFTER:  CODE - Parse interviewer slot (slots ready)
-// Place BEFORE: Gmail Thread Reply node (NOT "Send message")
+// Triggered by: POST /webhook/talent/scheduling-slots { session_id }
+// Input: HTTP - SB GET session (slots) — reads proposed_slots from Supabase
 //
 // Gmail node settings:
 //   Resource:   thread
@@ -9,8 +9,6 @@
 //   Message ID: {{ $json.gmail_message_id }}
 //   Email Type: HTML
 //   Message:    {{ $json.mail_body_html }}
-//
-// After reply: CODE - Merge Gmail reply response → HTTP PATCH session
 
 function extractConfig(row) {
   const out = {};
@@ -24,80 +22,60 @@ function extractConfig(row) {
   return out;
 }
 
-function loadWorkflowConfig() {
-  const names = [
-    'CFG - Workflow configuration',
-    'CFG - Workflow',
-    'CFG - Assessment Config',
-    'CFG - Reply track (merge)',
-    'CODE - Normalize Data',
-    'CODE - Prep scheduling from PASS',
-  ];
-  let merged = {};
+function pickNodeJson(...names) {
   for (const name of names) {
+    if (!name) continue;
     try {
-      merged = { ...merged, ...extractConfig($(name).first().json) };
+      const raw = $(name).first().json;
+      if (raw && typeof raw === 'object') return raw;
     } catch (_) {}
   }
-  return merged;
+  return null;
 }
 
 function pickSessionRow() {
-  const names = [
+  const fetchRaw = pickNodeJson(
+    'HTTP - SB GET session (slots)',
+    'HTTP - SB GET session (scheduling)',
     'HTTP - Fetch Session',
-    'CODE - Prep scheduling from PASS',
-    'CODE - Parse Result',
-    'CODE - Build assessment result mail',
-  ];
-  for (const name of names) {
-    try {
-      const raw = $(name).first().json;
-      const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);
-      if (row?.id || row?.gmail_thread_id) return row;
-    } catch (_) {}
-  }
+    'HTTP - Fetch Session1'
+  );
+  const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;
+  if (row?.id) return row;
+
+  const input = $input.first().json;
+  if (input?.id) return input;
   return {};
 }
 
-function publicBaseFromHeaders(obj) {
-  const h = obj?.headers || {};
-  const host = String(h['x-forwarded-host'] || h.host || '').split(',')[0].trim();
-  if (!host || /localhost|127\.0\.0\.1/i.test(host)) return '';
-  return `https://${host}`.replace(/\/+$/, '');
-}
-
-function resolvePublicBase(base, cfg) {
-  let envWebhook = '';
-  try {
-    envWebhook = String($env.WEBHOOK_URL || $env.N8N_WEBHOOK_URL || '').trim();
-  } catch (_) {}
-  const candidates = [
-    cfg.n8n_public_url,
-    cfg.n8n_webhook_url,
-    cfg.public_n8n_url,
-    envWebhook,
-    publicBaseFromHeaders(base),
-  ];
-  for (const name of ['TRG - Assessment Answer', 'CFG - Workflow', 'CFG - Assessment Config']) {
+function normalizeSlots(raw) {
+  if (!raw) return [];
+  let slots = raw;
+  if (typeof slots === 'string') {
     try {
-      candidates.push(publicBaseFromHeaders($(name).first().json));
-      const rowCfg = extractConfig($(name).first().json);
-      candidates.push(rowCfg.n8n_public_url, rowCfg.n8n_webhook_url);
-    } catch (_) {}
+      slots = JSON.parse(slots);
+    } catch (_) {
+      return [];
+    }
   }
-  for (const raw of candidates) {
-    const v = String(raw || '').trim().replace(/\/+$/, '');
-    if (v && !/localhost|127\.0\.0\.1/i.test(v)) return v;
-  }
-  return '';
+  if (!Array.isArray(slots)) return [];
+  return slots
+    .map((s, i) => ({
+      start_iso: s.start_iso || s.start || '',
+      end_iso: s.end_iso || s.end || '',
+      label: s.label || s.start_iso || `Slot ${i + 1}`,
+    }))
+    .filter((s) => s.start_iso || s.label);
 }
 
-const base = $input.first().json;
 const session = pickSessionRow();
-const cfg = { ...loadWorkflowConfig(), ...extractConfig(base), ...(base.config || {}), ...(session.config || {}) };
+const cfg = {
+  ...extractConfig(session),
+  ...(typeof session.config === 'object' ? session.config : {}),
+};
 
-const threadId = String(session.gmail_thread_id || base.gmail_thread_id || '').trim();
-const msgId = String(session.gmail_message_id || base.gmail_message_id || '').trim();
+const threadId = String(session.gmail_thread_id || '').trim();
+const msgId = String(session.gmail_message_id || '').trim();
 if (!threadId || threadId.startsWith('draft-')) {
   throw new Error('gmail_thread_id missing — shortlist mail must run first.');
 }
@@ -110,59 +88,37 @@ const portalBase = String(
 ).replace(/\/+$/, '');
 
 const pickPortal = portalBase + '/candidate-pick.html';
-
-let resumeUrl = String($execution.resumeUrl || base.candidate_resume_url || base.resume_url || '').trim();
-const publicBase = resolvePublicBase(base, cfg);
-
-function rewriteLocalResume(url) {
-  if (!url) return url;
-  if (!/localhost|127\.0\.0\.1/i.test(url)) return url;
-  if (!publicBase) {
-    throw new Error('resumeUrl is localhost — set config.n8n_public_url or WEBHOOK_URL on n8n.');
-  }
-  return url.replace(/^https?:\/\/[^/]+/i, publicBase);
+const sessionId = String(session.id || '').trim();
+if (!sessionId) {
+  throw new Error('session id missing from Supabase row.');
 }
 
-resumeUrl = rewriteLocalResume(resumeUrl);
-if (!resumeUrl) {
-  throw new Error('Missing $execution.resumeUrl — run BEFORE WAIT - Candidate slot status.');
-}
-
-const slots = Array.isArray(base.slots)
-  ? base.slots
-  : Array.isArray(base.proposed_slots)
-    ? base.proposed_slots
-    : [];
-
+const slots = normalizeSlots(session.proposed_slots);
 if (!slots.length) {
-  throw new Error('No interview slots in payload — interviewer must submit slots first.');
+  throw new Error(
+    'proposed_slots empty on session — interviewer must submit slots on interviewer.html first.'
+  );
 }
 
-const slotsParam = encodeURIComponent(JSON.stringify(slots));
-const schedulingLink =
-  pickPortal +
-  '?resumeUrl=' +
-  encodeURIComponent(resumeUrl) +
-  '&slots_json=' +
-  slotsParam;
+const schedulingLink = pickPortal + '?session=' + encodeURIComponent(sessionId);
 
-const candidateEmail = String(base.candidate_email || '').trim();
-const score = base.score != null ? base.score : '—';
+const candidateEmail = String(session.candidate_email || '').trim();
+const score = session.score != null ? session.score : '—';
 const org = String(cfg.organization_name || 'Talent Acquisition Team');
-const role = String(cfg.requisition_title || base.requisition_title || 'the role');
-
-const sessionId = String(session.id || base.session_id || base.session_db_id || '');
+const role = String(cfg.requisition_title || session.requisition_id || 'the role');
 
 const mailBody =
   `Hi,\n\n` +
   `Congratulations! You passed our technical assessment for ${role} (score: ${score}/100).\n\n` +
-  `Next step: choose your interview time from the slots proposed by our team:\n` +
+  `Next step: choose your interview time:\n` +
   `${schedulingLink}\n\n` +
-  `The link opens a short page where you pick one time slot.\n\n` +
   `Best regards,\n${org}`;
 
 const slotListHtml = slots
-  .map((s) => `<li style="margin:6px 0;">${String(s.label || s.start_iso || '').replace(/</g, '&lt;')}</li>`)
+  .map(
+    (s) =>
+      `<li style="margin:6px 0;">${String(s.label || s.start_iso || '').replace(/</g, '&lt;')}</li>`
+  )
   .join('');
 
 const mailBodyHtml =
@@ -192,18 +148,20 @@ const mailBodyHtml =
 return [
   {
     json: {
-      ...base,
       ...session,
       config: cfg,
       session_id: sessionId,
       gmail_thread_id: threadId,
       gmail_message_id: msgId,
-      resume_url: resumeUrl,
       scheduling_link: schedulingLink,
+      proposed_slots: slots,
+      slots,
       mail_body: mailBody,
       mail_body_html: mailBodyHtml,
       mail_stage: 'scheduling',
       candidate_email: candidateEmail,
+      score,
+      requisition_title: role,
     },
   },
 ];

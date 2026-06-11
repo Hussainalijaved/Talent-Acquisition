@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview scheduling</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --card: rgba(20, 28, 47, 0.85);
+            --border: rgba(255, 255, 255, 0.08);
+            --accent: linear-gradient(135deg, #4f46e5, #6366f1);
+            --text: #fff;
+            --muted: #94a3b8;
+        }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 16px;
+            box-sizing: border-box;
+        }
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 36px 32px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+        }
+        h1 { margin: 0 0 8px; font-size: 26px; }
+        p { color: var(--muted); font-size: 15px; line-height: 1.6; margin: 0 0 20px; }
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 3px solid rgba(99, 102, 241, 0.25);
+            border-top-color: #818cf8;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .status-pill {
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: rgba(79, 70, 229, 0.2);
+            color: #c7d2fe;
+            margin-bottom: 16px;
+        }
+        .btn {
+            display: inline-block;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .err { color: #f87171; font-size: 14px; }
+        .hint { font-size: 13px; color: #64748b; margin-top: 16px; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="scheduling-portal.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner" id="spinner"></div>
+        <span class="status-pill" id="statusPill">Checking…</span>
+        <h1 id="title">Interview scheduling</h1>
+        <p id="message">Please wait while we prepare your interview time options.</p>
+        <p class="err" id="err" hidden></p>
+        <a class="btn" id="actionBtn" href="#" hidden>Pick interview time</a>
+        <p class="hint" id="hint">You can leave this page — we will also email you when slots are ready.</p>
+    </div>
+    <script>
+        const SP = window.SchedulingPortal;
+        const sessionId = SP.parseSessionId();
+        const POLL_MS = 8000;
+
+        const spinner = document.getElementById('spinner');
+        const statusPill = document.getElementById('statusPill');
+        const title = document.getElementById('title');
+        const message = document.getElementById('message');
+        const errEl = document.getElementById('err');
+        const actionBtn = document.getElementById('actionBtn');
+        const hint = document.getElementById('hint');
+
+        function showError(msg) {
+            spinner.hidden = true;
+            errEl.hidden = false;
+            errEl.textContent = msg;
+            statusPill.textContent = 'Error';
+        }
+
+        function renderState(state) {
+            if (state.status === 'confirmed') {
+                spinner.hidden = true;
+                statusPill.textContent = 'Confirmed';
+                title.textContent = 'Interview time confirmed';
+                message.textContent = 'Your slot is saved. Check your email for calendar details.';
+                actionBtn.hidden = true;
+                hint.textContent = 'You can close this window.';
+                return true;
+            }
+
+            if (state.status === 'slots_ready') {
+                spinner.hidden = true;
+                statusPill.textContent = 'Ready';
+                title.textContent = 'Choose your interview time';
+                message.textContent =
+                    state.slots.length +
+                    ' option(s) are ready. Pick the time that works best for you.';
+                actionBtn.hidden = false;
+                actionBtn.href = SP.candidatePickUrl(sessionId);
+                actionBtn.textContent = 'Pick interview time';
+                hint.textContent = 'This page will also redirect automatically in a few seconds.';
+                setTimeout(function () {
+                    window.location.replace(SP.candidatePickUrl(sessionId));
+                }, 4000);
+                return true;
+            }
+
+            statusPill.textContent = 'Waiting';
+            title.textContent = 'Almost there';
+            message.textContent =
+                'Your interviewer is being notified to propose interview slots. ' +
+                'This usually takes a few minutes, but they may respond later tonight.';
+            hint.textContent =
+                'Keep this tab open, or come back later — we will also email you when slots are ready.';
+            return false;
+        }
+
+        async function tick() {
+            if (!sessionId) {
+                showError('Missing session. Open the link from your assessment or email.');
+                return;
+            }
+            try {
+                const state = await SP.pollScheduling(sessionId);
+                if (renderState(state)) return;
+            } catch (err) {
+                showError((err && err.message) || 'Could not load scheduling status.');
+            }
+        }
+
+        if (!sessionId) {
+            showError('Missing session in URL.');
+        } else {
+            tick();
+            setInterval(tick, POLL_MS);
+        }
+    </script>
+</body>
+</html>

@@ -411,6 +411,25 @@
         .guide-panel summary { padding: 12px 16px; cursor: pointer; font-weight: 600; font-size: 14px; color: var(--primary); }
         .guide-panel ol { margin: 0; padding: 0 16px 16px 32px; color: var(--text-soft); font-size: 13px; line-height: 1.65; }
         .guide-panel li { margin-bottom: 6px; }
+        .user-menu {
+            display: flex; align-items: center; gap: 10px;
+            padding: 6px 10px 6px 14px; border-radius: 10px;
+            background: var(--surface-2); border: 1px solid var(--border);
+            font-size: 12px; max-width: 200px;
+        }
+        .user-menu .user-name { display: block; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-menu .user-role { display: block; color: var(--text-faint); font-size: 11px; }
+        .signout-btn {
+            padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--surface); color: var(--text-soft); font-size: 12px; font-weight: 600;
+            cursor: pointer; white-space: nowrap;
+        }
+        .signout-btn:hover { border-color: var(--red); color: var(--red); }
+        .role-pill {
+            display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;
+            background: var(--primary-soft); color: var(--primary);
+        }
+        .role-pill.inactive { background: var(--red-soft); color: var(--red); }
         .raw-json { font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.45; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-all; background: var(--surface-2); padding: 12px; border-radius: 9px; color: var(--text-soft); }
         .drawer-actions { display: flex; gap: 8px; margin-top: 8px; }
 
@@ -462,7 +481,15 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Settings
         </button>
-        <div class="sidebar-foot">v2.0 · Admin panel</div>
+        <button class="nav-item" data-view="users">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+            Users
+        </button>
+        <button class="nav-item" data-view="audit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M9 11h6"/></svg>
+            Audit log
+        </button>
+        <div class="sidebar-foot">v3.0 · Role-based admin</div>
     </aside>
 
     <div class="main">
@@ -481,6 +508,10 @@
             <button class="icon-btn" id="themeBtn" title="Toggle theme">
                 <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             </button>
+            <div class="user-menu" id="userBadge" title="Signed in">
+                <span class="user-name">…</span><span class="user-role">…</span>
+            </div>
+            <button type="button" class="signout-btn" id="signOutBtn">Sign out</button>
         </header>
 
         <div class="content">
@@ -794,6 +825,60 @@
                 </div>
             </section>
 
+            <!-- USERS (super admin) -->
+            <section class="view" id="view-users">
+                <div class="admin-split">
+                    <div class="card">
+                        <div class="card-head"><div class="card-title">Invite user<small>Creates Supabase Auth account + profile</small></div></div>
+                        <form id="inviteUserForm">
+                            <div class="form-grid cols-1">
+                                <div class="form-group">
+                                    <label for="invName">Full name</label>
+                                    <input id="invName" type="text" required placeholder="Recruiter name" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="invEmail">Email</label>
+                                    <input id="invEmail" type="email" required placeholder="recruiter@convo.com" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="invPass">Temporary password</label>
+                                    <input id="invPass" type="password" required minlength="8" placeholder="Min 8 characters" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="invRole">Role</label>
+                                    <select id="invRole">
+                                        <option value="recruiter">Recruiter</option>
+                                        <option value="hiring_manager">Hiring Manager</option>
+                                        <option value="viewer">Viewer (read-only)</option>
+                                        <option value="super_admin">Super Admin</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn-primary" id="inviteUserBtn">Create user</button>
+                            </div>
+                            <div class="form-hint">Requires Email sign-ups enabled in Supabase Auth while inviting.</div>
+                        </form>
+                    </div>
+                    <div class="table-card">
+                        <table>
+                            <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Joined</th><th></th></tr></thead>
+                            <tbody id="usersBody"><tr><td class="loading-row" colspan="5">Loading users…</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- AUDIT (super admin) -->
+            <section class="view" id="view-audit">
+                <div class="table-card">
+                    <table>
+                        <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead>
+                        <tbody id="auditBody"><tr><td class="loading-row" colspan="5">Loading audit log…</td></tr></tbody>
+                    </table>
+                </div>
+            </section>
+
             <!-- SETTINGS -->
             <section class="view" id="view-settings">
                 <div class="card" style="max-width:640px">
@@ -837,13 +922,11 @@
         <div class="drawer-body" id="drawerBody"></div>
     </aside>
 
+    <script src="auth-config.js"></script>
+    <script src="admin-auth.js"></script>
+    <script src="admin-panel.js"></script>
     <script>
-        const SUPABASE_URL = 'https://vnxstyadacgntnsvcvzn.supabase.co';
-        const SUPABASE_ANON_KEY =
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
         let sb = null;
-        try { if (window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
-        catch (e) { console.error('Supabase init failed', e); }
 
         let MERGED = [];
         let charts = {};
@@ -1404,8 +1487,11 @@
             screen: ['CV Screening', 'Screen single or batch CVs via AI — merged recruiter intake'],
             onsite: ['Onsite Interviews', 'Record in-person interview outcomes'],
             settings: ['Settings', 'Webhooks and integrations'],
+            users: ['Users & roles', 'Invite team members and manage access'],
+            audit: ['Audit log', 'Who changed what in the admin panel'],
         };
         function setView(v) {
+            if (window.TAAuth) v = TAAuth.guardView(v);
             document.querySelectorAll('.nav-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
             document.querySelectorAll('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
             const t = TITLES[v] || ['', ''];
@@ -1423,12 +1509,16 @@
             } catch (_) { /* ignore */ }
         }
         document.querySelectorAll('.nav-item[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
-        (function applyRouteView() {
+        function applyRouteView() {
             const p = new URLSearchParams(location.search);
             const legacy = { intake: 'screen', results: 'candidates', jobs: 'jobs' };
             const v = p.get('view') || legacy[p.get('tab')] || null;
             if (v && TITLES[v]) setView(v);
-        })();
+        }
+        document.getElementById('signOutBtn')?.addEventListener('click', async () => {
+            if (window.TAAuth) await TAAuth.signOut();
+            location.href = 'login.html';
+        });
         document.getElementById('seeAllBtn').addEventListener('click', () => setView('candidates'));
         document.getElementById('overlay').addEventListener('click', closeDrawer);
         document.getElementById('drawerClose').addEventListener('click', closeDrawer);
@@ -1451,26 +1541,35 @@
         themeBtn.addEventListener('click', () => applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'));
         applyTheme(localStorage.getItem('ta_theme') || 'light');
 
-        loadData();
-    </script>
-    <script src="admin-panel.js"></script>
-    <script>
-        if (window.TAAdmin) {
-            TAAdmin.init({
-                sb,
-                esc,
-                fmtDate,
-                fmtDateTime,
-                roleLabel,
-                scoreBadge,
-                stagePill,
-                assessPill,
-                banner,
-                loadData,
-                setView,
-                closeDrawer,
-            });
+        async function bootDashboard() {
+            if (!window.TAAuth) {
+                banner('Auth module failed to load.', 'err');
+                return;
+            }
+            const ok = await TAAuth.boot();
+            if (!ok) return;
+            sb = TAAuth.client();
+            applyRouteView();
+            await loadData();
+            if (window.TAAdmin) {
+                TAAdmin.init({
+                    sb,
+                    auth: TAAuth,
+                    esc,
+                    fmtDate,
+                    fmtDateTime,
+                    roleLabel,
+                    scoreBadge,
+                    stagePill,
+                    assessPill,
+                    banner,
+                    loadData,
+                    setView,
+                    closeDrawer,
+                });
+            }
         }
+        bootDashboard();
     </script>
 </body>
 </html>

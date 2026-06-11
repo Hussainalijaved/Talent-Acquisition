@@ -354,6 +354,10 @@
     }
 
     async function saveWebhookConfig() {
+        if (deps.auth && !deps.auth.can('save_webhooks')) {
+            deps.banner('Only super admins can change integration settings.', 'err');
+            return;
+        }
         const cvUrl = normalizeWebhookUrl(document.getElementById('admWebhook')?.value || '');
         const jdUrl = normalizeWebhookUrl(document.getElementById('admJdWebhook')?.value || '');
         if (!cvUrl) {
@@ -371,6 +375,7 @@
             }
             await deps.sb.from('app_config').upsert(rows, { onConflict: 'key' });
         }
+        if (deps.auth) await deps.auth.logAudit('save_webhooks', 'app_config', 'webhooks', { cv: !!cvUrl, jd: !!jdUrl });
         deps.banner('Webhook URLs saved.', 'ok');
     }
 
@@ -449,6 +454,8 @@
             tb.innerHTML = '<tr><td class="empty" colspan="7">No jobs yet — create one in the form.</td></tr>';
             return;
         }
+        const canDel = !deps.auth || deps.auth.can('delete_job');
+        const canEdit = !deps.auth || deps.auth.can('edit_jobs');
         tb.innerHTML = JOBS.map((j) =>
             `<tr data-job="${j.id}">
                 <td><strong>${deps.esc(j.title)}</strong><div class="c-role">${deps.esc(j.job_id)}</div></td>
@@ -456,8 +463,8 @@
                 <td><span class="pill ${j.status === 'open' ? 'p-pass' : j.status === 'draft' ? 'p-pending' : 'p-reject'}">${deps.esc(j.status)}</span></td>
                 <td class="c-role">${deps.fmtDate(j.updated_at)}</td>
                 <td>${j.status === 'open' ? `<a href="${applyPageUrl(j.job_id)}" target="_blank" rel="noopener" class="btn-sm" style="text-decoration:none">View live</a>` : '<span class="c-role">—</span>'}</td>
-                <td><button type="button" class="btn-sm" data-edit-job="${j.id}">Edit</button></td>
-                <td><button type="button" class="btn-sm btn-danger" data-del-job="${j.id}">Delete</button></td>
+                <td>${canEdit ? `<button type="button" class="btn-sm" data-edit-job="${j.id}">Edit</button>` : '<span class="c-role">—</span>'}</td>
+                <td>${canDel ? `<button type="button" class="btn-sm btn-danger" data-del-job="${j.id}">Delete</button>` : '<span class="c-role">—</span>'}</td>
             </tr>`
         ).join('');
 
@@ -498,6 +505,10 @@
     }
 
     async function saveJob() {
+        if (deps.auth && !deps.auth.can('edit_jobs')) {
+            deps.banner('You do not have permission to edit jobs.', 'err');
+            return;
+        }
         const id = document.getElementById('jobEditId').value;
         const title = document.getElementById('jobTitleIn').value.trim();
         const jd_text = document.getElementById('jobJdIn').value.trim();
@@ -531,6 +542,7 @@
             deps.banner('Save job failed: ' + error.message, 'err');
             return;
         }
+        if (deps.auth) await deps.auth.logAudit('save_job', 'job', row.job_id, { title: row.title, status: row.status });
         deps.banner('Job saved.', 'ok');
         document.getElementById('jobForm').reset();
         document.getElementById('jobEditId').value = '';
@@ -538,12 +550,17 @@
     }
 
     async function deleteJob(id) {
+        if (deps.auth && !deps.auth.can('delete_job')) {
+            deps.banner('Only super admins can delete jobs.', 'err');
+            return;
+        }
         if (!confirm('Delete this job posting?')) return;
         const { error } = await deps.sb.from('jobs').delete().eq('id', id);
         if (error) {
             deps.banner('Delete job failed: ' + error.message + ' — run supabase_admin_panel.sql', 'err');
             return;
         }
+        if (deps.auth) await deps.auth.logAudit('delete_job', 'job', id, {});
         deps.banner('Job deleted.', 'ok');
         await loadJobs();
     }
@@ -821,6 +838,10 @@
 
     async function submitManualScreen(e) {
         e.preventDefault();
+        if (deps.auth && !deps.auth.can('screen_cv')) {
+            deps.banner('You do not have permission to run CV screening.', 'err');
+            return;
+        }
         const webhook = normalizeWebhookUrl(document.getElementById('admWebhook')?.value || localStorage.getItem(WEBHOOK_STORAGE));
         if (!webhook) {
             deps.banner('Set CV ingest webhook in Settings first.', 'err');
@@ -952,6 +973,10 @@
 
     async function saveOnsite(e) {
         e.preventDefault();
+        if (deps.auth && !deps.auth.can('onsite_write')) {
+            deps.banner('You do not have permission to record onsite interviews.', 'err');
+            return;
+        }
         const row = {
             candidate_email: document.getElementById('onsEmail').value.trim().toLowerCase(),
             candidate_name: document.getElementById('onsName').value.trim() || null,
@@ -983,7 +1008,145 @@
         await loadOnsite();
     }
 
+    async function loadUsers() {
+        if (!deps.auth?.can('manage_users')) return;
+        const { data, error } = await deps.sb.from('profiles').select('*').order('created_at', { ascending: false });
+        const tb = document.getElementById('usersBody');
+        if (!tb) return;
+        if (error) {
+            tb.innerHTML = '<tr><td class="empty" colspan="5">' + deps.esc(error.message) + ' — run supabase_auth_profiles.sql</td></tr>';
+            return;
+        }
+        const rows = data || [];
+        if (!rows.length) {
+            tb.innerHTML = '<tr><td class="empty" colspan="5">No users yet.</td></tr>';
+            return;
+        }
+        const me = deps.auth.profile()?.id;
+        tb.innerHTML = rows.map((u) => {
+            const inactive = !u.is_active;
+            return `<tr data-user="${u.id}">
+                <td><strong>${deps.esc(u.full_name || u.email)}</strong><div class="c-role">${deps.esc(u.email)}</div></td>
+                <td>
+                    <select class="filter" data-user-role="${u.id}" ${u.id === me ? 'disabled' : ''}>
+                        <option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super Admin</option>
+                        <option value="recruiter" ${u.role === 'recruiter' ? 'selected' : ''}>Recruiter</option>
+                        <option value="hiring_manager" ${u.role === 'hiring_manager' ? 'selected' : ''}>Hiring Manager</option>
+                        <option value="viewer" ${u.role === 'viewer' ? 'selected' : ''}>Viewer</option>
+                    </select>
+                </td>
+                <td><span class="role-pill ${inactive ? 'inactive' : ''}">${inactive ? 'Inactive' : 'Active'}</span></td>
+                <td class="c-role">${deps.fmtDate(u.created_at)}</td>
+                <td>${u.id === me ? '<span class="c-role">You</span>' : `<button type="button" class="btn-sm" data-toggle-user="${u.id}">${inactive ? 'Activate' : 'Deactivate'}</button>`}</td>
+            </tr>`;
+        }).join('');
+        tb.querySelectorAll('[data-user-role]').forEach((sel) => {
+            sel.addEventListener('change', () => updateUserRole(sel.getAttribute('data-user-role'), sel.value));
+        });
+        tb.querySelectorAll('[data-toggle-user]').forEach((btn) => {
+            btn.addEventListener('click', () => toggleUserActive(btn.getAttribute('data-toggle-user')));
+        });
+    }
+
+    async function updateUserRole(userId, role) {
+        if (!deps.auth?.can('manage_users')) return;
+        const { error } = await deps.sb.from('profiles').update({ role, updated_at: new Date().toISOString() }).eq('id', userId);
+        if (error) {
+            deps.banner('Update role failed: ' + error.message, 'err');
+            await loadUsers();
+            return;
+        }
+        await deps.auth.logAudit('update_user_role', 'profile', userId, { role });
+        deps.banner('User role updated.', 'ok');
+    }
+
+    async function toggleUserActive(userId) {
+        if (!deps.auth?.can('manage_users')) return;
+        const { data } = await deps.sb.from('profiles').select('is_active, email').eq('id', userId).maybeSingle();
+        if (!data) return;
+        const next = !data.is_active;
+        if (!confirm((next ? 'Activate' : 'Deactivate') + ' ' + data.email + '?')) {
+            await loadUsers();
+            return;
+        }
+        const { error } = await deps.sb.from('profiles').update({ is_active: next, updated_at: new Date().toISOString() }).eq('id', userId);
+        if (error) {
+            deps.banner('Update failed: ' + error.message, 'err');
+            return;
+        }
+        await deps.auth.logAudit(next ? 'activate_user' : 'deactivate_user', 'profile', userId, {});
+        deps.banner('User updated.', 'ok');
+        await loadUsers();
+    }
+
+    async function inviteUser(e) {
+        e.preventDefault();
+        if (!deps.auth?.can('manage_users')) {
+            deps.banner('Only super admins can invite users.', 'err');
+            return;
+        }
+        const fullName = document.getElementById('invName').value.trim();
+        const email = document.getElementById('invEmail').value.trim().toLowerCase();
+        const password = document.getElementById('invPass').value;
+        const role = document.getElementById('invRole').value;
+        const btn = document.getElementById('inviteUserBtn');
+        btn.disabled = true;
+        try {
+            await deps.auth.inviteUser(email, password, {
+                full_name: fullName,
+                role,
+                invited_by_admin: 'true',
+            });
+            await deps.auth.logAudit('invite_user', 'profile', email, { role });
+            deps.banner('User created — share login credentials securely.', 'ok');
+            document.getElementById('inviteUserForm').reset();
+            await loadUsers();
+        } catch (err) {
+            deps.banner('Invite failed: ' + (err.message || err), 'err');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function loadAudit() {
+        if (!deps.auth?.can('view_audit')) return;
+        const tb = document.getElementById('auditBody');
+        if (!tb) return;
+        const { data: logs, error } = await deps.sb
+            .from('audit_log')
+            .select('id, action, entity_type, entity_id, meta, created_at, actor_id')
+            .order('created_at', { ascending: false })
+            .limit(250);
+        if (error) {
+            tb.innerHTML = '<tr><td class="empty" colspan="5">' + deps.esc(error.message) + '</td></tr>';
+            return;
+        }
+        const actorIds = [...new Set((logs || []).map((l) => l.actor_id).filter(Boolean))];
+        let actorMap = {};
+        if (actorIds.length) {
+            const { data: profs } = await deps.sb.from('profiles').select('id, email, full_name').in('id', actorIds);
+            (profs || []).forEach((p) => { actorMap[p.id] = p.full_name || p.email; });
+        }
+        if (!logs?.length) {
+            tb.innerHTML = '<tr><td class="empty" colspan="5">No audit events yet.</td></tr>';
+            return;
+        }
+        tb.innerHTML = logs.map((l) =>
+            `<tr>
+                <td class="c-role">${deps.fmtDateTime(l.created_at)}</td>
+                <td>${deps.esc(actorMap[l.actor_id] || '—')}</td>
+                <td><strong>${deps.esc(l.action)}</strong></td>
+                <td class="c-role">${deps.esc((l.entity_type || '') + (l.entity_id ? ' · ' + l.entity_id : ''))}</td>
+                <td class="c-role">${deps.esc(l.meta ? JSON.stringify(l.meta).slice(0, 120) : '—')}</td>
+            </tr>`
+        ).join('');
+    }
+
     async function deleteCandidateRecord(m) {
+        if (deps.auth && !deps.auth.can('delete_candidate')) {
+            deps.banner('Only super admins can delete candidates.', 'err');
+            return;
+        }
         if (!m || !confirm('Permanently delete all records for ' + m.email + '? This cannot be undone.')) return;
         const email = String(m.email || '').toLowerCase();
         const errs = [];
@@ -1007,6 +1170,7 @@
         if (errs.length) {
             deps.banner('Partial delete — run supabase_admin_panel.sql. ' + errs.join('; '), 'err');
         } else {
+            if (deps.auth) await deps.auth.logAudit('delete_candidate', 'candidate', email, {});
             deps.banner('Candidate deleted.', 'ok');
         }
         deps.closeDrawer();
@@ -1033,6 +1197,7 @@
         document.getElementById('drawerDeleteBtn')?.addEventListener('click', () => {
             if (deps.activeCandidate) deleteCandidateRecord(deps.activeCandidate);
         });
+        document.getElementById('inviteUserForm')?.addEventListener('submit', inviteUser);
     }
 
     window.TAAdmin = {
@@ -1061,6 +1226,8 @@
                 loadWebhookConfig();
                 loadJdWebhookConfig();
             }
+            if (view === 'users') loadUsers();
+            if (view === 'audit') loadAudit();
         },
         setActiveCandidate(m) {
             deps.activeCandidate = m;

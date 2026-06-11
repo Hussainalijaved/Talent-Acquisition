@@ -551,13 +551,104 @@
             const s = STAGES[stage] || { t: stage || 'Unknown', c: 'p-dup' };
             return '<span class="pill ' + s.c + '">' + esc(s.t) + '</span>';
         }
-        function assessPill(sess) {
-            if (!sess) return '<span class="c-role">—</span>';
-            if (sess.result === 'PASS') return '<span class="pill p-pass">Passed</span>';
-            if (sess.result === 'FAIL') return '<span class="pill p-reject">Failed</span>';
-            if (sess.status === 'completed') return '<span class="pill p-assess">Completed</span>';
-            if (sess.status === 'assessment') return '<span class="pill p-pending">Phase ' + (sess.current_phase || 1) + '</span>';
-            return '<span class="pill p-assess">' + esc(sess.status || 'Active') + '</span>';
+        function normalizeJobId(value) {
+            return String(value || '').trim().toLowerCase();
+        }
+
+        function jobIdSlug(title) {
+            return String(title || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '');
+        }
+
+        function candidateJobIds(c, notes) {
+            const ids = new Set();
+            const add = (v) => {
+                const n = normalizeJobId(v);
+                if (n) ids.add(n);
+                const slug = jobIdSlug(v);
+                if (slug) ids.add(slug);
+            };
+            add(c.requisition_id);
+            add(notes?.requisition_title);
+            add(notes?.config?.requisition_title);
+            return ids;
+        }
+
+        function sessionJobIds(sess) {
+            const ids = new Set();
+            const add = (v) => {
+                const n = normalizeJobId(v);
+                if (n) ids.add(n);
+                const slug = jobIdSlug(v);
+                if (slug) ids.add(slug);
+            };
+            add(sess.requisition_id);
+            const cfg = parseJson(sess.config);
+            add(cfg.requisition_id);
+            add(cfg.requisition_title);
+            return ids;
+        }
+
+        function findSessionForCandidate(sessions, email, jobIds) {
+            const em = String(email || '').toLowerCase();
+            const pool = (sessions || []).filter((s) => String(s.candidate_email || '').toLowerCase() === em);
+            if (!pool.length) return null;
+            if (!jobIds || !jobIds.size) return pool[0];
+            for (const s of pool) {
+                const sids = sessionJobIds(s);
+                for (const jid of jobIds) {
+                    if (sids.has(jid)) return s;
+                }
+            }
+            return pool[0];
+        }
+
+        function historyStats(sess) {
+            const hist = parseHistory(sess);
+            const maxPh = Number(sess?.max_phases || 5);
+            const withQ = hist.filter((h) => h && (h.question_text || h.question)).length;
+            const answered = hist.filter((h) => h && h.answer_text != null && String(h.answer_text).trim() !== '').length;
+            return { hist, maxPh, withQ, answered };
+        }
+
+        function assessPill(sess, stage) {
+            if (!sess) {
+                if (stage === 'Shortlisted') return '<span class="pill p-pending">Not started</span>';
+                return '<span class="c-role">—</span>';
+            }
+            const { answered, maxPh } = historyStats(sess);
+            const progress = answered > 0 ? ' <span class="assess-progress">' + answered + '/' + maxPh + '</span>' : '';
+            if (sess.result === 'PASS') return '<span class="pill p-pass">Passed' + progress + '</span>';
+            if (sess.result === 'FAIL') return '<span class="pill p-reject">Failed' + progress + '</span>';
+            if (sess.status === 'completed') return '<span class="pill p-assess">Completed' + progress + '</span>';
+            if (sess.status === 'assessment') {
+                return '<span class="pill p-pending">Phase ' + (sess.current_phase || 1) + progress + '</span>';
+            }
+            return '<span class="pill p-assess">' + esc(sess.status || 'Active') + progress + '</span>';
+        }
+
+        function assessCellHtml(m) {
+            const pill = assessPill(m.session, m.stage);
+            if (!m.session) return pill;
+            const { hist, answered, withQ, maxPh } = historyStats(m.session);
+            if (!hist.length) return pill;
+            const preview = hist
+                .filter((h) => h && (h.question_text || h.question))
+                .slice(0, 2)
+                .map((h) => {
+                    const q = String(h.question_text || h.question || '').trim();
+                    const short = q.length > 72 ? q.slice(0, 72) + '…' : q;
+                    const ans = h.answer_text != null && String(h.answer_text).trim() !== '';
+                    return '<div class="hist-preview-line"><span class="hist-preview-phase">P' + esc(h.phase || '?') + '</span> ' +
+                        esc(short) + (ans ? ' <span class="hist-preview-ok">✓</span>' : '') + '</div>';
+                })
+                .join('');
+            const more = withQ > 2 ? '<div class="hist-preview-more">+' + (withQ - 2) + ' more — open row for full history</div>' : '';
+            return '<div class="assess-cell">' + pill +
+                '<div class="hist-preview">' + preview + more + '</div>' +
+                '<div class="hist-preview-foot">' + answered + ' of ' + maxPh + ' phases answered</div></div>';
         }
         const AV_COLORS = ['#475569', '#64748b', '#334155', '#1e40af', '#0369a1', '#0f766e', '#4b5563', '#52525b'];
         function avatarFor(email) {
@@ -601,19 +692,19 @@
             ]);
 
             if (candRes.error) { banner('Could not read candidates: ' + candRes.error.message + ' — run supabase_rls_candidates_read.sql.', 'err'); }
-
-            const sessByEmail = {};
-            for (const s of (sessRes.data || [])) {
-                const em = String(s.candidate_email || '').toLowerCase();
-                if (em && !sessByEmail[em]) sessByEmail[em] = s;
+            if (sessRes.error) {
+                banner('Could not read assessment sessions: ' + sessRes.error.message + ' — check assessment_sessions RLS for staff.', 'err');
             }
 
+            const allSessions = sessRes.data || [];
             const merged = [];
             const seen = new Set();
             for (const c of (candRes.data || [])) {
                 const em = String(c.candidate_email || '').toLowerCase();
-                seen.add(em);
                 const notes = parseJson(c.notes);
+                const jobIds = candidateJobIds(c, notes);
+                const matchKey = em + '|' + [...jobIds].sort().join(',');
+                seen.add(matchKey);
                 merged.push({
                     email: c.candidate_email || '—',
                     candidateId: c.id,
@@ -623,15 +714,19 @@
                     notes,
                     rawNotes: c.notes,
                     created_at: c.created_at,
-                    session: sessByEmail[em] || null,
+                    session: findSessionForCandidate(allSessions, em, jobIds),
                 });
             }
             // sessions without a candidate row (direct applies)
-            for (const s of (sessRes.data || [])) {
+            for (const s of allSessions) {
                 const em = String(s.candidate_email || '').toLowerCase();
-                if (em && !seen.has(em)) {
-                    seen.add(em);
-                    const cfg = parseJson(s.config);
+                const cfg = parseJson(s.config);
+                const pseudo = { requisition_id: s.requisition_id };
+                const notes = { requisition_title: cfg.requisition_title };
+                const jobIds = candidateJobIds(pseudo, notes);
+                const matchKey = em + '|' + [...jobIds].sort().join(',');
+                if (em && !seen.has(matchKey)) {
+                    seen.add(matchKey);
                     merged.push({
                         email: s.candidate_email,
                         candidateId: null,
@@ -832,7 +927,7 @@
                 '<td class="c-role">' + esc(roleLabel(m.role)) + '</td>' +
                 '<td>' + scoreBadge(m.cvScore) + '</td>' +
                 '<td>' + stagePill(m.stage) + '</td>' +
-                '<td>' + assessPill(m.session) + '</td>' +
+                '<td class="assess-col">' + assessCellHtml(m) + '</td>' +
                 (withDate ? '<td class="c-role">' + fmtDate(m.created_at) + '</td>' : '') +
                 '</tr>';
         }
@@ -863,7 +958,7 @@
                 if (fRole && m.role !== fRole) return false;
                 if (fAssess) {
                     const s = m.session;
-                    if (fAssess === 'none' && s) return false;
+                    if (fAssess === 'none' && !(m.stage === 'Shortlisted' && !s)) return false;
                     if (fAssess === 'PASS' && !(s && s.result === 'PASS')) return false;
                     if (fAssess === 'FAIL' && !(s && s.result === 'FAIL')) return false;
                     if (fAssess === 'assessment' && !(s && s.status === 'assessment')) return false;
@@ -911,7 +1006,14 @@
             let hist = sess?.interview_history;
             if (typeof hist === 'string') { try { hist = JSON.parse(hist); } catch { hist = []; } }
             if (!Array.isArray(hist)) hist = [];
-            return hist.slice().sort((a, b) => Number(a.phase || 0) - Number(b.phase || 0));
+            return hist
+                .map((item, index) => ({
+                    ...item,
+                    phase: item?.phase ?? index + 1,
+                    question_text: item?.question_text || item?.question || '',
+                    answer_text: item?.answer_text ?? item?.answer ?? null,
+                }))
+                .sort((a, b) => Number(a.phase || 0) - Number(b.phase || 0));
         }
 
         function avgPhaseScore(hist) {
@@ -957,6 +1059,9 @@
                 body += '<div class="phase-empty">No answer submitted.</div>';
             }
 
+            if (h.integrity_terminated) {
+                body += '<div class="phase-empty" style="color:var(--danger);font-style:normal;font-weight:600">Integrity violation — phase terminated without score.</div>';
+            }
             if (h.feedback) body += renderQaBlock('AI evaluator feedback', h.feedback, 'feedback');
             if (h.suggested_answer) body += renderQaBlock('Model answer reference', h.suggested_answer, 'model');
 
@@ -981,7 +1086,7 @@
 
             let html = '<div class="section assessment-report"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' +
-                'Technical assessment report</div>';
+                'Interview history</div>';
 
             html += '<div class="assess-summary">' +
                 '<div class="assess-stat">' + assessPill(sess) + '<span class="assess-stat-lbl">Outcome</span></div>' +
@@ -1009,22 +1114,20 @@
             }
             html += '</div>';
 
-            if (!hist.length) {
-                html += '<div class="phase-empty">No assessment questions recorded yet.</div>';
-            } else {
-                html += '<div class="qlabel">Questions &amp; answers</div>';
-                const phasesSeen = new Set();
-                hist.forEach((h) => {
-                    if (!h || !(h.question_text || h.question || h.answer_text)) return;
-                    phasesSeen.add(Number(h.phase));
-                    html += renderPhaseCard(h, maxPh);
-                });
-                for (let p = 1; p <= maxPh; p++) {
-                    if (!phasesSeen.has(p)) {
-                        const placeholder = { phase: p };
-                        html += renderPhaseCard(placeholder, maxPh);
-                    }
+            html += '<div class="qlabel">All phases — questions, answers &amp; scores</div>';
+            const phasesSeen = new Set();
+            hist.forEach((h) => {
+                if (!h) return;
+                phasesSeen.add(Number(h.phase));
+                html += renderPhaseCard(h, maxPh);
+            });
+            for (let p = 1; p <= maxPh; p++) {
+                if (!phasesSeen.has(p)) {
+                    html += renderPhaseCard({ phase: p }, maxPh);
                 }
+            }
+            if (!hist.length) {
+                html += '<div class="phase-empty">interview_history is empty for this session — candidate has not received phase 1 yet.</div>';
             }
 
             html += '</div>';
@@ -1056,27 +1159,28 @@
                 (sess && sess.id ? kv('Session ID', esc(sess.id)) : '') +
                 '</div>';
 
+            // Interview history (assessment_sessions.interview_history)
+            if (sess) {
+                html += renderAssessmentReport(sess);
+            } else if (m.stage === 'Shortlisted') {
+                html += '<div class="section"><div class="section-h">' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Assessment</div>' +
+                    '<div class="qtext ans">Shortlisted — assessment session not created yet. Check n8n shortlist flow (session insert + outreach mail).</div></div>';
+            } else {
+                html += '<div class="section"><div class="section-h">' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Assessment</div>' +
+                    '<div class="qtext ans">No assessment — candidate was not shortlisted for this role.</div></div>';
+            }
+
             // CV screening
             html += '<div class="section"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>CV screening</div>' +
                 '<div class="reason">' + esc(buildReason(m.rawNotes || m.notes, m.stage)) + '</div>';
-            if (n.phase_1_question) {
-                html += '<div class="qlabel">First assessment question</div><div class="qtext">' + esc(n.phase_1_question) + '</div>';
-            }
             if (n.strengths || n.weaknesses) {
                 if (n.strengths) html += '<div class="qlabel">Strengths</div><div class="qtext">' + esc(Array.isArray(n.strengths) ? n.strengths.join(', ') : n.strengths) + '</div>';
                 if (n.weaknesses) html += '<div class="qlabel">Gaps</div><div class="qtext ans">' + esc(Array.isArray(n.weaknesses) ? n.weaknesses.join(', ') : n.weaknesses) + '</div>';
             }
             html += '</div>';
-
-            // Assessment report
-            if (sess) {
-                html += renderAssessmentReport(sess);
-            } else {
-                html += '<div class="section"><div class="section-h">' +
-                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Assessment</div>' +
-                    '<div class="qtext ans">No assessment session yet. Candidate either was not shortlisted or has not started the technical assessment.</div></div>';
-            }
 
             if (sess) {
                 const cfg = parseJson(sess.config);

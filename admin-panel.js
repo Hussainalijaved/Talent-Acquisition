@@ -989,8 +989,23 @@
     function populateInviteRoleSelect() {
         const sel = document.getElementById('invRole');
         if (!sel || !deps.auth) return;
+        if (!deps.auth.canManageUsers()) return;
         const roles = deps.auth.assignableRoles();
+        if (!roles.length) {
+            sel.innerHTML = '<option value="">No roles available</option>';
+            return;
+        }
         sel.innerHTML = roleOptionsHtml(roles[0], roles);
+        const hint = document.getElementById('inviteRoleHint');
+        if (hint) {
+            if (deps.auth.hasRole('super_admin')) {
+                hint.textContent = 'Super Admin can create any role.';
+            } else if (deps.auth.hasRole('hr_head')) {
+                hint.textContent = 'HR Head can invite Recruiter/HR, Interviewer, and Viewer roles.';
+            } else if (deps.auth.hasRole('hiring_manager_head')) {
+                hint.textContent = 'Hiring Manager Head can invite Hiring Manager and Interviewer roles.';
+            }
+        }
     }
 
     async function loadUsers() {
@@ -1003,9 +1018,9 @@
             tb.innerHTML = '<tr><td class="empty" colspan="5">' + deps.esc(error.message) + ' — run supabase_auth_profiles.sql</td></tr>';
             return;
         }
-        const rows = data || [];
+        const rows = (data || []).filter((u) => deps.auth.canSeeUser(u));
         if (!rows.length) {
-            tb.innerHTML = '<tr><td class="empty" colspan="5">No users yet.</td></tr>';
+            tb.innerHTML = '<tr><td class="empty" colspan="5">No team members yet — use Invite user to add someone.</td></tr>';
             return;
         }
         const me = deps.auth.profile()?.id;
@@ -1470,8 +1485,14 @@
                 loadWebhookConfig();
                 loadJdWebhookConfig();
             }
-            if (view === 'users') loadUsers();
-            if (view === 'users-invite') populateInviteRoleSelect();
+            if (view === 'users' || view === 'users-invite') {
+                if (!deps.auth?.canManageUsers()) {
+                    deps.setView('overview');
+                    return;
+                }
+                if (view === 'users') loadUsers();
+                if (view === 'users-invite') populateInviteRoleSelect();
+            }
             if (view === 'audit') loadAudit();
         },
         setActiveCandidate(m) {

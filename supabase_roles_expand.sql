@@ -90,14 +90,15 @@ as $$
   );
 $$;
 
--- Profile read: super admin + heads
+-- Profile read: super admin + heads (scoped to their team roles)
 drop policy if exists "heads_read_profiles" on public.profiles;
 create policy "heads_read_profiles"
   on public.profiles for select to authenticated
   using (
-    public.is_super_admin()
-    or public.is_hr_head()
-    or public.is_hiring_manager_head()
+    id = auth.uid()
+    or public.is_super_admin()
+    or (public.is_hr_head() and role in ('recruiter', 'interviewer', 'viewer'))
+    or (public.is_hiring_manager_head() and role in ('hiring_manager', 'interviewer'))
   );
 
 -- Profile update: super admin all; HR head → recruiter/interviewer; HM head → hiring_manager

@@ -1,6 +1,8 @@
 /* CONVO scheduling & portal pages — clean light layout */
 .convo-portal-page {
     font-family: var(--convo-font);
+    font-size: 16px;
+    line-height: 1.55;
     background: var(--convo-bg);
     color: var(--convo-ink);
     min-height: 100vh;
@@ -27,19 +29,19 @@
 .convo-portal-card h1,
 .convo-portal-card h2 {
     margin: 0 0 8px;
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--convo-ink);
 }
 .convo-portal-card .subtitle {
     color: var(--convo-muted);
-    font-size: 14px;
+    font-size: 15px;
     line-height: 1.55;
     margin-bottom: 20px;
 }
 .convo-portal-card .hint {
-    font-size: 12px;
+    font-size: 14px;
     color: var(--convo-muted);
     line-height: 1.5;
     margin-bottom: 16px;
@@ -47,7 +49,7 @@
 .convo-portal-field { margin-bottom: 16px; }
 .convo-portal-field label {
     display: block;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--convo-ink-soft);
     margin-bottom: 6px;
@@ -60,7 +62,7 @@
     border: 1px solid var(--convo-line);
     border-radius: 8px;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 16px;
     background: var(--convo-surface);
     color: var(--convo-ink);
 }
@@ -77,7 +79,7 @@
     background: var(--convo-brand);
     color: #fff;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
     cursor: pointer;
     margin-top: 8px;
@@ -92,7 +94,7 @@
 .convo-portal-status {
     padding: 10px 12px;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 15px;
     margin-bottom: 14px;
     display: none;
     border: 1px solid var(--convo-line);

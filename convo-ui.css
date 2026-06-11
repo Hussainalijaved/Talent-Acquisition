@@ -28,12 +28,18 @@
     --convo-font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     --convo-max: 1200px;
     --convo-max-apply: 1380px;
+    --convo-text-base: 16px;
+    --convo-text-md: 15px;
+    --convo-text-sm: 14px;
+    --convo-text-xs: 13px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body.convo-body {
     font-family: var(--convo-font);
+    font-size: var(--convo-text-base);
+    line-height: 1.55;
     background: var(--convo-bg);
     color: var(--convo-ink);
     margin: 0;
@@ -72,7 +78,7 @@ a { color: var(--convo-brand); }
     line-height: 1;
 }
 .convo-nav-tag {
-    font-size: 12px;
+    font-size: var(--convo-text-sm);
     font-weight: 600;
     color: var(--convo-muted);
     padding-left: 14px;
@@ -80,7 +86,7 @@ a { color: var(--convo-brand); }
 }
 .convo-nav-actions { display: flex; gap: 10px; align-items: center; }
 .convo-nav-link {
-    font-size: 14px;
+    font-size: var(--convo-text-md);
     font-weight: 600;
     color: var(--convo-ink-soft);
     text-decoration: none;
@@ -122,7 +128,7 @@ a { color: var(--convo-brand); }
     margin: 0 0 8px;
 }
 .convo-hero-meta {
-    font-size: 14px;
+    font-size: var(--convo-text-md);
     opacity: 0.75;
     margin: 0;
 }
@@ -138,7 +144,7 @@ a { color: var(--convo-brand); }
     gap: 6px;
     padding: 5px 10px;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: var(--convo-text-sm);
     font-weight: 500;
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -155,7 +161,7 @@ a { color: var(--convo-brand); }
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 14px;
+    font-size: var(--convo-text-md);
     font-weight: 600;
     color: var(--convo-muted);
     text-decoration: none;
@@ -195,7 +201,7 @@ a { color: var(--convo-brand); }
     border: none;
     border-radius: 10px;
     font-family: inherit;
-    font-size: 15px;
+    font-size: var(--convo-text-base);
     font-weight: 700;
     cursor: pointer;
     text-decoration: none;
@@ -226,7 +232,7 @@ a { color: var(--convo-brand); }
 .convo-field { margin-bottom: 20px; }
 .convo-label {
     display: block;
-    font-size: 13px;
+    font-size: var(--convo-text-sm);
     font-weight: 700;
     color: var(--convo-ink-soft);
     margin-bottom: 8px;
@@ -238,7 +244,7 @@ a { color: var(--convo-brand); }
     border: 1px solid var(--convo-line);
     border-radius: 10px;
     font-family: inherit;
-    font-size: 15px;
+    font-size: var(--convo-text-base);
     color: var(--convo-ink);
     background: var(--convo-surface);
     transition: border-color 0.15s, box-shadow 0.15s;
@@ -249,7 +255,7 @@ a { color: var(--convo-brand); }
     border-color: var(--convo-brand);
     box-shadow: 0 0 0 3px rgba(11, 92, 171, 0.12);
 }
-.convo-hint { font-size: 12px; color: var(--convo-muted); margin-top: 6px; }
+.convo-hint { font-size: var(--convo-text-sm); color: var(--convo-muted); margin-top: 6px; }
 .convo-file-zone {
     border: 2px dashed var(--convo-line);
     border-radius: var(--convo-radius);
@@ -291,20 +297,20 @@ a { color: var(--convo-brand); }
 }
 .convo-job h2 {
     margin: 0 0 8px;
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.02em;
 }
 .convo-job-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .convo-meta-tag {
-    font-size: 12px;
+    font-size: var(--convo-text-sm);
     font-weight: 600;
     padding: 4px 10px;
     border-radius: 6px;
     background: var(--convo-line-soft);
     color: var(--convo-ink-soft);
 }
-.convo-job-excerpt { font-size: 14px; color: var(--convo-muted); line-height: 1.6; margin: 0; }
+.convo-job-excerpt { font-size: var(--convo-text-md); color: var(--convo-muted); line-height: 1.65; margin: 0; }
 
 /* ---------- Apply split layout ---------- */
 .convo-apply-grid {
@@ -326,8 +332,8 @@ a { color: var(--convo-brand); }
 }
 .convo-apply-form-col { padding: 32px; }
 .convo-jd-text {
-    font-size: 14px;
-    line-height: 1.7;
+    font-size: var(--convo-text-md);
+    line-height: 1.75;
     color: var(--convo-ink-soft);
     white-space: pre-wrap;
     max-height: 560px;
@@ -385,14 +391,14 @@ body.convo-flow-active .convo-flow-screen { display: flex; }
     line-height: 1.25;
 }
 .convo-flow-msg {
-    font-size: 15px;
+    font-size: var(--convo-text-base);
     color: var(--convo-ink-soft);
     line-height: 1.65;
     margin: 0 0 16px;
     white-space: pre-line;
 }
 .convo-flow-detail {
-    font-size: 13px;
+    font-size: var(--convo-text-sm);
     color: var(--convo-muted);
     padding: 12px 16px;
     background: var(--convo-line-soft);
@@ -416,7 +422,7 @@ body.convo-flow-active .convo-flow-screen { display: flex; }
 }
 .convo-progress li {
     padding: 10px 0 10px 32px;
-    font-size: 14px;
+    font-size: var(--convo-text-md);
     color: var(--convo-muted);
     position: relative;
     border-bottom: 1px solid var(--convo-line-soft);

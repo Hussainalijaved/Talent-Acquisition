@@ -28,9 +28,11 @@
     /** Who can invite which roles */
     const INVITE_ROLES = {
         super_admin: ALL_ROLES,
-        hr_head: ['recruiter', 'interviewer'],
+        hr_head: ['recruiter', 'interviewer', 'viewer'],
         hiring_manager_head: ['hiring_manager', 'interviewer'],
     };
+
+    const MANAGE_USERS_ROLES = ['super_admin', 'hr_head', 'hiring_manager_head'];
 
     const ALL_VIEWS = [
         'overview', 'candidates', 'pipeline',
@@ -45,9 +47,17 @@
         'manage_job_assignments', 'manage_users', 'view_audit',
     ];
 
-    // Full-access mode — every role gets every view & permission for now
-    const VIEW_ROLES = Object.fromEntries(ALL_VIEWS.map((v) => [v, ALL_ROLES]));
-    const PERMS = Object.fromEntries(ALL_PERMS.map((p) => [p, ALL_ROLES]));
+    // Full-access mode for most views; user management & audit restricted to heads / super admin
+    const VIEW_ROLES = Object.fromEntries(ALL_VIEWS.map((v) => {
+        if (v === 'users' || v === 'users-invite') return [v, MANAGE_USERS_ROLES];
+        if (v === 'audit') return [v, ['super_admin']];
+        return [v, ALL_ROLES];
+    }));
+    const PERMS = Object.fromEntries(ALL_PERMS.map((p) => {
+        if (p === 'manage_users') return [p, MANAGE_USERS_ROLES];
+        if (p === 'view_audit') return [p, ['super_admin']];
+        return [p, ALL_ROLES];
+    }));
 
     let _client = null;
     let _profile = null;
@@ -107,7 +117,24 @@
     }
 
     function canManageUsers() {
-        return hasRole('super_admin', 'hr_head', 'hiring_manager_head');
+        return hasRole(...MANAGE_USERS_ROLES);
+    }
+
+    /** Roles visible in the users list for the current head */
+    function manageableUserRoles() {
+        if (!_profile) return [];
+        if (hasRole('super_admin')) return ALL_ROLES;
+        if (hasRole('hr_head')) return ['recruiter', 'interviewer', 'viewer'];
+        if (hasRole('hiring_manager_head')) return ['hiring_manager', 'interviewer'];
+        return [];
+    }
+
+    function canSeeUser(targetUser) {
+        if (!_profile || !targetUser) return false;
+        if (hasRole('super_admin')) return true;
+        if (targetUser.id === _profile.id) return true;
+        if (targetUser.role === 'super_admin') return false;
+        return manageableUserRoles().includes(targetUser.role);
     }
 
     function canEditUserRole(targetUser) {
@@ -229,14 +256,18 @@
     function applyRoleNav() {
         const role = _profile?.role;
         if (!role) return;
+        const canManage = canManageUsers();
         global.document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
             const view = btn.dataset.view;
-            if ((view === 'users' || view === 'users-invite') && !canManageUsers()) {
+            if ((view === 'users' || view === 'users-invite') && !canManage) {
                 btn.style.display = 'none';
                 return;
             }
             const allowed = (VIEW_ROLES[view] || []).includes(role);
             btn.style.display = allowed ? '' : 'none';
+        });
+        global.document.querySelectorAll('[data-go-view="users-invite"]').forEach((btn) => {
+            btn.style.display = canManage ? '' : 'none';
         });
         global.document.querySelectorAll('.nav-group').forEach((group) => {
             const items = group.querySelectorAll('.nav-item[data-view]');
@@ -266,6 +297,7 @@
 
     function guardView(view) {
         if ((view === 'users' || view === 'users-invite') && !canManageUsers()) return 'overview';
+        if (view === 'audit' && !hasRole('super_admin')) return 'overview';
         if (!canView(view)) return 'overview';
         return view;
     }
@@ -307,6 +339,8 @@
         assignableRoles,
         canAssignRole,
         canManageUsers,
+        manageableUserRoles,
+        canSeeUser,
         canEditUserRole,
         boot,
         ALL_ROLES,

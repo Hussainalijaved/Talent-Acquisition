@@ -222,7 +222,18 @@ a { color: inherit; text-decoration: none; }
 .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
 .card-title { font-size: 14px; font-weight: 600; color: var(--text); }
 .card-title small { display: block; font-size: 11px; color: var(--text-faint); font-weight: 400; margin-top: 2px; }
-.chart-wrap { position: relative; height: 240px; }
+.chart-wrap {
+    position: relative;
+    height: 240px;
+    width: 100%;
+    overflow: hidden;
+}
+.chart-wrap canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 240px;
+}
 
 /* Toolbar */
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }

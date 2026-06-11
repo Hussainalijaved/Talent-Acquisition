@@ -21,11 +21,11 @@
                     fontFamily: { sans: ['"DM Sans"', 'system-ui', 'sans-serif'] },
                     colors: {
                         surface: { DEFAULT: '#0f172a', elevated: '#1e293b', border: '#334155' },
-                        accent: { DEFAULT: '#0b5cab', hover: '#084a8f', muted: 'rgba(11, 92, 171, 0.18)' },
+                        accent: { DEFAULT: '#1e40af', hover: '#1e3a8a', muted: 'rgba(30, 64, 175, 0.18)' },
                     },
                     boxShadow: {
                         card: '0 4px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255,255,255,0.04)',
-                        glow: '0 0 40px -8px rgba(99, 102, 241, 0.35)',
+                        glow: '0 0 40px -8px rgba(30, 64, 175, 0.25)',
                     },
                 },
             },
@@ -67,7 +67,7 @@
         }
 
         ::selection {
-            background: rgba(99, 102, 241, 0.35);
+            background: rgba(30, 64, 175, 0.35);
             color: #fff;
         }
 
@@ -78,9 +78,6 @@
 
         .app-bg {
             background-color: var(--bg);
-            background-image:
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
-                radial-gradient(ellipse 60% 40% at 100% 0%, rgba(59, 130, 246, 0.06), transparent);
         }
 
         .panel {
@@ -107,22 +104,20 @@
 
         .input-field:focus {
             outline: none;
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22);
+            border-color: #1e40af;
+            box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.22);
         }
 
         .btn-primary {
-            background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
+            background: #1e40af;
             color: #fff;
             font-weight: 600;
             letter-spacing: 0.01em;
-            transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 14px -2px rgba(99, 102, 241, 0.45);
+            transition: background 0.15s ease;
         }
 
         .btn-primary:hover:not(:disabled) {
-            filter: brightness(1.08);
-            box-shadow: 0 4px 20px -2px rgba(99, 102, 241, 0.55);
+            background: #1e3a8a;
         }
 
         .btn-primary:active:not(:disabled) { transform: scale(0.98); }
@@ -155,9 +150,9 @@
         }
 
         .badge-accent {
-            background: rgba(99, 102, 241, 0.12);
-            border-color: rgba(99, 102, 241, 0.35);
-            color: #a5b4fc;
+            background: rgba(30, 64, 175, 0.12);
+            border-color: rgba(30, 64, 175, 0.35);
+            color: #93c5fd;
         }
 
         .badge-success {
@@ -173,11 +168,10 @@
         }
 
         .onboarding-hero {
-            background: linear-gradient(165deg, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
-                linear-gradient(180deg, #141c28 0%, #0f1419 100%);
+            background: #141c28;
             border: 1px solid #2a3a4f;
             border-radius: 1rem;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.35);
         }
 
         .fade-in { animation: fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
@@ -214,7 +208,7 @@
         }
 
         .timer-ring-track { stroke: #1e293b; }
-        .timer-ring-progress { stroke: #6366f1; transition: stroke-dashoffset 1s linear; }
+        .timer-ring-progress { stroke: #1e40af; transition: stroke-dashoffset 1s linear; }
         .timer-ring-progress.low { stroke: #f59e0b; }
         .timer-ring-progress.critical { stroke: #ef4444; }
 
@@ -2153,7 +2147,7 @@
                     let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, screening, config');
                     if (isUuid) {
                         query = query.eq('id', activeSessionId);
-                    } else {
+                                        } else {
                         query = query.eq('gmail_thread_id', activeSessionId);
                     }
                     const { data, error } = await query.maybeSingle();
@@ -2199,7 +2193,7 @@
                         });
                     }
                     setView('assessment');
-                } catch (e) {
+                                } catch (e) {
                     console.error('Start Assessment Error:', e);
                     alert('Failed to load the first question. Please refresh or re-open the link from your email.');
                 } finally {
@@ -2249,7 +2243,7 @@
                 };
 
                 (async () => {
-                    setIsLoading(true);
+                setIsLoading(true);
                     setUrlEntryError('');
                     try {
                         let activeId = urlSession;
@@ -2387,10 +2381,10 @@
                 setIsLoading(true);
                 try {
                     const payload = {
-                        sessionId,
-                        answer: finalAnswer,
-                        phase: currentStep,
-                        email: candidateEmail,
+                            sessionId,
+                            answer: finalAnswer,
+                            phase: currentStep,
+                            email: candidateEmail,
                         tabSwitches: integrityViolationCount,
                         integrityViolations: integrityViolationCount,
                     };

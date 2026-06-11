@@ -1,0 +1,291 @@
+/* CONVO scheduling & portal pages — clean light layout */
+.convo-portal-page {
+    font-family: var(--convo-font);
+    background: var(--convo-bg);
+    color: var(--convo-ink);
+    min-height: 100vh;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+}
+.convo-portal-main {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px 20px 48px;
+}
+.convo-portal-card {
+    width: 100%;
+    max-width: 480px;
+    background: var(--convo-surface);
+    border: 1px solid var(--convo-line);
+    border-radius: var(--convo-radius);
+    padding: 28px 24px;
+    box-shadow: var(--convo-shadow);
+}
+.convo-portal-card h1,
+.convo-portal-card h2 {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--convo-ink);
+}
+.convo-portal-card .subtitle {
+    color: var(--convo-muted);
+    font-size: 14px;
+    line-height: 1.55;
+    margin-bottom: 20px;
+}
+.convo-portal-card .hint {
+    font-size: 12px;
+    color: var(--convo-muted);
+    line-height: 1.5;
+    margin-bottom: 16px;
+}
+.convo-portal-field { margin-bottom: 16px; }
+.convo-portal-field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--convo-ink-soft);
+    margin-bottom: 6px;
+}
+.convo-portal-field input,
+.convo-portal-field select,
+.convo-portal-field textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--convo-line);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    background: var(--convo-surface);
+    color: var(--convo-ink);
+}
+.convo-portal-field input:focus,
+.convo-portal-field select:focus {
+    outline: none;
+    border-color: var(--convo-brand);
+}
+.convo-portal-btn {
+    width: 100%;
+    padding: 11px 16px;
+    border: none;
+    border-radius: 8px;
+    background: var(--convo-brand);
+    color: #fff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+}
+.convo-portal-btn:hover { background: var(--convo-brand-dark); }
+.convo-portal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.convo-portal-btn.secondary {
+    background: var(--convo-surface);
+    color: var(--convo-ink-soft);
+    border: 1px solid var(--convo-line);
+}
+.convo-portal-status {
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 14px;
+    display: none;
+    border: 1px solid var(--convo-line);
+}
+.convo-portal-status.show { display: block; }
+.convo-portal-status.err { background: var(--convo-danger-bg); color: #991b1b; border-color: #fecaca; }
+.convo-portal-status.ok { background: var(--convo-success-bg); color: #166534; border-color: #bbf7d0; }
+.convo-portal-icon {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background: var(--convo-line-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: var(--convo-brand);
+}
+.convo-portal-icon.success { background: var(--convo-success-bg); color: var(--convo-success); }
+.convo-portal-detail {
+    margin: 16px 0;
+    padding: 14px;
+    background: var(--convo-line-soft);
+    border-radius: 8px;
+    border-left: 3px solid var(--convo-brand);
+    font-size: 13px;
+    color: var(--convo-ink-soft);
+    text-align: left;
+}
+.convo-slot-list { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+.convo-slot-item {
+    padding: 12px 14px;
+    border: 1px solid var(--convo-line);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: border-color 0.12s, background 0.12s;
+}
+.convo-slot-item:hover,
+.convo-slot-item.selected {
+    border-color: var(--convo-brand);
+    background: var(--convo-brand-light);
+}
+
+.convo-portal-layout {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+.convo-portal-layout .convo-nav { flex-shrink: 0; }
+.convo-portal-layout .convo-portal-main { flex: 1; }
+
+.input-group { margin-bottom: 18px; }
+.input-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--convo-ink-soft);
+    margin-bottom: 6px;
+}
+.input-group .hint {
+    font-size: 12px;
+    color: var(--convo-muted);
+    margin: 0 0 8px;
+    line-height: 1.45;
+}
+.input-group input[type="text"],
+.input-group input[type="email"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--convo-line);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    background: var(--convo-surface);
+    color: var(--convo-ink);
+}
+.input-group input:focus { outline: none; border-color: var(--convo-brand); }
+
+.slot-list { list-style: none; padding: 0; margin: 0; }
+.slot-list li {
+    font-size: 13px;
+    color: var(--convo-ink-soft);
+    padding: 8px 12px;
+    background: var(--convo-line-soft);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    border-left: 3px solid var(--convo-brand);
+}
+.slot-count { font-size: 12px; color: var(--convo-muted); margin-top: 8px; }
+.slot-count.ok { color: var(--convo-success); }
+.slot-count.warn { color: var(--convo-warn); }
+
+.candidate-card {
+    background: var(--convo-line-soft);
+    border: 1px solid var(--convo-line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--convo-ink-soft);
+    line-height: 1.5;
+}
+.candidate-card strong { color: var(--convo-ink); }
+
+.load-err { color: var(--convo-danger); font-size: 13px; text-align: center; margin-bottom: 12px; }
+
+.session-recovery {
+    margin-bottom: 16px;
+    padding: 14px;
+    border-radius: 8px;
+    border: 1px solid #fde68a;
+    background: var(--convo-warn-bg);
+}
+.session-recovery p { margin: 0 0 10px; font-size: 13px; color: var(--convo-ink-soft); line-height: 1.5; }
+.session-recovery input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--convo-line);
+    background: var(--convo-surface);
+    color: var(--convo-ink);
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+.session-recovery button {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: var(--convo-brand);
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.portal-footer {
+    margin-top: 20px;
+    font-size: 11px;
+    color: var(--convo-muted);
+    text-align: center;
+}
+
+.portal-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--convo-line);
+    border-top-color: var(--convo-brand);
+    border-radius: 50%;
+    animation: portal-spin 0.9s linear infinite;
+    margin: 0 auto 16px;
+}
+@keyframes portal-spin { to { transform: rotate(360deg); } }
+
+.portal-status-pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: var(--convo-line-soft);
+    color: var(--convo-muted);
+    margin-bottom: 14px;
+}
+
+.slot-times { display: flex; flex-direction: column; gap: 8px; }
+.slot-time-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--convo-line-soft);
+    border-radius: 8px;
+    font-size: 13px;
+}
+.slot-time-row input[type="time"] {
+    border: 1px solid var(--convo-line);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-family: inherit;
+    background: var(--convo-surface);
+}
+
+.flatpickr-calendar {
+    background: var(--convo-surface) !important;
+    border: 1px solid var(--convo-line) !important;
+    box-shadow: var(--convo-shadow) !important;
+}
+.flatpickr-day.selected { background: var(--convo-brand) !important; border-color: var(--convo-brand) !important; }

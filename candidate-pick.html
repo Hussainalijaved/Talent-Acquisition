@@ -5,100 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Choose your interview time — CONVO</title>
     <link rel="stylesheet" href="convo-ui.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #0b0f19;
-            --card: rgba(20, 28, 47, 0.85);
-            --border: rgba(255, 255, 255, 0.08);
-            --accent: linear-gradient(135deg, #4f46e5, #6366f1);
-            --text: #fff;
-            --muted: #94a3b8;
-        }
-        body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            margin: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px 16px;
-            box-sizing: border-box;
-        }
-        .container {
-            width: 100%;
-            max-width: 440px;
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 32px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.35);
-        }
-        h2 { margin: 0 0 8px; font-size: 24px; text-align: center; }
-        p.sub { color: var(--muted); font-size: 14px; text-align: center; margin: 0 0 24px; line-height: 1.5; }
-        .role-pill {
-            text-align: center;
-            font-size: 13px;
-            color: #cbd5e1;
-            margin: -12px 0 20px;
-        }
-        .slot-btn {
-            display: block;
-            width: 100%;
-            text-align: left;
-            padding: 14px 16px;
-            margin-bottom: 10px;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            background: rgba(15, 23, 42, 0.6);
-            color: var(--text);
-            font-family: inherit;
-            font-size: 15px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .slot-btn:hover {
-            border-color: #6366f1;
-            background: rgba(79, 70, 229, 0.2);
-        }
-        .slot-btn.selected {
-            border-color: #818cf8;
-            background: rgba(79, 70, 229, 0.35);
-            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
-        }
-        button.confirm {
-            width: 100%;
-            margin-top: 16px;
-            padding: 16px;
-            border: none;
-            border-radius: 12px;
-            background: var(--accent);
-            color: #fff;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            font-family: inherit;
-        }
-        button.confirm:disabled { opacity: 0.4; cursor: not-allowed; }
-        .err { color: #f87171; font-size: 13px; text-align: center; }
-    </style>
+    <link rel="stylesheet" href="portal-ui.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="scheduling-portal.js"></script>
 </head>
-<body>
-    <nav class="convo-nav" style="position:relative;width:100%">
+<body class="convo-body convo-portal-layout">
+    <nav class="convo-nav">
         <a href="careers.html" class="convo-nav-brand"><span class="convo-nav-logo">CONVO</span><span class="convo-nav-tag">Scheduling</span></a>
     </nav>
-    <div class="container">
-        <h2>Choose interview time</h2>
-        <p class="sub">Pick one option below. Weekdays proposed by your interviewer.</p>
-        <p class="role-pill" id="rolePill" hidden></p>
-        <div id="slots"></div>
-        <p class="err" id="err" hidden></p>
-        <button type="button" class="confirm" id="confirmBtn" disabled onclick="submitChoice()">Confirm this slot</button>
-    </div>
+    <main class="convo-portal-main">
+        <div class="convo-portal-card">
+            <h2>Choose interview time</h2>
+            <p class="subtitle">Pick one option below. Weekdays proposed by your interviewer.</p>
+            <p class="portal-status-pill" id="rolePill" hidden></p>
+            <div class="convo-slot-list" id="slots"></div>
+            <p class="load-err" id="err" hidden></p>
+            <button type="button" class="convo-portal-btn" id="confirmBtn" disabled onclick="submitChoice()">Confirm this slot</button>
+        </div>
+    </main>
     <script>
         const SP = window.SchedulingPortal;
         const sessionId = SP.parseSessionId();
@@ -120,11 +44,11 @@
             list.forEach((s) => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
-                btn.className = 'slot-btn';
+                btn.className = 'convo-slot-item';
                 btn.textContent = s.label || s.start_iso;
                 btn.onclick = () => {
                     chosen = s;
-                    document.querySelectorAll('.slot-btn').forEach((b) => b.classList.remove('selected'));
+                    document.querySelectorAll('.convo-slot-item').forEach((b) => b.classList.remove('selected'));
                     btn.classList.add('selected');
                     document.getElementById('confirmBtn').disabled = false;
                 };
@@ -151,6 +75,7 @@
                 }
                 const pill = document.getElementById('rolePill');
                 pill.hidden = false;
+                pill.style.textAlign = 'center';
                 pill.textContent = sessionRow.role || 'Interview scheduling';
                 renderSlots(slots);
             } catch (err) {

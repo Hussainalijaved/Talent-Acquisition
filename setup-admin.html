@@ -5,61 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CONVO — Admin Setup</title>
     <link rel="stylesheet" href="convo-ui.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        body {
-            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-            min-height: 100vh; display: grid; place-items: center;
-            background: #f8fafc; padding: 24px;
-        }
-        .card {
-            max-width: 480px; width: 100%; background: #fff; border-radius: 16px;
-            padding: 32px; box-shadow: 0 12px 40px rgba(15,23,42,0.1); border: 1px solid #e2e8f0;
-        }
-        h1 { margin: 0 0 8px; font-size: 24px; color: #0b5cab; }
-        p { color: #64748b; font-size: 14px; line-height: 1.6; }
-        .field { margin: 14px 0; }
-        .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #334155; }
-        .field input { width: 100%; padding: 11px 13px; border: 1px solid #e2e8f0; border-radius: 10px; font: inherit; }
-        .btn {
-            width: 100%; margin-top: 10px; padding: 12px; border: none; border-radius: 10px;
-            background: linear-gradient(135deg, #0b5cab, #084a8f); color: #fff; font-weight: 700; cursor: pointer;
-        }
-        .msg { margin-top: 12px; font-size: 13px; padding: 10px; border-radius: 8px; display: none; }
-        .msg.show { display: block; }
-        .msg.err { background: #fef2f2; color: #b91c1c; }
-        .msg.ok { background: #ecfdf5; color: #047857; }
-        .hidden { display: none !important; }
-    </style>
 </head>
-<body>
-    <div class="card" id="setupCard">
+<body class="convo-body convo-auth-page">
+    <div class="convo-auth-card convo-setup-card" id="setupCard">
         <h1>Create Super Admin</h1>
         <p>One-time setup. Requires the bootstrap secret from <code>supabase_auth_profiles.sql</code> (stored in <code>app_config.admin_bootstrap_secret</code>).</p>
         <form id="setupForm">
-            <div class="field">
+            <div class="convo-auth-field">
                 <label for="secret">Bootstrap secret</label>
                 <input id="secret" type="password" required autocomplete="off" />
             </div>
-            <div class="field">
+            <div class="convo-auth-field">
                 <label for="fullName">Full name</label>
                 <input id="fullName" type="text" required placeholder="Hiring Lead" />
             </div>
-            <div class="field">
+            <div class="convo-auth-field">
                 <label for="email">Work email</label>
                 <input id="email" type="email" required placeholder="admin@convo.com" />
             </div>
-            <div class="field">
+            <div class="convo-auth-field">
                 <label for="password">Password (min 8 chars)</label>
                 <input id="password" type="password" required minlength="8" autocomplete="new-password" />
             </div>
-            <button type="submit" class="btn" id="submitBtn">Create super admin</button>
+            <button type="submit" class="convo-auth-btn" id="submitBtn">Create super admin</button>
         </form>
-        <div id="msg" class="msg"></div>
-        <p style="margin-top:20px"><a href="login.html">← Back to login</a></p>
+        <div id="msg" class="convo-auth-msg"></div>
+        <p class="convo-auth-foot"><a href="login.html">← Back to login</a></p>
     </div>
-    <div class="card hidden" id="doneCard">
+    <div class="convo-auth-card convo-setup-card convo-hidden" id="doneCard">
         <h1>Done</h1>
         <p>Super admin created. <a href="login.html">Sign in</a> to open Talent Admin.</p>
     </div>
@@ -67,14 +41,14 @@
     <script src="admin-auth.js"></script>
     <script>
         const msg = document.getElementById('msg');
-        function showMsg(t, type) { msg.textContent = t; msg.className = 'msg show ' + (type || ''); }
+        function showMsg(t, type) { msg.textContent = t; msg.className = 'convo-auth-msg show ' + (type || ''); }
 
         (async function gate() {
             try {
                 const needs = await TAAuth.needsBootstrap();
                 if (!needs) {
-                    document.getElementById('setupCard').classList.add('hidden');
-                    document.getElementById('doneCard').classList.remove('hidden');
+                    document.getElementById('setupCard').classList.add('convo-hidden');
+                    document.getElementById('doneCard').classList.remove('convo-hidden');
                     document.querySelector('#doneCard p').innerHTML =
                         'Super admin already exists. <a href="login.html">Sign in</a>.';
                 }
@@ -102,8 +76,8 @@
                     bootstrap: 'true',
                 });
                 showMsg('Account created. Sign in after email confirmation (if enabled).', 'ok');
-                document.getElementById('setupCard').classList.add('hidden');
-                document.getElementById('doneCard').classList.remove('hidden');
+                document.getElementById('setupCard').classList.add('convo-hidden');
+                document.getElementById('doneCard').classList.remove('convo-hidden');
             } catch (err) {
                 showMsg(err.message || 'Setup failed', 'err');
             } finally {

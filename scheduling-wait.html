@@ -5,97 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interview scheduling — CONVO</title>
     <link rel="stylesheet" href="convo-ui.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #0b0f19;
-            --card: rgba(20, 28, 47, 0.85);
-            --border: rgba(255, 255, 255, 0.08);
-            --accent: linear-gradient(135deg, #4f46e5, #6366f1);
-            --text: #fff;
-            --muted: #94a3b8;
-        }
-        body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            margin: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px 16px;
-            box-sizing: border-box;
-        }
-        .container {
-            width: 100%;
-            max-width: 480px;
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 36px 32px;
-            text-align: center;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.35);
-        }
-        h1 { margin: 0 0 8px; font-size: 26px; }
-        p { color: var(--muted); font-size: 15px; line-height: 1.6; margin: 0 0 20px; }
-        .spinner {
-            width: 44px;
-            height: 44px;
-            border: 3px solid rgba(99, 102, 241, 0.25);
-            border-top-color: #818cf8;
-            border-radius: 50%;
-            animation: spin 0.9s linear infinite;
-            margin: 0 auto 20px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .status-pill {
-            display: inline-block;
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            padding: 6px 12px;
-            border-radius: 999px;
-            background: rgba(79, 70, 229, 0.2);
-            color: #c7d2fe;
-            margin-bottom: 16px;
-        }
-        .btn {
-            display: inline-block;
-            width: 100%;
-            box-sizing: border-box;
-            padding: 16px;
-            border: none;
-            border-radius: 12px;
-            background: var(--accent);
-            color: #fff;
-            font-size: 16px;
-            font-weight: 600;
-            text-decoration: none;
-            cursor: pointer;
-            font-family: inherit;
-        }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .err { color: #f87171; font-size: 14px; }
-        .hint { font-size: 13px; color: #64748b; margin-top: 16px; }
-    </style>
+    <link rel="stylesheet" href="portal-ui.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="scheduling-portal.js"></script>
 </head>
-<body class="convo-body">
+<body class="convo-body convo-portal-layout">
     <nav class="convo-nav">
         <a href="careers.html" class="convo-nav-brand"><span class="convo-nav-logo">CONVO</span><span class="convo-nav-tag">Scheduling</span></a>
     </nav>
-    <div class="container">
-        <div class="spinner" id="spinner"></div>
-        <span class="status-pill" id="statusPill">Checking…</span>
-        <h1 id="title">Interview scheduling</h1>
-        <p id="message">Please wait while we prepare your interview time options.</p>
-        <p class="err" id="err" hidden></p>
-        <a class="btn" id="actionBtn" href="#" hidden>Pick interview time</a>
-        <p class="hint" id="hint">You can leave this page — we will also email you when slots are ready.</p>
-    </div>
+    <main class="convo-portal-main">
+        <div class="convo-portal-card" style="text-align:center">
+            <div class="portal-spinner" id="spinner"></div>
+            <span class="portal-status-pill" id="statusPill">Checking…</span>
+            <h1 id="title">Interview scheduling</h1>
+            <p class="subtitle" id="message">Please wait while we prepare your interview time options.</p>
+            <p class="load-err" id="err" hidden></p>
+            <a class="convo-portal-btn" id="actionBtn" href="#" hidden style="display:inline-block;text-decoration:none">Pick interview time</a>
+            <p class="portal-footer" id="hint">You can leave this page — we will also email you when slots are ready.</p>
+        </div>
+    </main>
     <script>
         const SP = window.SchedulingPortal;
         const sessionId = SP.parseSessionId();

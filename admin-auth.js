@@ -33,8 +33,10 @@
     };
 
     const ALL_VIEWS = [
-        'overview', 'candidates', 'pipeline', 'jobs', 'screen',
-        'onsite', 'settings', 'users', 'audit',
+        'overview', 'candidates', 'pipeline',
+        'jobs', 'jobs-create',
+        'screen', 'onsite',
+        'settings', 'users', 'users-invite', 'audit',
     ];
 
     const ALL_PERMS = [
@@ -229,12 +231,17 @@
         if (!role) return;
         global.document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
             const view = btn.dataset.view;
-            if (view === 'users' && !canManageUsers()) {
+            if ((view === 'users' || view === 'users-invite') && !canManageUsers()) {
                 btn.style.display = 'none';
                 return;
             }
             const allowed = (VIEW_ROLES[view] || []).includes(role);
             btn.style.display = allowed ? '' : 'none';
+        });
+        global.document.querySelectorAll('.nav-group').forEach((group) => {
+            const items = group.querySelectorAll('.nav-item[data-view]');
+            const anyVisible = [...items].some((el) => el.style.display !== 'none');
+            group.style.display = anyVisible ? '' : 'none';
         });
         const badge = global.document.getElementById('userBadge');
         if (badge) {
@@ -258,7 +265,7 @@
     }
 
     function guardView(view) {
-        if (view === 'users' && !canManageUsers()) return 'overview';
+        if ((view === 'users' || view === 'users-invite') && !canManageUsers()) return 'overview';
         if (!canView(view)) return 'overview';
         return view;
     }

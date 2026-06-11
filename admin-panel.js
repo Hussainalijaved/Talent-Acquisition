@@ -416,43 +416,12 @@
         return 'apply.html?job=' + encodeURIComponent(slug);
     }
 
-    function renderLiveJobsPreview() {
-        const el = document.getElementById('liveJobsPreview');
-        if (!el) return;
-        const open = JOBS.filter((j) => j.status === 'open');
-        if (!open.length) {
-            el.innerHTML =
-                '<p class="empty" style="padding:16px 0">No open roles on the careers page. Set a job status to <strong>open</strong> to publish.</p>';
-            return;
-        }
-        el.innerHTML =
-            '<div style="display:flex;flex-direction:column;gap:10px">' +
-            open
-                .map(
-                    (j) =>
-                        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)">' +
-                        '<div><strong>' +
-                        deps.esc(j.title) +
-                        '</strong><div class="c-role">' +
-                        deps.esc(j.location || 'Remote') +
-                        ' · ' +
-                        deps.esc(j.job_id) +
-                        '</div></div>' +
-                        '<a href="' +
-                        applyPageUrl(j.job_id) +
-                        '" target="_blank" rel="noopener" class="btn-sm" style="text-decoration:none;white-space:nowrap">View apply page ↗</a>' +
-                        '</div>'
-                )
-                .join('') +
-            '</div>';
-    }
-
     function renderJobs() {
         const tb = document.getElementById('jobsBody');
         if (!tb) return;
-        renderLiveJobsPreview();
         if (!JOBS.length) {
-            tb.innerHTML = '<tr><td class="empty" colspan="7">No jobs yet — create one in the form.</td></tr>';
+            tb.innerHTML = '<tr><td class="empty" colspan="7">No jobs yet — <button type="button" class="btn-sm" data-go-view="jobs-create">Create your first job</button></td></tr>';
+            tb.querySelector('[data-go-view]')?.addEventListener('click', () => deps.setView('jobs-create'));
             return;
         }
         const canDel = !deps.auth || deps.auth.can('delete_job');
@@ -502,7 +471,7 @@
         document.getElementById('jobStatusIn').value = j.status || 'draft';
         document.getElementById('jobCriteriaIn').value = '';
         document.getElementById('jobJdIn').value = j.jd_text || '';
-        deps.setView('jobs');
+        deps.setView('jobs-create');
     }
 
     async function saveJob() {
@@ -548,6 +517,7 @@
         document.getElementById('jobForm').reset();
         document.getElementById('jobEditId').value = '';
         await loadJobs();
+        deps.setView('jobs');
     }
 
     async function deleteJob(id) {
@@ -1131,6 +1101,7 @@
             deps.banner('User created — share login credentials securely.', 'ok');
             document.getElementById('inviteUserForm').reset();
             await loadUsers();
+            deps.setView('users');
         } catch (err) {
             let msg = err.message || String(err);
             if (/rate limit/i.test(msg)) {
@@ -1493,16 +1464,14 @@
             }
         },
         onViewChange(view) {
-            if (view === 'jobs') loadJobs();
+            if (view === 'jobs' || view === 'jobs-create') loadJobs();
             if (view === 'onsite') loadOnsite();
             if (view === 'settings') {
                 loadWebhookConfig();
                 loadJdWebhookConfig();
             }
-            if (view === 'users') {
-                loadUsers();
-                loadJobAssignmentsPanel();
-            }
+            if (view === 'users') loadUsers();
+            if (view === 'users-invite') populateInviteRoleSelect();
             if (view === 'audit') loadAudit();
         },
         setActiveCandidate(m) {

@@ -22,42 +22,41 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             Careers portal
         </a>
-        <button class="nav-item active" data-view="overview">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
-            Overview
-        </button>
-        <button class="nav-item" data-view="candidates">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Candidates
-        </button>
-        <button class="nav-item" data-view="pipeline">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
-            Pipeline
-        </button>
-        <button class="nav-item" data-view="jobs">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
-            Jobs
-        </button>
-        <button class="nav-item" data-view="screen">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>
-            CV Screening
-        </button>
-        <button class="nav-item" data-view="onsite">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Onsite Interviews
-        </button>
-        <button class="nav-item" data-view="settings">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            Settings
-        </button>
-        <button class="nav-item" data-view="users">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-            Users
-        </button>
-        <button class="nav-item" data-view="audit">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M9 11h6"/></svg>
-            Audit log
-        </button>
+
+        <div class="nav-group">
+            <div class="nav-group-label">Dashboard</div>
+            <button class="nav-item nav-sub active" data-view="overview">Overview</button>
+            <button class="nav-item nav-sub" data-view="candidates">Candidates</button>
+            <button class="nav-item nav-sub" data-view="pipeline">Pipeline</button>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-label">Jobs</div>
+            <button class="nav-item nav-sub" data-view="jobs">All jobs</button>
+            <button class="nav-item nav-sub" data-view="jobs-create">Create job</button>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-label">Screening</div>
+            <button class="nav-item nav-sub" data-view="screen">CV screening</button>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-label">Interviews</div>
+            <button class="nav-item nav-sub" data-view="onsite">Onsite interviews</button>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-label">Team</div>
+            <button class="nav-item nav-sub" data-view="users">Users</button>
+            <button class="nav-item nav-sub" data-view="users-invite">Invite user</button>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group-label">System</div>
+            <button class="nav-item nav-sub" data-view="settings">Settings</button>
+            <button class="nav-item nav-sub" data-view="audit">Audit log</button>
+        </div>
         <div class="sidebar-foot">v3.0 · Role-based admin</div>
     </aside>
 
@@ -172,148 +171,145 @@
                 </div>
             </section>
 
-            <!-- JOBS -->
+            <!-- JOBS LIST -->
             <section class="view" id="view-jobs">
-                <details class="guide-panel">
-                    <summary>LinkedIn par job kaise post karein (guide)</summary>
-                    <ol>
-                        <li>Yahan job <strong>Save</strong> karein aur status <em>Open</em> rakhein.</li>
-                        <li>Jobs table se <strong>apply link</strong> copy karein — yeh URL LinkedIn par paste hogi.</li>
-                        <li>LinkedIn → <strong>Jobs → Create job</strong> — title aur JD yahan se copy karein.</li>
-                        <li><strong>Easy Apply band</strong> karein → <em>Apply on company website</em> select karein.</li>
-                        <li>External URL mein apply link paste karein, e.g. <code>apply.html?job=junior-backend-developer</code></li>
-                        <li>Candidate apply karega → careers page → CV upload → AI screening (24/7).</li>
-                    </ol>
-                </details>
-                <div class="card" style="margin-bottom:20px">
-                    <div class="card-head">
-                        <div class="card-title">Live on careers page<small>Open roles candidates see at careers.html — same listings</small></div>
-                        <a href="careers.html" target="_blank" rel="noopener" class="seg" style="text-decoration:none">Open careers ↗</a>
-                    </div>
-                    <div id="liveJobsPreview" class="form-hint" style="padding:0">Loading published roles…</div>
+                <div class="page-toolbar">
+                    <p class="page-toolbar-hint">Manage published roles and apply links.</p>
+                    <button type="button" class="btn-primary" data-go-view="jobs-create">+ Create job</button>
                 </div>
-                <div class="admin-split">
-                    <div class="card">
-                        <div class="card-head"><div class="card-title">Create / edit job<small>Generate JD from criteria, then publish</small></div></div>
-                        <form id="jobForm" onsubmit="return false">
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label for="jobEditId">Editing</label>
-                                    <select id="jobEditId"><option value="">New job</option></select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="jobStatusIn">Status</label>
-                                    <select id="jobStatusIn">
-                                        <option value="draft">Draft</option>
-                                        <option value="open">Open</option>
-                                        <option value="closed">Closed</option>
-                                    </select>
-                                </div>
-                                <div class="form-group span-2">
-                                    <label for="jobTitleIn">Job title *</label>
-                                    <input id="jobTitleIn" type="text" placeholder="Senior Backend Engineer" required />
-                                </div>
-                                <div class="form-group">
-                                    <label for="jobDeptIn">Department</label>
-                                    <input id="jobDeptIn" type="text" placeholder="Engineering" />
-                                </div>
-                                <div class="form-group">
-                                    <label for="jobLocIn">Location</label>
-                                    <select id="jobLocIn">
-                                        <option value="Remote" selected>Remote</option>
-                                        <option value="On-site">On-site</option>
-                                        <option value="Hybrid">Hybrid</option>
-                                        <option value="Lahore, Pakistan">Lahore, Pakistan</option>
-                                        <option value="Karachi, Pakistan">Karachi, Pakistan</option>
-                                        <option value="Islamabad, Pakistan">Islamabad, Pakistan</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="jobTypeIn">Employment type</label>
-                                    <select id="jobTypeIn">
-                                        <option value="Full-time" selected>Full-time</option>
-                                        <option value="Part-time">Part-time</option>
-                                        <option value="Contract">Contract</option>
-                                        <option value="Internship">Internship</option>
-                                        <option value="Temporary">Temporary</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="jobIntIn">Interviewer email *</label>
-                                    <input id="jobIntIn" type="email" placeholder="interviewer@company.com" required />
-                                </div>
-                                <div class="form-group span-2">
-                                    <label for="jobCriteriaIn">Must-have criteria (one per line)</label>
-                                    <textarea id="jobCriteriaIn" placeholder="C# and .NET Core&#10;ASP.NET Core / Web API&#10;SQL Server &amp; Entity Framework&#10;Git and Agile teamwork"></textarea>
-                                    <div class="form-hint">One skill per line — AI writes a LinkedIn-style professional JD from these criteria</div>
-                                </div>
-                                <div class="form-group span-2">
-                                    <label for="jobNiceIn">Nice to have (optional)</label>
-                                    <textarea id="jobNiceIn" placeholder="AWS / Kubernetes&#10;Open-source contributions"></textarea>
-                                </div>
-                                <div class="form-group span-2">
-                                    <label for="jobJdIn">Job description *</label>
-                                    <textarea id="jobJdIn" style="min-height:200px" placeholder="Full JD text used for screening and assessment…" required></textarea>
-                                </div>
-                            </div>
-                            <div class="form-actions">
-                                <button type="button" class="btn-secondary" id="jobGenBtn">Generate with AI</button>
-                                <button type="button" class="btn-primary" onclick="document.getElementById('jobForm').dispatchEvent(new Event('submit'))">Save job</button>
-                                <button type="button" class="btn-secondary" id="jobResetBtn">Clear form</button>
-                            </div>
-                        </form>
-                    </div>
-                    <div class="table-card table-scroll">
-                        <table>
-                            <thead><tr><th>Job</th><th>Location</th><th>Status</th><th>Updated</th><th>Live</th><th></th><th></th></tr></thead>
-                            <tbody id="jobsBody"><tr><td class="loading-row" colspan="7">Loading jobs…</td></tr></tbody>
-                        </table>
-                    </div>
+                <div class="table-card table-scroll">
+                    <table>
+                        <thead><tr><th>Job</th><th>Location</th><th>Status</th><th>Updated</th><th>Live</th><th></th><th></th></tr></thead>
+                        <tbody id="jobsBody"><tr><td class="loading-row" colspan="7">Loading jobs…</td></tr></tbody>
+                    </table>
                 </div>
             </section>
 
-            <!-- CV SCREENING (merged recruiter intake) -->
-            <section class="view" id="view-screen">
+            <!-- CREATE / EDIT JOB -->
+            <section class="view" id="view-jobs-create">
                 <div class="card card-limit-lg">
+                    <div class="card-head">
+                        <div class="card-title">Create / edit job<small>Generate JD from criteria, then publish</small></div>
+                        <button type="button" class="btn-secondary btn-sm" data-go-view="jobs">← All jobs</button>
+                    </div>
+                    <form id="jobForm" onsubmit="return false">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="jobEditId">Editing</label>
+                                <select id="jobEditId"><option value="">New job</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="jobStatusIn">Status</label>
+                                <select id="jobStatusIn">
+                                    <option value="draft">Draft</option>
+                                    <option value="open">Open</option>
+                                    <option value="closed">Closed</option>
+                                </select>
+                            </div>
+                            <div class="form-group span-2">
+                                <label for="jobTitleIn">Job title *</label>
+                                <input id="jobTitleIn" type="text" placeholder="Senior Backend Engineer" required />
+                            </div>
+                            <div class="form-group">
+                                <label for="jobDeptIn">Department</label>
+                                <input id="jobDeptIn" type="text" placeholder="Engineering" />
+                            </div>
+                            <div class="form-group">
+                                <label for="jobLocIn">Location</label>
+                                <select id="jobLocIn">
+                                    <option value="Remote" selected>Remote</option>
+                                    <option value="On-site">On-site</option>
+                                    <option value="Hybrid">Hybrid</option>
+                                    <option value="Lahore, Pakistan">Lahore, Pakistan</option>
+                                    <option value="Karachi, Pakistan">Karachi, Pakistan</option>
+                                    <option value="Islamabad, Pakistan">Islamabad, Pakistan</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="jobTypeIn">Employment type</label>
+                                <select id="jobTypeIn">
+                                    <option value="Full-time" selected>Full-time</option>
+                                    <option value="Part-time">Part-time</option>
+                                    <option value="Contract">Contract</option>
+                                    <option value="Internship">Internship</option>
+                                    <option value="Temporary">Temporary</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="jobIntIn">Interviewer email *</label>
+                                <input id="jobIntIn" type="email" placeholder="interviewer@company.com" required />
+                            </div>
+                            <div class="form-group span-2">
+                                <label for="jobCriteriaIn">Must-have criteria (one per line)</label>
+                                <textarea id="jobCriteriaIn" placeholder="C# and .NET Core&#10;ASP.NET Core / Web API&#10;SQL Server &amp; Entity Framework&#10;Git and Agile teamwork"></textarea>
+                                <div class="form-hint">One skill per line — AI writes a professional JD from these criteria</div>
+                            </div>
+                            <div class="form-group span-2">
+                                <label for="jobNiceIn">Nice to have (optional)</label>
+                                <textarea id="jobNiceIn" placeholder="AWS / Kubernetes&#10;Open-source contributions"></textarea>
+                            </div>
+                            <div class="form-group span-2">
+                                <label for="jobJdIn">Job description *</label>
+                                <textarea id="jobJdIn" class="textarea-tall" placeholder="Full JD text used for screening and assessment…" required></textarea>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary" id="jobGenBtn">Generate with AI</button>
+                            <button type="button" class="btn-primary" onclick="document.getElementById('jobForm').dispatchEvent(new Event('submit'))">Save job</button>
+                            <button type="button" class="btn-secondary" id="jobResetBtn">Clear form</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- CV SCREENING -->
+            <section class="view" id="view-screen">
+                <div class="card">
                     <div class="card-head"><div class="card-title">CV screening<small>Single or batch upload — same AI pipeline as careers apply flow</small></div></div>
                     <form id="screenForm">
-                        <div class="form-grid">
-                            <div class="form-group span-2">
-                                <label for="scrJob">Link to open job (optional)</label>
-                                <select id="scrJob"><option value="">Select job…</option></select>
-                            </div>
-                            <div class="form-group">
-                                <label for="scrTitle">Requisition title *</label>
-                                <input id="scrTitle" type="text" required placeholder="Senior Backend Engineer" />
-                            </div>
-                            <div class="form-group">
-                                <label for="scrInt">Interviewer email *</label>
-                                <input id="scrInt" type="email" required placeholder="interviewer@company.com" />
-                            </div>
-                            <div class="form-group span-2">
-                                <label for="scrJd">JD / requirements *</label>
-                                <textarea id="scrJd" required placeholder="Paste job description for AI screening…" style="min-height:160px"></textarea>
-                            </div>
-                            <div class="form-group span-2">
-                                <label>Upload mode</label>
-                                <div class="mode-toggle">
-                                    <button type="button" class="mode-btn active" data-screen-mode="single">Single candidate</button>
-                                    <button type="button" class="mode-btn" data-screen-mode="batch">Multiple CVs (same JD)</button>
+                        <div class="screen-split">
+                            <div class="screen-panel">
+                                <div class="screen-panel-title">Job details</div>
+                                <div class="form-group">
+                                    <label for="scrJob">Link to open job (optional)</label>
+                                    <select id="scrJob"><option value="">Select job…</option></select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="scrTitle">Requisition title *</label>
+                                    <input id="scrTitle" type="text" required placeholder="Senior Backend Engineer" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="scrInt">Interviewer email *</label>
+                                    <input id="scrInt" type="email" required placeholder="interviewer@company.com" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="scrJd">JD / requirements *</label>
+                                    <textarea id="scrJd" class="textarea-tall" required placeholder="Paste job description for AI screening…"></textarea>
                                 </div>
                             </div>
-                            <div class="form-group" id="scrEmailGroup">
-                                <label for="scrEmail">Candidate email *</label>
-                                <input id="scrEmail" type="email" placeholder="Auto-detected from PDF" />
-                            </div>
-                            <div class="form-group span-2" id="scrCvTextGroup">
-                                <label for="scrCvText">CV text (paste — single mode)</label>
-                                <textarea id="scrCvText" placeholder="Paste CV content if no PDF…"></textarea>
-                            </div>
-                            <div class="form-group span-2">
-                                <label for="scrCvFile" id="scrFileLabel">Upload PDF</label>
-                                <input id="scrCvFile" type="file" accept=".pdf,application/pdf" />
-                                <div class="form-hint" id="scrFileHint">PDF only · email auto-detected from CV in single &amp; batch mode</div>
-                                <div id="scrBatchList" class="batch-list"></div>
+                            <div class="screen-panel">
+                                <div class="screen-panel-title">Candidate CV</div>
+                                <div class="form-group">
+                                    <label>Upload mode</label>
+                                    <div class="mode-toggle">
+                                        <button type="button" class="mode-btn active" data-screen-mode="single">Single candidate</button>
+                                        <button type="button" class="mode-btn" data-screen-mode="batch">Multiple CVs (same JD)</button>
+                                    </div>
+                                </div>
+                                <div class="form-group" id="scrEmailGroup">
+                                    <label for="scrEmail">Candidate email *</label>
+                                    <input id="scrEmail" type="email" placeholder="Auto-detected from PDF" />
+                                </div>
+                                <div class="form-group" id="scrCvTextGroup">
+                                    <label for="scrCvText">CV text (paste — single mode)</label>
+                                    <textarea id="scrCvText" class="textarea-tall" placeholder="Paste CV content if no PDF…"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label for="scrCvFile" id="scrFileLabel">Upload PDF</label>
+                                    <input id="scrCvFile" type="file" accept=".pdf,application/pdf" />
+                                    <div class="form-hint" id="scrFileHint">PDF only · email auto-detected from CV in single &amp; batch mode</div>
+                                    <div id="scrBatchList" class="batch-list"></div>
+                                </div>
                             </div>
                         </div>
                         <div class="screen-progress" id="scrProgress"><div class="screen-progress-fill" id="scrProgressFill"></div></div>
@@ -399,48 +395,53 @@
                 </div>
             </section>
 
-            <!-- USERS (super admin) -->
+            <!-- USERS LIST -->
             <section class="view" id="view-users">
-                <div class="card" style="margin-bottom:20px" id="jobAssignCard">
-                    <div class="card-head"><div class="card-title">Job assignments<small>Link hiring managers to specific roles — also auto-matched via job interviewer email</small></div></div>
-                    <div id="jobAssignPanel" class="form-hint">Loading…</div>
+                <div class="page-toolbar">
+                    <p class="page-toolbar-hint">Manage team access and roles.</p>
+                    <button type="button" class="btn-primary" data-go-view="users-invite">+ Invite user</button>
                 </div>
-                <div class="admin-split">
-                    <div class="card">
-                        <div class="card-head"><div class="card-title">Invite user<small>Creates Supabase Auth account + profile</small></div></div>
-                        <form id="inviteUserForm">
-                            <div class="form-grid cols-1">
-                                <div class="form-group">
-                                    <label for="invName">Full name</label>
-                                    <input id="invName" type="text" required placeholder="Recruiter name" />
-                                </div>
-                                <div class="form-group">
-                                    <label for="invEmail">Email</label>
-                                    <input id="invEmail" type="email" required placeholder="recruiter@convo.com" />
-                                </div>
-                                <div class="form-group">
-                                    <label for="invPass">Temporary password</label>
-                                    <input id="invPass" type="password" required minlength="8" placeholder="Min 8 characters" />
-                                </div>
-                                <div class="form-group">
-                                    <label for="invRole">Role</label>
-                                    <select id="invRole">
-                                        <option value="recruiter">Loading roles…</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="form-actions">
-                                <button type="submit" class="btn-primary" id="inviteUserBtn">Create user</button>
-                            </div>
-                            <div class="form-hint" id="inviteRoleHint">Super Admin: all roles · HR Head: Recruiter/HR &amp; Interviewer · HM Head: Hiring Manager &amp; Interviewer</div>
-                        </form>
+                <div class="table-card table-scroll">
+                    <table>
+                        <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Joined</th><th></th></tr></thead>
+                        <tbody id="usersBody"><tr><td class="loading-row" colspan="5">Loading users…</td></tr></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- INVITE USER -->
+            <section class="view" id="view-users-invite">
+                <div class="card card-limit-md">
+                    <div class="card-head">
+                        <div class="card-title">Invite user<small>Creates Supabase Auth account + profile</small></div>
+                        <button type="button" class="btn-secondary btn-sm" data-go-view="users">← All users</button>
                     </div>
-                    <div class="table-card table-scroll">
-                        <table>
-                            <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Joined</th><th></th></tr></thead>
-                            <tbody id="usersBody"><tr><td class="loading-row" colspan="5">Loading users…</td></tr></tbody>
-                        </table>
-                    </div>
+                    <form id="inviteUserForm">
+                        <div class="form-grid cols-1">
+                            <div class="form-group">
+                                <label for="invName">Full name</label>
+                                <input id="invName" type="text" required placeholder="Recruiter name" />
+                            </div>
+                            <div class="form-group">
+                                <label for="invEmail">Email</label>
+                                <input id="invEmail" type="email" required placeholder="recruiter@convo.com" />
+                            </div>
+                            <div class="form-group">
+                                <label for="invPass">Temporary password</label>
+                                <input id="invPass" type="password" required minlength="8" placeholder="Min 8 characters" />
+                            </div>
+                            <div class="form-group">
+                                <label for="invRole">Role</label>
+                                <select id="invRole">
+                                    <option value="recruiter">Loading roles…</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary" id="inviteUserBtn">Create user</button>
+                        </div>
+                        <div class="form-hint" id="inviteRoleHint">Super Admin: all roles · HR Head: Recruiter/HR &amp; Interviewer · HM Head: Hiring Manager &amp; Interviewer</div>
+                    </form>
                 </div>
             </section>
 
@@ -1110,11 +1111,13 @@
             overview: ['Overview', 'Hiring pipeline at a glance'],
             candidates: ['Candidates', 'Every applicant, score and decision'],
             pipeline: ['Pipeline', 'Funnel from application to hire'],
-            jobs: ['Jobs', 'Create JDs, publish roles, manage postings'],
-            screen: ['CV Screening', 'Screen single or batch CVs via AI — merged recruiter intake'],
+            jobs: ['All jobs', 'Published roles, status, and apply links'],
+            'jobs-create': ['Create job', 'Generate JD from criteria and publish a role'],
+            screen: ['CV Screening', 'Screen single or batch CVs via AI'],
             onsite: ['Onsite Interviews', 'Record interview outcomes — recruiters & hiring managers'],
             settings: ['Settings', 'Webhooks and integrations'],
-            users: ['Users & roles', 'Invite team members and manage access'],
+            users: ['Users', 'Team members, roles, and access'],
+            'users-invite': ['Invite user', 'Add a new team member to Talent Admin'],
             audit: ['Audit log', 'Who changed what in the admin panel'],
         };
         function setView(v) {
@@ -1160,9 +1163,12 @@
         });
 
         document.querySelectorAll('.nav-item[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+        document.querySelectorAll('[data-go-view]').forEach((btn) => {
+            btn.addEventListener('click', () => setView(btn.getAttribute('data-go-view')));
+        });
         function applyRouteView() {
             const p = new URLSearchParams(location.search);
-            const legacy = { intake: 'screen', results: 'candidates', jobs: 'jobs' };
+            const legacy = { intake: 'screen', results: 'candidates', jobs: 'jobs', create: 'jobs-create', invite: 'users-invite' };
             const v = p.get('view') || legacy[p.get('tab')] || null;
             if (v && TITLES[v]) setView(v);
         }

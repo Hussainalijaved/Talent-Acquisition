@@ -12,7 +12,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body class="admin-body">
-    <aside class="sidebar">
+    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
+    <aside class="sidebar" id="sidebar">
         <div class="brand">
             <div class="brand-name">CONVO</div>
             <div class="brand-sub">Talent Admin</div>
@@ -62,21 +63,28 @@
 
     <div class="main">
         <header class="topbar">
-            <div>
+            <button type="button" class="icon-btn menu-btn" id="menuBtn" title="Open menu" aria-label="Open menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+            <div class="topbar-title">
                 <div class="page-title" id="pageTitle">Overview</div>
                 <div class="page-sub" id="pageSub">Hiring pipeline at a glance</div>
             </div>
-            <div class="search">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input id="globalSearch" type="text" placeholder="Search candidates by email or role…" />
+            <div class="topbar-center">
+                <div class="search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input id="globalSearch" type="text" placeholder="Search candidates by email or role…" />
+                </div>
+                <button class="icon-btn" id="refreshBtn" title="Refresh">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </button>
             </div>
-            <button class="icon-btn" id="refreshBtn" title="Refresh">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            </button>
-            <div class="user-menu" id="userBadge" title="Signed in">
-                <span class="user-name">…</span><span class="user-role">…</span>
+            <div class="topbar-user">
+                <div class="user-menu" id="userBadge" title="Signed in">
+                    <span class="user-name">…</span><span class="user-role">…</span>
+                </div>
+                <button type="button" class="signout-btn" id="signOutBtn">Sign out</button>
             </div>
-            <button type="button" class="signout-btn" id="signOutBtn">Sign out</button>
         </header>
 
         <div class="content">
@@ -105,7 +113,7 @@
                         <div class="card-title">Recent candidates<small>Latest applications &amp; their status</small></div>
                         <button class="seg" id="seeAllBtn">View all</button>
                     </div>
-                    <div class="table-card" style="border:none;box-shadow:none">
+                    <div class="table-card table-scroll" style="border:none;box-shadow:none">
                         <table>
                             <thead><tr><th>Candidate</th><th>Role</th><th>CV Score</th><th>Stage</th><th>Assessment</th></tr></thead>
                             <tbody id="recentBody"><tr><td class="loading-row" colspan="5">Loading…</td></tr></tbody>
@@ -142,7 +150,7 @@
                     </select>
                     <span class="count-tag" id="candCount"></span>
                 </div>
-                <div class="table-card">
+                <div class="table-card table-scroll">
                     <table>
                         <thead><tr><th>Candidate</th><th>Role</th><th>CV Score</th><th>Stage</th><th>Assessment</th><th>Applied</th></tr></thead>
                         <tbody id="candBody"><tr><td class="loading-row" colspan="6">Loading candidates…</td></tr></tbody>
@@ -152,7 +160,7 @@
 
             <!-- PIPELINE -->
             <section class="view" id="view-pipeline">
-                <div class="grid-2" style="grid-template-columns:1fr 1fr">
+                <div class="grid-2 grid-2-equal">
                     <div class="card">
                         <div class="card-head"><div class="card-title">Assessment funnel<small>From shortlist to final result</small></div></div>
                         <div id="funnel"></div>
@@ -255,7 +263,7 @@
                             </div>
                         </form>
                     </div>
-                    <div class="table-card">
+                    <div class="table-card table-scroll">
                         <table>
                             <thead><tr><th>Job</th><th>Location</th><th>Status</th><th>Updated</th><th>Live</th><th></th><th></th></tr></thead>
                             <tbody id="jobsBody"><tr><td class="loading-row" colspan="7">Loading jobs…</td></tr></tbody>
@@ -266,7 +274,7 @@
 
             <!-- CV SCREENING (merged recruiter intake) -->
             <section class="view" id="view-screen">
-                <div class="card" style="max-width:920px">
+                <div class="card card-limit-lg">
                     <div class="card-head"><div class="card-title">CV screening<small>Single or batch upload — same AI pipeline as careers apply flow</small></div></div>
                     <form id="screenForm">
                         <div class="form-grid">
@@ -382,7 +390,7 @@
                             </div>
                         </form>
                     </div>
-                    <div class="table-card">
+                    <div class="table-card table-scroll">
                         <table>
                             <thead><tr><th>Candidate</th><th>Job</th><th>When</th><th>Type</th><th>Outcome</th><th></th></tr></thead>
                             <tbody id="onsiteBody"><tr><td class="loading-row" colspan="6">Loading…</td></tr></tbody>
@@ -427,7 +435,7 @@
                             <div class="form-hint" id="inviteRoleHint">Super Admin: all roles · HR Head: Recruiter/HR &amp; Interviewer · HM Head: Hiring Manager &amp; Interviewer</div>
                         </form>
                     </div>
-                    <div class="table-card">
+                    <div class="table-card table-scroll">
                         <table>
                             <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Joined</th><th></th></tr></thead>
                             <tbody id="usersBody"><tr><td class="loading-row" colspan="5">Loading users…</td></tr></tbody>
@@ -438,7 +446,7 @@
 
             <!-- AUDIT (super admin) -->
             <section class="view" id="view-audit">
-                <div class="table-card">
+                <div class="table-card table-scroll">
                     <table>
                         <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead>
                         <tbody id="auditBody"><tr><td class="loading-row" colspan="5">Loading audit log…</td></tr></tbody>
@@ -448,7 +456,7 @@
 
             <!-- SETTINGS -->
             <section class="view" id="view-settings">
-                <div class="card" style="max-width:640px">
+                <div class="card card-limit-md">
                     <div class="card-head"><div class="card-title">Integration settings<small>n8n webhooks for screening and JD generation</small></div></div>
                     <div class="form-grid cols-1">
                         <div class="form-group">
@@ -1080,7 +1088,28 @@
                 url.searchParams.delete('tab');
                 history.replaceState({}, '', url);
             } catch (_) { /* ignore */ }
+            closeSidebar();
         }
+
+        function closeSidebar() {
+            document.getElementById('sidebar')?.classList.remove('open');
+            document.getElementById('sidebarOverlay')?.classList.remove('show');
+            document.body.classList.remove('sidebar-open');
+        }
+        function openSidebar() {
+            document.getElementById('sidebar')?.classList.add('open');
+            document.getElementById('sidebarOverlay')?.classList.add('show');
+            document.body.classList.add('sidebar-open');
+        }
+
+        document.getElementById('menuBtn')?.addEventListener('click', () => {
+            const sb = document.getElementById('sidebar');
+            if (sb?.classList.contains('open')) closeSidebar();
+            else openSidebar();
+        });
+        document.getElementById('sidebarOverlay')?.addEventListener('click', closeSidebar);
+        window.addEventListener('resize', () => { if (window.innerWidth > 980) closeSidebar(); });
+
         document.querySelectorAll('.nav-item[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
         function applyRouteView() {
             const p = new URLSearchParams(location.search);
@@ -1095,7 +1124,11 @@
         document.getElementById('seeAllBtn').addEventListener('click', () => setView('candidates'));
         document.getElementById('overlay').addEventListener('click', closeDrawer);
         document.getElementById('drawerClose').addEventListener('click', closeDrawer);
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+        document.addEventListener('keydown', e => {
+            if (e.key !== 'Escape') return;
+            if (document.getElementById('drawer')?.classList.contains('show')) closeDrawer();
+            else closeSidebar();
+        });
         document.getElementById('refreshBtn').addEventListener('click', () => { banner('Refreshing…', 'ok'); loadData(); });
         ['globalSearch', 'fStage', 'fRole', 'fAssess', 'fSort'].forEach(id => {
             document.getElementById(id).addEventListener('input', () => { renderCandidates(); if (id === 'globalSearch') renderRecent(); });

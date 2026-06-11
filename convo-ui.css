@@ -39,6 +39,7 @@ body.convo-body {
     margin: 0;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
 }
 a { color: var(--convo-brand); }
 ::selection { background: rgba(11, 92, 171, 0.18); }
@@ -567,3 +568,32 @@ body.convo-flow-active .convo-flow-screen { display: flex; }
 .convo-setup-card h1 { margin: 0 0 8px; font-size: 20px; font-weight: 700; color: var(--convo-ink); }
 .convo-setup-card p { color: var(--convo-muted); font-size: 14px; line-height: 1.6; }
 .convo-hidden { display: none !important; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+    .convo-nav { padding: 0 16px; height: 56px; }
+    .convo-nav-logo { font-size: 22px; }
+    .convo-nav-tag { font-size: 11px; padding-left: 10px; }
+    .convo-hero { padding: 28px 16px 36px; }
+    .convo-wrap { padding-left: 16px; padding-right: 16px; }
+    .convo-job {
+        grid-template-columns: 1fr;
+        padding: 20px 18px;
+        gap: 16px;
+    }
+    .convo-job .convo-btn { width: 100%; }
+    .convo-apply-jd,
+    .convo-apply-form-col { padding: 20px 16px; }
+    .convo-job-title { font-size: 22px; }
+    .convo-flow-card { padding: 28px 20px; }
+    .convo-auth-page { padding: 16px; }
+    .convo-auth-card { padding: 24px 20px; }
+}
+
+@media (max-width: 480px) {
+    .convo-nav-tag { display: none; }
+    .convo-hero-pills { gap: 6px; }
+    .convo-pill { font-size: 11px; padding: 4px 8px; }
+    .convo-nav-actions { gap: 6px; }
+    .convo-nav-link { font-size: 13px; padding: 7px 10px; }
+}

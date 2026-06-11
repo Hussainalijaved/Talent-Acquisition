@@ -289,3 +289,18 @@
     box-shadow: var(--convo-shadow) !important;
 }
 .flatpickr-day.selected { background: var(--convo-brand) !important; border-color: var(--convo-brand) !important; }
+
+@media (max-width: 768px) {
+    .convo-portal-main { padding: 20px 12px 36px; align-items: stretch; }
+    .convo-portal-card { padding: 22px 16px; max-width: none; }
+    .convo-portal-card h1,
+    .convo-portal-card h2 { font-size: 18px; }
+    .slot-time-row { flex-wrap: wrap; }
+    .session-recovery input,
+    .input-group input[type="text"] { font-size: 16px; }
+}
+
+@media (max-width: 480px) {
+    .convo-portal-main { padding: 16px 10px 28px; }
+    .convo-portal-card { padding: 18px 14px; border-radius: 10px; }
+}

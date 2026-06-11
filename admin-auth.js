@@ -312,7 +312,7 @@
         global.document.querySelectorAll('[data-go-view="users-invite"]').forEach((btn) => {
             btn.style.display = canManage ? '' : 'none';
         });
-        global.document.querySelectorAll('.nav-group').forEach((group) => {
+        global.document.querySelectorAll('.nav-dropdown, .nav-group').forEach((group) => {
             const items = group.querySelectorAll('.nav-item[data-view]');
             const anyVisible = [...items].some((el) => el.style.display !== 'none');
             group.style.display = anyVisible ? '' : 'none';

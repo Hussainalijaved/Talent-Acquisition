@@ -18,45 +18,59 @@
             <div class="brand-name">CONVO</div>
             <div class="brand-sub">Talent Admin</div>
         </div>
-        <a href="careers.html" target="_blank" rel="noopener" class="nav-item" style="text-decoration:none;margin-bottom:8px;">
+        <a href="careers.html" target="_blank" rel="noopener" class="nav-portal-link">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             Careers portal
         </a>
 
-        <div class="nav-group">
-            <div class="nav-group-label">Dashboard</div>
-            <button class="nav-item nav-sub active" data-view="overview">Overview</button>
-            <button class="nav-item nav-sub" data-view="candidates">Candidates</button>
-            <button class="nav-item nav-sub" data-view="pipeline">Pipeline</button>
-        </div>
+        <nav class="sidebar-nav" aria-label="Admin navigation">
+            <details class="nav-dropdown" data-nav-group="dashboard" open>
+                <summary class="nav-dropdown-label"><span>Dashboard</span><svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></summary>
+                <div class="nav-dropdown-body">
+                    <button type="button" class="nav-item nav-sub active" data-view="overview">Overview</button>
+                    <button type="button" class="nav-item nav-sub" data-view="candidates">Candidates</button>
+                    <button type="button" class="nav-item nav-sub" data-view="pipeline">Pipeline</button>
+                </div>
+            </details>
 
-        <div class="nav-group">
-            <div class="nav-group-label">Jobs</div>
-            <button class="nav-item nav-sub" data-view="jobs">All jobs</button>
-            <button class="nav-item nav-sub" data-view="jobs-create">Create job</button>
-        </div>
+            <details class="nav-dropdown" data-nav-group="jobs" open>
+                <summary class="nav-dropdown-label"><span>Jobs</span><svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></summary>
+                <div class="nav-dropdown-body">
+                    <button type="button" class="nav-item nav-sub" data-view="jobs">All jobs</button>
+                    <button type="button" class="nav-item nav-sub" data-view="jobs-create">Create job</button>
+                </div>
+            </details>
 
-        <div class="nav-group">
-            <div class="nav-group-label">Screening</div>
-            <button class="nav-item nav-sub" data-view="screen">CV screening</button>
-        </div>
+            <details class="nav-dropdown" data-nav-group="screening" open>
+                <summary class="nav-dropdown-label"><span>Screening</span><svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></summary>
+                <div class="nav-dropdown-body">
+                    <button type="button" class="nav-item nav-sub" data-view="screen">CV screening</button>
+                </div>
+            </details>
 
-        <div class="nav-group">
-            <div class="nav-group-label">Interviews</div>
-            <button class="nav-item nav-sub" data-view="onsite">Onsite interviews</button>
-        </div>
+            <details class="nav-dropdown" data-nav-group="interviews" open>
+                <summary class="nav-dropdown-label"><span>Interviews</span><svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></summary>
+                <div class="nav-dropdown-body">
+                    <button type="button" class="nav-item nav-sub" data-view="onsite">Onsite interviews</button>
+                </div>
+            </details>
 
-        <div class="nav-group">
-            <div class="nav-group-label">Team</div>
-            <button class="nav-item nav-sub" data-view="users">Users</button>
-            <button class="nav-item nav-sub" data-view="users-invite">Invite user</button>
-        </div>
+            <details class="nav-dropdown" data-nav-group="team" open>
+                <summary class="nav-dropdown-label"><span>Team</span><svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></summary>
+                <div class="nav-dropdown-body">
+                    <button type="button" class="nav-item nav-sub" data-view="users">Users</button>
+                    <button type="button" class="nav-item nav-sub" data-view="users-invite">Invite user</button>
+                </div>
+            </details>
 
-        <div class="nav-group">
-            <div class="nav-group-label">System</div>
-            <button class="nav-item nav-sub" data-view="settings">Settings</button>
-            <button class="nav-item nav-sub" data-view="audit">Audit log</button>
-        </div>
+            <details class="nav-dropdown" data-nav-group="system" open>
+                <summary class="nav-dropdown-label"><span>System</span><svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></summary>
+                <div class="nav-dropdown-body">
+                    <button type="button" class="nav-item nav-sub" data-view="settings">Settings</button>
+                    <button type="button" class="nav-item nav-sub" data-view="audit">Audit log</button>
+                </div>
+            </details>
+        </nav>
         <div class="sidebar-foot">v3.0 · Role-based admin</div>
     </aside>
 
@@ -1224,9 +1238,19 @@
             'users-invite': ['Invite user', 'Add a new team member to Talent Admin'],
             audit: ['Audit log', 'Who changed what in the admin panel'],
         };
+        function syncNavDropdowns(activeView) {
+            document.querySelectorAll('.nav-dropdown').forEach((dd) => {
+                const hasActive = [...dd.querySelectorAll('.nav-item[data-view]')].some(
+                    (b) => b.dataset.view === activeView && b.style.display !== 'none'
+                );
+                if (hasActive) dd.open = true;
+            });
+        }
+
         function setView(v) {
             if (window.TAAuth) v = TAAuth.guardView(v);
             document.querySelectorAll('.nav-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+            syncNavDropdowns(v);
             document.querySelectorAll('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
             const t = TITLES[v] || ['', ''];
             document.getElementById('pageTitle').textContent = t[0];

@@ -375,7 +375,7 @@ tbody tr:last-child td { border-bottom: none; }
 .kv:last-child { border-bottom: none; }
 .kv .k { color: var(--text-soft); }
 .kv .v { font-weight: 500; text-align: right; }
-.reason { font-size: 13px; line-height: 1.6; color: var(--text-soft); background: var(--surface-2); border-radius: var(--radius-sm); padding: 12px; white-space: pre-wrap; }
+.reason { font-size: var(--text-md); line-height: 1.6; color: var(--text-soft); background: var(--surface-2); border-radius: var(--radius-sm); padding: 12px; white-space: pre-wrap; }
 
 /* Assessment drawer */
 .assess-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
@@ -390,7 +390,7 @@ tbody tr:last-child td { border-bottom: none; }
 .report-meta .meta-chip { font-size: 11px; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); color: var(--text-soft); }
 
 /* Banner */
-.banner { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 14px; display: none; border: 1px solid var(--border); }
+.banner { padding: 10px 14px; border-radius: var(--radius-sm); font-size: var(--text-md); margin-bottom: 14px; display: none; border: 1px solid var(--border); }
 .banner.show { display: block; }
 .banner.err { background: var(--danger-bg); color: var(--danger); border-color: #fecaca; }
 .banner.ok { background: var(--success-bg); color: var(--success); border-color: #bbf7d0; }

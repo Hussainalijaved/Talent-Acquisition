@@ -1009,8 +1009,23 @@
         await loadOnsite();
     }
 
+    function roleOptionsHtml(selected, roles) {
+        return (roles || []).map((r) =>
+            '<option value="' + r + '"' + (selected === r ? ' selected' : '') + '>' +
+            deps.esc(deps.auth.roleLabel(r)) + '</option>'
+        ).join('');
+    }
+
+    function populateInviteRoleSelect() {
+        const sel = document.getElementById('invRole');
+        if (!sel || !deps.auth) return;
+        const roles = deps.auth.assignableRoles();
+        sel.innerHTML = roleOptionsHtml(roles[0], roles);
+    }
+
     async function loadUsers() {
-        if (!deps.auth?.can('manage_users')) return;
+        if (!deps.auth?.canManageUsers()) return;
+        populateInviteRoleSelect();
         const { data, error } = await deps.sb.from('profiles').select('*').order('created_at', { ascending: false });
         const tb = document.getElementById('usersBody');
         if (!tb) return;
@@ -1026,14 +1041,15 @@
         const me = deps.auth.profile()?.id;
         tb.innerHTML = rows.map((u) => {
             const inactive = !u.is_active;
+            const canEdit = deps.auth.canEditUserRole(u);
+            const roleOpts = deps.auth.hasRole('super_admin')
+                ? deps.auth.ALL_ROLES
+                : deps.auth.assignableRoles();
             return `<tr data-user="${u.id}">
                 <td><strong>${deps.esc(u.full_name || u.email)}</strong><div class="c-role">${deps.esc(u.email)}</div></td>
                 <td>
-                    <select class="filter" data-user-role="${u.id}" ${u.id === me ? 'disabled' : ''}>
-                        <option value="super_admin" ${u.role === 'super_admin' ? 'selected' : ''}>Super Admin</option>
-                        <option value="recruiter" ${u.role === 'recruiter' ? 'selected' : ''}>Recruiter</option>
-                        <option value="hiring_manager" ${u.role === 'hiring_manager' ? 'selected' : ''}>Hiring Manager</option>
-                        <option value="viewer" ${u.role === 'viewer' ? 'selected' : ''}>Viewer</option>
+                    <select class="filter" data-user-role="${u.id}" ${!canEdit || u.id === me ? 'disabled' : ''}>
+                        ${roleOptionsHtml(u.role, canEdit ? roleOpts : [u.role])}
                     </select>
                 </td>
                 <td><span class="role-pill ${inactive ? 'inactive' : ''}">${inactive ? 'Inactive' : 'Active'}</span></td>
@@ -1050,7 +1066,12 @@
     }
 
     async function updateUserRole(userId, role) {
-        if (!deps.auth?.can('manage_users')) return;
+        if (!deps.auth?.canManageUsers()) return;
+        if (!deps.auth.canAssignRole(role)) {
+            deps.banner('You cannot assign the role: ' + deps.auth.roleLabel(role), 'err');
+            await loadUsers();
+            return;
+        }
         const { error } = await deps.sb.from('profiles').update({ role, updated_at: new Date().toISOString() }).eq('id', userId);
         if (error) {
             deps.banner('Update role failed: ' + error.message, 'err');
@@ -1062,9 +1083,13 @@
     }
 
     async function toggleUserActive(userId) {
-        if (!deps.auth?.can('manage_users')) return;
-        const { data } = await deps.sb.from('profiles').select('is_active, email').eq('id', userId).maybeSingle();
+        if (!deps.auth?.canManageUsers()) return;
+        const { data } = await deps.sb.from('profiles').select('is_active, email, role, id').eq('id', userId).maybeSingle();
         if (!data) return;
+        if (!deps.auth.canEditUserRole(data)) {
+            deps.banner('You cannot modify this user.', 'err');
+            return;
+        }
         const next = !data.is_active;
         if (!confirm((next ? 'Activate' : 'Deactivate') + ' ' + data.email + '?')) {
             await loadUsers();
@@ -1082,14 +1107,18 @@
 
     async function inviteUser(e) {
         e.preventDefault();
-        if (!deps.auth?.can('manage_users')) {
-            deps.banner('Only super admins can invite users.', 'err');
+        if (!deps.auth?.canManageUsers()) {
+            deps.banner('You do not have permission to invite users.', 'err');
             return;
         }
         const fullName = document.getElementById('invName').value.trim();
         const email = document.getElementById('invEmail').value.trim().toLowerCase();
         const password = document.getElementById('invPass').value;
         const role = document.getElementById('invRole').value;
+        if (!deps.auth.canAssignRole(role)) {
+            deps.banner('You cannot create users with role: ' + deps.auth.roleLabel(role), 'err');
+            return;
+        }
         const btn = document.getElementById('inviteUserBtn');
         btn.disabled = true;
         try {
@@ -1309,8 +1338,10 @@
         const el = document.getElementById('jobAssignPanel');
         if (card) card.style.display = deps.auth?.can('manage_job_assignments') ? '' : 'none';
         if (!el || !deps.auth?.can('manage_job_assignments')) return;
+        // Full-access mode: all roles see assignments panel if they have manage_job_assignments
         const [{ data: users }, { data: jobs }] = await Promise.all([
-            deps.sb.from('profiles').select('id, email, full_name, role').eq('role', 'hiring_manager').eq('is_active', true),
+            deps.sb.from('profiles').select('id, email, full_name, role')
+                .in('role', ['hiring_manager', 'hiring_manager_head', 'interviewer']).eq('is_active', true),
             deps.sb.from('jobs').select('job_id, title').order('title'),
         ]);
         const hmUsers = users || [];

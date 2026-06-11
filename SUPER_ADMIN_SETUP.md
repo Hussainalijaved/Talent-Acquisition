@@ -12,6 +12,7 @@ Run in order (if not already done):
 4. `supabase_scheduling.sql`
 5. **`supabase_auth_profiles.sql`**
 6. **`supabase_hiring_manager.sql`** ← HM notes, job scope, onsite access
+7. **`supabase_roles_expand.sql`** ← HR Head, HM Head, Interviewer roles
 
 ## 2. Set bootstrap secret (one-time)
 
@@ -40,10 +41,15 @@ Dashboard → **Authentication** → **Providers** → Email:
 
 | Role | Access |
 |------|--------|
-| **super_admin** | Everything + Settings + Users + Audit + delete |
-| **recruiter** | Jobs, CV screening, onsite, candidates |
-| **hiring_manager** | Read candidates & pipeline (future: job-scoped) |
-| **viewer** | Read-only overview, candidates, pipeline |
+| **super_admin** | Everything + invite any role |
+| **hr_head** | Full access (temp) + invite Recruiter/HR & Interviewer |
+| **hiring_manager_head** | Full access (temp) + invite Hiring Manager & Interviewer |
+| **interviewer** | Full access (temp) |
+| **recruiter** | Full access (temp) — Recruiter / HR |
+| **hiring_manager** | Full access (temp) |
+| **viewer** | Full access (temp) — legacy |
+
+*Permissions are wide open for now — tighten per role later in `admin-auth.js`.*
 
 Super admin invites users from **Users** tab in dashboard.
 

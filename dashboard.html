@@ -852,17 +852,14 @@
                                 <div class="form-group">
                                     <label for="invRole">Role</label>
                                     <select id="invRole">
-                                        <option value="recruiter">Recruiter</option>
-                                        <option value="hiring_manager">Hiring Manager</option>
-                                        <option value="viewer">Viewer (read-only)</option>
-                                        <option value="super_admin">Super Admin</option>
+                                        <option value="recruiter">Loading roles…</option>
                                     </select>
                                 </div>
                             </div>
                             <div class="form-actions">
                                 <button type="submit" class="btn-primary" id="inviteUserBtn">Create user</button>
                             </div>
-                            <div class="form-hint">Requires Email sign-ups enabled in Supabase Auth while inviting.</div>
+                            <div class="form-hint" id="inviteRoleHint">Super Admin: all roles · HR Head: Recruiter/HR &amp; Interviewer · HM Head: Hiring Manager &amp; Interviewer</div>
                         </form>
                     </div>
                     <div class="table-card">

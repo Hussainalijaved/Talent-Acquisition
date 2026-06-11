@@ -1,33 +1,51 @@
 /**
  * Talent Admin — Supabase Auth + role-based access
+ * Full-access mode: all roles see all tabs (permissions tightened later).
  */
 (function (global) {
     'use strict';
 
-    const VIEW_ROLES = {
-        overview: ['super_admin', 'recruiter', 'hiring_manager', 'viewer'],
-        candidates: ['super_admin', 'recruiter', 'hiring_manager', 'viewer'],
-        pipeline: ['super_admin', 'recruiter', 'hiring_manager', 'viewer'],
-        jobs: ['super_admin', 'recruiter'],
-        screen: ['super_admin', 'recruiter'],
-        onsite: ['super_admin', 'recruiter', 'hiring_manager'],
-        settings: ['super_admin'],
-        users: ['super_admin'],
-        audit: ['super_admin'],
+    const ALL_ROLES = [
+        'super_admin',
+        'hr_head',
+        'hiring_manager_head',
+        'interviewer',
+        'recruiter',
+        'hiring_manager',
+        'viewer',
+    ];
+
+    const ROLE_LABELS = {
+        super_admin: 'Super Admin',
+        hr_head: 'HR Head',
+        hiring_manager_head: 'Hiring Manager Head',
+        interviewer: 'Interviewer',
+        recruiter: 'Recruiter / HR',
+        hiring_manager: 'Hiring Manager',
+        viewer: 'Viewer',
     };
 
-    const PERMS = {
-        delete_candidate: ['super_admin'],
-        delete_job: ['super_admin'],
-        save_webhooks: ['super_admin'],
-        edit_jobs: ['super_admin', 'recruiter'],
-        screen_cv: ['super_admin', 'recruiter'],
-        onsite_write: ['super_admin', 'recruiter', 'hiring_manager'],
-        add_candidate_notes: ['super_admin', 'recruiter', 'hiring_manager'],
-        manage_job_assignments: ['super_admin'],
-        manage_users: ['super_admin'],
-        view_audit: ['super_admin'],
+    /** Who can invite which roles */
+    const INVITE_ROLES = {
+        super_admin: ALL_ROLES,
+        hr_head: ['recruiter', 'interviewer'],
+        hiring_manager_head: ['hiring_manager', 'interviewer'],
     };
+
+    const ALL_VIEWS = [
+        'overview', 'candidates', 'pipeline', 'jobs', 'screen',
+        'onsite', 'settings', 'users', 'audit',
+    ];
+
+    const ALL_PERMS = [
+        'delete_candidate', 'delete_job', 'save_webhooks', 'edit_jobs',
+        'screen_cv', 'onsite_write', 'add_candidate_notes',
+        'manage_job_assignments', 'manage_users', 'view_audit',
+    ];
+
+    // Full-access mode — every role gets every view & permission for now
+    const VIEW_ROLES = Object.fromEntries(ALL_VIEWS.map((v) => [v, ALL_ROLES]));
+    const PERMS = Object.fromEntries(ALL_PERMS.map((p) => [p, ALL_ROLES]));
 
     let _client = null;
     let _profile = null;
@@ -69,13 +87,35 @@
     }
 
     function roleLabel(role) {
-        const map = {
-            super_admin: 'Super Admin',
-            recruiter: 'Recruiter',
-            hiring_manager: 'Hiring Manager',
-            viewer: 'Viewer',
-        };
-        return map[role] || role;
+        return ROLE_LABELS[role] || String(role || '').replace(/_/g, ' ');
+    }
+
+    /** Roles the current user may assign when inviting or editing users */
+    function assignableRoles() {
+        if (!_profile) return [];
+        const list = INVITE_ROLES[_profile.role];
+        if (list) return list;
+        if (hasRole('super_admin')) return ALL_ROLES;
+        return [];
+    }
+
+    function canAssignRole(targetRole) {
+        if (hasRole('super_admin')) return true;
+        return assignableRoles().includes(targetRole);
+    }
+
+    function canManageUsers() {
+        return hasRole('super_admin', 'hr_head', 'hiring_manager_head');
+    }
+
+    function canEditUserRole(targetUser) {
+        if (!_profile || !targetUser) return false;
+        if (targetUser.id === _profile.id) return false;
+        if (hasRole('super_admin')) return true;
+        if (targetUser.role === 'super_admin') return false;
+        if (hasRole('hr_head')) return ['recruiter', 'interviewer', 'viewer'].includes(targetUser.role);
+        if (hasRole('hiring_manager_head')) return ['hiring_manager', 'interviewer'].includes(targetUser.role);
+        return false;
     }
 
     async function getSession() {
@@ -131,7 +171,6 @@
         return data;
     }
 
-    /** Invite without replacing the current admin session */
     async function inviteUser(email, password, meta) {
         const c = cfg();
         const temp = global.supabase.createClient(c.SUPABASE_URL, c.SUPABASE_ANON_KEY, {
@@ -190,6 +229,10 @@
         if (!role) return;
         global.document.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
             const view = btn.dataset.view;
+            if (view === 'users' && !canManageUsers()) {
+                btn.style.display = 'none';
+                return;
+            }
             const allowed = (VIEW_ROLES[view] || []).includes(role);
             btn.style.display = allowed ? '' : 'none';
         });
@@ -215,14 +258,14 @@
     }
 
     function guardView(view) {
-        if (!canView(view)) {
-            return 'overview';
-        }
+        if (view === 'users' && !canManageUsers()) return 'overview';
+        if (!canView(view)) return 'overview';
         return view;
     }
 
+    /** Job scoping disabled in full-access mode — re-enable for hiring_manager later */
     function isJobScopedRole() {
-        return hasRole('hiring_manager');
+        return false;
     }
 
     async function boot() {
@@ -254,7 +297,13 @@
         guardView,
         isJobScopedRole,
         roleLabel,
+        assignableRoles,
+        canAssignRole,
+        canManageUsers,
+        canEditUserRole,
         boot,
+        ALL_ROLES,
+        ROLE_LABELS,
         VIEW_ROLES,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

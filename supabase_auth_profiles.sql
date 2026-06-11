@@ -13,7 +13,10 @@ create table if not exists public.profiles (
   email text not null,
   full_name text,
   role text not null default 'recruiter'
-    check (role in ('super_admin', 'recruiter', 'hiring_manager', 'viewer')),
+    check (role in (
+      'super_admin', 'hr_head', 'hiring_manager_head', 'interviewer',
+      'recruiter', 'hiring_manager', 'viewer'
+    )),
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -97,7 +100,10 @@ as $$
     select 1 from public.profiles
     where id = auth.uid()
       and is_active = true
-      and role in ('super_admin', 'recruiter', 'hiring_manager', 'viewer')
+      and role in (
+        'super_admin', 'hr_head', 'hiring_manager_head', 'interviewer',
+        'recruiter', 'hiring_manager', 'viewer'
+      )
   );
 $$;
 
@@ -137,7 +143,10 @@ begin
     assigned_role := 'super_admin';
   else
     assigned_role := coalesce(new.raw_user_meta_data->>'role', 'recruiter');
-    if assigned_role not in ('super_admin', 'recruiter', 'hiring_manager', 'viewer') then
+    if assigned_role not in (
+      'super_admin', 'hr_head', 'hiring_manager_head', 'interviewer',
+      'recruiter', 'hiring_manager', 'viewer'
+    ) then
       assigned_role := 'recruiter';
     end if;
     if assigned_role = 'super_admin' and invited <> 'true' then
@@ -311,4 +320,4 @@ create policy "staff_write_onsite"
 -- Grants for RPCs
 -- ---------------------------------------------------------------------------
 grant execute on function public.needs_admin_bootstrap() to anon, authenticated;
-grant execute on function public.can_bootstrap_admin(text) to anon, authenticated;
+grant ex

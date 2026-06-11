@@ -10,7 +10,8 @@ Run in order (if not already done):
 2. `supabase_rls_candidates_read.sql`
 3. `supabase_admin_panel.sql`
 4. `supabase_scheduling.sql`
-5. **`supabase_auth_profiles.sql`** ← new
+5. **`supabase_auth_profiles.sql`**
+6. **`supabase_hiring_manager.sql`** ← HM notes, job scope, onsite access
 
 ## 2. Set bootstrap secret (one-time)
 

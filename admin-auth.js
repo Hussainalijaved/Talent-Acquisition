@@ -10,7 +10,7 @@
         pipeline: ['super_admin', 'recruiter', 'hiring_manager', 'viewer'],
         jobs: ['super_admin', 'recruiter'],
         screen: ['super_admin', 'recruiter'],
-        onsite: ['super_admin', 'recruiter'],
+        onsite: ['super_admin', 'recruiter', 'hiring_manager'],
         settings: ['super_admin'],
         users: ['super_admin'],
         audit: ['super_admin'],
@@ -22,7 +22,9 @@
         save_webhooks: ['super_admin'],
         edit_jobs: ['super_admin', 'recruiter'],
         screen_cv: ['super_admin', 'recruiter'],
-        onsite_write: ['super_admin', 'recruiter'],
+        onsite_write: ['super_admin', 'recruiter', 'hiring_manager'],
+        add_candidate_notes: ['super_admin', 'recruiter', 'hiring_manager'],
+        manage_job_assignments: ['super_admin'],
         manage_users: ['super_admin'],
         view_audit: ['super_admin'],
     };
@@ -219,6 +221,10 @@
         return view;
     }
 
+    function isJobScopedRole() {
+        return hasRole('hiring_manager');
+    }
+
     async function boot() {
         const session = await requireAuth();
         if (!session) return false;
@@ -246,6 +252,7 @@
         can,
         canView,
         guardView,
+        isJobScopedRole,
         roleLabel,
         boot,
         VIEW_ROLES,

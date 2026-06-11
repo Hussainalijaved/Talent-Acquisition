@@ -114,7 +114,11 @@
                 await TAAuth.loadProfile();
                 location.replace(redirect);
             } catch (err) {
-                showMsg(err.message || 'Sign in failed', 'err');
+                let msg = err.message || 'Sign in failed';
+                if (/not confirmed/i.test(msg)) {
+                    msg = 'Email not confirmed. Ask super admin to confirm your account in Supabase (auth.users → email_confirmed_at), or turn off Confirm email in Auth settings.';
+                }
+                showMsg(msg, 'err');
             } finally {
                 btn.disabled = false;
             }

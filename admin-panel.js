@@ -14,6 +14,7 @@
     let deps = null;
     let JOBS = [];
     let ONSITE = [];
+    let SCOPED_JOB_SLUGS = null;
     let screenMode = 'single';
     let batchExtractGen = 0;
     const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -1102,7 +1103,13 @@
             document.getElementById('inviteUserForm').reset();
             await loadUsers();
         } catch (err) {
-            deps.banner('Invite failed: ' + (err.message || err), 'err');
+            let msg = err.message || String(err);
+            if (/rate limit/i.test(msg)) {
+                msg = 'Supabase email rate limit — create user in Supabase Auth dashboard, then set role here. Or disable Confirm email in Auth settings.';
+            } else if (/not confirmed/i.test(msg)) {
+                msg = 'User created but email not confirmed — run: UPDATE auth.users SET email_confirmed_at = now() WHERE email = \'...\';';
+            }
+            deps.banner('Invite failed: ' + msg, 'err');
         } finally {
             btn.disabled = false;
         }
@@ -1140,6 +1147,241 @@
                 <td class="c-role">${deps.esc(l.meta ? JSON.stringify(l.meta).slice(0, 120) : '—')}</td>
             </tr>`
         ).join('');
+    }
+
+    function candidateJobSlugs(m) {
+        const slugs = new Set();
+        const r = String(m.role || '').toLowerCase().trim();
+        if (r) {
+            slugs.add(r);
+            slugs.add(slugFromTitle(r));
+        }
+        const cfg = m.session?.config;
+        const parsed = typeof cfg === 'object' && cfg ? cfg : {};
+        if (parsed.requisition_id) slugs.add(String(parsed.requisition_id).toLowerCase());
+        return [...slugs].filter(Boolean);
+    }
+
+    async function loadJobScope() {
+        if (!deps.auth?.isJobScopedRole()) {
+            SCOPED_JOB_SLUGS = null;
+            return;
+        }
+        const email = String(deps.auth.profile()?.email || '').toLowerCase();
+        const uid = deps.auth.profile()?.id;
+        const slugs = new Set();
+        if (email && deps.sb) {
+            const { data: jobs } = await deps.sb.from('jobs').select('job_id, interviewer_email');
+            (jobs || []).forEach((j) => {
+                if (String(j.interviewer_email || '').toLowerCase() === email) {
+                    slugs.add(String(j.job_id).toLowerCase());
+                }
+            });
+        }
+        if (uid && deps.sb) {
+            const { data: rows } = await deps.sb.from('job_assignments').select('job_id').eq('user_id', uid);
+            (rows || []).forEach((row) => slugs.add(String(row.job_id).toLowerCase()));
+        }
+        SCOPED_JOB_SLUGS = slugs;
+    }
+
+    function applyScopeFilter(merged) {
+        if (!deps.auth?.isJobScopedRole()) return merged;
+        if (!SCOPED_JOB_SLUGS || !SCOPED_JOB_SLUGS.size) return [];
+        return (merged || []).filter((m) =>
+            candidateJobSlugs(m).some((s) => SCOPED_JOB_SLUGS.has(s))
+        );
+    }
+
+    function showScopeBanner() {
+        const el = document.getElementById('scopeBanner');
+        if (!el) return;
+        if (!deps.auth?.isJobScopedRole()) {
+            el.className = 'banner';
+            el.textContent = '';
+            return;
+        }
+        const n = SCOPED_JOB_SLUGS ? SCOPED_JOB_SLUGS.size : 0;
+        const jobs = n ? [...SCOPED_JOB_SLUGS].join(', ') : 'none';
+        el.className = 'banner show ok';
+        el.textContent = n
+            ? 'Hiring Manager view — showing candidates for your ' + n + ' assigned job(s): ' + jobs
+            : 'No jobs assigned to you yet. Ask super admin to set interviewer email on jobs or assign jobs in Users tab.';
+    }
+
+    function noteTypeLabel(t) {
+        const map = { feedback: 'Feedback', proceed: 'Proceed', reject: 'Reject', general: 'Note' };
+        return map[t] || t;
+    }
+
+    function noteTypePill(t) {
+        const cls = t === 'proceed' ? 'p-pass' : t === 'reject' ? 'p-reject' : 'p-pending';
+        return '<span class="pill ' + cls + '">' + deps.esc(noteTypeLabel(t)) + '</span>';
+    }
+
+    async function loadDrawerNotes(m) {
+        const list = document.getElementById('hmNotesList');
+        if (!list || !deps.sb) return;
+        const email = String(m.email || '').toLowerCase();
+        const { data, error } = await deps.sb
+            .from('candidate_notes')
+            .select('*')
+            .eq('candidate_email', email)
+            .order('created_at', { ascending: false })
+            .limit(40);
+        if (error) {
+            list.innerHTML = '<p class="c-role">' + deps.esc(error.message) + ' — run supabase_hiring_manager.sql</p>';
+            return;
+        }
+        if (!data?.length) {
+            list.innerHTML = '<p class="c-role">No notes yet — add feedback or a hiring decision below.</p>';
+            return;
+        }
+        list.innerHTML = data.map((n) =>
+            '<div class="qblock" style="margin-bottom:10px">' +
+            '<div class="qphase">' + noteTypePill(n.note_type) +
+            '<strong style="margin-left:8px">' + deps.esc(n.author_name || 'Team') + '</strong>' +
+            '<span class="c-role" style="margin-left:8px">' + deps.fmtDateTime(n.created_at) + '</span></div>' +
+            '<div class="qtext">' + deps.esc(n.body) + '</div></div>'
+        ).join('');
+    }
+
+    function renderHmNotesPanelHtml() {
+        if (!deps.auth?.can('add_candidate_notes')) return '';
+        return '<div class="section" id="hmNotesSection">' +
+            '<div class="section-h">Team notes &amp; decisions</div>' +
+            '<div id="hmNotesList" class="c-role">Loading notes…</div>' +
+            '<form id="hmNoteForm" style="margin-top:14px">' +
+            '<div class="form-group"><label for="hmNoteType">Note type</label>' +
+            '<select id="hmNoteType" class="filter" style="width:100%">' +
+            '<option value="feedback">Feedback</option>' +
+            '<option value="proceed">Proceed to interview</option>' +
+            '<option value="reject">Do not proceed</option>' +
+            '<option value="general">General note</option>' +
+            '</select></div>' +
+            '<div class="form-group"><label for="hmNoteBody">Comment</label>' +
+            '<textarea id="hmNoteBody" required placeholder="Interview feedback, hiring decision, concerns…" style="width:100%;min-height:80px"></textarea></div>' +
+            '<button type="submit" class="btn-sm btn-primary">Save note</button>' +
+            '</form></div>';
+    }
+
+    async function saveCandidateNote(m, noteType, body) {
+        if (!deps.auth?.can('add_candidate_notes')) return;
+        const prof = deps.auth.profile();
+        const row = {
+            candidate_email: String(m.email || '').toLowerCase(),
+            job_id: candidateJobSlugs(m)[0] || null,
+            author_id: prof?.id,
+            author_name: prof?.full_name || prof?.email,
+            author_role: prof?.role,
+            body: String(body || '').trim(),
+            note_type: noteType || 'feedback',
+        };
+        if (!row.body) return;
+        const { error } = await deps.sb.from('candidate_notes').insert(row);
+        if (error) throw error;
+        if (deps.auth) await deps.auth.logAudit('add_candidate_note', 'candidate', row.candidate_email, { note_type: row.note_type });
+    }
+
+    function bindDrawerNotes(m) {
+        const form = document.getElementById('hmNoteForm');
+        if (!form) return;
+        loadDrawerNotes(m);
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            try {
+                await saveCandidateNote(
+                    m,
+                    document.getElementById('hmNoteType')?.value,
+                    document.getElementById('hmNoteBody')?.value
+                );
+                document.getElementById('hmNoteBody').value = '';
+                deps.banner('Note saved.', 'ok');
+                await loadDrawerNotes(m);
+            } catch (err) {
+                deps.banner('Save note failed: ' + (err.message || err), 'err');
+            }
+        };
+    }
+
+    async function loadJobAssignmentsPanel() {
+        const card = document.getElementById('jobAssignCard');
+        const el = document.getElementById('jobAssignPanel');
+        if (card) card.style.display = deps.auth?.can('manage_job_assignments') ? '' : 'none';
+        if (!el || !deps.auth?.can('manage_job_assignments')) return;
+        const [{ data: users }, { data: jobs }] = await Promise.all([
+            deps.sb.from('profiles').select('id, email, full_name, role').eq('role', 'hiring_manager').eq('is_active', true),
+            deps.sb.from('jobs').select('job_id, title').order('title'),
+        ]);
+        const hmUsers = users || [];
+        const jobList = jobs || [];
+        if (!hmUsers.length) {
+            el.innerHTML = '<p class="form-hint">No hiring managers — invite one with role Hiring Manager first.</p>';
+            return;
+        }
+        el.innerHTML =
+            '<form id="jobAssignForm" class="form-grid cols-1">' +
+            '<div class="form-group"><label for="assignUser">Hiring manager</label>' +
+            '<select id="assignUser" required>' +
+            hmUsers.map((u) => '<option value="' + u.id + '">' + deps.esc(u.full_name || u.email) + '</option>').join('') +
+            '</select></div>' +
+            '<div class="form-group"><label for="assignJob">Job (slug)</label>' +
+            '<select id="assignJob" required>' +
+            '<option value="">Select job…</option>' +
+            jobList.map((j) => '<option value="' + deps.esc(j.job_id) + '">' + deps.esc(j.title) + ' (' + deps.esc(j.job_id) + ')</option>').join('') +
+            '</select></div>' +
+            '<button type="submit" class="btn-secondary">Assign job</button></form>' +
+            '<div id="assignList" class="form-hint" style="margin-top:12px">Loading assignments…</div>';
+        document.getElementById('jobAssignForm')?.addEventListener('submit', saveJobAssignment);
+        await renderAssignmentList();
+    }
+
+    async function renderAssignmentList() {
+        const el = document.getElementById('assignList');
+        if (!el) return;
+        const { data, error } = await deps.sb
+            .from('job_assignments')
+            .select('id, job_id, user_id, profiles(full_name, email)')
+            .order('created_at', { ascending: false })
+            .limit(100);
+        if (error) {
+            el.textContent = error.message;
+            return;
+        }
+        if (!data?.length) {
+            el.innerHTML = 'No explicit assignments yet — HMs also see jobs where <code>interviewer_email</code> matches their login email.';
+            return;
+        }
+        el.innerHTML = '<ul style="margin:0;padding-left:18px">' + data.map((a) => {
+            const p = a.profiles || {};
+            return '<li>' + deps.esc(p.full_name || p.email || a.user_id) + ' → <strong>' + deps.esc(a.job_id) + '</strong> ' +
+                '<button type="button" class="btn-sm btn-danger" data-rm-assign="' + a.id + '">Remove</button></li>';
+        }).join('') + '</ul>';
+        el.querySelectorAll('[data-rm-assign]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                await deps.sb.from('job_assignments').delete().eq('id', btn.getAttribute('data-rm-assign'));
+                await renderAssignmentList();
+            });
+        });
+    }
+
+    async function saveJobAssignment(e) {
+        e.preventDefault();
+        if (!deps.auth?.can('manage_job_assignments')) return;
+        const user_id = document.getElementById('assignUser')?.value;
+        const job_id = document.getElementById('assignJob')?.value;
+        if (!user_id || !job_id) return;
+        const { error } = await deps.sb.from('job_assignments').insert({
+            user_id,
+            job_id,
+            assignment_role: 'hiring_manager',
+        });
+        if (error) {
+            deps.banner('Assign failed: ' + error.message, 'err');
+            return;
+        }
+        deps.banner('Job assigned to hiring manager.', 'ok');
+        await renderAssignmentList();
     }
 
     async function deleteCandidateRecord(m) {
@@ -1226,13 +1468,31 @@
                 loadWebhookConfig();
                 loadJdWebhookConfig();
             }
-            if (view === 'users') loadUsers();
+            if (view === 'users') {
+                loadUsers();
+                loadJobAssignmentsPanel();
+            }
             if (view === 'audit') loadAudit();
         },
         setActiveCandidate(m) {
             deps.activeCandidate = m;
             const btn = document.getElementById('drawerDeleteBtn');
-            if (btn) btn.style.display = m ? 'inline-flex' : 'none';
+            if (btn) btn.style.display = (m && deps.auth?.can('delete_candidate')) ? 'inline-flex' : 'none';
+        },
+        async loadJobScope() {
+            await loadJobScope();
+        },
+        applyScopeFilter(merged) {
+            return applyScopeFilter(merged);
+        },
+        showScopeBanner() {
+            showScopeBanner();
+        },
+        renderHmNotesPanelHtml() {
+            return renderHmNotesPanelHtml();
+        },
+        bindDrawerNotes(m) {
+            bindDrawerNotes(m);
         },
         renderOnsiteForDrawer(email) {
             const rows = ONSITE.filter((r) => String(r.candidate_email).toLowerCase() === String(email).toLowerCase());

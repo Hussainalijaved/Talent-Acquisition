@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Talent Acquisition — Admin Console</title>
+    <title>CONVO — Talent Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -392,12 +392,16 @@
 <body>
     <aside class="sidebar">
         <div class="brand">
-            <div class="brand-logo">TA</div>
+            <div class="brand-logo">C</div>
             <div>
-                <div class="brand-name">Talent Acquisition</div>
-                <div class="brand-sub">Admin Console</div>
+                <div class="brand-name">CONVO</div>
+                <div class="brand-sub">Talent Admin</div>
             </div>
         </div>
+        <a href="careers.html" target="_blank" rel="noopener" class="nav-item" style="text-decoration:none;margin-bottom:8px;background:var(--primary-soft);color:var(--primary);font-weight:600;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Careers portal
+        </a>
         <button class="nav-item active" data-view="overview">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
             Overview
@@ -533,6 +537,13 @@
 
             <!-- JOBS -->
             <section class="view" id="view-jobs">
+                <div class="card" style="margin-bottom:20px">
+                    <div class="card-head">
+                        <div class="card-title">Live on careers page<small>Open roles candidates see at careers.html — same listings</small></div>
+                        <a href="careers.html" target="_blank" rel="noopener" class="seg" style="text-decoration:none">Open careers ↗</a>
+                    </div>
+                    <div id="liveJobsPreview" class="form-hint" style="padding:0">Loading published roles…</div>
+                </div>
                 <div class="admin-split">
                     <div class="card">
                         <div class="card-head"><div class="card-title">Create / edit job<small>Generate JD from criteria, then publish</small></div></div>
@@ -606,8 +617,8 @@
                     </div>
                     <div class="table-card">
                         <table>
-                            <thead><tr><th>Job</th><th>Location</th><th>Status</th><th>Updated</th><th></th><th></th></tr></thead>
-                            <tbody id="jobsBody"><tr><td class="loading-row" colspan="6">Loading jobs…</td></tr></tbody>
+                            <thead><tr><th>Job</th><th>Location</th><th>Status</th><th>Updated</th><th>Live</th><th></th><th></th></tr></thead>
+                            <tbody id="jobsBody"><tr><td class="loading-row" colspan="7">Loading jobs…</td></tr></tbody>
                         </table>
                     </div>
                 </div>

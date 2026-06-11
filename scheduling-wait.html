@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interview scheduling</title>
+    <title>Interview scheduling — CONVO</title>
+    <link rel="stylesheet" href="convo-ui.css" />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -82,7 +83,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="scheduling-portal.js"></script>
 </head>
-<body>
+<body class="convo-body">
+    <nav class="convo-nav">
+        <a href="careers.html" class="convo-nav-brand"><span class="convo-nav-logo">CONVO</span><span class="convo-nav-tag">Scheduling</span></a>
+    </nav>
     <div class="container">
         <div class="spinner" id="spinner"></div>
         <span class="status-pill" id="statusPill">Checking…</span>

@@ -3,255 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Careers — Talent Acquisition</title>
-    <meta name="description" content="Open positions — apply with your CV and get AI-powered screening." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet" />
+    <title>Careers at CONVO</title>
+    <meta name="description" content="Join CONVO — explore open positions and apply with your CV." />
+    <link rel="stylesheet" href="convo-ui.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        :root {
-            --bg: #080b10;
-            --surface: #121a27;
-            --surface-elevated: #1a2433;
-            --border: #2a3a4f;
-            --border-soft: rgba(255, 255, 255, 0.06);
-            --text: #f1f5f9;
-            --muted: #94a3b8;
-            --accent: #6366f1;
-            --accent-hover: #4f46e5;
-            --ok: #34d399;
-            --radius: 14px;
-            --radius-lg: 20px;
-            --shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: 'DM Sans', system-ui, sans-serif;
-            background: var(--bg);
-            background-image:
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.14), transparent),
-                radial-gradient(ellipse 50% 40% at 0% 100%, rgba(16, 185, 129, 0.06), transparent);
-            color: var(--text);
-            margin: 0;
-            min-height: 100vh;
-            -webkit-font-smoothing: antialiased;
-        }
-        .site-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 24px;
-            border-bottom: 1px solid var(--border-soft);
-            background: rgba(8, 11, 16, 0.85);
-            backdrop-filter: blur(12px);
-            position: sticky;
-            top: 0;
-            z-index: 50;
-        }
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            text-decoration: none;
-            color: inherit;
-        }
-        .brand-mark {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #6366f1, #4f46e5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 800;
+        .careers-hero-count {
+            margin-top: 24px;
             font-size: 14px;
-            color: #fff;
-        }
-        .brand-text { font-weight: 700; font-size: 15px; }
-        .brand-sub { font-size: 11px; color: var(--muted); display: block; }
-        .header-link {
-            font-size: 13px;
             font-weight: 600;
-            color: var(--muted);
-            text-decoration: none;
-            padding: 8px 14px;
-            border-radius: 10px;
-            border: 1px solid var(--border);
+            opacity: 0.85;
         }
-        .header-link:hover { color: #e2e8f0; border-color: #475569; }
-        .wrap { max-width: 960px; margin: 0 auto; padding: 40px 20px 64px; }
-        .hero { text-align: center; margin-bottom: 36px; }
-        .badge {
-            display: inline-flex;
-            padding: 4px 10px;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            border-radius: 999px;
-            border: 1px solid rgba(99, 102, 241, 0.35);
-            background: rgba(99, 102, 241, 0.12);
-            color: #a5b4fc;
-            margin-bottom: 14px;
-        }
-        h1 {
-            margin: 0 0 10px;
-            font-size: 34px;
-            font-weight: 700;
-            letter-spacing: -0.04em;
-        }
-        .subtitle { color: var(--muted); font-size: 15px; line-height: 1.6; margin: 0; }
-        .status-box {
-            display: none;
-            padding: 14px 16px;
-            border-radius: 12px;
-            font-size: 14px;
-            margin-bottom: 20px;
-        }
-        .status-box.show { display: block; }
-        .status-box.err { background: rgba(248, 113, 113, 0.12); color: #fecaca; border: 1px solid rgba(248, 113, 113, 0.3); }
-        .status-box.info { background: rgba(99, 102, 241, 0.1); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.25); }
-        .jobs-list { display: flex; flex-direction: column; gap: 14px; }
-        .job-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow);
-            transition: border-color 0.2s, transform 0.2s;
-            overflow: hidden;
-        }
-        .job-card:hover {
-            border-color: rgba(99, 102, 241, 0.45);
-            transform: translateY(-2px);
-        }
-        .job-card-inner {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 20px;
-            align-items: center;
-            padding: 24px 26px;
-        }
-        @media (max-width: 720px) {
-            .job-card-inner { grid-template-columns: 1fr; }
-        }
-        .job-card h2 {
-            margin: 0 0 8px;
-            font-size: 20px;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-        }
-        .job-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-        .meta-pill {
-            font-size: 11px;
-            font-weight: 600;
-            padding: 4px 10px;
-            border-radius: 999px;
-            background: rgba(15, 23, 42, 0.7);
-            border: 1px solid var(--border);
-            color: var(--muted);
-        }
-        .job-excerpt {
-            font-size: 14px;
-            color: #cbd5e1;
-            line-height: 1.55;
-            margin: 0;
-            display: -webkit-box;
-            -webkit-line-clamp: 4;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-        .job-card-action {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 8px;
-            flex-shrink: 0;
-        }
-        @media (max-width: 720px) {
-            .job-card-action { align-items: flex-start; }
-        }
-        .apply-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 12px 22px;
-            white-space: nowrap;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-            color: #fff;
-            font-size: 14px;
-            font-weight: 700;
-            text-decoration: none;
-            border: none;
-            cursor: pointer;
-            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
-            transition: transform 0.15s;
-        }
-        .apply-btn:hover { transform: translateY(-1px); }
         .empty-state {
             text-align: center;
-            padding: 48px 24px;
-            background: var(--surface);
-            border: 1px dashed var(--border);
-            border-radius: var(--radius-lg);
-            color: var(--muted);
+            padding: 56px 24px;
+            background: var(--convo-surface);
+            border: 1px dashed var(--convo-line);
+            border-radius: var(--convo-radius-lg);
         }
-        .empty-state h3 { color: #e2e8f0; margin: 0 0 8px; }
-        .site-footer {
-            text-align: center;
-            padding: 20px;
-            font-size: 12px;
-            color: #64748b;
-            border-top: 1px solid var(--border-soft);
-        }
-        .site-footer a { color: #818cf8; text-decoration: none; }
-        .skeleton {
-            height: 120px;
-            border-radius: var(--radius-lg);
-            background: linear-gradient(90deg, var(--surface) 25%, var(--surface-elevated) 50%, var(--surface) 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.2s infinite;
-        }
-        @keyframes shimmer {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
+        .empty-state h3 { margin: 0 0 8px; font-size: 20px; }
+        .empty-state p { margin: 0; color: var(--convo-muted); }
     </style>
 </head>
-<body>
-    <header class="site-header">
-        <a href="careers.html" class="brand">
-            <span class="brand-mark">TA</span>
-            <span>
-                <span class="brand-text">Talent Acquisition</span>
-                <span class="brand-sub">Open positions</span>
-            </span>
+<body class="convo-body">
+    <nav class="convo-nav">
+        <a href="careers.html" class="convo-nav-brand">
+            <span class="convo-nav-logo">CONVO</span>
+            <span class="convo-nav-tag">Careers</span>
         </a>
-        <a href="recruiter-intake.html" class="header-link">Recruiter portal</a>
-    </header>
-
-    <main class="wrap">
-        <div class="hero">
-            <span class="badge">We're hiring</span>
-            <h1>Careers</h1>
-            <p class="subtitle">Apply with your CV — our AI screens every application and shortlists the best fit.</p>
+        <div class="convo-nav-actions">
+            <a href="index.html" class="convo-nav-link">Assessment portal</a>
+            <a href="recruiter-intake.html" class="convo-nav-link">Recruiter</a>
         </div>
+    </nav>
 
-        <div id="statusBox" class="status-box"></div>
-        <div id="jobsList" class="jobs-list">
-            <div class="skeleton"></div>
-            <div class="skeleton" style="margin-top:14px"></div>
+    <section class="convo-hero">
+        <div class="convo-hero-inner">
+            <p class="convo-hero-meta">Convo Pvt Ltd · Technology &amp; Innovation</p>
+            <h1 class="convo-hero-mega">CONVO</h1>
+            <p class="convo-hero-sub">Build what's next with us</p>
+            <p class="convo-hero-meta">We're hiring talented people who want to make an impact. Every application is reviewed by our AI screening — shortlisted candidates move to a technical assessment.</p>
+            <div class="convo-hero-pills">
+                <span class="convo-pill">🌍 Remote-friendly</span>
+                <span class="convo-pill">⚡ Fast hiring process</span>
+                <span class="convo-pill">🎯 Skills-based screening</span>
+            </div>
+            <p class="careers-hero-count" id="jobCount"></p>
+        </div>
+    </section>
+
+    <main class="convo-wrap">
+        <div id="statusBox" class="convo-alert"></div>
+        <div id="jobsList" class="convo-jobs">
+            <div class="convo-card convo-card-pad">
+                <div class="convo-skeleton lg"></div>
+                <div class="convo-skeleton" style="width:55%"></div>
+                <div class="convo-skeleton" style="width:80%;margin-top:20px"></div>
+            </div>
         </div>
     </main>
 
-    <footer class="site-footer">
-        Talent Acquisition · <a href="index.html">Assessment portal</a>
+    <footer class="convo-footer">
+        © CONVO Pvt Ltd · <a href="index.html">Assessment portal</a> · <a href="apply.html">Apply</a>
     </footer>
 
     <script>
@@ -261,10 +74,11 @@
 
         const statusBox = document.getElementById('statusBox');
         const jobsList = document.getElementById('jobsList');
+        const jobCount = document.getElementById('jobCount');
 
         function showStatus(msg, type) {
             statusBox.textContent = msg;
-            statusBox.className = 'status-box show ' + (type || '');
+            statusBox.className = 'convo-alert show ' + (type || '');
         }
 
         function escapeHtml(s) {
@@ -282,7 +96,7 @@
 
         async function loadJobs() {
             if (!window.supabase) {
-                showStatus('Could not load jobs — Supabase library missing.', 'err');
+                showStatus('Could not load jobs — please refresh the page.', 'err');
                 jobsList.innerHTML = '';
                 return;
             }
@@ -294,19 +108,19 @@
                 .order('created_at', { ascending: false });
 
             if (error) {
-                showStatus(
-                    'Jobs load nahi ho saki. Supabase par supabase_jobs.sql run kiya? ' + error.message,
-                    'err'
-                );
+                showStatus('Could not load open positions. ' + error.message, 'err');
                 jobsList.innerHTML = '';
                 return;
             }
 
             if (!data || !data.length) {
+                jobCount.textContent = 'No open roles at the moment';
                 jobsList.innerHTML =
-                    '<div class="empty-state"><h3>No open positions right now</h3><p>Check back soon — new roles are posted from the recruiter portal.</p></div>';
+                    '<div class="empty-state"><h3>No open positions right now</h3><p>Check back soon — new roles are posted regularly.</p></div>';
                 return;
             }
+
+            jobCount.textContent = data.length + ' open position' + (data.length === 1 ? '' : 's');
 
             jobsList.innerHTML = data
                 .map((job) => {
@@ -317,18 +131,16 @@
                         job.department,
                     ].filter(Boolean);
                     return (
-                        '<article class="job-card">' +
-                        '<div class="job-card-inner">' +
-                        '<div class="job-card-body">' +
+                        '<article class="convo-job">' +
+                        '<div>' +
                         '<h2>' + escapeHtml(job.title) + '</h2>' +
-                        '<div class="job-meta">' +
-                        meta.map((m) => '<span class="meta-pill">' + escapeHtml(m) + '</span>').join('') +
+                        '<div class="convo-job-meta">' +
+                        meta.map((m) => '<span class="convo-meta-tag">' + escapeHtml(m) + '</span>').join('') +
                         '</div>' +
-                        '<p class="job-excerpt">' + escapeHtml(excerpt(job.jd_text, 280)) + '</p>' +
+                        '<p class="convo-job-excerpt">' + escapeHtml(excerpt(job.jd_text, 300)) + '</p>' +
                         '</div>' +
-                        '<div class="job-card-action">' +
-                        '<a class="apply-btn" href="' + applyUrl + '">Apply now →</a>' +
-                        '</div></div></article>'
+                        '<a class="convo-btn convo-btn-primary" href="' + applyUrl + '">Apply</a>' +
+                        '</article>'
                     );
                 })
                 .join('');

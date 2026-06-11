@@ -11,13 +11,16 @@
 
 function pickSessionContext() {
   const names = [
-    'CODE - Build assessment result mail',
     'CODE - Build candidate slot mail',
+    'CODE - Build assessment result mail',
     'CODE - Build interview confirmed mail',
     'CODE - Build Gmail thread reply context',
     'CODE - Prep scheduling from PASS',
     'CODE - Parse Result',
+    'HTTP - SB GET session (slots)',
+    'HTTP - SB GET session (confirmed)',
     'HTTP - Fetch Session',
+    'HTTP - Fetch Session1',
   ];
   let merged = {};
   for (const name of names) {
@@ -44,10 +47,14 @@ function resolveGmailPayload(input, ...mailNodeNames) {
 
 const gmail = resolveGmailPayload(
   $input.first().json,
+  'MAIL - Candidate slot options',
+  'MAIL - Candidate slot options1',
   'MAIL - Candidate pitch mail',
   'MAIL - Candidate pitch mail1',
   'MAIL - Notify candidate',
-  'MAIL - Notify candidate1'
+  'MAIL - Notify candidate1',
+  'MAIL - Reply candidate (assessment result)',
+  'MAIL - Reply candidate (assessment result)1'
 );
 const ctx = pickSessionContext();
 const cfg = ctx.config || {};

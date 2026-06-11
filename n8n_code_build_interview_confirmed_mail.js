@@ -1,46 +1,77 @@
 // n8n: CODE - Build interview confirmed mail (thread reply)
-// Place AFTER: candidate picks slot / calendar event created
-// Place BEFORE: Gmail Thread Reply node
-//
-// Input should include: candidate_email, selected slot, session row or thread ids
+// After CAL (or scheduling-confirmed webhook) — replies in candidate Gmail thread
+
+function pickNodeJson(...names) {
+  for (const name of names) {
+    if (!name) continue;
+    try {
+      const raw = $(name).first().json;
+      if (raw && typeof raw === 'object') return raw;
+    } catch (_) {}
+  }
+  return null;
+}
 
 function pickSessionRow() {
   const names = [
+    'CODE - Scheduling confirmed from session',
+    'HTTP - SB GET session (confirmed)',
+    'HTTP - SB GET session (slots)',
     'HTTP - Fetch Session',
-    'CODE - Parse candidate slot',
+    'HTTP - Fetch Session1',
+    'CODE - Parse candidate choice',
     'CODE - Prep scheduling from PASS',
     'CODE - Build candidate slot mail',
   ];
   for (const name of names) {
-    try {
-      const raw = $(name).first().json;
-      const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);
-      if (row?.gmail_thread_id || row?.id) return row;
-    } catch (_) {}
+    const raw = pickNodeJson(name);
+    if (!raw) continue;
+    const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);
+    if (row?.id) return row;
   }
   return {};
 }
 
-const base = $input.first().json;
+const ctx = pickNodeJson('CODE - Scheduling confirmed from session') || {};
+const base = { ...ctx, ...($input.first().json || {}) };
 const session = pickSessionRow();
-const cfg = { ...(session.config || {}), ...(base.config || {}) };
+const cfg = {
+  ...(typeof session.config === 'object' ? session.config : {}),
+  ...(base.config || {}),
+};
 
-const threadId = String(session.gmail_thread_id || base.gmail_thread_id || '').trim();
-const msgId = String(session.gmail_message_id || base.gmail_message_id || '').trim();
+const threadId = String(
+  session.gmail_thread_id || base.gmail_thread_id || ctx.gmail_thread_id || ''
+).trim();
+const msgId = String(
+  session.gmail_message_id || base.gmail_message_id || ctx.gmail_message_id || ''
+).trim();
 
-if (!threadId) throw new Error('gmail_thread_id missing — cannot reply in candidate thread.');
-if (!msgId) throw new Error('gmail_message_id missing — send scheduling reply first.');
+if (!threadId || threadId.startsWith('draft-')) {
+  const sid = session.id || base.session_id || ctx.session_id || 'unknown';
+  throw new Error(
+    'gmail_thread_id missing on session ' +
+      sid +
+      ' — run CV Screening shortlist mail and supabase_gmail_thread_columns.sql; ' +
+      'candidate thread must exist before scheduling replies.'
+  );
+}
+if (!msgId) {
+  throw new Error(
+    'gmail_message_id missing — send candidate slot options mail first (scheduling-slots webhook).'
+  );
+}
 
 const role = String(cfg.requisition_title || base.requisition_title || 'the role');
 const org = String(cfg.organization_name || 'Talent Acquisition Team');
 const slotLabel = String(
   base.selected_slot_label ||
     base.slot_label ||
-    base.chosen_slot ||
+    (typeof base.chosen_slot === 'object' ? base.chosen_slot?.label : base.chosen_slot) ||
     base.start_iso ||
     'your selected time'
 );
-const sessionId = String(session.id || base.session_id || '');
+const sessionId = String(session.id || base.session_id || ctx.session_id || '');
 
 const mailBodyHtml = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>

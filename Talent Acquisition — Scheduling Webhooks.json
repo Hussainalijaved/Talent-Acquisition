@@ -8,7 +8,7 @@
         "responseMode": "onReceived",
         "options": {}
       },
-      "id": "ba607c64-8dda-4825-8136-04ec5657ba84",
+      "id": "f1426776-14f1-44a9-84e1-49821de62e00",
       "name": "TRG - Webhook scheduling slots",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -16,7 +16,7 @@
         240,
         280
       ],
-      "webhookId": "1b1888f1-5d72-4d69-a9a4-6dd7155eb9b4"
+      "webhookId": "9666f66b-902e-4af5-ac93-7b30c0eaba65"
     },
     {
       "parameters": {
@@ -25,7 +25,7 @@
         "responseMode": "onReceived",
         "options": {}
       },
-      "id": "d824b058-09ec-48a7-bbc6-3b10e98b8051",
+      "id": "e85c4c3b-e67e-4747-ac50-738839aa9b2a",
       "name": "TRG - Webhook scheduling confirmed",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -33,7 +33,7 @@
         240,
         720
       ],
-      "webhookId": "3de38400-a75b-43cd-8fd7-73797b4bcbeb"
+      "webhookId": "7e755019-ae8a-4ea8-8787-0f4c90c9c489"
     },
     {
       "parameters": {
@@ -67,7 +67,7 @@
         },
         "options": {}
       },
-      "id": "a0b926fd-ac32-47f6-ba6b-f634534f74f4",
+      "id": "208c5c13-bcc3-4919-bfd6-17ca262d2d6c",
       "name": "CFG - Scheduling (slots)",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -108,7 +108,7 @@
         },
         "options": {}
       },
-      "id": "d639418d-98e7-4ce3-a36c-7168c56332c0",
+      "id": "3ed11128-8fbe-48b2-950e-74f7d6e05a46",
       "name": "CFG - Scheduling (confirmed)",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -121,7 +121,7 @@
       "parameters": {
         "jsCode": "// n8n: CODE - Scheduling webhook normalize\r\n// After TRG - Webhook (scheduling-slots or scheduling-confirmed)\r\n\r\nconst raw = $input.first().json || {};\r\nconst body = raw.body || raw;\r\nconst sessionId = String(body.session_id || body.sessionId || raw.session_id || '').trim();\r\n\r\nif (!sessionId) {\r\n  throw new Error('session_id required in webhook body.');\r\n}\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      session_id: sessionId,\r\n      webhook_kind: raw.webhook_kind || body.webhook_kind || 'scheduling',\r\n    },\r\n  },\r\n];"
       },
-      "id": "6e763050-3eb4-4160-87bc-99460d2622be",
+      "id": "5fc98ad5-14f4-4939-8b2c-73dd4a21cb5d",
       "name": "CODE - Scheduling normalize (slots)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -134,7 +134,7 @@
       "parameters": {
         "jsCode": "// n8n: CODE - Scheduling webhook normalize\r\n// After TRG - Webhook (scheduling-slots or scheduling-confirmed)\r\n\r\nconst raw = $input.first().json || {};\r\nconst body = raw.body || raw;\r\nconst sessionId = String(body.session_id || body.sessionId || raw.session_id || '').trim();\r\n\r\nif (!sessionId) {\r\n  throw new Error('session_id required in webhook body.');\r\n}\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      session_id: sessionId,\r\n      webhook_kind: raw.webhook_kind || body.webhook_kind || 'scheduling',\r\n    },\r\n  },\r\n];"
       },
-      "id": "d1fc742f-3096-4314-9600-763654b0ecde",
+      "id": "064be316-0e06-4237-be37-28ec559a057d",
       "name": "CODE - Scheduling normalize (confirmed)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -161,7 +161,7 @@
         },
         "options": {}
       },
-      "id": "dbcf08ce-2217-4546-b3e4-9d8782896ceb",
+      "id": "fee1938e-9889-4435-9d19-d5f5029f9fa2",
       "name": "HTTP - SB GET session (slots)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -189,7 +189,7 @@
         },
         "options": {}
       },
-      "id": "7f559eab-c3b6-4b91-b0a7-c9f10a0bc2ca",
+      "id": "e4c23cab-6b35-48c9-83ed-dcb3118d55e2",
       "name": "HTTP - SB GET session (confirmed)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -203,7 +203,7 @@
       "parameters": {
         "jsCode": "// n8n: CODE - Build candidate slot mail (scheduling — thread reply)\r\n// Triggered by: POST /webhook/talent/scheduling-slots { session_id }\r\n// Input: HTTP - SB GET session (slots) — reads proposed_slots from Supabase\r\n//\r\n// Gmail node settings:\r\n//   Resource:   thread\r\n//   Operation:  reply\r\n//   Thread ID:  {{ $json.gmail_thread_id }}\r\n//   Message ID: {{ $json.gmail_message_id }}\r\n//   Email Type: HTML\r\n//   Message:    {{ $json.mail_body_html }}\r\n\r\nfunction extractConfig(row) {\r\n  const out = {};\r\n  if (!row || typeof row !== 'object') return out;\r\n  if (row.config && typeof row.config === 'object') Object.assign(out, row.config);\r\n  for (const [k, v] of Object.entries(row)) {\r\n    if (k.startsWith('config.') && v != null && String(v).trim()) {\r\n      out[k.slice(7)] = String(v).trim();\r\n    }\r\n  }\r\n  return out;\r\n}\r\n\r\nfunction pickNodeJson(...names) {\r\n  for (const name of names) {\r\n    if (!name) continue;\r\n    try {\r\n      const raw = $(name).first().json;\r\n      if (raw && typeof raw === 'object') return raw;\r\n    } catch (_) {}\r\n  }\r\n  return null;\r\n}\r\n\r\nfunction pickSessionRow() {\r\n  const fetchRaw = pickNodeJson(\r\n    'HTTP - SB GET session (slots)',\r\n    'HTTP - SB GET session (scheduling)',\r\n    'HTTP - Fetch Session',\r\n    'HTTP - Fetch Session1'\r\n  );\r\n  const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;\r\n  if (row?.id) return row;\r\n\r\n  const input = $input.first().json;\r\n  if (input?.id) return input;\r\n  return {};\r\n}\r\n\r\nfunction normalizeSlots(raw) {\r\n  if (!raw) return [];\r\n  let slots = raw;\r\n  if (typeof slots === 'string') {\r\n    try {\r\n      slots = JSON.parse(slots);\r\n    } catch (_) {\r\n      return [];\r\n    }\r\n  }\r\n  if (!Array.isArray(slots)) return [];\r\n  return slots\r\n    .map((s, i) => ({\r\n      start_iso: s.start_iso || s.start || '',\r\n      end_iso: s.end_iso || s.end || '',\r\n      label: s.label || s.start_iso || `Slot ${i + 1}`,\r\n    }))\r\n    .filter((s) => s.start_iso || s.label);\r\n}\r\n\r\nconst session = pickSessionRow();\r\nconst cfg = {\r\n  ...extractConfig(session),\r\n  ...(typeof session.config === 'object' ? session.config : {}),\r\n};\r\n\r\nconst threadId = String(session.gmail_thread_id || '').trim();\r\nconst msgId = String(session.gmail_message_id || '').trim();\r\nif (!threadId || threadId.startsWith('draft-')) {\r\n  throw new Error('gmail_thread_id missing — shortlist mail must run first.');\r\n}\r\nif (!msgId) {\r\n  throw new Error('gmail_message_id missing — PATCH after shortlist/result mail first.');\r\n}\r\n\r\nconst portalBase = String(\r\n  cfg.portal_base_url || cfg.candidate_portal_base || 'https://talent-acquisition-six.vercel.app'\r\n).replace(/\\/+$/, '');\r\n\r\nconst pickPortal = portalBase + '/candidate-pick.html';\r\nconst sessionId = String(session.id || '').trim();\r\nif (!sessionId) {\r\n  throw new Error('session id missing from Supabase row.');\r\n}\r\n\r\nconst slots = normalizeSlots(session.proposed_slots);\r\nif (!slots.length) {\r\n  throw new Error(\r\n    'proposed_slots empty on session — interviewer must submit slots on interviewer.html first.'\r\n  );\r\n}\r\n\r\nconst schedulingLink = pickPortal + '?session=' + encodeURIComponent(sessionId);\r\n\r\nconst candidateEmail = String(session.candidate_email || '').trim();\r\nconst score = session.score != null ? session.score : '—';\r\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\r\nconst role = String(cfg.requisition_title || session.requisition_id || 'the role');\r\n\r\nconst mailBody =\r\n  `Hi,\\n\\n` +\r\n  `Congratulations! You passed our technical assessment for ${role} (score: ${score}/100).\\n\\n` +\r\n  `Next step: choose your interview time:\\n` +\r\n  `${schedulingLink}\\n\\n` +\r\n  `Best regards,\\n${org}`;\r\n\r\nconst slotListHtml = slots\r\n  .map(\r\n    (s) =>\r\n      `<li style=\"margin:6px 0;\">${String(s.label || s.start_iso || '').replace(/</g, '&lt;')}</li>`\r\n  )\r\n  .join('');\r\n\r\nconst mailBodyHtml =\r\n  `<!DOCTYPE html>\r\n<html><head><meta charset=\"UTF-8\"></head>\r\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\r\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:32px 16px;\">\r\n    <tr><td align=\"center\">\r\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:32px;\">\r\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\r\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── Interview Scheduling ──</p>\r\n          <p>Hi,</p>\r\n          <p><strong>Congratulations!</strong> You passed our technical assessment for <strong>${role.replace(/</g, '&lt;')}</strong> (score: <strong>${score}/100</strong>).</p>\r\n          <p>Next step — pick your interview time:</p>\r\n          <ul style=\"padding-left:20px;color:#475569;\">${slotListHtml}</ul>\r\n          <p style=\"text-align:center;margin:28px 0;\">\r\n            <a href=\"${schedulingLink}\" style=\"display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;\">Choose interview time</a>\r\n          </p>\r\n          <p style=\"font-size:13px;color:#64748b;\">Or copy this link: ${schedulingLink}</p>\r\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\r\n        </td></tr>\r\n      </table>\r\n    </td></tr>\r\n  </table>\r\n</body></html>`;\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...session,\r\n      config: cfg,\r\n      session_id: sessionId,\r\n      gmail_thread_id: threadId,\r\n      gmail_message_id: msgId,\r\n      scheduling_link: schedulingLink,\r\n      proposed_slots: slots,\r\n      slots,\r\n      mail_body: mailBody,\r\n      mail_body_html: mailBodyHtml,\r\n      mail_stage: 'scheduling',\r\n      candidate_email: candidateEmail,\r\n      score,\r\n      requisition_title: role,\r\n    },\r\n  },\r\n];"
       },
-      "id": "5439b9ba-1ade-4ce3-8ef7-fd0ec9502519",
+      "id": "54008785-0f1f-4237-8562-4b1aa34dac4d",
       "name": "CODE - Build candidate slot mail",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -222,7 +222,7 @@
         "message": "={{ $json.mail_body_html }}",
         "options": {}
       },
-      "id": "736ab37e-7a5c-4c07-9283-d3f7c37a209f",
+      "id": "d25e7aea-fe05-4191-8d2e-432a11a6ceed",
       "name": "MAIL - Candidate slot options",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
@@ -239,9 +239,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// n8n: CODE - Merge Gmail reply response\n// Paste AFTER any Gmail \"Thread → Reply\" node.\n// Prepares Supabase PATCH so the next reply chains to this message.\n//\n// Wire:\n//   Gmail Thread Reply → this node → HTTP PATCH session gmail message\n//\n// Set HTTP PATCH node:\n//   URL:  {{ $json._gmail_patch_url }}\n//   Body: {{ $json._gmail_patch_body }}\n\nfunction pickSessionContext() {\n  const names = [\n    'CODE - Build assessment result mail',\n    'CODE - Build candidate slot mail',\n    'CODE - Build interview confirmed mail',\n    'CODE - Build Gmail thread reply context',\n    'CODE - Prep scheduling from PASS',\n    'CODE - Parse Result',\n    'HTTP - Fetch Session',\n  ];\n  let merged = {};\n  for (const name of names) {\n    try {\n      merged = { ...merged, ...($input.first().json || {}), ...$(name).first().json };\n    } catch (_) {}\n  }\n  return merged;\n}\n\nfunction resolveGmailPayload(input, ...mailNodeNames) {\n  if (input && (input.id || input.messageId || input.threadId || input.thread_id)) {\n    return input;\n  }\n  for (const name of mailNodeNames) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && (raw.id || raw.messageId || raw.threadId || raw.thread_id)) return raw;\n    } catch (_) {}\n  }\n  return input || {};\n}\n\nconst gmail = resolveGmailPayload(\n  $input.first().json,\n  'MAIL - Candidate pitch mail',\n  'MAIL - Candidate pitch mail1',\n  'MAIL - Notify candidate',\n  'MAIL - Notify candidate1'\n);\nconst ctx = pickSessionContext();\nconst cfg = ctx.config || {};\n\nconst msgId = String(gmail.id || gmail.messageId || '').trim();\nconst threadId = String(gmail.threadId || gmail.thread_id || ctx.gmail_thread_id || '').trim();\n\nconst sessionId = String(\n  ctx.session_id || ctx.session_db_id || ctx.id || ''\n).trim();\n\nconst patchReady = Boolean(sessionId && threadId && msgId);\nif (!patchReady) {\n  return [\n    {\n      json: {\n        ...ctx,\n        _gmail_patch_skipped: true,\n        _gmail_patch_skip_reason: [\n          !sessionId ? 'missing session_id' : null,\n          !threadId ? 'missing gmail_thread_id' : null,\n          !msgId ? 'missing gmail message id' : null,\n        ]\n          .filter(Boolean)\n          .join('; '),\n        _gmail_patch_url: '',\n        _gmail_patch_body: {},\n      },\n    },\n  ];\n}\n\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\n\nreturn [\n  {\n    json: {\n      ...ctx,\n      gmail_message_id: msgId,\n      gmail_thread_id: threadId,\n      _gmail_patch_url: `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`,\n      _gmail_patch_body: {\n        gmail_message_id: msgId,\n        gmail_thread_id: threadId,\n        updated_at: new Date().toISOString(),\n      },\n    },\n  },\n];"
+        "jsCode": "// n8n: CODE - Merge Gmail reply response\n// Paste AFTER any Gmail \"Thread → Reply\" node.\n// Prepares Supabase PATCH so the next reply chains to this message.\n//\n// Wire:\n//   Gmail Thread Reply → this node → HTTP PATCH session gmail message\n//\n// Set HTTP PATCH node:\n//   URL:  {{ $json._gmail_patch_url }}\n//   Body: {{ $json._gmail_patch_body }}\n\nfunction pickSessionContext() {\n  const names = [\n    'CODE - Build candidate slot mail',\n    'CODE - Build assessment result mail',\n    'CODE - Build interview confirmed mail',\n    'CODE - Build Gmail thread reply context',\n    'CODE - Prep scheduling from PASS',\n    'CODE - Parse Result',\n    'HTTP - SB GET session (slots)',\n    'HTTP - SB GET session (confirmed)',\n    'HTTP - Fetch Session',\n    'HTTP - Fetch Session1',\n  ];\n  let merged = {};\n  for (const name of names) {\n    try {\n      merged = { ...merged, ...($input.first().json || {}), ...$(name).first().json };\n    } catch (_) {}\n  }\n  return merged;\n}\n\nfunction resolveGmailPayload(input, ...mailNodeNames) {\n  if (input && (input.id || input.messageId || input.threadId || input.thread_id)) {\n    return input;\n  }\n  for (const name of mailNodeNames) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && (raw.id || raw.messageId || raw.threadId || raw.thread_id)) return raw;\n    } catch (_) {}\n  }\n  return input || {};\n}\n\nconst gmail = resolveGmailPayload(\n  $input.first().json,\n  'MAIL - Candidate slot options',\n  'MAIL - Candidate slot options1',\n  'MAIL - Candidate pitch mail',\n  'MAIL - Candidate pitch mail1',\n  'MAIL - Notify candidate',\n  'MAIL - Notify candidate1',\n  'MAIL - Reply candidate (assessment result)',\n  'MAIL - Reply candidate (assessment result)1'\n);\nconst ctx = pickSessionContext();\nconst cfg = ctx.config || {};\n\nconst msgId = String(gmail.id || gmail.messageId || '').trim();\nconst threadId = String(gmail.threadId || gmail.thread_id || ctx.gmail_thread_id || '').trim();\n\nconst sessionId = String(\n  ctx.session_id || ctx.session_db_id || ctx.id || ''\n).trim();\n\nconst patchReady = Boolean(sessionId && threadId && msgId);\nif (!patchReady) {\n  return [\n    {\n      json: {\n        ...ctx,\n        _gmail_patch_skipped: true,\n        _gmail_patch_skip_reason: [\n          !sessionId ? 'missing session_id' : null,\n          !threadId ? 'missing gmail_thread_id' : null,\n          !msgId ? 'missing gmail message id' : null,\n        ]\n          .filter(Boolean)\n          .join('; '),\n        _gmail_patch_url: '',\n        _gmail_patch_body: {},\n      },\n    },\n  ];\n}\n\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\n\nreturn [\n  {\n    json: {\n      ...ctx,\n      gmail_message_id: msgId,\n      gmail_thread_id: threadId,\n      _gmail_patch_url: `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`,\n      _gmail_patch_body: {\n        gmail_message_id: msgId,\n        gmail_thread_id: threadId,\n        updated_at: new Date().toISOString(),\n      },\n    },\n  },\n];"
       },
-      "id": "5fd716f4-8161-40af-8633-92216cd6dfc0",
+      "id": "1dbe4ed7-ebc4-40d4-822e-5bc8b034deff",
       "name": "CODE - Merge Gmail reply (slots)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -277,10 +277,10 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { scheduling_status: 'candidate_invited', scheduling_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() } }}",
+        "jsonBody": "={{ { scheduling_status: 'candidate_invited', gmail_message_id: $json.gmail_message_id, gmail_thread_id: $json.gmail_thread_id, scheduling_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() } }}",
         "options": {}
       },
-      "id": "8aaf5f8e-8a93-40c4-877d-95bc6d991739",
+      "id": "2839be7b-25aa-479e-9489-9792be177e25",
       "name": "HTTP - PATCH scheduling candidate_invited",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -294,7 +294,7 @@
       "parameters": {
         "jsCode": "// n8n: CODE - Scheduling confirmed from session\r\n// After HTTP GET session (scheduling-confirmed webhook)\r\n// Replaces WAIT + Parse candidate choice for frontend-driven flow\r\n\r\nfunction pickSessionRow() {\r\n  const raw = $input.first().json;\r\n  const row = Array.isArray(raw) ? raw[0] : raw?.session_row || raw;\r\n  if (row?.id) return row;\r\n  try {\r\n    const prev = $('HTTP - SB GET session (confirmed)').first().json;\r\n    return Array.isArray(prev) ? prev[0] : prev;\r\n  } catch (_) {}\r\n  return {};\r\n}\r\n\r\nconst session = pickSessionRow();\r\nconst cfg =\r\n  typeof session.config === 'string'\r\n    ? (() => {\r\n        try {\r\n          return JSON.parse(session.config);\r\n        } catch (_) {\r\n          return {};\r\n        }\r\n      })()\r\n    : session.config || {};\r\n\r\nlet slot = session.chosen_slot;\r\nif (typeof slot === 'string') {\r\n  try {\r\n    slot = JSON.parse(slot);\r\n  } catch (_) {\r\n    slot = null;\r\n  }\r\n}\r\n\r\nif (!slot || (!slot.start_iso && !slot.label)) {\r\n  throw new Error('chosen_slot missing on session — candidate must confirm on candidate-pick.html first.');\r\n}\r\n\r\nconst start_iso = slot.start_iso || slot.start || '';\r\nconst end_iso = slot.end_iso || slot.end || '';\r\nconst slot_label = slot.label || start_iso || 'Selected slot';\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...session,\r\n      config: cfg,\r\n      session_id: session.id,\r\n      candidate_email: session.candidate_email,\r\n      interviewer_email: cfg.interviewer_email || session.interviewer_email || '',\r\n      proposed_slots: session.proposed_slots || [],\r\n      selected_slot: slot,\r\n      selected_slot_label: slot_label,\r\n      slot_label,\r\n      chosen_slot: slot_label,\r\n      start_iso,\r\n      end_iso,\r\n      score: session.score,\r\n      requisition_title: cfg.requisition_title || session.requisition_id,\r\n    },\r\n  },\r\n];"
       },
-      "id": "91543a14-4986-4ccf-a29f-e2b84465a628",
+      "id": "ac9ce34f-148f-48bd-8193-dd1eedddbeed",
       "name": "CODE - Scheduling confirmed from session",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -318,7 +318,7 @@
           "summary": "=Interview — {{ $json.candidate_email }} ({{ $json.config.requisition_title || \"Role\" }})"
         }
       },
-      "id": "19caa092-7b32-4c69-895a-7d5f8f9bebe9",
+      "id": "891d1f10-9252-487f-bbe6-de07f7701c95",
       "name": "CAL - Create interview event",
       "type": "n8n-nodes-base.googleCalendar",
       "typeVersion": 1.3,
@@ -336,9 +336,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// n8n: CODE - Build interview confirmed mail (thread reply)\r\n// Place AFTER: candidate picks slot / calendar event created\r\n// Place BEFORE: Gmail Thread Reply node\r\n//\r\n// Input should include: candidate_email, selected slot, session row or thread ids\r\n\r\nfunction pickSessionRow() {\r\n  const names = [\r\n    'HTTP - Fetch Session',\r\n    'CODE - Parse candidate slot',\r\n    'CODE - Prep scheduling from PASS',\r\n    'CODE - Build candidate slot mail',\r\n  ];\r\n  for (const name of names) {\r\n    try {\r\n      const raw = $(name).first().json;\r\n      const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);\r\n      if (row?.gmail_thread_id || row?.id) return row;\r\n    } catch (_) {}\r\n  }\r\n  return {};\r\n}\r\n\r\nconst base = $input.first().json;\r\nconst session = pickSessionRow();\r\nconst cfg = { ...(session.config || {}), ...(base.config || {}) };\r\n\r\nconst threadId = String(session.gmail_thread_id || base.gmail_thread_id || '').trim();\r\nconst msgId = String(session.gmail_message_id || base.gmail_message_id || '').trim();\r\n\r\nif (!threadId) throw new Error('gmail_thread_id missing — cannot reply in candidate thread.');\r\nif (!msgId) throw new Error('gmail_message_id missing — send scheduling reply first.');\r\n\r\nconst role = String(cfg.requisition_title || base.requisition_title || 'the role');\r\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\r\nconst slotLabel = String(\r\n  base.selected_slot_label ||\r\n    base.slot_label ||\r\n    base.chosen_slot ||\r\n    base.start_iso ||\r\n    'your selected time'\r\n);\r\nconst sessionId = String(session.id || base.session_id || '');\r\n\r\nconst mailBodyHtml = `<!DOCTYPE html>\r\n<html><head><meta charset=\"UTF-8\"></head>\r\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\r\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\r\n    <tr><td align=\"center\">\r\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\r\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\r\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── Interview Confirmed ──</p>\r\n          <p>Hi,</p>\r\n          <p>Your interview for <strong>${role.replace(/</g, '&lt;')}</strong> is confirmed.</p>\r\n          <p><strong>Time:</strong> ${slotLabel.replace(/</g, '&lt;')}</p>\r\n          <p>Please join on time. If you need to reschedule, reply to this email.</p>\r\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\r\n        </td></tr>\r\n      </table>\r\n    </td></tr>\r\n  </table>\r\n</body></html>`;\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...base,\r\n      session_id: sessionId,\r\n      gmail_thread_id: threadId,\r\n      gmail_message_id: msgId,\r\n      mail_body_html: mailBodyHtml,\r\n      mail_stage: 'confirmed',\r\n      candidate_email: base.candidate_email || session.candidate_email,\r\n      config: cfg,\r\n    },\r\n  },\r\n];"
+        "jsCode": "// n8n: CODE - Build interview confirmed mail (thread reply)\r\n// After CAL (or scheduling-confirmed webhook) — replies in candidate Gmail thread\r\n\r\nfunction pickNodeJson(...names) {\r\n  for (const name of names) {\r\n    if (!name) continue;\r\n    try {\r\n      const raw = $(name).first().json;\r\n      if (raw && typeof raw === 'object') return raw;\r\n    } catch (_) {}\r\n  }\r\n  return null;\r\n}\r\n\r\nfunction pickSessionRow() {\r\n  const names = [\r\n    'CODE - Scheduling confirmed from session',\r\n    'HTTP - SB GET session (confirmed)',\r\n    'HTTP - SB GET session (slots)',\r\n    'HTTP - Fetch Session',\r\n    'HTTP - Fetch Session1',\r\n    'CODE - Parse candidate choice',\r\n    'CODE - Prep scheduling from PASS',\r\n    'CODE - Build candidate slot mail',\r\n  ];\r\n  for (const name of names) {\r\n    const raw = pickNodeJson(name);\r\n    if (!raw) continue;\r\n    const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);\r\n    if (row?.id) return row;\r\n  }\r\n  return {};\r\n}\r\n\r\nconst ctx = pickNodeJson('CODE - Scheduling confirmed from session') || {};\r\nconst base = { ...ctx, ...($input.first().json || {}) };\r\nconst session = pickSessionRow();\r\nconst cfg = {\r\n  ...(typeof session.config === 'object' ? session.config : {}),\r\n  ...(base.config || {}),\r\n};\r\n\r\nconst threadId = String(\r\n  session.gmail_thread_id || base.gmail_thread_id || ctx.gmail_thread_id || ''\r\n).trim();\r\nconst msgId = String(\r\n  session.gmail_message_id || base.gmail_message_id || ctx.gmail_message_id || ''\r\n).trim();\r\n\r\nif (!threadId || threadId.startsWith('draft-')) {\r\n  const sid = session.id || base.session_id || ctx.session_id || 'unknown';\r\n  throw new Error(\r\n    'gmail_thread_id missing on session ' +\r\n      sid +\r\n      ' — run CV Screening shortlist mail and supabase_gmail_thread_columns.sql; ' +\r\n      'candidate thread must exist before scheduling replies.'\r\n  );\r\n}\r\nif (!msgId) {\r\n  throw new Error(\r\n    'gmail_message_id missing — send candidate slot options mail first (scheduling-slots webhook).'\r\n  );\r\n}\r\n\r\nconst role = String(cfg.requisition_title || base.requisition_title || 'the role');\r\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\r\nconst slotLabel = String(\r\n  base.selected_slot_label ||\r\n    base.slot_label ||\r\n    (typeof base.chosen_slot === 'object' ? base.chosen_slot?.label : base.chosen_slot) ||\r\n    base.start_iso ||\r\n    'your selected time'\r\n);\r\nconst sessionId = String(session.id || base.session_id || ctx.session_id || '');\r\n\r\nconst mailBodyHtml = `<!DOCTYPE html>\r\n<html><head><meta charset=\"UTF-8\"></head>\r\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\r\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\r\n    <tr><td align=\"center\">\r\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\r\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\r\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── Interview Confirmed ──</p>\r\n          <p>Hi,</p>\r\n          <p>Your interview for <strong>${role.replace(/</g, '&lt;')}</strong> is confirmed.</p>\r\n          <p><strong>Time:</strong> ${slotLabel.replace(/</g, '&lt;')}</p>\r\n          <p>Please join on time. If you need to reschedule, reply to this email.</p>\r\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\r\n        </td></tr>\r\n      </table>\r\n    </td></tr>\r\n  </table>\r\n</body></html>`;\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...base,\r\n      session_id: sessionId,\r\n      gmail_thread_id: threadId,\r\n      gmail_message_id: msgId,\r\n      mail_body_html: mailBodyHtml,\r\n      mail_stage: 'confirmed',\r\n      candidate_email: base.candidate_email || session.candidate_email,\r\n      config: cfg,\r\n    },\r\n  },\r\n];"
       },
-      "id": "3af698af-8556-4d29-806a-265a8ad5f106",
+      "id": "0bd09215-d197-498a-972e-f766940aa4a5",
       "name": "CODE - Build interview confirmed mail",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -349,9 +349,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// n8n: CODE - Build interviewer confirmed mail (interviewer thread reply)\r\n// Place AFTER: CAL - Create interview event\r\n// Place BEFORE: Gmail Thread Reply (interviewer)\r\n\r\nfunction pickSessionRow() {\r\n  const names = ['HTTP - Fetch Session', 'CODE - Parse candidate choice', 'CODE - Prep scheduling from PASS'];\r\n  for (const name of names) {\r\n    try {\r\n      const raw = $(name).first().json;\r\n      const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);\r\n      if (row?.id) return row;\r\n    } catch (_) {}\r\n  }\r\n  return {};\r\n}\r\n\r\nconst base = $input.first().json;\r\nconst session = pickSessionRow();\r\nconst cfg = { ...(session.config || {}), ...(base.config || {}) };\r\n\r\nconst threadId = String(session.interviewer_gmail_thread_id || base.interviewer_gmail_thread_id || '').trim();\r\nconst msgId = String(session.interviewer_gmail_message_id || base.interviewer_gmail_message_id || '').trim();\r\n\r\nif (!threadId) throw new Error('interviewer_gmail_thread_id missing — send interviewer pitch mail first.');\r\nif (!msgId) throw new Error('interviewer_gmail_message_id missing — PATCH after interviewer pitch mail.');\r\n\r\nconst role = String(cfg.requisition_title || base.requisition_title || 'the role');\r\nconst candidateEmail = String(base.candidate_email || session.candidate_email || '');\r\nconst slotLabel = String(\r\n  base.selected_slot_label || base.slot_label || base.chosen_slot || base.start_iso || 'scheduled time'\r\n);\r\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\r\n\r\nconst mailBodyHtml = `<!DOCTYPE html>\r\n<html><head><meta charset=\"UTF-8\"></head>\r\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\r\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\r\n    <tr><td align=\"center\">\r\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\r\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\r\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── Interview Confirmed ──</p>\r\n          <p>Hello,</p>\r\n          <p>Interview scheduled for <strong>${candidateEmail.replace(/</g, '&lt;')}</strong> — <strong>${role.replace(/</g, '&lt;')}</strong>.</p>\r\n          <p><strong>Time:</strong> ${slotLabel.replace(/</g, '&lt;')}</p>\r\n          <p>Calendar invite has been created. Candidate confirmation sent in their thread.</p>\r\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\r\n        </td></tr>\r\n      </table>\r\n    </td></tr>\r\n  </table>\r\n</body></html>`;\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...base,\r\n      session_id: session.id || base.session_id,\r\n      interviewer_email: base.interviewer_email || cfg.interviewer_email,\r\n      interviewer_gmail_thread_id: threadId,\r\n      interviewer_gmail_message_id: msgId,\r\n      mail_body_html: mailBodyHtml,\r\n      config: cfg,\r\n    },\r\n  },\r\n];"
+        "jsCode": "// n8n: CODE - Build interviewer confirmed mail (interviewer thread reply)\r\n// After CAL (or scheduling-confirmed webhook)\r\n\r\nfunction pickNodeJson(...names) {\r\n  for (const name of names) {\r\n    if (!name) continue;\r\n    try {\r\n      const raw = $(name).first().json;\r\n      if (raw && typeof raw === 'object') return raw;\r\n    } catch (_) {}\r\n  }\r\n  return null;\r\n}\r\n\r\nfunction pickSessionRow() {\r\n  const names = [\r\n    'CODE - Scheduling confirmed from session',\r\n    'HTTP - SB GET session (confirmed)',\r\n    'HTTP - SB GET session (slots)',\r\n    'HTTP - Fetch Session',\r\n    'HTTP - Fetch Session1',\r\n    'CODE - Parse candidate choice',\r\n    'CODE - Prep scheduling from PASS',\r\n  ];\r\n  for (const name of names) {\r\n    const raw = pickNodeJson(name);\r\n    if (!raw) continue;\r\n    const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);\r\n    if (row?.id) return row;\r\n  }\r\n  return {};\r\n}\r\n\r\nconst ctx = pickNodeJson('CODE - Scheduling confirmed from session') || {};\r\nconst base = { ...ctx, ...($input.first().json || {}) };\r\nconst session = pickSessionRow();\r\nconst cfg = {\r\n  ...(typeof session.config === 'object' ? session.config : {}),\r\n  ...(base.config || {}),\r\n};\r\n\r\nconst threadId = String(\r\n  session.interviewer_gmail_thread_id ||\r\n    base.interviewer_gmail_thread_id ||\r\n    ctx.interviewer_gmail_thread_id ||\r\n    ''\r\n).trim();\r\nconst msgId = String(\r\n  session.interviewer_gmail_message_id ||\r\n    base.interviewer_gmail_message_id ||\r\n    ctx.interviewer_gmail_message_id ||\r\n    ''\r\n).trim();\r\n\r\nif (!threadId) {\r\n  throw new Error(\r\n    'interviewer_gmail_thread_id missing — send interviewer pitch mail first (assessment PASS chain).'\r\n  );\r\n}\r\nif (!msgId) {\r\n  throw new Error(\r\n    'interviewer_gmail_message_id missing — PATCH after MAIL - Interviewer pitch mail.'\r\n  );\r\n}\r\n\r\nconst role = String(cfg.requisition_title || base.requisition_title || 'the role');\r\nconst candidateEmail = String(base.candidate_email || session.candidate_email || '');\r\nconst slotLabel = String(\r\n  base.selected_slot_label ||\r\n    base.slot_label ||\r\n    (typeof base.chosen_slot === 'object' ? base.chosen_slot?.label : base.chosen_slot) ||\r\n    base.start_iso ||\r\n    'scheduled time'\r\n);\r\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\r\n\r\nconst mailBodyHtml = `<!DOCTYPE html>\r\n<html><head><meta charset=\"UTF-8\"></head>\r\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\r\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\r\n    <tr><td align=\"center\">\r\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\r\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\r\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── Interview Confirmed ──</p>\r\n          <p>Hello,</p>\r\n          <p>Interview scheduled for <strong>${candidateEmail.replace(/</g, '&lt;')}</strong> — <strong>${role.replace(/</g, '&lt;')}</strong>.</p>\r\n          <p><strong>Time:</strong> ${slotLabel.replace(/</g, '&lt;')}</p>\r\n          <p>Calendar invite has been created. Candidate confirmation sent in their thread.</p>\r\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\r\n        </td></tr>\r\n      </table>\r\n    </td></tr>\r\n  </table>\r\n</body></html>`;\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...base,\r\n      session_id: session.id || base.session_id || ctx.session_id,\r\n      interviewer_email: base.interviewer_email || cfg.interviewer_email,\r\n      interviewer_gmail_thread_id: threadId,\r\n      interviewer_gmail_message_id: msgId,\r\n      mail_body_html: mailBodyHtml,\r\n      config: cfg,\r\n    },\r\n  },\r\n];"
       },
-      "id": "426431f3-e308-4cce-88c3-11fd8672b156",
+      "id": "f72c1b35-bdb1-4da9-a9e9-8e59ffa554bd",
       "name": "CODE - Build interviewer confirmed mail",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -370,7 +370,7 @@
         "message": "={{ $json.mail_body_html }}",
         "options": {}
       },
-      "id": "5e0be578-eb80-4c6d-91a8-2eb39c546329",
+      "id": "ca27b0d4-2760-4933-a7fd-fc25e23158c7",
       "name": "MAIL - Notify candidate confirmed",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
@@ -395,7 +395,7 @@
         "message": "={{ $json.mail_body_html }}",
         "options": {}
       },
-      "id": "288dbbde-3735-4429-a96e-b970ff02c8a8",
+      "id": "2f612308-1ff0-4319-997d-706a6e9407fb",
       "name": "MAIL - Notify interviewer confirmed",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
@@ -440,7 +440,7 @@
         "jsonBody": "={{ { scheduling_status: 'done', scheduling_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() } }}",
         "options": {}
       },
-      "id": "523c9644-ec6c-4e52-9884-6473e69dad23",
+      "id": "9b0859c3-a5bf-4196-a55b-5c26cf862160",
       "name": "HTTP - PATCH scheduling done",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,

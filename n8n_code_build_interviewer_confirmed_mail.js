@@ -1,33 +1,76 @@
 // n8n: CODE - Build interviewer confirmed mail (interviewer thread reply)
-// Place AFTER: CAL - Create interview event
-// Place BEFORE: Gmail Thread Reply (interviewer)
+// After CAL (or scheduling-confirmed webhook)
 
-function pickSessionRow() {
-  const names = ['HTTP - Fetch Session', 'CODE - Parse candidate choice', 'CODE - Prep scheduling from PASS'];
+function pickNodeJson(...names) {
   for (const name of names) {
+    if (!name) continue;
     try {
       const raw = $(name).first().json;
-      const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);
-      if (row?.id) return row;
+      if (raw && typeof raw === 'object') return raw;
     } catch (_) {}
+  }
+  return null;
+}
+
+function pickSessionRow() {
+  const names = [
+    'CODE - Scheduling confirmed from session',
+    'HTTP - SB GET session (confirmed)',
+    'HTTP - SB GET session (slots)',
+    'HTTP - Fetch Session',
+    'HTTP - Fetch Session1',
+    'CODE - Parse candidate choice',
+    'CODE - Prep scheduling from PASS',
+  ];
+  for (const name of names) {
+    const raw = pickNodeJson(name);
+    if (!raw) continue;
+    const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);
+    if (row?.id) return row;
   }
   return {};
 }
 
-const base = $input.first().json;
+const ctx = pickNodeJson('CODE - Scheduling confirmed from session') || {};
+const base = { ...ctx, ...($input.first().json || {}) };
 const session = pickSessionRow();
-const cfg = { ...(session.config || {}), ...(base.config || {}) };
+const cfg = {
+  ...(typeof session.config === 'object' ? session.config : {}),
+  ...(base.config || {}),
+};
 
-const threadId = String(session.interviewer_gmail_thread_id || base.interviewer_gmail_thread_id || '').trim();
-const msgId = String(session.interviewer_gmail_message_id || base.interviewer_gmail_message_id || '').trim();
+const threadId = String(
+  session.interviewer_gmail_thread_id ||
+    base.interviewer_gmail_thread_id ||
+    ctx.interviewer_gmail_thread_id ||
+    ''
+).trim();
+const msgId = String(
+  session.interviewer_gmail_message_id ||
+    base.interviewer_gmail_message_id ||
+    ctx.interviewer_gmail_message_id ||
+    ''
+).trim();
 
-if (!threadId) throw new Error('interviewer_gmail_thread_id missing — send interviewer pitch mail first.');
-if (!msgId) throw new Error('interviewer_gmail_message_id missing — PATCH after interviewer pitch mail.');
+if (!threadId) {
+  throw new Error(
+    'interviewer_gmail_thread_id missing — send interviewer pitch mail first (assessment PASS chain).'
+  );
+}
+if (!msgId) {
+  throw new Error(
+    'interviewer_gmail_message_id missing — PATCH after MAIL - Interviewer pitch mail.'
+  );
+}
 
 const role = String(cfg.requisition_title || base.requisition_title || 'the role');
 const candidateEmail = String(base.candidate_email || session.candidate_email || '');
 const slotLabel = String(
-  base.selected_slot_label || base.slot_label || base.chosen_slot || base.start_iso || 'scheduled time'
+  base.selected_slot_label ||
+    base.slot_label ||
+    (typeof base.chosen_slot === 'object' ? base.chosen_slot?.label : base.chosen_slot) ||
+    base.start_iso ||
+    'scheduled time'
 );
 const org = String(cfg.organization_name || 'Talent Acquisition Team');
 
@@ -54,7 +97,7 @@ return [
   {
     json: {
       ...base,
-      session_id: session.id || base.session_id,
+      session_id: session.id || base.session_id || ctx.session_id,
       interviewer_email: base.interviewer_email || cfg.interviewer_email,
       interviewer_gmail_thread_id: threadId,
       interviewer_gmail_message_id: msgId,

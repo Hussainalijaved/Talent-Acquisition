@@ -186,7 +186,7 @@ const nodes = [
   codeNode('CODE - Merge Gmail reply (slots)', 'n8n_code_merge_gmail_reply_response.js', [1680, 280]),
   httpPatchSession(
     'HTTP - PATCH scheduling candidate_invited',
-    "={{ { scheduling_status: 'candidate_invited', scheduling_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() } }}",
+    "={{ { scheduling_status: 'candidate_invited', gmail_message_id: $json.gmail_message_id, gmail_thread_id: $json.gmail_thread_id, scheduling_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() } }}",
     'CFG - Scheduling (slots)',
     "$json.session_id || $('CODE - Scheduling normalize (slots)').first().json.session_id",
     [1920, 280]

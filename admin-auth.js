@@ -16,13 +16,41 @@
     ];
 
     const ROLE_LABELS = {
-        super_admin: 'Super Admin',
-        hr_head: 'HR Head',
-        hiring_manager_head: 'Hiring Manager Head',
+        super_admin: 'Platform Admin',
+        hr_head: 'HR Lead',
+        hiring_manager_head: 'Hiring Lead',
         interviewer: 'Interviewer',
-        recruiter: 'Recruiter / HR',
+        recruiter: 'Recruiter',
         hiring_manager: 'Hiring Manager',
-        viewer: 'Viewer',
+        viewer: 'Read-only',
+    };
+
+    const ROLE_DESCRIPTIONS = {
+        super_admin: 'Full platform access — settings, audit log, and all teams.',
+        hr_head: 'Leads the HR team — can invite recruiters, interviewers, and read-only users.',
+        hiring_manager_head: 'Leads hiring managers — can invite HMs and interviewers.',
+        recruiter: 'Creates jobs, screens CVs, and manages the candidate pipeline.',
+        hiring_manager: 'Owns requisitions, adds feedback, and records onsite decisions.',
+        interviewer: 'Interview scheduling and panel feedback only.',
+        viewer: 'Read-only dashboard access — no edits.',
+    };
+
+    /** Grouped invite options per inviter role (Interviewer listed once under Interview panel) */
+    const ROLE_INVITE_GROUPS = {
+        super_admin: [
+            { label: 'Leadership', roles: ['super_admin', 'hr_head', 'hiring_manager_head'] },
+            { label: 'HR team', roles: ['recruiter', 'viewer'] },
+            { label: 'Hiring team', roles: ['hiring_manager'] },
+            { label: 'Interview panel', roles: ['interviewer'] },
+        ],
+        hr_head: [
+            { label: 'HR team', roles: ['recruiter', 'viewer'] },
+            { label: 'Interview panel', roles: ['interviewer'] },
+        ],
+        hiring_manager_head: [
+            { label: 'Hiring team', roles: ['hiring_manager'] },
+            { label: 'Interview panel', roles: ['interviewer'] },
+        ],
     };
 
     /** Who can invite which roles */
@@ -100,6 +128,21 @@
 
     function roleLabel(role) {
         return ROLE_LABELS[role] || String(role || '').replace(/_/g, ' ');
+    }
+
+    function roleDescription(role) {
+        return ROLE_DESCRIPTIONS[role] || '';
+    }
+
+    /** Grouped role options for invite / edit dropdowns */
+    function roleGroupsForInvite() {
+        if (!_profile) return [];
+        const groups = ROLE_INVITE_GROUPS[_profile.role];
+        if (!groups) return [];
+        const allowed = new Set(assignableRoles());
+        return groups
+            .map((g) => ({ label: g.label, roles: g.roles.filter((r) => allowed.has(r)) }))
+            .filter((g) => g.roles.length > 0);
     }
 
     /** Roles the current user may assign when inviting or editing users */
@@ -336,6 +379,8 @@
         guardView,
         isJobScopedRole,
         roleLabel,
+        roleDescription,
+        roleGroupsForInvite,
         assignableRoles,
         canAssignRole,
         canManageUsers,
@@ -345,6 +390,7 @@
         boot,
         ALL_ROLES,
         ROLE_LABELS,
+        ROLE_DESCRIPTIONS,
         VIEW_ROLES,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -986,6 +986,43 @@
         ).join('');
     }
 
+    function roleOptionsGroupedHtml(selected, groups) {
+        return (groups || []).map((g) => {
+            const opts = (g.roles || []).map((r) =>
+                '<option value="' + r + '"' + (selected === r ? ' selected' : '') + '>' +
+                deps.esc(deps.auth.roleLabel(r)) + '</option>'
+            ).join('');
+            return '<optgroup label="' + deps.esc(g.label) + '">' + opts + '</optgroup>';
+        }).join('');
+    }
+
+    function buildRoleSelectHtml(selected, useGrouped) {
+        if (!deps.auth) return '';
+        const groups = deps.auth.roleGroupsForInvite();
+        if (useGrouped && groups.length) {
+            return roleOptionsGroupedHtml(selected, groups);
+        }
+        const roles = deps.auth.assignableRoles();
+        return roleOptionsHtml(selected || roles[0], roles);
+    }
+
+    function updateInviteRoleHint(role) {
+        const hint = document.getElementById('inviteRoleHint');
+        if (!hint || !deps.auth) return;
+        const desc = role ? deps.auth.roleDescription(role) : '';
+        if (desc) {
+            hint.textContent = desc;
+            return;
+        }
+        if (deps.auth.hasRole('super_admin')) {
+            hint.textContent = 'Platform Admin can create any role, including HR Lead and Hiring Lead.';
+        } else if (deps.auth.hasRole('hr_head')) {
+            hint.textContent = 'Invite recruiters, interviewers, or read-only users to your HR team.';
+        } else if (deps.auth.hasRole('hiring_manager_head')) {
+            hint.textContent = 'Invite hiring managers or interviewers to your team.';
+        }
+    }
+
     function populateInviteRoleSelect() {
         const sel = document.getElementById('invRole');
         if (!sel || !deps.auth) return;
@@ -995,17 +1032,15 @@
             sel.innerHTML = '<option value="">No roles available</option>';
             return;
         }
-        sel.innerHTML = roleOptionsHtml(roles[0], roles);
-        const hint = document.getElementById('inviteRoleHint');
-        if (hint) {
-            if (deps.auth.hasRole('super_admin')) {
-                hint.textContent = 'Super Admin can create any role.';
-            } else if (deps.auth.hasRole('hr_head')) {
-                hint.textContent = 'HR Head can invite Recruiter/HR, Interviewer, and Viewer roles.';
-            } else if (deps.auth.hasRole('hiring_manager_head')) {
-                hint.textContent = 'Hiring Manager Head can invite Hiring Manager and Interviewer roles.';
-            }
-        }
+        const useGrouped = deps.auth.roleGroupsForInvite().length > 0;
+        const defaultRole = deps.auth.hasRole('super_admin')
+            ? 'hr_head'
+            : (deps.auth.hasRole('hiring_manager_head') ? 'hiring_manager' : 'recruiter');
+        sel.innerHTML = buildRoleSelectHtml(
+            roles.includes(defaultRole) ? defaultRole : roles[0],
+            useGrouped
+        );
+        updateInviteRoleHint(sel.value);
     }
 
     async function loadUsers() {
@@ -1027,14 +1062,14 @@
         tb.innerHTML = rows.map((u) => {
             const inactive = !u.is_active;
             const canEdit = deps.auth.canEditUserRole(u);
-            const roleOpts = deps.auth.hasRole('super_admin')
-                ? deps.auth.ALL_ROLES
-                : deps.auth.assignableRoles();
+            const roleSelectHtml = canEdit
+                ? buildRoleSelectHtml(u.role, deps.auth.hasRole('super_admin'))
+                : roleOptionsHtml(u.role, [u.role]);
             return `<tr data-user="${u.id}">
                 <td><strong>${deps.esc(u.full_name || u.email)}</strong><div class="c-role">${deps.esc(u.email)}</div></td>
                 <td>
                     <select class="filter" data-user-role="${u.id}" ${!canEdit || u.id === me ? 'disabled' : ''}>
-                        ${roleOptionsHtml(u.role, canEdit ? roleOpts : [u.role])}
+                        ${roleSelectHtml}
                     </select>
                 </td>
                 <td><span class="role-pill ${inactive ? 'inactive' : ''}">${inactive ? 'Inactive' : 'Active'}</span></td>
@@ -1457,6 +1492,9 @@
             if (deps.activeCandidate) deleteCandidateRecord(deps.activeCandidate);
         });
         document.getElementById('inviteUserForm')?.addEventListener('submit', inviteUser);
+        document.getElementById('invRole')?.addEventListener('change', (e) => {
+            updateInviteRoleHint(e.target.value);
+        });
     }
 
     window.TAAdmin = {

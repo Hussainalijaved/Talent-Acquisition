@@ -99,6 +99,24 @@
         body.convo-flow-active .result-view.show { width: 100%; max-width: 520px; padding: 20px 0; }
         body.convo-flow-active .convo-hero { padding: 32px 24px 40px; }
         body.convo-flow-active .convo-hero-mega { font-size: clamp(40px, 8vw, 64px); }
+        /* Keep apply results visible — convo-ui hides .convo-page-main only when .convo-flow-screen exists */
+        body.convo-flow-active .convo-page-main { display: block; }
+        body.convo-flow-active .wrap { max-width: 720px; }
+        .outcome-stage {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 5px 10px;
+            border-radius: 6px;
+            margin-bottom: 14px;
+        }
+        .outcome-stage.pass { background: var(--convo-success-bg); color: var(--convo-success); }
+        .outcome-stage.fail { background: var(--convo-danger-bg); color: var(--convo-danger); }
+        .outcome-stage.wait { background: var(--convo-warn-bg); color: var(--convo-warn); }
+        .outcome-stage.info { background: var(--convo-info-bg); color: var(--convo-info); }
+        .outcome-stage.neutral { background: var(--convo-line-soft); color: var(--convo-muted); }
     </style>
 </head>
 <body class="convo-body">
@@ -203,6 +221,7 @@
                         </div>
 
                         <div id="successView" class="result-view">
+                            <span class="outcome-stage pass" id="outcomeStage" hidden></span>
                             <div class="result-icon ok" id="outcomeIcon" aria-hidden="true">✓</div>
                             <h2 class="result-title" id="outcomeTitle">CV sent successfully</h2>
                             <div class="result-score" id="outcomeScore" style="display:none"></div>
@@ -386,6 +405,8 @@
             setFlowMode(true);
             hideAllPanels();
             submittingView.classList.add('show');
+            setOutcomeStage('');
+            updateHeroForFlow('Screening your CV…', 'Please keep this page open while our AI reviews your application.');
             document.getElementById('submittingDetail').textContent =
                 fileNameText + ' · ' + email;
             setProgressStep(phase || 'upload');
@@ -416,13 +437,44 @@
                 msgs[Math.min(attempt - 1, msgs.length - 1)];
         }
 
-        function showOutcome({ iconClass, icon, title, message, detail, score, actionsHtml }) {
+        const STAGE_LABELS = {
+            Shortlisted: { text: 'Shortlisted', cls: 'pass' },
+            Rejected: { text: 'Not shortlisted', cls: 'fail' },
+            ReviewQueue: { text: 'Under review', cls: 'wait' },
+            DuplicateSkipped: { text: 'Duplicate application', cls: 'info' },
+            ScreeningTransportFailed: { text: 'Screening error', cls: 'fail' },
+        };
+
+        function setOutcomeStage(stage) {
+            const el = document.getElementById('outcomeStage');
+            if (!el) return;
+            const meta = STAGE_LABELS[stage];
+            if (!meta) {
+                el.hidden = true;
+                el.textContent = '';
+                return;
+            }
+            el.hidden = false;
+            el.textContent = meta.text;
+            el.className = 'outcome-stage ' + meta.cls;
+        }
+
+        function updateHeroForFlow(title, sub) {
+            const heroLine = document.getElementById('heroJobLine');
+            const heroMeta = document.querySelector('#applyHero .convo-hero-meta:last-of-type');
+            if (heroLine && title) heroLine.textContent = title;
+            if (heroMeta && sub) heroMeta.textContent = sub;
+        }
+
+        function showOutcome({ iconClass, icon, title, message, detail, score, actionsHtml, stage }) {
             submitSucceeded = true;
             clearSubmitTimers();
             setFlowMode(true);
             hideAllPanels();
             successView.classList.add('show');
             setProgressStep('result');
+            setOutcomeStage(stage || '');
+            updateHeroForFlow(title || 'Application update', message ? String(message).split('\n')[0] : '');
 
             const iconEl = document.getElementById('outcomeIcon');
             iconEl.className = 'result-icon ' + (iconClass || 'ok');
@@ -603,11 +655,11 @@
                 const emailQ = 'email=' + encodeURIComponent(email);
                 if (sid) {
                     window.location.href =
-                        '/?session=' + encodeURIComponent(sid) + '&' + emailQ;
+                        'index.html?session=' + encodeURIComponent(sid) + '&' + emailQ;
                     return;
                 }
                 window.location.href =
-                    '/?' + emailQ +
+                    'index.html?' + emailQ +
                     '&job=' + encodeURIComponent(currentJob.job_id) +
                     '&from=apply';
             }
@@ -631,11 +683,12 @@
 
         function showShortlistOutcome(score, summary, detail, sessionId, email, submitStartedAt) {
             showOutcome({
+                stage: 'Shortlisted',
                 iconClass: 'ok',
                 icon: '✓',
                 title: 'Congratulations — you\'re shortlisted!',
                 message: (summary ? summary + '\n\n' : '') +
-                    'Would you like to continue to the assessment guidelines and begin when ready?',
+                    'Your CV passed our AI screening. Continue below to read the assessment guidelines and start when you\'re ready.',
                 detail,
                 score,
                 actionsHtml:
@@ -663,10 +716,11 @@
 
             if (stage === 'Rejected') {
                 showOutcome({
+                    stage: 'Rejected',
                     iconClass: 'err',
                     icon: '✕',
                     title: 'Not shortlisted this time',
-                    message: summary || 'Thank you for applying. We encourage you to explore other open roles.',
+                    message: summary || 'Your CV did not meet the requirements for this role. Thank you for applying — you may explore other open positions.',
                     detail,
                     score,
                     actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">View other open roles</a>',
@@ -676,10 +730,11 @@
 
             if (stage === 'ReviewQueue') {
                 showOutcome({
-                    iconClass: 'info',
+                    stage: 'ReviewQueue',
+                    iconClass: 'wait',
                     icon: '◷',
                     title: 'Under review',
-                    message: summary || 'Our team will review your application and contact you by email.',
+                    message: summary || 'Your CV needs a manual review by our hiring team. We will contact you by email with the next step.',
                     detail,
                     score,
                     actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
@@ -689,10 +744,11 @@
 
             if (stage === 'DuplicateSkipped') {
                 showOutcome({
+                    stage: 'DuplicateSkipped',
                     iconClass: 'info',
                     icon: '↺',
                     title: 'Duplicate application',
-                    message: summary || 'We already have your application for this role. You cannot apply again with the same CV.',
+                    message: summary || 'We already received your application for this role. You cannot submit the same CV again.',
                     detail,
                     actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
                 });
@@ -701,10 +757,11 @@
 
             if (stage === 'ScreeningTransportFailed') {
                 showOutcome({
+                    stage: 'ScreeningTransportFailed',
                     iconClass: 'err',
                     icon: '⚠',
                     title: 'Screening error',
-                    message: summary || 'Your CV was uploaded but automated screening failed. Please try submitting again.',
+                    message: summary || 'Your CV was uploaded but automated screening could not complete. Please try submitting again.',
                     detail,
                     actionsHtml:
                         '<button type="button" class="btn" id="retryFromOutcomeBtn">Try again</button>' +
@@ -715,6 +772,7 @@
             }
 
             showOutcome({
+                stage: stage || '',
                 iconClass: 'info',
                 icon: '✓',
                 title: 'Application received',
@@ -737,10 +795,11 @@
 
             if (!polled || !polled.candidate) {
                 showOutcome({
+                    stage: 'ReviewQueue',
                     iconClass: 'wait',
                     icon: '⏳',
                     title: 'Screening is taking longer than usual',
-                    message: 'Your CV was received. We\'ll email you when screening completes — usually within a few minutes.',
+                    message: 'Your CV was received and is still being processed. We\'ll email you when screening completes — usually within a few minutes.',
                     detail: fileNameText + ' · ' + email + ' · ' + (currentJob?.title || ''),
                     actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
                 });
@@ -1020,6 +1079,7 @@
 
             if (await checkAlreadyApplied(email, currentJob.job_id)) {
                 showOutcome({
+                    stage: 'DuplicateSkipped',
                     iconClass: 'info',
                     icon: '↺',
                     title: 'Already applied',

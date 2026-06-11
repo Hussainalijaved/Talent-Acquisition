@@ -342,7 +342,8 @@ a { color: var(--convo-brand); }
 }
 
 /* ---------- Full-page flow screen (submitting + results) ---------- */
-body.convo-flow-active .convo-page-main { display: none; }
+/* Only hide main content when a dedicated flow screen exists (e.g. careers) */
+body.convo-flow-active:has(.convo-flow-screen) .convo-page-main { display: none; }
 .convo-flow-screen {
     display: none;
     min-height: calc(100vh - 64px);

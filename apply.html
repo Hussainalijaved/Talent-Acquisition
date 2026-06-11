@@ -59,8 +59,15 @@
         .field { margin-bottom: 20px; }
         .field-label { font-size: 13px; font-weight: 700; color: var(--convo-ink-soft); }
         .field-hint { font-size: 12px; color: var(--convo-muted); margin-top: 6px; }
-        input[type="email"] { width: 100%; padding: 12px 14px; border: 1px solid var(--convo-line); border-radius: 10px; font-family: inherit; font-size: 15px; }
-        input[type="email"]:focus { outline: none; border-color: var(--convo-brand); box-shadow: 0 0 0 3px rgba(11, 92, 171, 0.12); }
+        input[type="email"], input[type="text"], input[type="tel"] {
+            width: 100%; padding: 12px 14px; border: 1px solid var(--convo-line); border-radius: 10px;
+            font-family: inherit; font-size: 15px; box-sizing: border-box;
+        }
+        input[type="email"]:focus, input[type="text"]:focus, input[type="tel"]:focus {
+            outline: none; border-color: var(--convo-brand); box-shadow: 0 0 0 3px rgba(11, 92, 171, 0.12);
+        }
+        input.extract-readonly { background: var(--convo-line-soft); color: var(--convo-ink-soft); cursor: default; }
+        input.extract-readonly.extracted { border-color: var(--convo-success); background: var(--convo-success-bg); }
         .step-label { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .step-num { width: 24px; height: 24px; border-radius: 50%; background: var(--convo-brand); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; }
         .skeleton { height: 16px; border-radius: 8px; background: linear-gradient(90deg, var(--convo-line-soft) 25%, #fff 50%, var(--convo-line-soft) 75%); background-size: 200% 100%; animation: convo-shimmer 1.2s infinite; margin-bottom: 10px; }
@@ -197,7 +204,7 @@
                                             <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                                         </div>
                                         <div class="file-zone-label">Drop your PDF here or click to browse</div>
-                                        <div class="file-zone-hint">Email auto-detected from your CV</div>
+                                        <div class="file-zone-hint">Name, email &amp; phone auto-detected from your CV</div>
                                         <input type="file" id="cvFile" accept=".pdf,application/pdf" required />
                                         <div class="file-name" id="fileName"></div>
                                     </div>
@@ -206,6 +213,24 @@
                                 <div class="field">
                                     <div class="step-label">
                                         <span class="step-num">2</span>
+                                        <label class="field-label" for="candName">Your name</label>
+                                    </div>
+                                    <input type="text" id="candName" readonly tabindex="-1" class="extract-readonly" placeholder="Detected from CV…" />
+                                    <p class="field-hint" id="nameHint">Shown for your review only — not stored</p>
+                                </div>
+
+                                <div class="field">
+                                    <div class="step-label">
+                                        <span class="step-num">3</span>
+                                        <label class="field-label" for="candPhone">Phone number</label>
+                                    </div>
+                                    <input type="tel" id="candPhone" readonly tabindex="-1" class="extract-readonly" placeholder="Detected from CV…" />
+                                    <p class="field-hint" id="phoneHint">Shown for your review only — not stored</p>
+                                </div>
+
+                                <div class="field">
+                                    <div class="step-label">
+                                        <span class="step-num">4</span>
                                         <label class="field-label" for="email">Your email</label>
                                     </div>
                                     <input type="email" id="email" required placeholder="you@email.com" autocomplete="email" />
@@ -292,6 +317,10 @@
         const fileName = document.getElementById('fileName');
         const emailInput = document.getElementById('email');
         const emailHint = document.getElementById('emailHint');
+        const nameInput = document.getElementById('candName');
+        const nameHint = document.getElementById('nameHint');
+        const phoneInput = document.getElementById('candPhone');
+        const phoneHint = document.getElementById('phoneHint');
 
         function sleep(ms) {
             return new Promise((resolve) => setTimeout(resolve, ms));
@@ -399,6 +428,18 @@
             emailInput.placeholder = 'you@email.com';
             emailHint.textContent = 'Filled automatically after you upload your CV';
             emailHint.className = 'field-hint';
+
+            nameInput.value = '';
+            nameInput.placeholder = 'Detected from CV…';
+            nameInput.classList.remove('extracted');
+            nameHint.textContent = 'Shown for your review only — not stored';
+            nameHint.className = 'field-hint';
+
+            phoneInput.value = '';
+            phoneInput.placeholder = 'Detected from CV…';
+            phoneInput.classList.remove('extracted');
+            phoneHint.textContent = 'Shown for your review only — not stored';
+            phoneHint.className = 'field-hint';
         }
 
         function showSubmittingView(email, fileNameText, phase) {
@@ -930,15 +971,117 @@
             return { text, compact, linkEmails };
         }
 
-        async function extractEmailFromPdf(file) {
-            const fromName = guessEmailFromFilename(file.name);
+        function cleanDisplayName(s) {
+            return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        }
+
+        function titleCaseWords(s) {
+            return String(s).split(/\s+/).filter(Boolean)
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                .join(' ');
+        }
+
+        function guessNameFromFilename(filename) {
+            const base = String(filename || '').replace(/\.pdf$/i, '')
+                .replace(/[_-]+/g, ' ')
+                .replace(/\b(resume|cv|curriculum vitae|profile)\b/gi, '')
+                .trim();
+            if (!base || base.length < 3 || base.length > 60) return '';
+            if (!/^[a-zA-Z\s'.]+$/.test(base)) return '';
+            const words = base.split(/\s+/).filter(Boolean);
+            if (words.length < 2 || words.length > 5) return '';
+            return titleCaseWords(base);
+        }
+
+        function extractNameFromCvText(text, filename, email) {
+            const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+            for (const line of lines.slice(0, 35)) {
+                const labeled = line.match(/^(?:name|full\s*name|candidate(?:\s*name)?)\s*[:\-]\s*(.+)$/i);
+                if (labeled) return cleanDisplayName(labeled[1]);
+            }
+
+            for (const line of lines.slice(0, 10)) {
+                if (line.length < 3 || line.length > 55) continue;
+                if (EMAIL_RE.test(line)) continue;
+                if (/\+?\d[\d\s().-]{8,}\d/.test(line)) continue;
+                if (/^(curriculum|resume|cv|profile|summary|experience|education|skills|objective|contact)/i.test(line)) continue;
+                if (/^\d/.test(line)) continue;
+                if (/[@#/|]/.test(line)) continue;
+                if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z'.-]+){0,4}$/.test(line)) return line;
+                if (/^[A-Z][A-Z\s'.-]{2,45}$/.test(line) && line.split(/\s+/).length <= 5) {
+                    return titleCaseWords(line);
+                }
+            }
+
+            if (email) {
+                const local = email.split('@')[0].replace(/[._-]+/g, ' ').trim();
+                if (/^[a-zA-Z\s]{3,40}$/.test(local) && local.split(/\s+/).length >= 2) {
+                    return titleCaseWords(local);
+                }
+            }
+
+            return guessNameFromFilename(filename);
+        }
+
+        function normalizePhone(s) {
+            return String(s || '').replace(/\s+/g, ' ').trim();
+        }
+
+        function extractPhoneFromCvText(text) {
+            const blob = String(text || '');
+
+            const labeled = blob.match(/(?:phone|mobile|cell|contact|tel(?:ephone)?|whatsapp)\s*[:\-]\s*([+\d\s().-]{8,22})/i);
+            if (labeled) {
+                const p = normalizePhone(labeled[1]);
+                if (p.replace(/\D/g, '').length >= 10) return p;
+            }
+
+            const early = blob.slice(0, 2000);
+            const patterns = [
+                /\+92[\s.-]?3\d{2}[\s.-]?\d{7}/g,
+                /03\d{2}[\s.-]?\d{7}/g,
+                /\+?\d{1,3}[\s.-]?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}/g,
+            ];
+
+            for (const pat of patterns) {
+                const found = early.match(pat);
+                if (found && found.length) {
+                    const p = normalizePhone(found[0]);
+                    const digits = p.replace(/\D/g, '');
+                    if (digits.length >= 10 && digits.length <= 15) return p;
+                }
+            }
+            return '';
+        }
+
+        async function extractFieldsFromPdf(file) {
+            const emailFallback = guessEmailFromFilename(file.name);
             try {
                 const { text, compact, linkEmails } = await extractTextFromPdf(file, 2);
                 const linkBlob = linkEmails.join(' ');
-                return pickBestEmail(text, compact, linkBlob, file.name) || fromName;
+                const email = pickBestEmail(text, compact, linkBlob, file.name) || emailFallback;
+                const name = extractNameFromCvText(text, file.name, email);
+                const phone = extractPhoneFromCvText(text);
+                return { email, name, phone };
             } catch (err) {
-                console.warn('PDF email extract failed', file.name, err);
-                return fromName;
+                console.warn('PDF extract failed', file.name, err);
+                return { email: emailFallback, name: guessNameFromFilename(file.name), phone: '' };
+            }
+        }
+
+        function setExtractField(input, hint, value, foundLabel, missingLabel) {
+            input.classList.remove('extracted');
+            if (value) {
+                input.value = value;
+                input.classList.add('extracted');
+                hint.textContent = foundLabel;
+                hint.className = 'field-hint ok';
+            } else {
+                input.value = '';
+                input.placeholder = 'Not found in CV';
+                hint.textContent = missingLabel;
+                hint.className = 'field-hint warn';
             }
         }
 
@@ -953,23 +1096,36 @@
 
             emailInput.classList.add('extracting');
             emailInput.classList.remove('extracted');
-            emailInput.placeholder = 'Reading email from CV…';
-            emailHint.textContent = 'Scanning your CV for email address…';
+            emailInput.placeholder = 'Reading CV…';
+            emailHint.textContent = 'Scanning your CV…';
             emailHint.className = 'field-hint';
+            nameInput.placeholder = 'Reading CV…';
+            nameHint.textContent = 'Scanning your CV…';
+            phoneInput.placeholder = 'Reading CV…';
+            phoneHint.textContent = 'Scanning your CV…';
 
-            const email = await extractEmailFromPdf(file);
+            const { email, name, phone } = await extractFieldsFromPdf(file);
             emailInput.classList.remove('extracting');
 
             if (email) {
                 emailInput.value = email;
                 emailInput.classList.add('extracted');
+                emailInput.placeholder = 'you@email.com';
                 emailHint.textContent = 'Email detected from your CV — edit if needed';
                 emailHint.className = 'field-hint ok';
             } else {
+                emailInput.value = '';
                 emailInput.placeholder = 'you@email.com';
                 emailHint.textContent = 'Email not found in PDF — please enter manually';
                 emailHint.className = 'field-hint warn';
             }
+
+            setExtractField(nameInput, nameHint, name,
+                'Name detected from your CV — shown only, not stored',
+                'Name not found in PDF');
+            setExtractField(phoneInput, phoneHint, phone,
+                'Phone detected from your CV — shown only, not stored',
+                'Phone not found in PDF');
         }
 
         if (fileZone && cvFile) {

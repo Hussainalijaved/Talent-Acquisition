@@ -26,7 +26,8 @@
     --convo-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
     --convo-shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.12);
     --convo-font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    --convo-max: 1120px;
+    --convo-max: 1200px;
+    --convo-max-apply: 1380px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -318,9 +319,9 @@ a { color: var(--convo-brand); }
 /* ---------- Apply split layout ---------- */
 .convo-apply-grid {
     display: grid;
-    grid-template-columns: 1.1fr 1fr;
+    grid-template-columns: 1.55fr 0.92fr;
     gap: 0;
-    min-height: 520px;
+    min-height: 480px;
 }
 @media (max-width: 900px) {
     .convo-apply-grid { grid-template-columns: 1fr; }
@@ -339,7 +340,7 @@ a { color: var(--convo-brand); }
     line-height: 1.7;
     color: var(--convo-ink-soft);
     white-space: pre-wrap;
-    max-height: 480px;
+    max-height: 560px;
     overflow-y: auto;
 }
 .convo-job-title {

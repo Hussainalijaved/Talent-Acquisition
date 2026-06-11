@@ -6,58 +6,60 @@
     <title>CONVO — Talent Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="convo-ui.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         :root {
-            --bg: #f4f6fb;
+            --bg: #f8fafc;
             --surface: #ffffff;
-            --surface-2: #f8fafc;
-            --border: #e6eaf2;
+            --surface-2: #f1f5f9;
+            --border: #e2e8f0;
             --text: #0f172a;
-            --text-soft: #64748b;
+            --text-soft: #475569;
             --text-faint: #94a3b8;
-            --primary: #2563eb;
-            --primary-soft: #dbeafe;
-            --primary-grad: linear-gradient(135deg, #1d4ed8, #3b82f6);
-            --green: #16a34a;
-            --green-soft: #dcfce7;
+            --primary: #0b5cab;
+            --primary-soft: #e8f1fb;
+            --primary-grad: linear-gradient(135deg, #0b5cab 0%, #084a8f 100%);
+            --green: #059669;
+            --green-soft: #ecfdf5;
             --red: #dc2626;
-            --red-soft: #fee2e2;
+            --red-soft: #fef2f2;
             --amber: #d97706;
-            --amber-soft: #fef3c7;
-            --violet: #7c3aed;
-            --violet-soft: #ede9fe;
-            --slate-soft: #eef2f7;
-            --shadow-sm: 0 1px 2px rgba(15, 23, 42, .06);
-            --shadow: 0 4px 16px rgba(15, 23, 42, .08);
-            --shadow-lg: 0 18px 48px rgba(15, 23, 42, .18);
-            --radius: 16px;
+            --amber-soft: #fffbeb;
+            --violet: #0b5cab;
+            --violet-soft: #e8f1fb;
+            --slate-soft: #f1f5f9;
+            --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
+            --shadow: 0 4px 20px rgba(15, 23, 42, 0.07);
+            --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.12);
+            --radius: 14px;
             --radius-sm: 10px;
         }
         html[data-theme="dark"] {
-            --bg: #0b1120;
-            --surface: #121a2b;
-            --surface-2: #0f1726;
-            --border: #1f2a3e;
-            --text: #e7edf7;
+            --bg: #0a1628;
+            --surface: #0f1f38;
+            --surface-2: #132d4d;
+            --border: #1e3a5f;
+            --text: #f1f5f9;
             --text-soft: #94a3b8;
             --text-faint: #64748b;
-            --primary: #3b82f6;
-            --primary-soft: #1e293b;
-            --slate-soft: #1a2336;
-            --green-soft: #14331f;
-            --red-soft: #3a1517;
-            --amber-soft: #3a2a0c;
-            --violet-soft: #241a40;
-            --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
-            --shadow: 0 4px 16px rgba(0, 0, 0, .4);
-            --shadow-lg: 0 18px 48px rgba(0, 0, 0, .55);
+            --primary: #4da3e8;
+            --primary-soft: #132d4d;
+            --primary-grad: linear-gradient(135deg, #0b5cab, #063d78);
+            --slate-soft: #132d4d;
+            --green-soft: #064e3b;
+            --red-soft: #450a0a;
+            --amber-soft: #451a03;
+            --violet-soft: #132d4d;
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+            --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.45);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
             background: var(--bg);
             color: var(--text);
             -webkit-font-smoothing: antialiased;
@@ -70,34 +72,39 @@
 
         /* ---------- Sidebar ---------- */
         .sidebar {
-            width: 248px;
+            width: 260px;
             flex-shrink: 0;
             background: var(--surface);
             border-right: 1px solid var(--border);
-            padding: 22px 16px;
+            padding: 20px 14px;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 4px;
             position: sticky;
             top: 0;
             height: 100vh;
+            box-shadow: 2px 0 16px rgba(15, 23, 42, 0.03);
         }
         .brand {
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 6px 8px 20px;
+            padding: 8px 10px 22px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 8px;
         }
         .brand-logo {
-            width: 38px; height: 38px;
-            border-radius: 11px;
+            min-width: 44px; height: 44px;
+            border-radius: 10px;
             background: var(--primary-grad);
             display: grid; place-items: center;
-            color: #fff; font-weight: 800; font-size: 18px;
-            box-shadow: 0 6px 16px rgba(37, 99, 235, .4);
+            color: #fff; font-weight: 800; font-size: 15px;
+            letter-spacing: -0.04em;
+            box-shadow: 0 4px 14px rgba(11, 92, 171, 0.32);
+            padding: 0 6px;
         }
-        .brand-name { font-size: 15px; font-weight: 700; line-height: 1.2; }
-        .brand-sub { font-size: 11px; color: var(--text-faint); }
+        .brand-name { font-size: 20px; font-weight: 800; line-height: 1.1; letter-spacing: -0.04em; color: var(--primary); }
+        .brand-sub { font-size: 11px; color: var(--text-faint); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
         .nav-item {
             display: flex; align-items: center; gap: 12px;
             padding: 11px 14px;
@@ -109,8 +116,13 @@
             transition: all .15s ease;
         }
         .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
-        .nav-item:hover { background: var(--surface-2); color: var(--text); }
-        .nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+        .nav-item:hover { background: var(--primary-soft); color: var(--primary); }
+        .nav-item.active {
+            background: var(--primary-soft);
+            color: var(--primary);
+            font-weight: 700;
+            box-shadow: inset 3px 0 0 var(--primary);
+        }
         .sidebar-foot { margin-top: auto; font-size: 11px; color: var(--text-faint); padding: 8px; }
 
         /* ---------- Main ---------- */
@@ -372,7 +384,7 @@
             border-radius: 9px; padding: 10px 16px; cursor: pointer; border: none;
             display: inline-flex; align-items: center; gap: 6px; transition: opacity .15s;
         }
-        .btn-primary { background: var(--primary-grad); color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,.3); }
+        .btn-primary { background: var(--primary-grad); color: #fff; box-shadow: 0 4px 14px rgba(11, 92, 171, 0.28); }
         .btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
         .btn-danger { background: var(--red-soft); color: var(--red); border: 1px solid transparent; }
         .btn-sm { padding: 6px 11px; font-size: 12px; background: var(--surface-2); color: var(--text-soft); border: 1px solid var(--border); }
@@ -392,7 +404,7 @@
 <body>
     <aside class="sidebar">
         <div class="brand">
-            <div class="brand-logo">C</div>
+            <div class="brand-logo">CV</div>
             <div>
                 <div class="brand-name">CONVO</div>
                 <div class="brand-sub">Talent Admin</div>
@@ -846,7 +858,7 @@
             if (sess.status === 'assessment') return '<span class="pill p-pending">Phase ' + (sess.current_phase || 1) + '</span>';
             return '<span class="pill p-assess">' + esc(sess.status || 'Active') + '</span>';
         }
-        const AV_COLORS = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#dc2626', '#0891b2', '#db2777', '#4f46e5'];
+        const AV_COLORS = ['#0b5cab', '#00a0dc', '#059669', '#d97706', '#dc2626', '#084a8f', '#38bdf8', '#0ea5e9'];
         function avatarFor(email) {
             const e = String(email || '?');
             let h = 0; for (let i = 0; i < e.length; i++) h = e.charCodeAt(i) + ((h << 5) - h);
@@ -1011,7 +1023,7 @@
                     labels: ['Shortlisted', 'Rejected', 'Review', 'Duplicate', 'Error'],
                     datasets: [{
                         data: [s.short, s.reject, s.review, s.dup, s.err],
-                        backgroundColor: ['#16a34a', '#dc2626', '#d97706', '#94a3b8', '#7c3aed'],
+                        backgroundColor: ['#059669', '#dc2626', '#d97706', '#94a3b8', '#0b5cab'],
                         borderWidth: 0, hoverOffset: 6,
                     }],
                 },
@@ -1047,7 +1059,7 @@
             if (document.getElementById('roleChart')) {
                 charts.role = new Chart(document.getElementById('roleChart'), {
                     type: 'bar',
-                    data: { labels: rEntries.map(e => e[0]), datasets: [{ data: rEntries.map(e => e[1]), backgroundColor: '#2563eb', borderRadius: 7, maxBarThickness: 26 }] },
+                    data: { labels: rEntries.map(e => e[0]), datasets: [{ data: rEntries.map(e => e[1]), backgroundColor: '#0b5cab', borderRadius: 7, maxBarThickness: 26 }] },
                     options: { indexAxis: 'y', plugins: { legend: { display: false } },
                         scales: { x: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } }, y: { grid: { display: false }, ticks: { color: tick } } } },
                 });

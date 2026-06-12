@@ -323,6 +323,106 @@
         .apply-tpl-hiring-card .tpl-extra .job-extra-row { background: #fffbeb; border-color: #fde68a; }
         .apply-tpl-hiring-card .tpl-extra .job-extra-row strong { color: #ea580c; }
         .apply-tpl-hiring-card .meta-pill.accent { background: #ffedd5; color: #c2410c; }
+
+        .tpl-view-hidden { display: none !important; }
+
+        /* Template 4 — CONVO hiring poster (cream card) */
+        .apply-tpl-hiring-poster .page-split-left {
+            background: #e8e2d8;
+            border-right: none;
+            padding: 32px 24px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        .apply-tpl-hiring-poster .tpl-inner {
+            min-height: 0;
+            width: 100%;
+            max-width: 540px;
+        }
+        .tpl-poster-card {
+            background: #f5f0e6;
+            border: 2px solid #cfc8bc;
+            border-radius: 28px;
+            padding: 36px 34px 32px;
+            color: #4a3728;
+            box-shadow: 0 10px 36px rgba(74, 55, 40, 0.1);
+        }
+        .tpl-poster-brand {
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+            color: #4a3728;
+        }
+        .tpl-poster-headline {
+            font-size: clamp(38px, 6vw, 54px);
+            font-weight: 900;
+            line-height: 0.95;
+            letter-spacing: -0.02em;
+            margin: 14px 0 16px;
+            color: #4a3728;
+        }
+        .tpl-poster-badge {
+            display: inline-block;
+            background: #4a3728;
+            color: #fff;
+            padding: 9px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.1em;
+        }
+        .tpl-poster-title {
+            font-size: clamp(30px, 4.5vw, 38px);
+            font-weight: 800;
+            line-height: 1.15;
+            margin: 22px 0 26px;
+            color: #4a3728;
+        }
+        .tpl-poster-block { margin-bottom: 22px; }
+        .tpl-poster-block h3 {
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: 0.07em;
+            margin: 0 0 12px;
+            color: #4a3728;
+        }
+        .tpl-poster-block p {
+            font-size: 17px;
+            font-weight: 500;
+            line-height: 1.75;
+            margin: 0;
+            color: #4a3728;
+        }
+        .tpl-poster-block ul {
+            margin: 0;
+            padding-left: 22px;
+            font-size: 17px;
+            font-weight: 500;
+            line-height: 1.8;
+            color: #4a3728;
+        }
+        .tpl-poster-block li { margin-bottom: 6px; }
+        .tpl-poster-apply-btn {
+            width: 100%;
+            margin-top: 8px;
+            padding: 18px 24px;
+            background: #4a3728;
+            color: #fff;
+            border: none;
+            border-radius: 14px;
+            font-family: inherit;
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+            box-shadow: 0 6px 18px rgba(74, 55, 40, 0.22);
+        }
+        .tpl-poster-apply-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(74, 55, 40, 0.28);
+        }
     </style>
 </head>
 <body class="convo-body">
@@ -369,15 +469,38 @@
                 <div class="apply-layout page-split" id="applyLayout">
                     <aside class="page-split-left job-template apply-tpl-hiring-top" id="jobTemplatePanel">
                         <div class="tpl-inner">
-                            <div class="tpl-top-bar">
-                                <span class="tpl-hiring">We're hiring</span>
-                                <button type="button" class="tpl-apply-btn" id="applyNowBtn">Apply now</button>
+                            <div class="tpl-standard-view">
+                                <div class="tpl-top-bar">
+                                    <span class="tpl-hiring">We're hiring</span>
+                                    <button type="button" class="tpl-apply-btn" id="applyNowBtn">Apply now</button>
+                                </div>
+                                <div class="tpl-body">
+                                    <h1 id="jobTitle" class="tpl-title">—</h1>
+                                    <div class="job-meta tpl-meta" id="jobMeta"></div>
+                                    <div class="job-extra-meta tpl-extra" id="jobExtraMeta"></div>
+                                    <div class="jd-preview tpl-jd" id="jdPreview"></div>
+                                </div>
                             </div>
-                            <div class="tpl-body">
-                                <h1 id="jobTitle" class="tpl-title">—</h1>
-                                <div class="job-meta tpl-meta" id="jobMeta"></div>
-                                <div class="job-extra-meta tpl-extra" id="jobExtraMeta"></div>
-                                <div class="jd-preview tpl-jd" id="jdPreview"></div>
+                            <div class="tpl-poster-view tpl-view-hidden">
+                                <article class="tpl-poster-card">
+                                    <div class="tpl-poster-brand">CONVO</div>
+                                    <h2 class="tpl-poster-headline">WE ARE HIRING!</h2>
+                                    <span class="tpl-poster-badge">OPEN POSITION</span>
+                                    <h1 class="tpl-poster-title" id="jobTitlePoster">—</h1>
+                                    <section class="tpl-poster-block">
+                                        <h3>ABOUT THE ROLE</h3>
+                                        <p id="jobPosterAbout"></p>
+                                    </section>
+                                    <section class="tpl-poster-block">
+                                        <h3>WHAT WE NEED</h3>
+                                        <ul id="jobPosterNeeds"></ul>
+                                    </section>
+                                    <section class="tpl-poster-block" id="jobPosterNiceSection">
+                                        <h3>NICE TO HAVE</h3>
+                                        <ul id="jobPosterNice"></ul>
+                                    </section>
+                                    <button type="button" class="tpl-poster-apply-btn" id="applyNowBtnPoster">APPLY NOW</button>
+                                </article>
                             </div>
                         </div>
                     </aside>
@@ -1096,12 +1219,90 @@
                 .replace(/"/g, '&quot;');
         }
 
+        function parseJdSections(jdText) {
+            const lines = String(jdText || '').split(/\r?\n/).map((l) => l.trim());
+            const buckets = { about: [], needs: [], nice: [] };
+            let current = 'about';
+
+            const headerFor = (line) => {
+                const low = line.toLowerCase().replace(/[:#*]+/g, '').trim();
+                if (/^(about the role|about|overview|job description|role summary)/i.test(low)) return 'about';
+                if (/^(what we need|what we're looking for|requirements|must.?have|key requirements|qualifications|what you.ll do|what you will)/i.test(low)) return 'needs';
+                if (/^(nice to have|nice-to-have|preferred|bonus)/i.test(low)) return 'nice';
+                return null;
+            };
+
+            for (const line of lines) {
+                if (!line) continue;
+                const h = headerFor(line);
+                if (h) {
+                    current = h;
+                    continue;
+                }
+                buckets[current].push(line);
+            }
+
+            const cleanLine = (l) => l.replace(/^[\s•\-\*\u2022\d]+[\.\)]\s*/, '').trim();
+            const cleanList = (arr) => arr.map(cleanLine).filter((l) => l.length > 2);
+
+            return {
+                about: cleanList(buckets.about).join(' ').trim(),
+                needs: cleanList(buckets.needs),
+                nice: cleanList(buckets.nice),
+            };
+        }
+
+        function renderPosterJob(job) {
+            const titleEl = document.getElementById('jobTitlePoster');
+            if (titleEl) titleEl.textContent = job.title || 'Open Position';
+
+            const parsed = parseJdSections(job.jd_text);
+            const aboutEl = document.getElementById('jobPosterAbout');
+            const jd = String(job.jd_text || '').trim();
+            const fallbackAbout = jd.split(/\n\n+/).map((p) => p.trim()).find((p) => p.length > 40) || jd.slice(0, 480);
+            if (aboutEl) {
+                aboutEl.textContent = parsed.about || fallbackAbout || 'Join our team and help us build great products.';
+            }
+
+            let needs = parsed.needs;
+            if (!needs.length && job.tech_stack) {
+                needs = String(job.tech_stack).split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
+            }
+            if (!needs.length && job.experience) needs = [job.experience];
+            if (!needs.length) {
+                needs = jd.split(/\n/)
+                    .map((l) => l.replace(/^[\s•\-\*\u2022]+/, '').trim())
+                    .filter((l) => l.length > 8 && l.length < 140)
+                    .slice(0, 6);
+            }
+            const needsEl = document.getElementById('jobPosterNeeds');
+            if (needsEl) {
+                needsEl.innerHTML = needs.slice(0, 8)
+                    .map((n) => '<li>' + escapeHtml(n) + '</li>')
+                    .join('') || '<li>See full description below</li>';
+            }
+
+            const nice = parsed.nice;
+            const niceEl = document.getElementById('jobPosterNice');
+            const niceSection = document.getElementById('jobPosterNiceSection');
+            if (nice.length && niceEl) {
+                niceEl.innerHTML = nice.slice(0, 6).map((n) => '<li>' + escapeHtml(n) + '</li>').join('');
+                niceSection?.classList.remove('tpl-view-hidden');
+            } else {
+                niceSection?.classList.add('tpl-view-hidden');
+            }
+        }
+
         function applyJobTemplate(templateId) {
             const panel = document.getElementById('jobTemplatePanel');
             if (!panel || !window.TAJobStyles) return;
             const id = window.TAJobStyles.normalize(templateId);
             window.TAJobStyles.ids().forEach((s) => panel.classList.remove('apply-tpl-' + s));
             panel.classList.add('apply-tpl-' + id);
+
+            const isPoster = id === 'hiring-poster';
+            document.querySelector('.tpl-standard-view')?.classList.toggle('tpl-view-hidden', isPoster);
+            document.querySelector('.tpl-poster-view')?.classList.toggle('tpl-view-hidden', !isPoster);
         }
 
         function openApplyForm() {
@@ -1442,6 +1643,7 @@
                 .map((m, i) => '<span class="meta-pill' + (i === 0 ? ' accent' : '') + '">' + escapeHtml(m) + '</span>')
                 .join('');
 
+            renderPosterJob(currentJob);
             applyJobTemplate(currentJob.display_style || 'hiring-top');
             closeApplyForm();
 
@@ -1550,6 +1752,7 @@
         document.getElementById('retryBtn').addEventListener('click', resetApplyFormUi);
 
         document.getElementById('applyNowBtn')?.addEventListener('click', openApplyForm);
+        document.getElementById('applyNowBtnPoster')?.addEventListener('click', openApplyForm);
 
         window.addEventListener('pageshow', (e) => {
             if (e.persisted) resetApplyFormUi();

@@ -22,6 +22,11 @@
             label: 'LinkedIn-style card',
             hint: 'Warm cream card — hiring header with Apply now, content below',
         },
+        {
+            id: 'hiring-poster',
+            label: 'CONVO hiring poster',
+            hint: 'Cream poster card — WE ARE HIRING, sections, APPLY NOW button',
+        },
     ];
 
     const LEGACY_MAP = {

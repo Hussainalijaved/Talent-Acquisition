@@ -10,6 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
 <body class="admin-body">
     <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
@@ -202,76 +203,105 @@
 
             <!-- CREATE / EDIT JOB -->
             <section class="view" id="view-jobs-create">
-                <div class="card card-limit-lg">
+                <div class="card job-create-card">
                     <div class="card-head">
-                        <div class="card-title">Create / edit job<small>Generate JD from criteria, then publish</small></div>
+                        <div class="card-title">Create / edit job<small>Fill details on the left — upload a template or generate JD on the right</small></div>
                         <button type="button" class="btn-secondary btn-sm" data-go-view="jobs">← All jobs</button>
                     </div>
                     <form id="jobForm" onsubmit="return false">
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="jobEditId">Editing</label>
-                                <select id="jobEditId"><option value="">New job</option></select>
+                        <div class="job-create-split">
+                            <div class="job-create-left">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label for="jobEditId">Editing</label>
+                                        <select id="jobEditId"><option value="">New job</option></select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="jobStatusIn">Status</label>
+                                        <select id="jobStatusIn">
+                                            <option value="draft">Draft</option>
+                                            <option value="open">Open</option>
+                                            <option value="closed">Closed</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group span-2">
+                                        <label for="jobTitleIn">Job title *</label>
+                                        <input id="jobTitleIn" type="text" placeholder="Senior Backend Engineer" required />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="jobDeptIn">Department</label>
+                                        <input id="jobDeptIn" type="text" placeholder="Engineering" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="jobLocIn">Location</label>
+                                        <select id="jobLocIn">
+                                            <option value="Remote" selected>Remote</option>
+                                            <option value="On-site">On-site</option>
+                                            <option value="Hybrid">Hybrid</option>
+                                            <option value="Lahore, Pakistan">Lahore, Pakistan</option>
+                                            <option value="Karachi, Pakistan">Karachi, Pakistan</option>
+                                            <option value="Islamabad, Pakistan">Islamabad, Pakistan</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="jobTypeIn">Employment type</label>
+                                        <select id="jobTypeIn">
+                                            <option value="Full-time" selected>Full-time</option>
+                                            <option value="Part-time">Part-time</option>
+                                            <option value="Contract">Contract</option>
+                                            <option value="Internship">Internship</option>
+                                            <option value="Temporary">Temporary</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group span-2">
+                                        <label for="jobIntIn">Interviewer email *</label>
+                                        <input id="jobIntIn" type="email" placeholder="interviewer@company.com" required />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="jobExpIn">Experience</label>
+                                        <input id="jobExpIn" type="text" placeholder="e.g. 3–5 years, Mid-level" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="jobStackIn">Tech stack</label>
+                                        <input id="jobStackIn" type="text" placeholder="e.g. .NET Core, SQL Server, Azure" />
+                                    </div>
+                                    <div class="form-group span-2">
+                                        <label for="jobSalaryIn">Salary / compensation</label>
+                                        <input id="jobSalaryIn" type="text" placeholder="e.g. PKR 200k–280k / month · Competitive" />
+                                    </div>
+                                    <div class="form-group span-2">
+                                        <label for="jobCriteriaIn">Must-have criteria (one per line)</label>
+                                        <textarea id="jobCriteriaIn" placeholder="C# and .NET Core&#10;ASP.NET Core / Web API&#10;SQL Server &amp; Entity Framework"></textarea>
+                                        <div class="form-hint">Used by AI generation — one skill per line</div>
+                                    </div>
+                                    <div class="form-group span-2">
+                                        <label for="jobNiceIn">Nice to have (optional)</label>
+                                        <textarea id="jobNiceIn" placeholder="AWS / Kubernetes&#10;Open-source contributions"></textarea>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label for="jobStatusIn">Status</label>
-                                <select id="jobStatusIn">
-                                    <option value="draft">Draft</option>
-                                    <option value="open">Open</option>
-                                    <option value="closed">Closed</option>
-                                </select>
+                            <div class="job-create-right">
+                                <div class="job-jd-panel">
+                                    <div class="job-jd-panel-title">Job description</div>
+                                    <label class="job-template-zone" id="jobTemplateZone" for="jobTemplateFile">
+                                        <input type="file" id="jobTemplateFile" accept=".pdf,.doc,.docx,.txt,.md,.html,.htm,.rtf,.odt" />
+                                        <div class="job-template-icon">📄</div>
+                                        <div class="job-template-title">Upload JD template</div>
+                                        <div class="job-template-sub">PDF, Word, TXT, HTML — any file. Existing JD text loads here in original layout.</div>
+                                        <div class="job-template-name" id="jobTemplateName"></div>
+                                    </label>
+                                    <div class="form-group" style="margin-bottom:0">
+                                        <label for="jobJdIn">Full job description *</label>
+                                        <textarea id="jobJdIn" class="textarea-jd" placeholder="Upload a template or click Generate with AI…" required></textarea>
+                                        <div class="form-hint" id="jobTemplateHint">Used for careers page, CV screening, and assessment.</div>
+                                    </div>
+                                    <div class="form-actions job-jd-actions">
+                                        <button type="button" class="btn-secondary" id="jobGenBtn">Generate with AI</button>
+                                        <button type="button" class="btn-primary" data-requires-perm="edit_jobs" onclick="document.getElementById('jobForm').dispatchEvent(new Event('submit'))">Save job</button>
+                                        <button type="button" class="btn-secondary" id="jobResetBtn">Clear form</button>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="form-group span-2">
-                                <label for="jobTitleIn">Job title *</label>
-                                <input id="jobTitleIn" type="text" placeholder="Senior Backend Engineer" required />
-                            </div>
-                            <div class="form-group">
-                                <label for="jobDeptIn">Department</label>
-                                <input id="jobDeptIn" type="text" placeholder="Engineering" />
-                            </div>
-                            <div class="form-group">
-                                <label for="jobLocIn">Location</label>
-                                <select id="jobLocIn">
-                                    <option value="Remote" selected>Remote</option>
-                                    <option value="On-site">On-site</option>
-                                    <option value="Hybrid">Hybrid</option>
-                                    <option value="Lahore, Pakistan">Lahore, Pakistan</option>
-                                    <option value="Karachi, Pakistan">Karachi, Pakistan</option>
-                                    <option value="Islamabad, Pakistan">Islamabad, Pakistan</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="jobTypeIn">Employment type</label>
-                                <select id="jobTypeIn">
-                                    <option value="Full-time" selected>Full-time</option>
-                                    <option value="Part-time">Part-time</option>
-                                    <option value="Contract">Contract</option>
-                                    <option value="Internship">Internship</option>
-                                    <option value="Temporary">Temporary</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="jobIntIn">Interviewer email *</label>
-                                <input id="jobIntIn" type="email" placeholder="interviewer@company.com" required />
-                            </div>
-                            <div class="form-group span-2">
-                                <label for="jobCriteriaIn">Must-have criteria (one per line)</label>
-                                <textarea id="jobCriteriaIn" placeholder="C# and .NET Core&#10;ASP.NET Core / Web API&#10;SQL Server &amp; Entity Framework&#10;Git and Agile teamwork"></textarea>
-                                <div class="form-hint">One skill per line — AI writes a professional JD from these criteria</div>
-                            </div>
-                            <div class="form-group span-2">
-                                <label for="jobNiceIn">Nice to have (optional)</label>
-                                <textarea id="jobNiceIn" placeholder="AWS / Kubernetes&#10;Open-source contributions"></textarea>
-                            </div>
-                            <div class="form-group span-2">
-                                <label for="jobJdIn">Job description *</label>
-                                <textarea id="jobJdIn" class="textarea-tall" placeholder="Full JD text used for screening and assessment…" required></textarea>
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" class="btn-secondary" id="jobGenBtn">Generate with AI</button>
-                            <button type="button" class="btn-primary" data-requires-perm="edit_jobs" onclick="document.getElementById('jobForm').dispatchEvent(new Event('submit'))">Save job</button>
-                            <button type="button" class="btn-secondary" id="jobResetBtn">Clear form</button>
                         </div>
                     </form>
                 </div>

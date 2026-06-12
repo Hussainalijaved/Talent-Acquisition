@@ -299,16 +299,22 @@
             : (Array.isArray(templates.general.nice) ? templates.general.nice : []);
         const niceList = nice.length ? nice : defaultNice;
 
-        const expLine = {
+        const expLine = String(opts.experience || '').trim() || {
             intern: 'Internship / graduate opportunity',
             junior: '0–2 years of relevant experience',
             mid: '2–5 years of relevant experience',
             senior: '5+ years of relevant experience',
         }[seniority];
+        const stackLine = String(opts.tech_stack || '').trim();
+        const salaryLine = String(opts.salary_range || '').trim();
+
+        const metaBits = [dept, emp, loc];
+        if (stackLine) metaBits.push('Stack: ' + stackLine);
+        if (salaryLine) metaBits.push('Compensation: ' + salaryLine);
 
         return (
             `${title}\n` +
-            `${dept} | ${emp} | ${loc}\n\n` +
+            `${metaBits.join(' | ')}\n\n` +
             `About the Role\n` +
             `${about} You will work in a collaborative environment where quality, ownership, and continuous learning are valued.\n\n` +
             `What You'll Do\n` +
@@ -470,7 +476,12 @@
         document.getElementById('jobIntIn').value = j.interviewer_email || '';
         document.getElementById('jobStatusIn').value = j.status || 'draft';
         document.getElementById('jobCriteriaIn').value = '';
+        document.getElementById('jobNiceIn').value = '';
+        document.getElementById('jobExpIn').value = j.experience || '';
+        document.getElementById('jobStackIn').value = j.tech_stack || '';
+        document.getElementById('jobSalaryIn').value = j.salary_range || '';
         document.getElementById('jobJdIn').value = j.jd_text || '';
+        resetJobTemplateUi();
         deps.setView('jobs-create');
     }
 
@@ -491,6 +502,10 @@
             deps.banner('Interviewer email is required.', 'err');
             return;
         }
+        const experience = document.getElementById('jobExpIn')?.value.trim() || null;
+        const tech_stack = document.getElementById('jobStackIn')?.value.trim() || null;
+        const salary_range = document.getElementById('jobSalaryIn')?.value.trim() || null;
+
         const row = {
             title,
             jd_text,
@@ -500,22 +515,49 @@
             employment_type: document.getElementById('jobTypeIn').value || 'Full-time',
             interviewer_email,
             status: document.getElementById('jobStatusIn').value || 'draft',
+            experience,
+            tech_stack,
+            salary_range,
             updated_at: new Date().toISOString(),
         };
-        let error;
-        if (id) {
-            ({ error } = await deps.sb.from('jobs').update(row).eq('id', id));
-        } else {
-            ({ error } = await deps.sb.from('jobs').insert(row));
+
+        async function trySave(payload) {
+            if (id) return deps.sb.from('jobs').update(payload).eq('id', id);
+            return deps.sb.from('jobs').insert(payload);
+        }
+
+        let { error } = await trySave(row);
+        let usedFallback = false;
+        if (error && /column|schema|does not exist/i.test(error.message || '')) {
+            const fallback = { ...row };
+            delete fallback.experience;
+            delete fallback.tech_stack;
+            delete fallback.salary_range;
+            const extras = [
+                experience ? 'Experience: ' + experience : '',
+                tech_stack ? 'Tech stack: ' + tech_stack : '',
+                salary_range ? 'Compensation: ' + salary_range : '',
+            ].filter(Boolean);
+            if (extras.length) {
+                fallback.jd_text = extras.join('\n') + '\n\n' + jd_text;
+            }
+            ({ error } = await trySave(fallback));
+            usedFallback = !error;
         }
         if (error) {
             deps.banner('Save job failed: ' + error.message, 'err');
             return;
         }
+        deps.banner(
+            usedFallback
+                ? 'Job saved (run supabase_jobs_expand.sql to store experience/stack/salary separately).'
+                : 'Job saved.',
+            'ok'
+        );
         if (deps.auth) await deps.auth.logAudit('save_job', 'job', row.job_id, { title: row.title, status: row.status });
-        deps.banner('Job saved.', 'ok');
         document.getElementById('jobForm').reset();
         document.getElementById('jobEditId').value = '';
+        resetJobTemplateUi();
         await loadJobs();
         deps.setView('jobs');
     }
@@ -548,6 +590,9 @@
             department: document.getElementById('jobDeptIn').value.trim(),
             location: document.getElementById('jobLocIn').value,
             employment_type: document.getElementById('jobTypeIn').value,
+            experience: document.getElementById('jobExpIn')?.value.trim() || '',
+            tech_stack: document.getElementById('jobStackIn')?.value.trim() || '',
+            salary_range: document.getElementById('jobSalaryIn')?.value.trim() || '',
             criteria: document.getElementById('jobCriteriaIn').value,
             nice_to_have: document.getElementById('jobNiceIn').value,
         };
@@ -601,6 +646,9 @@
             department: payload.department,
             location: payload.location,
             employment_type: payload.employment_type,
+            experience: payload.experience,
+            tech_stack: payload.tech_stack,
+            salary_range: payload.salary_range,
             criteria: payload.criteria,
             nice: payload.nice_to_have,
         });
@@ -698,6 +746,211 @@
             } catch (_) { /* optional */ }
         }
         return { text, compact, linkEmails };
+    }
+
+    function fileExt(name) {
+        const m = String(name || '').match(/\.([^.]+)$/);
+        return m ? m[1].toLowerCase() : '';
+    }
+
+    function stripHtmlToText(html) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        return (doc.body.innerText || doc.body.textContent || '').trim();
+    }
+
+    function stripRtfBasic(rtf) {
+        return String(rtf || '')
+            .replace(/\\par[d]?\s?/gi, '\n')
+            .replace(/\\[a-z]+-?\d*\s?/gi, '')
+            .replace(/[{}]/g, '')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    async function extractTextFromDocx(file) {
+        if (!window.mammoth) throw new Error('Word reader not loaded');
+        const buf = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer: buf });
+        if (result.messages?.length) console.warn('DOCX extract:', result.messages);
+        return (result.value || '').trim();
+    }
+
+    async function extractFullPdfText(file) {
+        if (!window.pdfjsLib) throw new Error('PDF reader not loaded');
+        const buf = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        const maxPages = Math.min(pdf.numPages, 40);
+        let text = '';
+        for (let p = 1; p <= maxPages; p++) {
+            const page = await pdf.getPage(p);
+            const content = await page.getTextContent();
+            const items = content.items
+                .map((it) => ({
+                    str: String(it.str || ''),
+                    y: Math.round(it.transform[5]),
+                }))
+                .filter((it) => it.str.trim());
+            items.sort((a, b) => b.y - a.y);
+            let lastY = null;
+            const parts = [];
+            for (const it of items) {
+                if (lastY !== null && Math.abs(it.y - lastY) > 4) parts.push('\n');
+                parts.push(it.str);
+                lastY = it.y;
+            }
+            text += parts.join('').replace(/\s+\n/g, '\n').trim() + '\n\n';
+        }
+        return text.trim();
+    }
+
+    async function extractTextFromJobTemplate(file) {
+        const ext = fileExt(file.name);
+        const type = String(file.type || '').toLowerCase();
+
+        if (ext === 'pdf' || type === 'application/pdf') return extractFullPdfText(file);
+        if (ext === 'docx' || type.includes('wordprocessingml')) return extractTextFromDocx(file);
+        if (ext === 'doc') {
+            throw new Error('Legacy .doc files are not supported — save as .docx or PDF and upload again.');
+        }
+        if (['txt', 'md', 'csv'].includes(ext) || type.startsWith('text/')) return (await file.text()).trim();
+        if (['html', 'htm'].includes(ext) || type.includes('html')) return stripHtmlToText(await file.text());
+        if (ext === 'rtf' || type.includes('rtf')) {
+            const asText = stripRtfBasic(await file.text());
+            if (asText.length > 40) return asText;
+            throw new Error('Could not read RTF — try saving as .docx or PDF.');
+        }
+        try {
+            const guess = (await file.text()).trim();
+            if (guess.length > 80 && /[a-zA-Z]{4,}/.test(guess)) return guess;
+        } catch (_) { /* binary */ }
+        throw new Error('Unsupported file type — use PDF, Word (.docx), TXT, or HTML.');
+    }
+
+    function extractFieldFromJd(text, patterns) {
+        const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        for (const line of lines) {
+            for (const re of patterns) {
+                const m = line.match(re);
+                if (m) return (m[1] || m[0] || '').replace(/^[\s:–—-]+/, '').trim();
+            }
+        }
+        return '';
+    }
+
+    function tryFillFieldsFromJdText(text) {
+        const jd = String(text || '').trim();
+        if (!jd) return;
+
+        const titleIn = document.getElementById('jobTitleIn');
+        if (titleIn && !titleIn.value.trim()) {
+            const firstLine = jd.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 3 && l.length < 120);
+            if (firstLine && !/^(about|job description|overview|responsibilities)/i.test(firstLine)) {
+                titleIn.value = firstLine.replace(/\s*[|–—-]\s*.+$/, '').trim();
+            }
+        }
+
+        const expIn = document.getElementById('jobExpIn');
+        if (expIn && !expIn.value.trim()) {
+            const exp = extractFieldFromJd(jd, [
+                /(?:experience|years of experience|yoe)\s*[:\-–—]?\s*(.+)/i,
+                /(\d+\s*[–—-]\s*\d+\+?\s*years?)/i,
+                /(\d+\+?\s*years?(?:\s+of)?\s+(?:relevant\s+)?experience)/i,
+            ]);
+            if (exp) expIn.value = exp;
+        }
+
+        const stackIn = document.getElementById('jobStackIn');
+        if (stackIn && !stackIn.value.trim()) {
+            const stack = extractFieldFromJd(jd, [
+                /(?:tech(?:nical)?\s*stack|technologies|skills|stack)\s*[:\-–—]?\s*(.+)/i,
+            ]);
+            if (stack) stackIn.value = stack;
+        }
+
+        const salaryIn = document.getElementById('jobSalaryIn');
+        if (salaryIn && !salaryIn.value.trim()) {
+            const salary = extractFieldFromJd(jd, [
+                /(?:salary|compensation|pay(?:\s*range)?|package)\s*[:\-–—]?\s*(.+)/i,
+                /(PKR\s*[\d,.]+[kK]?\s*[–—-]\s*[\d,.]+[kK]?)/i,
+                /(\$[\d,.]+[kK]?\s*[–—-]\s*\$?[\d,.]+[kK]?)/i,
+            ]);
+            if (salary) salaryIn.value = salary;
+        }
+    }
+
+    function resetJobTemplateUi() {
+        const input = document.getElementById('jobTemplateFile');
+        const name = document.getElementById('jobTemplateName');
+        const zone = document.getElementById('jobTemplateZone');
+        const hint = document.getElementById('jobTemplateHint');
+        if (input) input.value = '';
+        if (name) name.textContent = '';
+        if (zone) zone.classList.remove('has-file', 'drag-over');
+        if (hint) hint.textContent = 'Used for careers page, CV screening, and assessment.';
+    }
+
+    async function onJobTemplateFileChange(file) {
+        if (!file) return;
+        const zone = document.getElementById('jobTemplateZone');
+        const nameEl = document.getElementById('jobTemplateName');
+        const hint = document.getElementById('jobTemplateHint');
+        const jdIn = document.getElementById('jobJdIn');
+
+        if (zone) zone.classList.add('has-file');
+        if (nameEl) nameEl.textContent = file.name;
+        if (hint) hint.textContent = 'Reading template…';
+
+        try {
+            const text = await extractTextFromJobTemplate(file);
+            if (!text) throw new Error('No text found in file.');
+            if (jdIn) jdIn.value = text;
+            tryFillFieldsFromJdText(text);
+            if (hint) hint.textContent = 'Template loaded — review and edit before saving.';
+            deps.banner('JD loaded from template: ' + file.name, 'ok');
+        } catch (err) {
+            if (zone) zone.classList.remove('has-file');
+            if (nameEl) nameEl.textContent = '';
+            if (hint) hint.textContent = 'Used for careers page, CV screening, and assessment.';
+            deps.banner('Template upload failed: ' + (err.message || err), 'err');
+        }
+    }
+
+    function bindJobTemplateUpload() {
+        const input = document.getElementById('jobTemplateFile');
+        const zone = document.getElementById('jobTemplateZone');
+        if (!input) return;
+
+        input.addEventListener('change', () => {
+            const file = input.files?.[0];
+            if (file) onJobTemplateFileChange(file);
+        });
+
+        if (!zone) return;
+        ['dragenter', 'dragover'].forEach((ev) => {
+            zone.addEventListener(ev, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                zone.classList.add('drag-over');
+            });
+        });
+        ['dragleave', 'drop'].forEach((ev) => {
+            zone.addEventListener(ev, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                zone.classList.remove('drag-over');
+            });
+        });
+        zone.addEventListener('drop', (e) => {
+            const file = e.dataTransfer?.files?.[0];
+            if (!file) return;
+            try {
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+            } catch (_) { /* read-only in some browsers */ }
+            onJobTemplateFileChange(file);
+        });
     }
 
     async function extractEmailFromPdf(file) {
@@ -1566,7 +1819,18 @@
         document.getElementById('jobResetBtn')?.addEventListener('click', () => {
             document.getElementById('jobForm').reset();
             document.getElementById('jobEditId').value = '';
+            resetJobTemplateUi();
         });
+        document.getElementById('jobEditId')?.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val) {
+                fillJobForm(val);
+                return;
+            }
+            document.getElementById('jobForm')?.reset();
+            resetJobTemplateUi();
+        });
+        bindJobTemplateUpload();
         document.getElementById('screenForm')?.addEventListener('submit', submitManualScreen);
         document.getElementById('scrJob')?.addEventListener('change', onScreenJobPick);
         document.getElementById('scrCvFile')?.addEventListener('change', onScreenFileChange);

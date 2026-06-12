@@ -517,6 +517,20 @@
         el.value = v || fallback || el.options[0]?.value || '';
     }
 
+    function populateJobDisplayStyleSelect() {
+        const el = document.getElementById('jobDisplayStyleIn');
+        if (!el || !window.TAJobStyles) return;
+        el.innerHTML = window.TAJobStyles.buildSelectOptions(el.value || 'classic');
+    }
+
+    function updateJobDisplayStyleHint() {
+        const el = document.getElementById('jobDisplayStyleIn');
+        const hint = document.getElementById('jobDisplayStyleHint');
+        if (!el || !hint || !window.TAJobStyles) return;
+        const opt = window.TAJobStyles.OPTIONS.find((o) => o.id === el.value);
+        hint.textContent = opt?.hint || 'How this role looks on the public apply page.';
+    }
+
     function fillJobForm(id) {
         const j = JOBS.find((x) => x.id === id);
         if (!j) return;
@@ -533,6 +547,8 @@
         document.getElementById('jobStackIn').value = j.tech_stack || '';
         document.getElementById('jobSalaryIn').value = j.salary_range || '';
         document.getElementById('jobJdIn').value = j.jd_text || '';
+        setSelectValue('jobDisplayStyleIn', j.display_style || 'classic', 'classic');
+        updateJobDisplayStyleHint();
         clearJobFieldErrors();
         resetJobTemplateUi();
         deps.setView('jobs-create');
@@ -576,6 +592,9 @@
         const experience = document.getElementById('jobExpIn')?.value.trim() || null;
         const tech_stack = document.getElementById('jobStackIn')?.value.trim() || null;
         const salary_range = document.getElementById('jobSalaryIn')?.value.trim() || null;
+        const display_style = window.TAJobStyles?.normalize(
+            document.getElementById('jobDisplayStyleIn')?.value || 'classic'
+        ) || 'classic';
 
         const row = {
             title,
@@ -589,6 +608,7 @@
             experience,
             tech_stack,
             salary_range,
+            display_style,
             updated_at: new Date().toISOString(),
         };
 
@@ -604,6 +624,7 @@
             delete fallback.experience;
             delete fallback.tech_stack;
             delete fallback.salary_range;
+            delete fallback.display_style;
             const extras = [
                 experience ? 'Experience: ' + experience : '',
                 tech_stack ? 'Tech stack: ' + tech_stack : '',
@@ -2304,6 +2325,8 @@
         document.getElementById('jobResetBtn')?.addEventListener('click', () => {
             document.getElementById('jobForm').reset();
             document.getElementById('jobEditId').value = '';
+            setSelectValue('jobDisplayStyleIn', 'classic', 'classic');
+            updateJobDisplayStyleHint();
             clearJobFieldErrors();
             resetJobTemplateUi();
         });
@@ -2314,12 +2337,16 @@
                 return;
             }
             document.getElementById('jobForm')?.reset();
+            setSelectValue('jobDisplayStyleIn', 'classic', 'classic');
+            updateJobDisplayStyleHint();
             clearJobFieldErrors();
             resetJobTemplateUi();
         });
         bindJobTemplateUpload();
         bindJobFieldValidation();
         bindSocialPostEvents();
+        populateJobDisplayStyleSelect();
+        document.getElementById('jobDisplayStyleIn')?.addEventListener('change', updateJobDisplayStyleHint);
         document.getElementById('screenForm')?.addEventListener('submit', submitManualScreen);
         document.getElementById('scrJob')?.addEventListener('change', onScreenJobPick);
         document.getElementById('scrCvFile')?.addEventListener('change', onScreenFileChange);

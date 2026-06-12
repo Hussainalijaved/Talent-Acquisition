@@ -873,6 +873,30 @@
             return parts.join(' ').trim() || 'No screening notes recorded.';
         }
 
+        function sessionTimestamp(sess, prefer) {
+            if (!sess) return null;
+            if (prefer === 'start') return sess.created_at || sess.updated_at || null;
+            return sess.updated_at || sess.created_at || null;
+        }
+
+        async function fetchAssessmentSessions() {
+            const fullSelect =
+                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, updated_at';
+            let res = await sb.from('assessment_sessions')
+                .select(fullSelect)
+                .order('updated_at', { ascending: false })
+                .limit(1000);
+            if (res.error) {
+                const baseSelect =
+                    'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, updated_at';
+                res = await sb.from('assessment_sessions')
+                    .select(baseSelect)
+                    .order('updated_at', { ascending: false })
+                    .limit(1000);
+            }
+            return res;
+        }
+
         /* ---------- data ---------- */
         async function loadData() {
             if (!sb) { banner('Supabase failed to load. Check your connection and refresh.', 'err'); return; }
@@ -881,9 +905,7 @@
                 sb.from('candidates')
                     .select('id, candidate_email, stage, score, requisition_id, notes, created_at')
                     .order('created_at', { ascending: false }).limit(1000),
-                sb.from('assessment_sessions')
-                    .select('id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, created_at, updated_at')
-                    .order('updated_at', { ascending: false }).limit(1000),
+                fetchAssessmentSessions(),
             ]);
 
             if (candRes.error) { banner('Could not read candidates: ' + candRes.error.message + ' — run supabase_rls_candidates_read.sql.', 'err'); }
@@ -930,7 +952,7 @@
                         role: cfg.requisition_title || s.requisition_id || '',
                         notes: parseJson(s.screening),
                         rawNotes: null,
-                        created_at: s.created_at,
+                        created_at: sessionTimestamp(s, 'start'),
                         session: s,
                     });
                 }
@@ -942,8 +964,15 @@
             }
             SESSION_LIST = filterSessionsForScope(allSessions);
             render();
-            banner('Loaded ' + MERGED.length + ' candidate record(s) — updated ' + new Date().toLocaleTimeString() + '.', 'ok');
-            setTimeout(() => banner('', ''), 3500);
+            const loadMsg = 'Loaded ' + MERGED.length + ' candidate(s) and ' + SESSION_LIST.length + ' assessment session(s) — ' + new Date().toLocaleTimeString() + '.';
+            if (sessRes.error) {
+                banner(loadMsg + ' Assessment query failed — see error above.', 'err');
+            } else if (!SESSION_LIST.length && MERGED.some((m) => m.session)) {
+                banner(loadMsg, 'ok');
+            } else {
+                banner(loadMsg, 'ok');
+                setTimeout(() => banner('', ''), 4500);
+            }
         }
 
         function banner(msg, type) {
@@ -1260,8 +1289,8 @@
                 if (sort === 'score_desc') return (Number(b.score) || -1) - (Number(a.score) || -1);
                 if (sort === 'score_asc') return (Number(a.score) || 999) - (Number(b.score) || 999);
                 if (sort === 'email') return String(a.candidate_email).localeCompare(String(b.candidate_email));
-                if (sort === 'started') return new Date(b.created_at || 0) - new Date(a.created_at || 0);
-                return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0);
+                if (sort === 'started') return new Date(sessionTimestamp(b, 'start') || 0) - new Date(sessionTimestamp(a, 'start') || 0);
+                return new Date(sessionTimestamp(b) || 0) - new Date(sessionTimestamp(a) || 0);
             });
             return list;
         }
@@ -1281,7 +1310,7 @@
                     '<span class="c-role">—</span>') + '</td>' +
                 '<td>' + scoreBadge(sess.score) + '</td>' +
                 '<td><span class="assess-progress">' + answered + ' / ' + maxPh + '</span></td>' +
-                '<td>' + esc(fmtDate(sess.updated_at || sess.created_at)) + '</td>' +
+                '<td>' + esc(fmtDate(sessionTimestamp(sess))) + '</td>' +
                 '</tr>';
         }
 
@@ -1424,8 +1453,8 @@
             html += '<div class="report-meta">' +
                 '<span class="meta-chip">Status: ' + esc(sess.status || '—') + '</span>' +
                 '<span class="meta-chip">Progress: ' + esc(String(sess.current_phase || 1)) + ' / ' + maxPh + '</span>' +
-                '<span class="meta-chip">Started ' + esc(fmtDateTime(sess.created_at)) + '</span>' +
-                '<span class="meta-chip">Updated ' + esc(fmtDateTime(sess.updated_at || sess.created_at)) + '</span>' +
+                '<span class="meta-chip">Started ' + esc(fmtDateTime(sessionTimestamp(sess, 'start'))) + '</span>' +
+                '<span class="meta-chip">Updated ' + esc(fmtDateTime(sessionTimestamp(sess))) + '</span>' +
                 (cfg.requisition_title ? '<span class="meta-chip">' + esc(roleLabel(cfg.requisition_title)) + '</span>' : '') +
                 '</div>';
 
@@ -1473,7 +1502,7 @@
             document.getElementById('dAvatar').style.background = av.color;
             document.getElementById('dAvatar').textContent = av.init;
             document.getElementById('dTitle').textContent = sess.candidate_email || '—';
-            document.getElementById('dSub').innerHTML = roleLabel(role) + ' · Session ' + fmtDateTime(sess.updated_at || sess.created_at);
+            document.getElementById('dSub').innerHTML = roleLabel(role) + ' · Session ' + fmtDateTime(sessionTimestamp(sess));
 
             let html = '<div class="section"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"/><path d="M9 7a3 3 0 0 1 6 0v4H9z"/></svg>' +

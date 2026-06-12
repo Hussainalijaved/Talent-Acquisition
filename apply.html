@@ -125,284 +125,131 @@
         .outcome-stage.info { background: var(--convo-info-bg); color: var(--convo-info); }
         .outcome-stage.neutral { background: var(--convo-line-soft); color: var(--convo-muted); }
 
-        /* Job panel display styles (theme vars on #applyView) */
-        #applyView {
-            --jp-panel-bg: var(--convo-line-soft);
-            --jp-text: #0f172a;
-            --jp-text-soft: var(--convo-ink-soft);
-            --jp-muted: var(--convo-muted);
-            --jp-accent: var(--convo-brand);
-            --jp-accent-soft: var(--convo-brand-light);
-            --jp-border: var(--convo-line);
-            --jp-badge-bg: var(--convo-brand-light);
-            --jp-badge-color: var(--convo-brand);
-            --jp-pill-bg: var(--convo-line-soft);
-            --jp-pill-color: var(--convo-ink-soft);
-            --jp-pill-accent-bg: var(--convo-brand-light);
-            --jp-pill-accent-color: var(--convo-brand);
-            --jp-jd-bg: var(--convo-surface);
-            --jp-extra-bg: rgba(255,255,255,0.65);
-            --jp-btn: var(--convo-brand);
-            --jp-btn-hover: #094d8f;
-            --jp-btn-text: #fff;
-            --jp-step: var(--convo-brand);
-            --jp-focus: rgba(11, 92, 171, 0.12);
-            --jp-picker-bg: var(--convo-surface);
-        }
-        .job-panel {
-            transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
-        }
-        #applyView .page-split-left {
-            background: var(--jp-panel-bg);
-            color: var(--jp-text);
-            border-right-color: var(--jp-border);
-        }
-        #applyView .job-panel .col-heading { color: var(--jp-muted); }
-        #applyView .job-panel .badge {
-            background: var(--jp-badge-bg);
-            color: var(--jp-badge-color);
-        }
-        #applyView .job-panel h1,
-        #applyView .job-panel .job-panel-title {
-            color: var(--jp-text);
-        }
-        #applyView .job-panel .meta-pill {
-            background: var(--jp-pill-bg);
-            color: var(--jp-pill-color);
-            border: 1px solid var(--jp-border);
-        }
-        #applyView .job-panel .meta-pill.accent {
-            background: var(--jp-pill-accent-bg);
-            color: var(--jp-pill-accent-color);
-            border-color: transparent;
-        }
-        #applyView .job-panel .job-extra-meta {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-bottom: 14px;
-        }
-        #applyView .job-panel .job-extra-row {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--jp-text-soft);
-            padding: 10px 12px;
-            border-radius: 10px;
-            background: var(--jp-extra-bg);
-            border: 1px solid var(--jp-border);
-            line-height: 1.45;
-        }
-        #applyView .job-panel .job-extra-row strong {
-            color: var(--jp-accent);
-            font-weight: 800;
-            margin-right: 6px;
-        }
-        #applyView .job-panel .jd-preview {
-            background: var(--jp-jd-bg);
-            border-color: var(--jp-border);
-            color: var(--jp-text-soft);
-        }
-        .job-style-picker {
-            margin-top: 16px;
-            padding: 14px;
-            border-radius: 12px;
-            background: var(--jp-picker-bg);
-            border: 1px solid var(--jp-border);
-        }
-        .job-style-picker-label {
+        /* Hiring post templates — form hidden until Apply now */
+        .apply-layout.page-split { grid-template-columns: 1fr !important; min-height: 480px; }
+        .apply-layout.page-split.form-open { grid-template-columns: 1.15fr 0.85fr !important; }
+        .apply-form-panel { display: none; padding: 28px 32px; min-width: 0; border-top: 1px solid var(--convo-line); }
+        .apply-layout.form-open .apply-form-panel {
             display: block;
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            color: var(--jp-muted);
-            margin-bottom: 8px;
+            border-top: none;
+            border-left: 1px solid var(--convo-line);
+            animation: applyFormIn 0.35s ease;
         }
-        .job-style-select {
-            width: 100%;
-            padding: 11px 12px;
-            border: 1px solid var(--jp-border);
+        @keyframes applyFormIn {
+            from { opacity: 0; transform: translateX(12px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @media (max-width: 900px) {
+            .apply-layout.form-open { grid-template-columns: 1fr; }
+            .apply-layout.form-open .apply-form-panel {
+                border-left: none;
+                border-top: 1px solid var(--convo-line);
+            }
+        }
+
+        .job-template { min-width: 0; }
+        .tpl-inner { display: flex; flex-direction: column; min-height: 420px; }
+        .tpl-top-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px 16px;
+            padding: 24px 28px 0;
+        }
+        .tpl-hiring {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+        .tpl-apply-btn {
+            padding: 13px 26px;
+            border: none;
             border-radius: 10px;
             font-family: inherit;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--jp-text);
-            background: var(--jp-jd-bg);
+            font-size: 15px;
+            font-weight: 800;
             cursor: pointer;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
         }
-        .job-style-select:focus {
-            outline: none;
-            border-color: var(--jp-accent);
-            box-shadow: 0 0 0 3px var(--jp-focus);
+        .tpl-apply-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16); }
+        .tpl-body { padding: 20px 28px 28px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+        .tpl-title { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; margin: 0; color: #0f172a; }
+        .tpl-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tpl-extra { display: flex; flex-direction: column; gap: 8px; }
+        .tpl-extra .job-extra-row {
+            font-size: 13px; font-weight: 600; color: #475569;
+            padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.75);
+            border: 1px solid rgba(148, 163, 184, 0.35); line-height: 1.45;
         }
-        .job-style-picker-hint {
-            font-size: 12px;
-            color: var(--jp-muted);
-            margin: 8px 0 0;
-            line-height: 1.45;
-        }
-        #applyView .btn,
-        #applyView button.btn {
-            background: var(--jp-btn);
-            color: var(--jp-btn-text);
-            transition: background 0.2s ease, transform 0.12s ease;
-        }
-        #applyView .btn:hover { background: var(--jp-btn-hover); }
-        #applyView .step-num { background: var(--jp-step); color: var(--jp-btn-text); }
-        #applyView .file-zone:hover,
-        #applyView .file-zone.dragover {
-            border-color: var(--jp-accent);
-            background: var(--jp-accent-soft);
-        }
-        #applyView .file-zone-icon { background: var(--jp-accent-soft); color: var(--jp-accent); }
-        #applyView input[type="email"]:focus,
-        #applyView input[type="text"]:focus,
-        #applyView input[type="tel"]:focus {
-            border-color: var(--jp-accent);
-            box-shadow: 0 0 0 3px var(--jp-focus);
-        }
-        #applyView input.extracting { border-color: var(--jp-accent); background: var(--jp-accent-soft); }
-
-        /* Classic (default) — already set on #applyView */
-
-        /* Executive — dark & gold */
-        #applyView.job-theme-executive {
-            --jp-panel-bg: linear-gradient(165deg, #0f172a 0%, #1e293b 55%, #0f172a 100%);
-            --jp-text: #f8fafc;
-            --jp-text-soft: #cbd5e1;
-            --jp-muted: #94a3b8;
-            --jp-accent: #d4a853;
-            --jp-accent-soft: rgba(212, 168, 83, 0.14);
-            --jp-border: #475569;
-            --jp-badge-bg: rgba(212, 168, 83, 0.18);
-            --jp-badge-color: #fbbf24;
-            --jp-pill-bg: #334155;
-            --jp-pill-color: #e2e8f0;
-            --jp-pill-accent-bg: rgba(212, 168, 83, 0.22);
-            --jp-pill-accent-color: #fde68a;
-            --jp-jd-bg: #1e293b;
-            --jp-extra-bg: rgba(30, 41, 59, 0.85);
-            --jp-btn: #d4a853;
-            --jp-btn-hover: #b8892f;
-            --jp-btn-text: #0f172a;
-            --jp-step: #d4a853;
-            --jp-focus: rgba(212, 168, 83, 0.22);
-            --jp-picker-bg: #1e293b;
-        }
-        #applyView.job-theme-executive .page-split-left {
-            background: #0f172a;
-            background-image: linear-gradient(165deg, #0f172a 0%, #1e293b 55%, #0f172a 100%);
+        .tpl-extra .job-extra-row strong { font-weight: 800; margin-right: 6px; }
+        .tpl-jd {
+            flex: 1; margin-top: 4px; max-height: 420px;
+            background: rgba(255,255,255,0.82); border: 1px solid rgba(148, 163, 184, 0.35);
         }
 
-        /* Modern — gradient */
-        #applyView.job-theme-modern {
-            --jp-panel-bg: linear-gradient(145deg, #eff6ff 0%, #dbeafe 50%, #ede9fe 100%);
-            --jp-text: #1e1b4b;
-            --jp-text-soft: #4338ca;
-            --jp-muted: #6366f1;
-            --jp-accent: #4f46e5;
-            --jp-accent-soft: rgba(79, 70, 229, 0.12);
-            --jp-border: #c7d2fe;
-            --jp-badge-bg: #4f46e5;
-            --jp-badge-color: #fff;
-            --jp-pill-bg: #fff;
-            --jp-pill-color: #4338ca;
-            --jp-pill-accent-bg: #4f46e5;
-            --jp-pill-accent-color: #fff;
-            --jp-jd-bg: #fff;
-            --jp-extra-bg: rgba(255,255,255,0.9);
-            --jp-btn: linear-gradient(135deg, #4f46e5, #2563eb);
-            --jp-btn-hover: #4338ca;
-            --jp-step: #4f46e5;
-            --jp-focus: rgba(79, 70, 229, 0.18);
-            --jp-picker-bg: rgba(255,255,255,0.92);
+        /* Template 1 — hiring + apply at TOP, light sky blue */
+        .apply-tpl-hiring-top .page-split-left {
+            background: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-right: none;
         }
-        #applyView.job-theme-modern .page-split-left {
-            background: linear-gradient(145deg, #eff6ff 0%, #dbeafe 50%, #ede9fe 100%);
-        }
-        #applyView.job-theme-modern .btn {
-            background: linear-gradient(135deg, #4f46e5, #2563eb);
-        }
+        .apply-tpl-hiring-top .tpl-hiring { background: #38bdf8; color: #fff; }
+        .apply-tpl-hiring-top .tpl-apply-btn { background: #0284c7; color: #fff; }
+        .apply-tpl-hiring-top .tpl-extra .job-extra-row strong { color: #0284c7; }
+        .apply-tpl-hiring-top .meta-pill.accent { background: #bae6fd; color: #0369a1; }
 
-        /* Minimal */
-        #applyView.job-theme-minimal {
-            --jp-panel-bg: #fff;
-            --jp-text: #18181b;
-            --jp-text-soft: #52525b;
-            --jp-muted: #a1a1aa;
-            --jp-accent: #18181b;
-            --jp-accent-soft: #f4f4f5;
-            --jp-border: #e4e4e7;
-            --jp-badge-bg: #f4f4f5;
-            --jp-badge-color: #52525b;
-            --jp-pill-bg: #fafafa;
-            --jp-pill-color: #52525b;
-            --jp-pill-accent-bg: #18181b;
-            --jp-pill-accent-color: #fff;
-            --jp-jd-bg: #fafafa;
-            --jp-extra-bg: #fafafa;
-            --jp-btn: #18181b;
-            --jp-btn-hover: #3f3f46;
-            --jp-step: #18181b;
-            --jp-focus: rgba(24, 24, 27, 0.1);
-            --jp-picker-bg: #fafafa;
+        /* Template 2 — job first, hiring + apply at BOTTOM, light lavender */
+        .apply-tpl-hiring-bottom .page-split-left {
+            background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%);
+            border-right: none;
         }
-        #applyView.job-theme-minimal .page-split-left { background: #fff; }
-        #applyView.job-theme-minimal .job-panel h1 { font-weight: 700; letter-spacing: -0.02em; }
+        .apply-tpl-hiring-bottom .tpl-inner { flex-direction: column; }
+        .apply-tpl-hiring-bottom .tpl-body { order: 1; }
+        .apply-tpl-hiring-bottom .tpl-top-bar {
+            order: 2;
+            margin-top: auto;
+            padding: 20px 28px 28px;
+            border-top: 1px solid rgba(167, 139, 250, 0.35);
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .apply-tpl-hiring-bottom .tpl-hiring { background: #a78bfa; color: #fff; align-self: center; }
+        .apply-tpl-hiring-bottom .tpl-apply-btn { background: #7c3aed; color: #fff; width: 100%; text-align: center; }
+        .apply-tpl-hiring-bottom .tpl-extra .job-extra-row strong { color: #7c3aed; }
+        .apply-tpl-hiring-bottom .meta-pill.accent { background: #ede9fe; color: #6d28d9; }
 
-        /* Bold */
-        #applyView.job-theme-bold {
-            --jp-panel-bg: #09090b;
-            --jp-text: #fafafa;
-            --jp-text-soft: #d4d4d8;
-            --jp-muted: #a1a1aa;
-            --jp-accent: #38bdf8;
-            --jp-accent-soft: rgba(56, 189, 248, 0.12);
-            --jp-border: #3f3f46;
-            --jp-badge-bg: #38bdf8;
-            --jp-badge-color: #09090b;
-            --jp-pill-bg: #27272a;
-            --jp-pill-color: #e4e4e7;
-            --jp-pill-accent-bg: #38bdf8;
-            --jp-pill-accent-color: #09090b;
-            --jp-jd-bg: #18181b;
-            --jp-extra-bg: #27272a;
-            --jp-btn: #38bdf8;
-            --jp-btn-hover: #0ea5e9;
-            --jp-btn-text: #09090b;
-            --jp-step: #38bdf8;
-            --jp-focus: rgba(56, 189, 248, 0.2);
-            --jp-picker-bg: #18181b;
+        /* Template 3 — LinkedIn-style card, hiring header + apply, warm cream */
+        .apply-tpl-hiring-card .page-split-left {
+            background: #fffbeb;
+            padding: 24px;
+            border-right: none;
         }
-        #applyView.job-theme-bold .page-split-left { background: #09090b; }
-        #applyView.job-theme-bold .job-panel h1 { font-size: 32px; font-weight: 900; }
-
-        /* Fresh — teal */
-        #applyView.job-theme-fresh {
-            --jp-panel-bg: linear-gradient(160deg, #ecfdf5 0%, #d1fae5 45%, #ecfeff 100%);
-            --jp-text: #064e3b;
-            --jp-text-soft: #047857;
-            --jp-muted: #0d9488;
-            --jp-accent: #0d9488;
-            --jp-accent-soft: rgba(13, 148, 136, 0.12);
-            --jp-border: #99f6e4;
-            --jp-badge-bg: #0d9488;
-            --jp-badge-color: #fff;
-            --jp-pill-bg: #fff;
-            --jp-pill-color: #047857;
-            --jp-pill-accent-bg: #14b8a6;
-            --jp-pill-accent-color: #fff;
-            --jp-jd-bg: #fff;
-            --jp-extra-bg: rgba(255,255,255,0.92);
-            --jp-btn: #0d9488;
-            --jp-btn-hover: #0f766e;
-            --jp-step: #14b8a6;
-            --jp-focus: rgba(13, 148, 136, 0.18);
-            --jp-picker-bg: rgba(255,255,255,0.95);
+        .apply-tpl-hiring-card .tpl-inner {
+            background: #fff;
+            border-radius: 16px;
+            border: 1px solid #fde68a;
+            box-shadow: 0 10px 30px rgba(251, 191, 36, 0.15);
+            overflow: hidden;
+            min-height: 0;
         }
-        #applyView.job-theme-fresh .page-split-left {
-            background: linear-gradient(160deg, #ecfdf5 0%, #d1fae5 45%, #ecfeff 100%);
+        .apply-tpl-hiring-card .tpl-top-bar {
+            background: linear-gradient(90deg, #ffedd5 0%, #fef3c7 100%);
+            padding: 18px 22px;
+            border-bottom: 1px solid #fde68a;
+            justify-content: space-between;
         }
+        .apply-tpl-hiring-card .tpl-hiring { background: #fff; color: #c2410c; border: 1px solid #fdba74; }
+        .apply-tpl-hiring-card .tpl-apply-btn { background: #ea580c; color: #fff; }
+        .apply-tpl-hiring-card .tpl-body { padding: 22px; }
+        .apply-tpl-hiring-card .tpl-jd { background: #fffbeb; border-color: #fde68a; }
+        .apply-tpl-hiring-card .tpl-extra .job-extra-row { background: #fffbeb; border-color: #fde68a; }
+        .apply-tpl-hiring-card .tpl-extra .job-extra-row strong { color: #ea580c; }
+        .apply-tpl-hiring-card .meta-pill.accent { background: #ffedd5; color: #c2410c; }
     </style>
 </head>
 <body class="convo-body">
@@ -446,22 +293,23 @@
 
         <div id="applyView" style="display:none">
             <div class="card">
-                <div class="page-split">
-                    <aside class="page-split-left job-panel" id="jobPanel">
-                        <p class="col-heading">Role description</p>
-                        <span class="badge">Open position</span>
-                        <h1 id="jobTitle" class="job-panel-title">—</h1>
-                        <div class="job-meta" id="jobMeta"></div>
-                        <div class="job-extra-meta" id="jobExtraMeta"></div>
-                        <div class="jd-preview" id="jdPreview"></div>
-                        <div class="job-style-picker">
-                            <label for="jobStyleSelect" class="job-style-picker-label">Job display style</label>
-                            <select id="jobStyleSelect" class="job-style-select" aria-label="Job display style"></select>
-                            <p class="job-style-picker-hint" id="jobStyleHint"></p>
+                <div class="apply-layout page-split" id="applyLayout">
+                    <aside class="page-split-left job-template apply-tpl-hiring-top" id="jobTemplatePanel">
+                        <div class="tpl-inner">
+                            <div class="tpl-top-bar">
+                                <span class="tpl-hiring">We're hiring</span>
+                                <button type="button" class="tpl-apply-btn" id="applyNowBtn">Apply now</button>
+                            </div>
+                            <div class="tpl-body">
+                                <h1 id="jobTitle" class="tpl-title">—</h1>
+                                <div class="job-meta tpl-meta" id="jobMeta"></div>
+                                <div class="job-extra-meta tpl-extra" id="jobExtraMeta"></div>
+                                <div class="jd-preview tpl-jd" id="jdPreview"></div>
+                            </div>
                         </div>
                     </aside>
 
-                    <section class="page-split-right">
+                    <section class="page-split-right apply-form-panel" id="applyFormPanel">
                         <p class="col-heading">Your application</p>
                         <div id="statusBox" class="status-box"></div>
 
@@ -687,6 +535,7 @@
             btn.textContent = 'Submit application';
 
             setFlowMode(false);
+            closeApplyForm();
             hideAllPanels();
             formView.classList.remove('hide');
 
@@ -729,6 +578,7 @@
         }
 
         function showSubmittingView(email, fileNameText, phase) {
+            openApplyForm();
             setFlowMode(true);
             hideAllPanels();
             submittingView.classList.add('show');
@@ -796,6 +646,7 @@
         function showOutcome({ iconClass, icon, title, message, detail, score, actionsHtml, stage }) {
             submitSucceeded = true;
             clearSubmitTimers();
+            openApplyForm();
             setFlowMode(true);
             hideAllPanels();
             successView.classList.add('show');
@@ -1145,6 +996,7 @@
         function showFailureView(message) {
             submitSucceeded = false;
             clearSubmitTimers();
+            openApplyForm();
             setFlowMode(true);
             hideAllPanels();
             failureView.classList.add('show');
@@ -1172,33 +1024,28 @@
                 .replace(/"/g, '&quot;');
         }
 
-        function populateJobStyleSelect(selected) {
-            const sel = document.getElementById('jobStyleSelect');
-            if (!sel || !window.TAJobStyles) return;
-            sel.innerHTML = window.TAJobStyles.buildSelectOptions(selected);
-            updateJobStyleHint();
+        function applyJobTemplate(templateId) {
+            const panel = document.getElementById('jobTemplatePanel');
+            if (!panel || !window.TAJobStyles) return;
+            const id = window.TAJobStyles.normalize(templateId);
+            window.TAJobStyles.ids().forEach((s) => panel.classList.remove('apply-tpl-' + s));
+            panel.classList.add('apply-tpl-' + id);
         }
 
-        function updateJobStyleHint() {
-            const sel = document.getElementById('jobStyleSelect');
-            const hint = document.getElementById('jobStyleHint');
-            if (!sel || !hint || !window.TAJobStyles) return;
-            const opt = window.TAJobStyles.OPTIONS.find((o) => o.id === sel.value);
-            hint.textContent = opt?.hint || '';
-        }
-
-        function applyJobDisplayStyle(styleId, persist) {
-            const root = document.getElementById('applyView');
-            if (!root || !window.TAJobStyles) return;
-            const id = window.TAJobStyles.normalize(styleId);
-            window.TAJobStyles.ids().forEach((s) => root.classList.remove('job-theme-' + s));
-            root.classList.add('job-theme-' + id);
-            const styleSelect = document.getElementById('jobStyleSelect');
-            if (styleSelect && styleSelect.value !== id) styleSelect.value = id;
-            updateJobStyleHint();
-            if (persist && jobSlug) {
-                try { localStorage.setItem('ta_job_style_' + jobSlug, id); } catch (_) { /* ignore */ }
+        function openApplyForm() {
+            const layout = document.getElementById('applyLayout');
+            const panel = document.getElementById('applyFormPanel');
+            if (!layout || !panel) return;
+            layout.classList.add('form-open');
+            panel.classList.add('is-open');
+            if (window.matchMedia('(max-width: 900px)').matches) {
+                panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
+        }
+
+        function closeApplyForm() {
+            document.getElementById('applyLayout')?.classList.remove('form-open');
+            document.getElementById('applyFormPanel')?.classList.remove('is-open');
         }
 
         function renderJobExtraMeta(job) {
@@ -1534,14 +1381,8 @@
                 .map((m, i) => '<span class="meta-pill' + (i === 0 ? ' accent' : '') + '">' + escapeHtml(m) + '</span>')
                 .join('');
 
-            const defaultStyle = currentJob.display_style || 'classic';
-            let initialStyle = defaultStyle;
-            try {
-                const saved = localStorage.getItem('ta_job_style_' + jobSlug);
-                if (saved && window.TAJobStyles?.isValid(saved)) initialStyle = saved;
-            } catch (_) { /* ignore */ }
-            populateJobStyleSelect(initialStyle);
-            applyJobDisplayStyle(initialStyle, false);
+            applyJobTemplate(currentJob.display_style || 'hiring-top');
+            closeApplyForm();
 
             loadingView.style.display = 'none';
             applyView.style.display = 'block';
@@ -1647,9 +1488,7 @@
 
         document.getElementById('retryBtn').addEventListener('click', resetApplyFormUi);
 
-        document.getElementById('jobStyleSelect')?.addEventListener('change', (e) => {
-            applyJobDisplayStyle(e.target.value, true);
-        });
+        document.getElementById('applyNowBtn')?.addEventListener('click', openApplyForm);
 
         window.addEventListener('pageshow', (e) => {
             if (e.persisted) resetApplyFormUi();

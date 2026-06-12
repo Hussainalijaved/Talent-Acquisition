@@ -1,26 +1,47 @@
 /**
- * Shared job display styles for apply page + admin job form.
+ * Apply page hiring post templates (admin picks per job).
  */
 (function (global) {
     'use strict';
 
-    const DEFAULT = 'classic';
+    const DEFAULT = 'hiring-top';
 
     const OPTIONS = [
-        { id: 'classic', label: 'Classic — CONVO blue', hint: 'White panel, brand blue accents (default)' },
-        { id: 'executive', label: 'Executive — dark & gold', hint: 'Premium dark panel with gold highlights' },
-        { id: 'modern', label: 'Modern — gradient', hint: 'Soft blue gradient, rounded cards' },
-        { id: 'minimal', label: 'Minimal — clean', hint: 'Light, airy layout with subtle borders' },
-        { id: 'bold', label: 'Bold — high contrast', hint: 'Dark panel, large type, vivid accent' },
-        { id: 'fresh', label: 'Fresh — teal', hint: 'Mint/teal tones, friendly feel' },
+        {
+            id: 'hiring-top',
+            label: 'Hiring banner top',
+            hint: 'Light blue — "We\'re hiring" and Apply now at the top, then job details',
+        },
+        {
+            id: 'hiring-bottom',
+            label: 'Apply at bottom',
+            hint: 'Light lavender — job details first, hiring CTA and Apply now at the bottom',
+        },
+        {
+            id: 'hiring-card',
+            label: 'LinkedIn-style card',
+            hint: 'Warm cream card — hiring header with Apply now, content below',
+        },
     ];
+
+    const LEGACY_MAP = {
+        classic: 'hiring-top',
+        executive: 'hiring-card',
+        modern: 'hiring-top',
+        minimal: 'hiring-bottom',
+        bold: 'hiring-card',
+        fresh: 'hiring-bottom',
+    };
 
     function isValid(id) {
         return OPTIONS.some((o) => o.id === id);
     }
 
     function normalize(id) {
-        return isValid(id) ? id : DEFAULT;
+        const key = String(id || '').trim();
+        if (isValid(key)) return key;
+        if (LEGACY_MAP[key]) return LEGACY_MAP[key];
+        return DEFAULT;
     }
 
     function buildSelectOptions(selected) {

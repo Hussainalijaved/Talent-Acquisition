@@ -520,7 +520,7 @@
     function populateJobDisplayStyleSelect() {
         const el = document.getElementById('jobDisplayStyleIn');
         if (!el || !window.TAJobStyles) return;
-        el.innerHTML = window.TAJobStyles.buildSelectOptions(el.value || 'classic');
+        el.innerHTML = window.TAJobStyles.buildSelectOptions(el.value || 'hiring-top');
     }
 
     function updateJobDisplayStyleHint() {
@@ -547,7 +547,7 @@
         document.getElementById('jobStackIn').value = j.tech_stack || '';
         document.getElementById('jobSalaryIn').value = j.salary_range || '';
         document.getElementById('jobJdIn').value = j.jd_text || '';
-        setSelectValue('jobDisplayStyleIn', j.display_style || 'classic', 'classic');
+        setSelectValue('jobDisplayStyleIn', window.TAJobStyles?.normalize(j.display_style) || 'hiring-top', 'hiring-top');
         updateJobDisplayStyleHint();
         clearJobFieldErrors();
         resetJobTemplateUi();
@@ -593,8 +593,8 @@
         const tech_stack = document.getElementById('jobStackIn')?.value.trim() || null;
         const salary_range = document.getElementById('jobSalaryIn')?.value.trim() || null;
         const display_style = window.TAJobStyles?.normalize(
-            document.getElementById('jobDisplayStyleIn')?.value || 'classic'
-        ) || 'classic';
+            document.getElementById('jobDisplayStyleIn')?.value || 'hiring-top'
+        ) || 'hiring-top';
 
         const row = {
             title,
@@ -2325,7 +2325,7 @@
         document.getElementById('jobResetBtn')?.addEventListener('click', () => {
             document.getElementById('jobForm').reset();
             document.getElementById('jobEditId').value = '';
-            setSelectValue('jobDisplayStyleIn', 'classic', 'classic');
+            setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
             clearJobFieldErrors();
             resetJobTemplateUi();
@@ -2337,7 +2337,7 @@
                 return;
             }
             document.getElementById('jobForm')?.reset();
-            setSelectValue('jobDisplayStyleIn', 'classic', 'classic');
+            setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
             clearJobFieldErrors();
             resetJobTemplateUi();

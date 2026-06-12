@@ -49,13 +49,34 @@
             max-height: 480px; overflow-y: auto; padding: 16px; background: var(--convo-surface);
             border: 1px solid var(--convo-line); border-radius: var(--convo-radius); margin-top: 12px;
         }
-        .file-zone { border: 2px dashed var(--convo-line); border-radius: var(--convo-radius); padding: 28px 20px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; position: relative; }
-        .file-zone:hover, .file-zone.dragover { border-color: var(--convo-brand); background: var(--convo-brand-light); }
-        .file-zone.has-file { border-style: solid; border-color: var(--convo-success); background: var(--convo-success-bg); }
-        .file-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-        .file-zone-icon { width: 44px; height: 44px; margin: 0 auto 12px; border-radius: 12px; background: var(--convo-brand-light); display: flex; align-items: center; justify-content: center; color: var(--convo-brand); }
-        .file-zone-label { font-size: 14px; font-weight: 600; }
-        .file-zone-hint { font-size: 12px; color: var(--convo-muted); margin-top: 6px; }
+        .cv-upload-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px 14px;
+        }
+        .cv-file-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+        }
+        .cv-upload-btn {
+            width: auto !important;
+            padding: 12px 22px !important;
+            font-size: 14px !important;
+            flex-shrink: 0;
+        }
+        .cv-upload-btn.has-file {
+            background: var(--convo-success) !important;
+        }
+        .cv-upload-row .file-name {
+            margin-top: 0;
+            flex: 1;
+            min-width: 120px;
+        }
         .field { margin-bottom: 20px; }
         .field-label { font-size: 13px; font-weight: 700; color: var(--convo-ink-soft); }
         .field-hint { font-size: 12px; color: var(--convo-muted); margin-top: 6px; }
@@ -189,8 +210,23 @@
         }
         .tpl-extra .job-extra-row strong { font-weight: 800; margin-right: 6px; }
         .tpl-jd {
-            flex: 1; margin-top: 4px; max-height: 420px;
-            background: rgba(255,255,255,0.82); border: 1px solid rgba(148, 163, 184, 0.35);
+            flex: 1;
+            margin-top: 4px;
+            min-height: 360px;
+            max-height: 420px;
+            font-size: 15px;
+            line-height: 1.75;
+            background: rgba(255,255,255,0.82);
+            border: 1px solid rgba(148, 163, 184, 0.35);
+        }
+        .apply-layout:not(.form-open) .tpl-inner { min-height: 560px; }
+        .apply-layout:not(.form-open) .tpl-jd {
+            min-height: 480px;
+            max-height: min(72vh, 680px);
+        }
+        .apply-layout.form-open .tpl-jd {
+            min-height: 200px;
+            max-height: 260px;
         }
 
         /* Template 1 — hiring + apply at TOP, light sky blue */
@@ -332,15 +368,12 @@
                                         <span class="step-num">1</span>
                                         <label class="field-label" for="cvFile">Upload CV (PDF)</label>
                                     </div>
-                                    <div class="file-zone" id="fileZone">
-                                        <div class="file-zone-icon" aria-hidden="true">
-                                            <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                                        </div>
-                                        <div class="file-zone-label">Drop your PDF here or click to browse</div>
-                                        <div class="file-zone-hint">Name, email &amp; phone auto-detected from your CV</div>
-                                        <input type="file" id="cvFile" accept=".pdf,application/pdf" required />
-                                        <div class="file-name" id="fileName"></div>
+                                    <div class="cv-upload-row" id="fileZone">
+                                        <input type="file" id="cvFile" class="cv-file-input" accept=".pdf,application/pdf" required />
+                                        <button type="button" class="btn cv-upload-btn" id="cvUploadBtn">Choose PDF</button>
+                                        <span class="file-name" id="fileName"></span>
                                     </div>
+                                    <p class="field-hint">Name, email &amp; phone auto-detected from your CV</p>
                                 </div>
 
                                 <div class="field">
@@ -447,6 +480,7 @@
         const successView = document.getElementById('successView');
         const failureView = document.getElementById('failureView');
         const fileZone = document.getElementById('fileZone');
+        const cvUploadBtn = document.getElementById('cvUploadBtn');
         const cvFile = document.getElementById('cvFile');
         const fileName = document.getElementById('fileName');
         const emailInput = document.getElementById('email');
@@ -556,7 +590,8 @@
 
             cvFile.value = '';
             fileName.textContent = '';
-            fileZone.classList.remove('has-file', 'dragover');
+            cvUploadBtn?.classList.remove('has-file');
+            if (cvUploadBtn) cvUploadBtn.textContent = 'Choose PDF';
 
             emailInput.value = '';
             emailInput.classList.remove('extracting', 'extracted');
@@ -1260,11 +1295,13 @@
         async function handleCvSelected(file) {
             if (!file) {
                 fileName.textContent = '';
-                fileZone.classList.remove('has-file');
+                cvUploadBtn?.classList.remove('has-file');
+                if (cvUploadBtn) cvUploadBtn.textContent = 'Choose PDF';
                 return;
             }
             fileName.textContent = '✓ ' + file.name;
-            fileZone.classList.add('has-file');
+            cvUploadBtn?.classList.add('has-file');
+            if (cvUploadBtn) cvUploadBtn.textContent = 'Change PDF';
 
             emailInput.classList.add('extracting');
             emailInput.classList.remove('extracted');
@@ -1300,8 +1337,8 @@
                 'Phone not found in PDF');
         }
 
-        if (fileZone && cvFile) {
-            fileZone.addEventListener('click', () => {
+        if (cvUploadBtn && cvFile) {
+            cvUploadBtn.addEventListener('click', () => {
                 if (submitSucceeded) resetApplyFormUi();
                 cvFile.click();
             });
@@ -1309,19 +1346,6 @@
                 cvFile.value = '';
             });
             cvFile.addEventListener('change', () => handleCvSelected(cvFile.files[0]));
-            fileZone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                fileZone.classList.add('dragover');
-            });
-            fileZone.addEventListener('dragleave', () => fileZone.classList.remove('dragover'));
-            fileZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                fileZone.classList.remove('dragover');
-                if (e.dataTransfer.files.length) {
-                    cvFile.files = e.dataTransfer.files;
-                    handleCvSelected(cvFile.files[0]);
-                }
-            });
         }
 
         async function init() {

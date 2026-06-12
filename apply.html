@@ -338,7 +338,6 @@
         .apply-tpl-hiring-poster .tpl-inner {
             min-height: 0;
             width: 100%;
-            max-width: 540px;
         }
         .tpl-poster-card {
             background: #f5f0e6;
@@ -423,6 +422,41 @@
             transform: translateY(-2px);
             box-shadow: 0 8px 24px rgba(74, 55, 40, 0.28);
         }
+        .tpl-poster-body {
+            overflow-y: auto;
+            transition: max-height 0.3s ease, min-height 0.3s ease;
+        }
+        /* Poster — expanded before Apply (same flow as hiring-top) */
+        .apply-layout:not(.form-open) .apply-tpl-hiring-poster .page-split-left {
+            padding: 28px 32px;
+        }
+        .apply-layout:not(.form-open) .apply-tpl-hiring-poster .tpl-inner {
+            max-width: 100%;
+            width: 100%;
+        }
+        .apply-layout:not(.form-open) .apply-tpl-hiring-poster .tpl-poster-card {
+            width: 100%;
+        }
+        .apply-layout:not(.form-open) .apply-tpl-hiring-poster .tpl-poster-body {
+            min-height: 480px;
+            max-height: min(72vh, 680px);
+        }
+        /* Poster — contracted + form panel after Apply */
+        .apply-layout.form-open .apply-tpl-hiring-poster .page-split-left {
+            padding: 24px 20px 28px;
+            overflow-y: auto;
+        }
+        .apply-layout.form-open .apply-tpl-hiring-poster .tpl-inner {
+            max-width: 100%;
+            width: 100%;
+        }
+        .apply-layout.form-open .apply-tpl-hiring-poster .tpl-poster-body {
+            min-height: 200px;
+            max-height: 260px;
+        }
+        .apply-layout.form-open .tpl-poster-apply-btn {
+            display: none;
+        }
     </style>
 </head>
 <body class="convo-body">
@@ -487,18 +521,20 @@
                                     <h2 class="tpl-poster-headline">WE ARE HIRING!</h2>
                                     <span class="tpl-poster-badge">OPEN POSITION</span>
                                     <h1 class="tpl-poster-title" id="jobTitlePoster">—</h1>
-                                    <section class="tpl-poster-block">
-                                        <h3>ABOUT THE ROLE</h3>
-                                        <p id="jobPosterAbout"></p>
-                                    </section>
-                                    <section class="tpl-poster-block">
-                                        <h3>WHAT WE NEED</h3>
-                                        <ul id="jobPosterNeeds"></ul>
-                                    </section>
-                                    <section class="tpl-poster-block" id="jobPosterNiceSection">
-                                        <h3>NICE TO HAVE</h3>
-                                        <ul id="jobPosterNice"></ul>
-                                    </section>
+                                    <div class="tpl-poster-body">
+                                        <section class="tpl-poster-block">
+                                            <h3>ABOUT THE ROLE</h3>
+                                            <p id="jobPosterAbout"></p>
+                                        </section>
+                                        <section class="tpl-poster-block">
+                                            <h3>WHAT WE NEED</h3>
+                                            <ul id="jobPosterNeeds"></ul>
+                                        </section>
+                                        <section class="tpl-poster-block" id="jobPosterNiceSection">
+                                            <h3>NICE TO HAVE</h3>
+                                            <ul id="jobPosterNice"></ul>
+                                        </section>
+                                    </div>
                                     <button type="button" class="tpl-poster-apply-btn" id="applyNowBtnPoster">APPLY NOW</button>
                                 </article>
                             </div>
@@ -1260,9 +1296,8 @@
             const aboutEl = document.getElementById('jobPosterAbout');
             const jd = String(job.jd_text || '').trim();
             const fallbackAbout = jd.split(/\n\n+/).map((p) => p.trim()).find((p) => p.length > 40) || jd.slice(0, 480);
-            if (aboutEl) {
-                aboutEl.textContent = parsed.about || fallbackAbout || 'Join our team and help us build great products.';
-            }
+            const aboutText = parsed.about || fallbackAbout || 'Join our team and help us build great products.';
+            if (aboutEl) aboutEl.textContent = aboutText;
 
             let needs = parsed.needs;
             if (!needs.length && job.tech_stack) {
@@ -1311,6 +1346,13 @@
             if (!layout || !panel) return;
             layout.classList.add('form-open');
             panel.classList.add('is-open');
+            try {
+                const url = new URL(window.location.href);
+                if (url.searchParams.get('apply') !== '1') {
+                    url.searchParams.set('apply', '1');
+                    window.history.replaceState(null, '', url);
+                }
+            } catch (_) { /* optional */ }
             if (window.matchMedia('(max-width: 900px)').matches) {
                 panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
@@ -1319,6 +1361,13 @@
         function closeApplyForm() {
             document.getElementById('applyLayout')?.classList.remove('form-open');
             document.getElementById('applyFormPanel')?.classList.remove('is-open');
+            try {
+                const url = new URL(window.location.href);
+                if (url.searchParams.has('apply')) {
+                    url.searchParams.delete('apply');
+                    window.history.replaceState(null, '', url);
+                }
+            } catch (_) { /* optional */ }
         }
 
         function renderJobExtraMeta(job) {
@@ -1399,6 +1448,7 @@
             let text = '';
             let compact = '';
             const linkEmails = [];
+            const linkPhones = [];
             for (let p = 1; p <= pages; p++) {
                 const page = await pdf.getPage(p);
                 const content = await page.getTextContent();
@@ -1408,12 +1458,15 @@
                 try {
                     const annots = await page.getAnnotations();
                     for (const a of annots || []) {
-                        const fromUrl = emailFromAnnotationUrl(a.url || a.unsafeUrl);
+                        const url = String(a.url || a.unsafeUrl || '').trim();
+                        const fromUrl = emailFromAnnotationUrl(url);
                         if (fromUrl) linkEmails.push(fromUrl);
+                        const fromTel = phoneFromAnnotationUrl(url);
+                        if (fromTel) linkPhones.push(fromTel);
                     }
                 } catch (_) { /* optional */ }
             }
-            return { text, compact, linkEmails };
+            return { text, compact, linkEmails, linkPhones };
         }
 
         function cleanDisplayName(s) {
@@ -1473,41 +1526,167 @@
             return String(s || '').replace(/\s+/g, ' ').trim();
         }
 
-        function extractPhoneFromCvText(text) {
-            const blob = String(text || '');
-
-            const labeled = blob.match(/(?:phone|mobile|cell|contact|tel(?:ephone)?|whatsapp)\s*[:\-]\s*([+\d\s().-]{8,22})/i);
-            if (labeled) {
-                const p = normalizePhone(labeled[1]);
-                if (p.replace(/\D/g, '').length >= 10) return p;
+        function phoneFromAnnotationUrl(url) {
+            const u = String(url || '').trim();
+            if (!u) return '';
+            if (/^tel:/i.test(u)) {
+                const raw = u.replace(/^tel:/i, '').split('?')[0].trim();
+                const digits = raw.replace(/\D/g, '');
+                if (digits.length >= 10 && digits.length <= 15) return normalizePhone(raw);
             }
+            const m = u.match(/(?:\+?\d[\d\s().-]{7,18}\d)/);
+            return m ? normalizePhone(m[0]) : '';
+        }
 
-            const early = blob.slice(0, 2000);
-            const patterns = [
-                /\+92[\s.-]?3\d{2}[\s.-]?\d{7}/g,
-                /03\d{2}[\s.-]?\d{7}/g,
-                /\+?\d{1,3}[\s.-]?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}/g,
-            ];
+        function digitsOnly(s) {
+            return String(s || '').replace(/\D/g, '');
+        }
 
-            for (const pat of patterns) {
-                const found = early.match(pat);
-                if (found && found.length) {
-                    const p = normalizePhone(found[0]);
-                    const digits = p.replace(/\D/g, '');
-                    if (digits.length >= 10 && digits.length <= 15) return p;
-                }
+        function normalizePhoneDigits(digits) {
+            let d = String(digits || '');
+            if (d.startsWith('0092')) d = d.slice(2);
+            if (d.startsWith('92') && d.length === 12) return d;
+            if (d.startsWith('03') && d.length === 11) return d;
+            return d;
+        }
+
+        function isPlausiblePhone(raw, digits) {
+            const d = normalizePhoneDigits(digits);
+            if (!d || d.length < 10 || d.length > 15) return false;
+            if (/^(\d)\1{8,}$/.test(d)) return false;
+            if (/^(19|20)\d{2}$/.test(d)) return false;
+            if (/^0{2,}/.test(d) && d.length < 11) return false;
+            if (/^03\d{9}$/.test(d)) return true;
+            if (/^923\d{9}$/.test(d)) return true;
+            if (/^92\d{10}$/.test(d) && d[2] === '3') return true;
+            if (d.length === 10 && !/^0/.test(d)) return true;
+            if (d.length === 11 && d[0] === '1') return true;
+            if (/\+/.test(raw) && d.length >= 10) return true;
+            return d.length >= 10 && d.length <= 13;
+        }
+
+        function scorePhoneCandidate(raw, digits, index) {
+            let score = 0;
+            if (/^03\d{9}$/.test(digits)) score += 40;
+            if (/^923\d{9}$/.test(digits) || /^00923\d{9}$/.test(digits)) score += 38;
+            if (/\+92|0092/.test(String(raw))) score += 20;
+            if (/whatsapp|mobile|cell|phone|contact|tel/i.test(String(raw))) score += 25;
+            if (index >= 0 && index < 1200) score += 15;
+            if (index >= 0 && index < 400) score += 10;
+            if (digits.length === 11 && digits.startsWith('03')) score += 8;
+            if (digits.length === 10) score += 5;
+            return score;
+        }
+
+        function formatPkPhone(digits) {
+            const d = normalizePhoneDigits(digits);
+            if (/^923\d{9}$/.test(d)) {
+                return '+92 ' + d.slice(2, 5) + ' ' + d.slice(5);
+            }
+            if (/^03\d{9}$/.test(d)) {
+                return d.slice(0, 4) + '-' + d.slice(4);
             }
             return '';
+        }
+
+        function collectPhoneCandidates(...sources) {
+            const seen = new Set();
+            const candidates = [];
+
+            const add = (raw, index) => {
+                const normalized = normalizePhone(raw);
+                const digits = digitsOnly(normalized);
+                if (!isPlausiblePhone(normalized, digits)) return;
+                const key = digits.length >= 10 ? digits.slice(-11) : digits;
+                if (seen.has(key)) return;
+                seen.add(key);
+                const formatted = formatPkPhone(digits) || normalized;
+                candidates.push({
+                    raw: formatted,
+                    digits,
+                    score: scorePhoneCandidate(normalized, digits, index),
+                });
+            };
+
+            for (const source of sources) {
+                const blob = String(source || '');
+                if (!blob) continue;
+
+                const labeledPatterns = [
+                    /(?:phone|mobile|mob\.?|cell|contact|tel(?:ephone)?|whatsapp|wa)\s*[:\.\-]?\s*([+\d\s().\/-]{8,26})/gi,
+                    /(?:phone|mobile|mob\.?|cell|contact|tel(?:ephone)?|whatsapp|wa)\s+([+\d\s().\/-]{8,26})/gi,
+                ];
+                for (const pat of labeledPatterns) {
+                    let m;
+                    while ((m = pat.exec(blob)) !== null) {
+                        add(m[1], m.index);
+                    }
+                }
+
+                const lines = blob.split(/\r?\n/);
+                let offset = 0;
+                for (const line of lines.slice(0, 45)) {
+                    const trimmed = line.trim();
+                    if (/phone|mobile|mob|cell|contact|tel|whatsapp|wa/i.test(trimmed)) {
+                        const inline = trimmed.match(/(\+?\d[\d\s().\/-]{7,20}\d)/g) || [];
+                        inline.forEach((p) => add(p, offset));
+                    }
+                    if (/^\+?\d[\d\s().\/-]{8,20}\d$/.test(trimmed)) add(trimmed, offset);
+                    offset += line.length + 1;
+                }
+
+                const spacedPatterns = [
+                    /\+92[\s.\-/]?0?3\d{2}[\s.\-/]?\d{3}[\s.\-/]?\d{4}/g,
+                    /\(?(?:\+92|0092|92)[\s.\-/]?\)?[\s.\-/]?0?3\d{2}[\s.\-/]?\d{3}[\s.\-/]?\d{4}/g,
+                    /03\d{2}[\s.\-/]?\d{3}[\s.\-/]?\d{4}/g,
+                    /03\d{2}[\s.\-/]?\d{7}/g,
+                    /\+?\d{1,3}[\s.\-/]?\(?\d{2,4}\)?[\s.\-/]?\d{3,4}[\s.\-/]?\d{3,4}/g,
+                ];
+                for (const pat of spacedPatterns) {
+                    let m;
+                    while ((m = pat.exec(blob)) !== null) {
+                        add(m[0], m.index);
+                    }
+                }
+            }
+
+            const compact = sources.map((s) => String(s || '').replace(/\s+/g, '')).join('');
+            const compactPatterns = [
+                /\+?923\d{9}/g,
+                /00923\d{9}/g,
+                /03\d{9}/g,
+                /\+?\d{10,15}/g,
+            ];
+            for (const pat of compactPatterns) {
+                let m;
+                while ((m = pat.exec(compact)) !== null) {
+                    add(m[0], m.index);
+                }
+            }
+
+            candidates.sort((a, b) => b.score - a.score);
+            return candidates;
+        }
+
+        function extractPhoneFromCvText(text, compact, linkPhones) {
+            for (const linked of linkPhones || []) {
+                const digits = digitsOnly(linked);
+                if (isPlausiblePhone(linked, digits)) {
+                    return formatPkPhone(digits) || normalizePhone(linked);
+                }
+            }
+            const candidates = collectPhoneCandidates(text, compact);
+            return candidates.length ? candidates[0].raw : '';
         }
 
         async function extractFieldsFromPdf(file) {
             const emailFallback = guessEmailFromFilename(file.name);
             try {
-                const { text, compact, linkEmails } = await extractTextFromPdf(file, 2);
+                const { text, compact, linkEmails, linkPhones } = await extractTextFromPdf(file, 3);
                 const linkBlob = linkEmails.join(' ');
                 const email = pickBestEmail(text, compact, linkBlob, file.name) || emailFallback;
                 const name = extractNameFromCvText(text, file.name, email);
-                const phone = extractPhoneFromCvText(text);
+                const phone = extractPhoneFromCvText(text, compact, linkPhones);
                 return { email, name, phone };
             } catch (err) {
                 console.warn('PDF extract failed', file.name, err);
@@ -1645,7 +1824,11 @@
 
             renderPosterJob(currentJob);
             applyJobTemplate(currentJob.display_style || 'hiring-top');
-            closeApplyForm();
+            if (params.get('apply') === '1') {
+                openApplyForm();
+            } else {
+                closeApplyForm();
+            }
 
             loadingView.style.display = 'none';
             applyView.style.display = 'block';

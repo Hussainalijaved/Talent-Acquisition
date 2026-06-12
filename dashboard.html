@@ -214,6 +214,16 @@
                 </div>
             </section>
 
+            <!-- ASSESSMENT DETAIL (full page) -->
+            <section class="view" id="view-assessment-detail">
+                <div class="assessment-detail-toolbar">
+                    <button type="button" class="btn-secondary" id="assessmentDetailBack">← Back to assessments</button>
+                    <button type="button" class="btn-danger btn-sm" id="assessmentDetailDelete" style="display:none">Delete candidate &amp; all records</button>
+                </div>
+                <div class="card assessment-detail-hero" id="assessmentDetailHero"></div>
+                <div class="assessment-detail-body" id="assessmentDetailBody"></div>
+            </section>
+
             <!-- PIPELINE -->
             <section class="view" id="view-pipeline">
                 <div class="grid-2 grid-2-equal">
@@ -677,6 +687,7 @@
 
         let MERGED = [];
         let SESSION_LIST = [];
+        let ACTIVE_ASSESSMENT_ID = null;
         let charts = {};
 
         /* ---------- helpers ---------- */
@@ -964,6 +975,13 @@
             }
             SESSION_LIST = filterSessionsForScope(allSessions);
             render();
+            if (ACTIVE_ASSESSMENT_ID) {
+                const still = SESSION_LIST.find((s) => s.id === ACTIVE_ASSESSMENT_ID);
+                if (!still) backToAssessments();
+                else if (document.getElementById('view-assessment-detail')?.classList.contains('active')) {
+                    showAssessmentDetail(still, { skipUrl: true });
+                }
+            }
             const loadMsg = 'Loaded ' + MERGED.length + ' candidate(s) and ' + SESSION_LIST.length + ' assessment session(s) — ' + new Date().toLocaleTimeString() + '.';
             if (sessRes.error) {
                 banner(loadMsg + ' Assessment query failed — see error above.', 'err');
@@ -1319,7 +1337,7 @@
                 tr.addEventListener('click', () => {
                     const id = tr.dataset.sessionId;
                     const sess = (SESSION_LIST || []).find((s) => s.id === id);
-                    if (sess) openAssessmentDrawer(sess);
+                    if (sess) showAssessmentDetail(sess);
                 });
             });
         }
@@ -1489,21 +1507,10 @@
             return html;
         }
 
-        /* ---------- drawer ---------- */
-        function openAssessmentDrawer(sess) {
-            if (!sess) return;
-            const merged = findMergedForSession(sess);
-            const av = avatarFor(sess.candidate_email);
+        /* ---------- assessment detail (full page) ---------- */
+        function buildAssessmentDetailHtml(sess, merged) {
             const cfg = parseJson(sess.config);
             const role = sessionRoleLabel(sess);
-            const delBtn = document.getElementById('drawerDeleteBtn');
-            if (delBtn) delBtn.style.display = merged && window.TAAuth?.can?.('delete_candidate') ? '' : 'none';
-
-            document.getElementById('dAvatar').style.background = av.color;
-            document.getElementById('dAvatar').textContent = av.init;
-            document.getElementById('dTitle').textContent = sess.candidate_email || '—';
-            document.getElementById('dSub').innerHTML = roleLabel(role) + ' · Session ' + fmtDateTime(sessionTimestamp(sess));
-
             let html = '<div class="section"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"/><path d="M9 7a3 3 0 0 1 6 0v4H9z"/></svg>' +
                 'Session snapshot</div>' +
@@ -1531,7 +1538,6 @@
                     (n.weaknesses ? '<div class="qlabel">Gaps</div><div class="qtext ans">' + esc(Array.isArray(n.weaknesses) ? n.weaknesses.join(', ') : n.weaknesses) + '</div>' : '') +
                     '</div>';
                 if (window.TAAdmin) {
-                    TAAdmin.setActiveCandidate(merged);
                     html += TAAdmin.renderOnsiteForDrawer(merged.email);
                     html += TAAdmin.renderHmNotesPanelHtml();
                 }
@@ -1556,13 +1562,96 @@
 
             html += '<details class="raw-fold section"><summary>Developer — raw JSON</summary>' +
                 '<div class="raw-json">' + esc(JSON.stringify({ session: sess, candidate: merged }, null, 2)) + '</div></details>';
-
-            document.getElementById('drawerBody').innerHTML = html;
-            document.getElementById('overlay').classList.add('show');
-            document.getElementById('drawer').classList.add('show');
-            if (merged && window.TAAdmin) TAAdmin.bindDrawerNotes(merged);
+            return html;
         }
 
+        function showAssessmentDetail(sess, opts) {
+            if (!sess) return;
+            closeDrawer();
+            ACTIVE_ASSESSMENT_ID = sess.id;
+            const merged = findMergedForSession(sess);
+            if (merged && window.TAAdmin) TAAdmin.setActiveCandidate(merged);
+
+            const av = avatarFor(sess.candidate_email);
+            const role = sessionRoleLabel(sess);
+            const { answered, maxPh } = historyStats(sess);
+            const hero = document.getElementById('assessmentDetailHero');
+            if (hero) {
+                hero.innerHTML =
+                    '<div class="detail-head">' +
+                    '<span class="avatar detail-avatar" style="background:' + av.color + '">' + esc(av.init) + '</span>' +
+                    '<div class="detail-head-text">' +
+                    '<h2 class="detail-title">' + esc(sess.candidate_email || '—') + '</h2>' +
+                    '<p class="detail-sub">' + esc(roleLabel(role)) + ' · Updated ' + esc(fmtDateTime(sessionTimestamp(sess))) + '</p>' +
+                    '<div class="detail-chips">' +
+                    assessPill(sess, merged?.stage) +
+                    (sess.result === 'PASS' ? '<span class="pill p-pass">PASS</span>' :
+                        sess.result === 'FAIL' ? '<span class="pill p-reject">FAIL</span>' : '') +
+                    scoreBadge(sess.score) +
+                    '<span class="meta-chip">' + answered + ' / ' + maxPh + ' phases</span>' +
+                    '</div></div></div>';
+            }
+
+            const body = document.getElementById('assessmentDetailBody');
+            if (body) body.innerHTML = buildAssessmentDetailHtml(sess, merged);
+
+            const delBtn = document.getElementById('assessmentDetailDelete');
+            if (delBtn) {
+                delBtn.style.display = merged && window.TAAuth?.can?.('delete_candidate') ? 'inline-flex' : 'none';
+            }
+
+            document.querySelectorAll('.view').forEach((s) => s.classList.remove('active'));
+            document.getElementById('view-assessment-detail')?.classList.add('active');
+            document.querySelectorAll('.nav-item[data-view]').forEach((b) => {
+                b.classList.toggle('active', b.dataset.view === 'assessments');
+            });
+            syncNavDropdowns('assessments');
+
+            document.getElementById('pageTitle').textContent = sess.candidate_email || 'Assessment';
+            document.getElementById('pageSub').textContent = roleLabel(role) + ' — full assessment report';
+            const searchWrap = document.querySelector('.search');
+            if (searchWrap) searchWrap.style.display = 'none';
+
+            if (merged && window.TAAdmin) TAAdmin.bindDrawerNotes(merged);
+
+            if (!opts?.skipUrl) {
+                try {
+                    const url = new URL(location.href);
+                    url.searchParams.set('view', 'assessment-detail');
+                    url.searchParams.set('session', sess.id);
+                    history.replaceState({}, '', url);
+                } catch (_) { /* ignore */ }
+            }
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function backToAssessments() {
+            ACTIVE_ASSESSMENT_ID = null;
+            if (window.TAAdmin) TAAdmin.setActiveCandidate(null);
+            try {
+                const url = new URL(location.href);
+                url.searchParams.set('view', 'assessments');
+                url.searchParams.delete('session');
+                history.replaceState({}, '', url);
+            } catch (_) { /* ignore */ }
+            setView('assessments');
+        }
+
+        function openAssessmentDetailFromRoute() {
+            const p = new URLSearchParams(location.search);
+            if (p.get('view') !== 'assessment-detail') return;
+            const sessionId = p.get('session');
+            if (!sessionId) {
+                setView('assessments');
+                return;
+            }
+            const sess = (SESSION_LIST || []).find((s) => s.id === sessionId);
+            if (sess) showAssessmentDetail(sess, { skipUrl: true });
+            else setView('assessments');
+        }
+
+        /* ---------- drawer ---------- */
         function openDrawer(m) {
             if (!m) return;
             if (window.TAAdmin) TAAdmin.setActiveCandidate(m);
@@ -1665,6 +1754,7 @@
 
         function setView(v) {
             if (window.TAAuth) v = TAAuth.guardView(v);
+            if (v !== 'assessment-detail') ACTIVE_ASSESSMENT_ID = null;
             document.querySelectorAll('.nav-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
             syncNavDropdowns(v);
             document.querySelectorAll('.view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
@@ -1688,6 +1778,7 @@
                 const url = new URL(location.href);
                 url.searchParams.set('view', v);
                 url.searchParams.delete('tab');
+                if (v !== 'assessment-detail') url.searchParams.delete('session');
                 history.replaceState({}, '', url);
             } catch (_) { /* ignore */ }
             closeSidebar();
@@ -1735,6 +1826,7 @@
         document.addEventListener('keydown', e => {
             if (e.key !== 'Escape') return;
             if (document.getElementById('drawer')?.classList.contains('show')) closeDrawer();
+            else if (document.getElementById('view-assessment-detail')?.classList.contains('active')) backToAssessments();
             else closeSidebar();
         });
         document.getElementById('refreshBtn').addEventListener('click', () => { banner('Refreshing…', 'ok'); loadData(); });
@@ -1751,6 +1843,10 @@
         });
         ['fAssessStatus', 'fAssessRole', 'fAssessSort'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', renderAssessments);
+        });
+        document.getElementById('assessmentDetailBack')?.addEventListener('click', backToAssessments);
+        document.getElementById('assessmentDetailDelete')?.addEventListener('click', () => {
+            document.getElementById('drawerDeleteBtn')?.click();
         });
 
         async function bootDashboard() {
@@ -1781,6 +1877,7 @@
             }
             applyRouteView();
             await loadData();
+            openAssessmentDetailFromRoute();
         }
         bootDashboard();
     </script>

@@ -1391,12 +1391,13 @@
             return '';
         };
 
-        const FinishedView = ({ result, overallScore, feedback, onReview, isLoading, sessionId, supabase }) => {
+        const FinishedView = ({ result, overallScore, feedback, onReview, isLoading, sessionId, supabase, onExitPortal }) => {
             const passed = result === 'PASS';
             const scoreNum = Number(overallScore);
             const showScore = Number.isFinite(scoreNum);
             const [schedState, setSchedState] = useState('idle');
             const [slotCount, setSlotCount] = useState(0);
+            const [schedWaitMode, setSchedWaitMode] = useState('choose');
 
             useEffect(() => {
                 if (!passed || !sessionId || !supabase) return undefined;
@@ -1436,9 +1437,6 @@
                 return () => { cancelled = true; clearInterval(timer); };
             }, [passed, sessionId, supabase]);
 
-            const schedulingWaitUrl = sessionId
-                ? `https://talent-acquisition-six.vercel.app/scheduling-wait.html?session=${encodeURIComponent(sessionId)}`
-                : '';
             const candidatePickUrl = sessionId
                 ? `https://talent-acquisition-six.vercel.app/candidate-pick.html?session=${encodeURIComponent(sessionId)}`
                 : '';
@@ -1489,20 +1487,51 @@
                                     <p className="text-sm text-slate-200">
                                         Your interview time is confirmed. Check your email for calendar details.
                                     </p>
+                                ) : schedWaitMode === 'choose' ? (
+                                    <>
+                                        <p className="text-sm text-slate-200 mb-4">
+                                            We notified your interviewer. They may send time options soon — choose how you would like to proceed.
+                                        </p>
+                                        <div className="flex flex-col gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSchedWaitMode('active_wait')}
+                                                className="btn-primary w-full py-3 rounded-xl text-sm"
+                                            >
+                                                I&apos;ll keep waiting here
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (typeof onExitPortal === 'function') onExitPortal();
+                                                }}
+                                                className="btn-secondary w-full py-3 rounded-xl text-sm"
+                                            >
+                                                Email me when slots are ready
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-slate-500 mt-3 leading-relaxed">
+                                            If you choose email, you can close this portal — we will notify you when it is time to pick a slot.
+                                        </p>
+                                    </>
                                 ) : (
                                     <>
                                         <p className="text-sm text-slate-200 mb-3">
-                                            We notified the interviewer. They may propose slots now or later tonight — you can stay here or come back anytime.
+                                            Waiting for your interviewer to propose interview times. This page will update automatically.
                                         </p>
                                         <div className="flex items-center gap-2 text-xs text-slate-400 mb-4">
                                             <span className="w-3 h-3 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
-                                            Waiting for interview slots…
+                                            Checking for slots…
                                         </div>
-                                        {schedulingWaitUrl && (
-                                            <a href={schedulingWaitUrl} className="text-sm text-indigo-300 hover:text-indigo-200 underline">
-                                                Open scheduling page
-                                            </a>
-                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (typeof onExitPortal === 'function') onExitPortal();
+                                            }}
+                                            className="btn-secondary w-full py-2.5 rounded-xl text-xs"
+                                        >
+                                            Close portal — notify me by email
+                                        </button>
                                     </>
                                 )}
                             </div>
@@ -2483,6 +2512,25 @@
                 return fromUrl || fromStorage || fromState;
             };
 
+            const handleExitPortalAfterScheduling = useCallback(() => {
+                sessionStorage.removeItem('current_session_id');
+                sessionStorage.removeItem('candidate_email');
+                sessionStorage.removeItem('time_left');
+                sessionStorage.removeItem('deadline_at');
+                sessionStorage.removeItem('assessment_started');
+                deadlineAtRef.current = null;
+                setSessionId('');
+                setCandidateEmail('');
+                setView('login');
+                try {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('session');
+                    url.searchParams.delete('email');
+                    url.searchParams.delete('job');
+                    window.history.replaceState({}, '', url.pathname + url.search);
+                } catch (_) { /* ignore */ }
+            }, []);
+
             const fetchAndShowReview = async () => {
                 const sid = resolveSessionIdForReview();
                 if (!sid) {
@@ -2553,7 +2601,7 @@
                             />
                         );
                     case 'finished':
-                        return <FinishedView result={result} overallScore={overallScore} feedback={feedback} onReview={fetchAndShowReview} isLoading={isLoading} sessionId={sessionId} supabase={supabase} />;
+                        return <FinishedView result={result} overallScore={overallScore} feedback={feedback} onReview={fetchAndShowReview} isLoading={isLoading} sessionId={sessionId} supabase={supabase} onExitPortal={handleExitPortalAfterScheduling} />;
                     case 'review':
                         return (
                             <ReviewView

@@ -20,7 +20,13 @@
             <h1 id="title">Interview scheduling</h1>
             <p class="subtitle" id="message">Please wait while we prepare your interview time options.</p>
             <p class="load-err" id="err" hidden></p>
+            <div id="waitChoices" hidden>
+                <button type="button" class="convo-portal-btn" id="keepWaitBtn">I&apos;ll keep waiting here</button>
+                <button type="button" class="convo-portal-btn secondary" id="emailExitBtn">Email me when slots are ready</button>
+                <p class="hint" style="margin-top:14px">You can close this page after choosing email — we will notify you when it is time to pick a slot.</p>
+            </div>
             <a class="convo-portal-btn" id="actionBtn" href="#" hidden style="display:inline-block;text-decoration:none">Pick interview time</a>
+            <button type="button" class="convo-portal-btn secondary" id="emailExitActiveBtn" hidden>Close — notify me by email</button>
             <p class="portal-footer" id="hint">You can leave this page — we will also email you when slots are ready.</p>
         </div>
     </main>
@@ -36,17 +42,66 @@
         const errEl = document.getElementById('err');
         const actionBtn = document.getElementById('actionBtn');
         const hint = document.getElementById('hint');
+        const waitChoices = document.getElementById('waitChoices');
+        const keepWaitBtn = document.getElementById('keepWaitBtn');
+        const emailExitBtn = document.getElementById('emailExitBtn');
+        const emailExitActiveBtn = document.getElementById('emailExitActiveBtn');
+
+        let waitMode = 'choose';
+        let pollTimer = null;
+
+        function exitToLogin() {
+            if (pollTimer) clearInterval(pollTimer);
+            try {
+                sessionStorage.removeItem('current_session_id');
+                sessionStorage.removeItem('candidate_email');
+                sessionStorage.removeItem('assessment_started');
+                sessionStorage.removeItem('time_left');
+                sessionStorage.removeItem('deadline_at');
+            } catch (_) { /* ignore */ }
+            window.location.replace('index.html');
+        }
 
         function showError(msg) {
             spinner.hidden = true;
+            waitChoices.hidden = true;
+            emailExitActiveBtn.hidden = true;
             errEl.hidden = false;
             errEl.textContent = msg;
             statusPill.textContent = 'Error';
         }
 
+        function renderWaitingUi() {
+            statusPill.textContent = 'Waiting';
+            title.textContent = 'Almost there';
+            actionBtn.hidden = true;
+            errEl.hidden = true;
+
+            if (waitMode === 'choose') {
+                spinner.hidden = true;
+                waitChoices.hidden = false;
+                emailExitActiveBtn.hidden = true;
+                message.textContent =
+                    'Your interviewer is being notified to propose interview slots. ' +
+                    'Choose whether to wait here or get an email when times are ready.';
+                hint.textContent = '';
+                return false;
+            }
+
+            waitChoices.hidden = true;
+            spinner.hidden = false;
+            emailExitActiveBtn.hidden = false;
+            message.textContent =
+                'Your interviewer may respond in a few minutes or later tonight. This page checks automatically.';
+            hint.textContent = 'We will also email you when slots are ready.';
+            return false;
+        }
+
         function renderState(state) {
             if (state.status === 'confirmed') {
                 spinner.hidden = true;
+                waitChoices.hidden = true;
+                emailExitActiveBtn.hidden = true;
                 statusPill.textContent = 'Confirmed';
                 title.textContent = 'Interview time confirmed';
                 message.textContent = 'Your slot is saved. Check your email for calendar details.';
@@ -57,6 +112,8 @@
 
             if (state.status === 'slots_ready') {
                 spinner.hidden = true;
+                waitChoices.hidden = true;
+                emailExitActiveBtn.hidden = true;
                 statusPill.textContent = 'Ready';
                 title.textContent = 'Choose your interview time';
                 message.textContent =
@@ -72,14 +129,7 @@
                 return true;
             }
 
-            statusPill.textContent = 'Waiting';
-            title.textContent = 'Almost there';
-            message.textContent =
-                'Your interviewer is being notified to propose interview slots. ' +
-                'This usually takes a few minutes, but they may respond later tonight.';
-            hint.textContent =
-                'Keep this tab open, or come back later — we will also email you when slots are ready.';
-            return false;
+            return renderWaitingUi();
         }
 
         async function tick() {
@@ -89,17 +139,28 @@
             }
             try {
                 const state = await SP.pollScheduling(sessionId);
-                if (renderState(state)) return;
+                if (renderState(state)) {
+                    if (pollTimer) clearInterval(pollTimer);
+                    return;
+                }
             } catch (err) {
                 showError((err && err.message) || 'Could not load scheduling status.');
             }
         }
 
+        keepWaitBtn.addEventListener('click', function () {
+            waitMode = 'active';
+            renderWaitingUi();
+        });
+
+        emailExitBtn.addEventListener('click', exitToLogin);
+        emailExitActiveBtn.addEventListener('click', exitToLogin);
+
         if (!sessionId) {
             showError('Missing session in URL.');
         } else {
             tick();
-            setInterval(tick, POLL_MS);
+            pollTimer = setInterval(tick, POLL_MS);
         }
     </script>
 </body>

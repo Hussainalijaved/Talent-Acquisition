@@ -659,6 +659,62 @@ tbody tr:last-child td { border-bottom: none; }
 .card-limit-lg { max-width: 920px; width: 100%; }
 .card-limit-md { max-width: 640px; width: 100%; }
 
+/* Role access matrix (Platform Admin) */
+.perm-matrix { display: flex; flex-direction: column; gap: 16px; }
+.perm-role-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    box-shadow: var(--shadow-sm);
+}
+.perm-role-head { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid var(--border); }
+.perm-role-title { font-size: var(--text-lg); font-weight: 800; color: var(--text); }
+.perm-role-desc { font-size: var(--text-sm); font-weight: 600; color: var(--text-soft); margin-top: 6px; }
+.perm-section { margin-bottom: 14px; }
+.perm-section:last-child { margin-bottom: 0; }
+.perm-section-label {
+    font-size: var(--text-sm);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    margin-bottom: 10px;
+}
+.perm-check-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+}
+.perm-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: var(--text);
+    transition: border-color 0.12s, background 0.12s;
+}
+.perm-check:hover { border-color: var(--accent); background: var(--accent-soft); }
+.perm-check input {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+.perm-check:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+}
+
 /* Mobile menu */
 .menu-btn { display: none; flex-shrink: 0; }
 .sidebar-overlay {

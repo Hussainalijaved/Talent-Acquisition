@@ -1,6 +1,6 @@
 /**
  * Talent Admin — Supabase Auth + role-based access
- * Full-access mode: all roles see all tabs (permissions tightened later).
+ * Platform Admin configures what each role can see and do (stored in app_config).
  */
 (function (global) {
     'use strict';
@@ -14,6 +14,8 @@
         'hiring_manager',
         'viewer',
     ];
+
+    const EDITABLE_ROLES = ALL_ROLES.filter((r) => r !== 'super_admin');
 
     const ROLE_LABELS = {
         super_admin: 'Platform Admin',
@@ -35,7 +37,67 @@
         viewer: 'Read-only dashboard access — no edits.',
     };
 
-    /** Grouped invite options per inviter role (Interviewer listed once under Interview panel) */
+    const VIEW_LABELS = {
+        overview: 'Overview',
+        candidates: 'Candidates',
+        pipeline: 'Pipeline',
+        jobs: 'All jobs',
+        'jobs-create': 'Create / edit job',
+        screen: 'CV screening',
+        onsite: 'Onsite interviews',
+        users: 'Team users',
+        'users-invite': 'Invite user',
+        settings: 'Integration settings',
+        audit: 'Audit log',
+        'role-permissions': 'Role access control',
+    };
+
+    const PERM_LABELS = {
+        edit_jobs: 'Create & edit jobs',
+        delete_job: 'Delete jobs',
+        screen_cv: 'Run CV screening',
+        delete_candidate: 'Delete candidates',
+        onsite_write: 'Record onsite interviews',
+        add_candidate_notes: 'Add candidate notes',
+        manage_users: 'Invite & manage team',
+        manage_job_assignments: 'Assign jobs to hiring managers',
+        save_webhooks: 'Edit integration webhooks',
+        view_audit: 'View audit log',
+    };
+
+    const ALL_VIEWS = Object.keys(VIEW_LABELS);
+
+    const ALL_PERMS = Object.keys(PERM_LABELS);
+
+    /** Default access — Platform Admin can override per role in Role access control */
+    const DEFAULT_ROLE_ACCESS = {
+        super_admin: { views: ALL_VIEWS, perms: ALL_PERMS },
+        hr_head: {
+            views: ['overview', 'candidates', 'pipeline', 'jobs', 'jobs-create', 'screen', 'users', 'users-invite'],
+            perms: ['edit_jobs', 'screen_cv', 'manage_users', 'add_candidate_notes'],
+        },
+        hiring_manager_head: {
+            views: ['overview', 'candidates', 'pipeline', 'jobs', 'onsite', 'users', 'users-invite'],
+            perms: ['onsite_write', 'manage_users', 'add_candidate_notes'],
+        },
+        recruiter: {
+            views: ['overview', 'candidates', 'pipeline', 'jobs', 'jobs-create', 'screen'],
+            perms: ['edit_jobs', 'screen_cv', 'add_candidate_notes'],
+        },
+        hiring_manager: {
+            views: ['overview', 'candidates', 'pipeline', 'onsite'],
+            perms: ['onsite_write', 'add_candidate_notes'],
+        },
+        interviewer: {
+            views: ['overview', 'candidates', 'onsite'],
+            perms: ['add_candidate_notes'],
+        },
+        viewer: {
+            views: ['overview', 'candidates', 'pipeline'],
+            perms: [],
+        },
+    };
+
     const ROLE_INVITE_GROUPS = {
         super_admin: [
             { label: 'Leadership', roles: ['super_admin', 'hr_head', 'hiring_manager_head'] },
@@ -53,42 +115,17 @@
         ],
     };
 
-    /** Who can invite which roles */
     const INVITE_ROLES = {
         super_admin: ALL_ROLES,
         hr_head: ['recruiter', 'interviewer', 'viewer'],
         hiring_manager_head: ['hiring_manager', 'interviewer'],
     };
 
-    const MANAGE_USERS_ROLES = ['super_admin', 'hr_head', 'hiring_manager_head'];
-
-    const ALL_VIEWS = [
-        'overview', 'candidates', 'pipeline',
-        'jobs', 'jobs-create',
-        'screen', 'onsite',
-        'settings', 'users', 'users-invite', 'audit',
-    ];
-
-    const ALL_PERMS = [
-        'delete_candidate', 'delete_job', 'save_webhooks', 'edit_jobs',
-        'screen_cv', 'onsite_write', 'add_candidate_notes',
-        'manage_job_assignments', 'manage_users', 'view_audit',
-    ];
-
-    // Full-access mode for most views; user management & audit restricted to heads / super admin
-    const VIEW_ROLES = Object.fromEntries(ALL_VIEWS.map((v) => {
-        if (v === 'users' || v === 'users-invite') return [v, MANAGE_USERS_ROLES];
-        if (v === 'audit') return [v, ['super_admin']];
-        return [v, ALL_ROLES];
-    }));
-    const PERMS = Object.fromEntries(ALL_PERMS.map((p) => {
-        if (p === 'manage_users') return [p, MANAGE_USERS_ROLES];
-        if (p === 'view_audit') return [p, ['super_admin']];
-        return [p, ALL_ROLES];
-    }));
+    const ROLE_ACCESS_CONFIG_KEY = 'role_access_config';
 
     let _client = null;
     let _profile = null;
+    let _roleAccessConfig = null;
 
     function cfg() {
         return global.TA_CONFIG || {};
@@ -116,14 +153,122 @@
         return !!_profile && roles.includes(_profile.role);
     }
 
+    function cloneAccess(access) {
+        return {
+            views: [...(access?.views || [])],
+            perms: [...(access?.perms || [])],
+        };
+    }
+
+    function getDefaultAccess(role) {
+        const d = DEFAULT_ROLE_ACCESS[role];
+        return d ? cloneAccess(d) : { views: [], perms: [] };
+    }
+
+    /** Effective views + perms for a role (defaults merged with Platform Admin overrides) */
+    function getAccessForRole(role) {
+        if (role === 'super_admin') {
+            return { views: [...ALL_VIEWS], perms: [...ALL_PERMS] };
+        }
+        const base = getDefaultAccess(role);
+        const custom = _roleAccessConfig?.[role];
+        if (!custom) return base;
+        return {
+            views: Array.isArray(custom.views) ? [...custom.views] : base.views,
+            perms: Array.isArray(custom.perms) ? [...custom.perms] : base.perms,
+        };
+    }
+
+    function getRoleAccessSnapshot() {
+        const out = {};
+        EDITABLE_ROLES.forEach((role) => {
+            out[role] = getAccessForRole(role);
+        });
+        return out;
+    }
+
+    async function loadRolePermissions() {
+        try {
+            const { data, error } = await client()
+                .from('app_config')
+                .select('value')
+                .eq('key', ROLE_ACCESS_CONFIG_KEY)
+                .maybeSingle();
+            if (error) {
+                console.warn('loadRolePermissions', error);
+                _roleAccessConfig = null;
+                return null;
+            }
+            if (!data?.value) {
+                _roleAccessConfig = null;
+                return null;
+            }
+            const raw = data.value;
+            _roleAccessConfig = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return _roleAccessConfig;
+        } catch (e) {
+            console.warn('loadRolePermissions parse failed', e);
+            _roleAccessConfig = null;
+            return null;
+        }
+    }
+
+    async function saveRolePermissions(config) {
+        if (!hasRole('super_admin')) {
+            throw new Error('Only Platform Admin can change role access.');
+        }
+        const cleaned = {};
+        const PERM_VIEW_LINKS = {
+            manage_users: ['users', 'users-invite'],
+            edit_jobs: ['jobs', 'jobs-create'],
+            screen_cv: ['screen'],
+            onsite_write: ['onsite'],
+            save_webhooks: ['settings'],
+            view_audit: ['audit'],
+        };
+        EDITABLE_ROLES.forEach((role) => {
+            const src = config?.[role] || getDefaultAccess(role);
+            const views = new Set((src.views || []).filter((v) => ALL_VIEWS.includes(v)));
+            const perms = (src.perms || []).filter((p) => ALL_PERMS.includes(p));
+            perms.forEach((p) => {
+                (PERM_VIEW_LINKS[p] || []).forEach((v) => views.add(v));
+            });
+            cleaned[role] = { views: [...views], perms };
+        });
+        const { error } = await client()
+            .from('app_config')
+            .upsert({ key: ROLE_ACCESS_CONFIG_KEY, value: cleaned }, { onConflict: 'key' });
+        if (error) throw error;
+        _roleAccessConfig = cleaned;
+        await logAudit('save_role_access', 'app_config', ROLE_ACCESS_CONFIG_KEY, { roles: Object.keys(cleaned) });
+        applyRoleNav();
+        return cleaned;
+    }
+
+    async function resetRolePermissions() {
+        if (!hasRole('super_admin')) throw new Error('Only Platform Admin can reset role access.');
+        const { error } = await client()
+            .from('app_config')
+            .delete()
+            .eq('key', ROLE_ACCESS_CONFIG_KEY);
+        if (error) throw error;
+        _roleAccessConfig = null;
+        await logAudit('reset_role_access', 'app_config', ROLE_ACCESS_CONFIG_KEY, {});
+        applyRoleNav();
+    }
+
     function can(perm) {
-        const roles = PERMS[perm];
-        return roles ? hasRole(...roles) : false;
+        if (!_profile) return false;
+        return getAccessForRole(_profile.role).perms.includes(perm);
     }
 
     function canView(view) {
-        const roles = VIEW_ROLES[view];
-        return roles ? hasRole(...roles) : false;
+        if (!_profile) return false;
+        return getAccessForRole(_profile.role).views.includes(view);
+    }
+
+    function canManageRolePermissions() {
+        return hasRole('super_admin');
     }
 
     function roleLabel(role) {
@@ -134,7 +279,6 @@
         return ROLE_DESCRIPTIONS[role] || '';
     }
 
-    /** Grouped role options for invite / edit dropdowns */
     function roleGroupsForInvite() {
         if (!_profile) return [];
         const groups = ROLE_INVITE_GROUPS[_profile.role];
@@ -145,9 +289,9 @@
             .filter((g) => g.roles.length > 0);
     }
 
-    /** Roles the current user may assign when inviting or editing users */
     function assignableRoles() {
         if (!_profile) return [];
+        if (!can('manage_users')) return [];
         const list = INVITE_ROLES[_profile.role];
         if (list) return list;
         if (hasRole('super_admin')) return ALL_ROLES;
@@ -160,10 +304,9 @@
     }
 
     function canManageUsers() {
-        return hasRole(...MANAGE_USERS_ROLES);
+        return can('manage_users');
     }
 
-    /** Roles visible in the users list for the current head */
     function manageableUserRoles() {
         if (!_profile) return [];
         if (hasRole('super_admin')) return ALL_ROLES;
@@ -183,6 +326,7 @@
     function canEditUserRole(targetUser) {
         if (!_profile || !targetUser) return false;
         if (targetUser.id === _profile.id) return false;
+        if (!can('manage_users')) return false;
         if (hasRole('super_admin')) return true;
         if (targetUser.role === 'super_admin') return false;
         if (hasRole('hr_head')) return ['recruiter', 'interviewer', 'viewer'].includes(targetUser.role);
@@ -306,11 +450,27 @@
                 btn.style.display = 'none';
                 return;
             }
-            const allowed = (VIEW_ROLES[view] || []).includes(role);
-            btn.style.display = allowed ? '' : 'none';
+            btn.style.display = canView(view) ? '' : 'none';
         });
-        global.document.querySelectorAll('[data-go-view="users-invite"]').forEach((btn) => {
-            btn.style.display = canManage ? '' : 'none';
+        global.document.querySelectorAll('[data-go-view]').forEach((btn) => {
+            const target = btn.getAttribute('data-go-view');
+            if (target === 'users-invite' && !canManage) {
+                btn.style.display = 'none';
+                return;
+            }
+            if (target && !canView(target)) {
+                btn.style.display = 'none';
+                return;
+            }
+            btn.style.display = '';
+        });
+        global.document.querySelectorAll('[data-requires-perm]').forEach((el) => {
+            const perm = el.getAttribute('data-requires-perm');
+            el.style.display = perm && can(perm) ? '' : 'none';
+        });
+        global.document.querySelectorAll('[data-requires-view]').forEach((el) => {
+            const view = el.getAttribute('data-requires-view');
+            el.style.display = view && canView(view) ? '' : 'none';
         });
         global.document.querySelectorAll('.nav-dropdown, .nav-group').forEach((group) => {
             const items = group.querySelectorAll('.nav-item[data-view]');
@@ -328,6 +488,8 @@
         }
         const delBtn = global.document.getElementById('drawerDeleteBtn');
         if (delBtn) delBtn.style.display = can('delete_candidate') ? 'inline-flex' : 'none';
+        const webhookBtn = global.document.getElementById('saveWebhookBtn');
+        if (webhookBtn) webhookBtn.style.display = can('save_webhooks') ? '' : 'none';
     }
 
     function esc(s) {
@@ -340,14 +502,16 @@
 
     function guardView(view) {
         if ((view === 'users' || view === 'users-invite') && !canManageUsers()) return 'overview';
-        if (view === 'audit' && !hasRole('super_admin')) return 'overview';
-        if (!canView(view)) return 'overview';
+        if (view === 'role-permissions' && !canManageRolePermissions()) return 'overview';
+        if (!canView(view)) {
+            const fallback = ALL_VIEWS.find((v) => canView(v));
+            return fallback || 'overview';
+        }
         return view;
     }
 
-    /** Job scoping disabled in full-access mode — re-enable for hiring_manager later */
     function isJobScopedRole() {
-        return false;
+        return hasRole('hiring_manager') && !can('edit_jobs');
     }
 
     async function boot() {
@@ -355,6 +519,7 @@
         if (!session) return false;
         const prof = await loadProfile();
         if (!prof) return false;
+        await loadRolePermissions();
         applyRoleNav();
         return true;
     }
@@ -384,13 +549,25 @@
         assignableRoles,
         canAssignRole,
         canManageUsers,
+        canManageRolePermissions,
         manageableUserRoles,
         canSeeUser,
         canEditUserRole,
+        loadRolePermissions,
+        saveRolePermissions,
+        resetRolePermissions,
+        getRoleAccessSnapshot,
+        getDefaultAccess,
+        getAccessForRole,
         boot,
         ALL_ROLES,
+        EDITABLE_ROLES,
         ROLE_LABELS,
         ROLE_DESCRIPTIONS,
-        VIEW_ROLES,
+        VIEW_LABELS,
+        PERM_LABELS,
+        DEFAULT_ROLE_ACCESS,
+        ALL_VIEWS,
+        ALL_PERMS,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

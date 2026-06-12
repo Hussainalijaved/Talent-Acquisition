@@ -1472,6 +1472,94 @@
         await loadOnsite();
     }
 
+    function renderRoleAccessMatrix() {
+        const el = document.getElementById('roleAccessMatrix');
+        if (!el || !deps.auth) return;
+        if (!deps.auth.canManageRolePermissions()) {
+            el.innerHTML = '<p class="empty">Only Platform Admin can configure role access.</p>';
+            return;
+        }
+        const snapshot = deps.auth.getRoleAccessSnapshot();
+        const viewLabels = deps.auth.VIEW_LABELS || {};
+        const permLabels = deps.auth.PERM_LABELS || {};
+        const views = deps.auth.ALL_VIEWS.filter((v) => v !== 'role-permissions');
+        const perms = deps.auth.ALL_PERMS || [];
+
+        el.innerHTML = deps.auth.EDITABLE_ROLES.map((role) => {
+            const access = snapshot[role] || { views: [], perms: [] };
+            const viewChecks = views.map((v) => {
+                const on = access.views.includes(v);
+                return '<label class="perm-check">' +
+                    '<input type="checkbox" data-role="' + role + '" data-kind="view" data-key="' + v + '"' + (on ? ' checked' : '') + ' />' +
+                    '<span>' + deps.esc(viewLabels[v] || v) + '</span></label>';
+            }).join('');
+            const permChecks = perms.map((p) => {
+                const on = access.perms.includes(p);
+                return '<label class="perm-check">' +
+                    '<input type="checkbox" data-role="' + role + '" data-kind="perm" data-key="' + p + '"' + (on ? ' checked' : '') + ' />' +
+                    '<span>' + deps.esc(permLabels[p] || p) + '</span></label>';
+            }).join('');
+            return '<div class="perm-role-card" data-perm-role="' + role + '">' +
+                '<div class="perm-role-head">' +
+                '<div><div class="perm-role-title">' + deps.esc(deps.auth.roleLabel(role)) + '</div>' +
+                '<div class="perm-role-desc">' + deps.esc(deps.auth.roleDescription(role)) + '</div></div>' +
+                '</div>' +
+                '<div class="perm-section"><div class="perm-section-label">Pages they can open</div>' +
+                '<div class="perm-check-grid">' + viewChecks + '</div></div>' +
+                '<div class="perm-section"><div class="perm-section-label">Actions they can perform</div>' +
+                '<div class="perm-check-grid">' + permChecks + '</div></div>' +
+                '</div>';
+        }).join('');
+    }
+
+    function collectRoleAccessFromForm() {
+        const config = {};
+        (deps.auth?.EDITABLE_ROLES || []).forEach((role) => {
+            config[role] = { views: [], perms: [] };
+        });
+        document.querySelectorAll('#roleAccessMatrix input[type="checkbox"]').forEach((cb) => {
+            const role = cb.getAttribute('data-role');
+            const kind = cb.getAttribute('data-kind');
+            const key = cb.getAttribute('data-key');
+            if (!role || !kind || !key || !cb.checked || !config[role]) return;
+            if (kind === 'view') config[role].views.push(key);
+            if (kind === 'perm') config[role].perms.push(key);
+        });
+        return config;
+    }
+
+    async function saveRoleAccessConfig() {
+        if (!deps.auth?.canManageRolePermissions()) {
+            deps.banner('Only Platform Admin can save role access.', 'err');
+            return;
+        }
+        const btn = document.getElementById('saveRoleAccessBtn');
+        if (btn) btn.disabled = true;
+        try {
+            await deps.auth.saveRolePermissions(collectRoleAccessFromForm());
+            deps.auth.applyRoleNav();
+            deps.banner('Role access saved. Team members may need to refresh.', 'ok');
+            renderRoleAccessMatrix();
+        } catch (e) {
+            deps.banner('Save failed: ' + (e.message || e), 'err');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function resetRoleAccessConfig() {
+        if (!deps.auth?.canManageRolePermissions()) return;
+        if (!confirm('Reset all role access to built-in defaults? Custom settings will be removed.')) return;
+        try {
+            await deps.auth.resetRolePermissions();
+            deps.auth.applyRoleNav();
+            deps.banner('Role access reset to defaults.', 'ok');
+            renderRoleAccessMatrix();
+        } catch (e) {
+            deps.banner('Reset failed: ' + (e.message || e), 'err');
+        }
+    }
+
     function bindEvents() {
         document.getElementById('jobForm')?.addEventListener('submit', (e) => { e.preventDefault(); saveJob(); });
         document.getElementById('jobGenBtn')?.addEventListener('click', onJobCriteriaGenerate);
@@ -1495,6 +1583,8 @@
         document.getElementById('invRole')?.addEventListener('change', (e) => {
             updateInviteRoleHint(e.target.value);
         });
+        document.getElementById('saveRoleAccessBtn')?.addEventListener('click', saveRoleAccessConfig);
+        document.getElementById('resetRoleAccessBtn')?.addEventListener('click', resetRoleAccessConfig);
     }
 
     window.TAAdmin = {
@@ -1532,6 +1622,7 @@
                 if (view === 'users-invite') populateInviteRoleSelect();
             }
             if (view === 'audit') loadAudit();
+            if (view === 'role-permissions') renderRoleAccessMatrix();
         },
         setActiveCandidate(m) {
             deps.activeCandidate = m;

@@ -66,6 +66,7 @@
             <details class="nav-dropdown" data-nav-group="system" open>
                 <summary class="nav-dropdown-label"><span>System</span><svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></summary>
                 <div class="nav-dropdown-body">
+                    <button type="button" class="nav-item nav-sub" data-view="role-permissions">Role access</button>
                     <button type="button" class="nav-item nav-sub" data-view="settings">Settings</button>
                     <button type="button" class="nav-item nav-sub" data-view="audit">Audit log</button>
                 </div>
@@ -189,7 +190,7 @@
             <section class="view" id="view-jobs">
                 <div class="page-toolbar">
                     <p class="page-toolbar-hint">Manage published roles and apply links.</p>
-                    <button type="button" class="btn-primary" data-go-view="jobs-create">+ Create job</button>
+                    <button type="button" class="btn-primary" data-go-view="jobs-create" data-requires-view="jobs-create">+ Create job</button>
                 </div>
                 <div class="table-card table-scroll">
                     <table>
@@ -269,7 +270,7 @@
                         </div>
                         <div class="form-actions">
                             <button type="button" class="btn-secondary" id="jobGenBtn">Generate with AI</button>
-                            <button type="button" class="btn-primary" onclick="document.getElementById('jobForm').dispatchEvent(new Event('submit'))">Save job</button>
+                            <button type="button" class="btn-primary" data-requires-perm="edit_jobs" onclick="document.getElementById('jobForm').dispatchEvent(new Event('submit'))">Save job</button>
                             <button type="button" class="btn-secondary" id="jobResetBtn">Clear form</button>
                         </div>
                     </form>
@@ -328,7 +329,7 @@
                         </div>
                         <div class="screen-progress" id="scrProgress"><div class="screen-progress-fill" id="scrProgressFill"></div></div>
                         <div class="form-actions">
-                            <button type="submit" class="btn-primary" id="scrSubmit">Run AI screening</button>
+                            <button type="submit" class="btn-primary" id="scrSubmit" data-requires-perm="screen_cv">Run AI screening</button>
                             <button type="button" class="btn-secondary" id="scrViewResults">View results</button>
                         </div>
                     </form>
@@ -396,7 +397,7 @@
                                 </div>
                             </div>
                             <div class="form-actions">
-                                <button type="submit" class="btn-primary">Save record</button>
+                                <button type="submit" class="btn-primary" data-requires-perm="onsite_write">Save record</button>
                             </div>
                         </form>
                     </div>
@@ -413,7 +414,7 @@
             <section class="view" id="view-users">
                 <div class="page-toolbar">
                     <p class="page-toolbar-hint">Manage team access and roles.</p>
-                    <button type="button" class="btn-primary" data-go-view="users-invite">+ Invite user</button>
+                    <button type="button" class="btn-primary" data-go-view="users-invite" data-requires-perm="manage_users">+ Invite user</button>
                 </div>
                 <div class="table-card table-scroll">
                     <table>
@@ -469,6 +470,20 @@
                 </div>
             </section>
 
+            <!-- ROLE ACCESS (Platform Admin) -->
+            <section class="view" id="view-role-permissions">
+                <div class="page-toolbar">
+                    <p class="page-toolbar-hint">Decide which pages and actions each role gets. Changes apply on next login or refresh.</p>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button type="button" class="btn-secondary" id="resetRoleAccessBtn">Reset to defaults</button>
+                        <button type="button" class="btn-primary" id="saveRoleAccessBtn">Save role access</button>
+                    </div>
+                </div>
+                <div id="roleAccessMatrix" class="perm-matrix">
+                    <p class="c-role">Loading role access…</p>
+                </div>
+            </section>
+
             <!-- SETTINGS -->
             <section class="view" id="view-settings">
                 <div class="card card-limit-md">
@@ -486,7 +501,7 @@
                         </div>
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="btn-primary" id="saveWebhookBtn">Save webhook</button>
+                        <button type="button" class="btn-primary" id="saveWebhookBtn" data-requires-perm="save_webhooks">Save webhook</button>
                     </div>
                 </div>
             </section>
@@ -1234,6 +1249,7 @@
             screen: ['CV Screening', 'Screen single or batch CVs via AI'],
             onsite: ['Onsite Interviews', 'Record interview outcomes — recruiters & hiring managers'],
             settings: ['Settings', 'Webhooks and integrations'],
+            'role-permissions': ['Role access', 'Platform Admin — pages & actions per role'],
             users: ['Users', 'Team members, roles, and access'],
             'users-invite': ['Invite user', 'Add a new team member to Talent Admin'],
             audit: ['Audit log', 'Who changed what in the admin panel'],

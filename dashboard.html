@@ -776,18 +776,23 @@
             return ids;
         }
 
-        function findSessionForCandidate(sessions, email, jobIds) {
+        function canHaveAssessment(stage) {
+            return stage === 'Shortlisted';
+        }
+
+        function findSessionForCandidate(sessions, email, jobIds, stage) {
+            if (!canHaveAssessment(stage)) return null;
             const em = String(email || '').toLowerCase();
             const pool = (sessions || []).filter((s) => String(s.candidate_email || '').toLowerCase() === em);
             if (!pool.length) return null;
-            if (!jobIds || !jobIds.size) return pool[0];
+            if (!jobIds || !jobIds.size) return pool.length === 1 ? pool[0] : null;
             for (const s of pool) {
                 const sids = sessionJobIds(s);
                 for (const jid of jobIds) {
                     if (sids.has(jid)) return s;
                 }
             }
-            return pool[0];
+            return null;
         }
 
         function historyStats(sess) {
@@ -867,8 +872,8 @@
         }
 
         function assessCellHtml(m) {
-            const sess = m.session;
             const stage = m.stage;
+            const sess = canHaveAssessment(stage) ? m.session : null;
             if (!sess) {
                 if (stage === 'Shortlisted') return '<span class="pill p-pending">Not started</span>';
                 return '<span class="c-role">—</span>';
@@ -990,7 +995,7 @@
                     notes,
                     rawNotes: c.notes,
                     created_at: c.created_at,
-                    session: findSessionForCandidate(allSessions, em, jobIds),
+                    session: findSessionForCandidate(allSessions, em, jobIds, c.stage),
                 });
             }
             // sessions without a candidate row (direct applies)
@@ -1710,7 +1715,7 @@
             document.getElementById('dSub').innerHTML = roleLabel(m.role) + ' · Applied ' + fmtDate(m.created_at);
 
             const n = m.notes || {};
-            const sess = m.session;
+            const sess = canHaveAssessment(m.stage) ? m.session : null;
             let html = '';
 
             // Snapshot

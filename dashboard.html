@@ -688,6 +688,8 @@
         let MERGED = [];
         let SESSION_LIST = [];
         let ACTIVE_ASSESSMENT_ID = null;
+        let JOB_TITLES = {};
+        let EMAIL_BEST_ROLE = new Map();
         let charts = {};
 
         /* ---------- helpers ---------- */
@@ -812,9 +814,38 @@
             return '<span class="pill p-assess">' + esc(sess.status || 'Active') + progress + '</span>';
         }
 
+        function lookupJobTitle(slugOrTitle) {
+            const s = String(slugOrTitle || '').trim();
+            if (!s) return '';
+            if (JOB_TITLES[s]) return JOB_TITLES[s];
+            const norm = normalizeJobId(s);
+            if (JOB_TITLES[norm]) return JOB_TITLES[norm];
+            const slug = jobIdSlug(s);
+            if (JOB_TITLES[slug]) return JOB_TITLES[slug];
+            return s;
+        }
+
         function sessionRoleLabel(sess) {
-            const cfg = parseJson(sess?.config);
-            return cfg.requisition_title || sess?.requisition_id || '—';
+            if (!sess) return '—';
+            const cfg = parseJson(sess.config);
+            const scr = parseJson(sess.screening);
+            const merged = findMergedForSession(sess);
+            const em = String(sess.candidate_email || '').toLowerCase();
+            const sources = [
+                cfg.requisition_title,
+                sess.requisition_id,
+                cfg.requisition_id,
+                scr.requisition_title,
+                merged?.role,
+                merged?.notes?.requisition_title,
+                parseJson(merged?.rawNotes)?.requisition_title,
+                EMAIL_BEST_ROLE.get(em),
+            ];
+            for (const raw of sources) {
+                const resolved = lookupJobTitle(raw);
+                if (resolved) return resolved;
+            }
+            return '—';
         }
 
         function filterSessionsForScope(sessions) {
@@ -904,12 +935,37 @@
         async function loadData() {
             if (!sb) { banner('Supabase failed to load. Check your connection and refresh.', 'err'); return; }
             banner('', '');
-            const [candRes, sessRes] = await Promise.all([
+            const [candRes, sessRes, jobsRes] = await Promise.all([
                 sb.from('candidates')
                     .select('id, candidate_email, stage, score, requisition_id, notes, created_at')
                     .order('created_at', { ascending: false }).limit(1000),
                 fetchAssessmentSessions(),
+                sb.from('jobs').select('job_id, title').limit(500),
             ]);
+
+            JOB_TITLES = {};
+            for (const j of (jobsRes.data || [])) {
+                if (!j.job_id) continue;
+                const title = j.title || j.job_id;
+                JOB_TITLES[j.job_id] = title;
+                JOB_TITLES[normalizeJobId(j.job_id)] = title;
+                JOB_TITLES[jobIdSlug(j.job_id)] = title;
+            }
+
+            EMAIL_BEST_ROLE = new Map();
+            const emailRoleRows = new Map();
+            for (const c of (candRes.data || [])) {
+                const em = String(c.candidate_email || '').toLowerCase();
+                const notes = parseJson(c.notes);
+                const role = String(c.requisition_id || notes.requisition_title || notes.config?.requisition_title || '').trim();
+                if (!em || !role) continue;
+                if (!emailRoleRows.has(em)) emailRoleRows.set(em, []);
+                emailRoleRows.get(em).push({ role, stage: c.stage });
+            }
+            for (const [em, rows] of emailRoleRows) {
+                const shortlisted = rows.find((r) => r.stage === 'Shortlisted');
+                EMAIL_BEST_ROLE.set(em, (shortlisted || rows[0]).role);
+            }
 
             if (candRes.error) { banner('Could not read candidates: ' + candRes.error.message + ' — run supabase_rls_candidates_read.sql.', 'err'); }
             if (sessRes.error) {

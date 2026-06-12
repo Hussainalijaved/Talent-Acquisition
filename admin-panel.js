@@ -36,6 +36,58 @@
             .slice(0, 48) || 'role';
     }
 
+    function uniqueJobSlug(title, excludeId) {
+        const base = slugFromTitle(title);
+        let slug = base;
+        let n = 2;
+        while (JOBS.some((j) => j.job_id === slug && j.id !== excludeId)) {
+            slug = (base.slice(0, 44) + '-' + n).replace(/-+$/, '');
+            n += 1;
+        }
+        return slug;
+    }
+
+    const JOB_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    function clearJobFieldErrors() {
+        document.querySelectorAll('#jobForm .form-group.field-error').forEach((g) => {
+            g.classList.remove('field-error');
+            g.querySelector('.field-error-msg')?.remove();
+        });
+    }
+
+    function setJobFieldError(fieldId, message) {
+        const el = document.getElementById(fieldId);
+        if (!el) return false;
+        const group = el.closest('.form-group');
+        if (!group) return false;
+        group.classList.add('field-error');
+        let msg = group.querySelector('.field-error-msg');
+        if (!msg) {
+            msg = document.createElement('div');
+            msg.className = 'field-error-msg';
+            group.appendChild(msg);
+        }
+        msg.textContent = message;
+        return true;
+    }
+
+    function bindJobFieldValidation() {
+        const ids = ['jobTitleIn', 'jobIntIn', 'jobJdIn', 'jobDeptIn', 'jobExpIn', 'jobStackIn', 'jobSalaryIn'];
+        ids.forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const ev = el.tagName === 'SELECT' ? 'change' : 'input';
+            el.addEventListener(ev, () => {
+                const group = el.closest('.form-group');
+                if (group?.classList.contains('field-error')) {
+                    group.classList.remove('field-error');
+                    group.querySelector('.field-error-msg')?.remove();
+                }
+            });
+        });
+    }
+
     function normalizeWebhookUrl(raw) {
         let url = String(raw || '').trim();
         if (!url) return '';
@@ -481,6 +533,7 @@
         document.getElementById('jobStackIn').value = j.tech_stack || '';
         document.getElementById('jobSalaryIn').value = j.salary_range || '';
         document.getElementById('jobJdIn').value = j.jd_text || '';
+        clearJobFieldErrors();
         resetJobTemplateUi();
         deps.setView('jobs-create');
     }
@@ -490,18 +543,36 @@
             deps.banner('You do not have permission to edit jobs.', 'err');
             return;
         }
+        clearJobFieldErrors();
+
         const id = document.getElementById('jobEditId').value;
+        const existing = id ? JOBS.find((x) => x.id === id) : null;
         const title = document.getElementById('jobTitleIn').value.trim();
         const jd_text = document.getElementById('jobJdIn').value.trim();
         const interviewer_email = document.getElementById('jobIntIn').value.trim().toLowerCase();
-        if (!title || !jd_text) {
-            deps.banner('Job title and description are required.', 'err');
-            return;
-        }
+
+        let hasError = false;
+        let firstErrorId = null;
+        const fail = (fieldId, message) => {
+            setJobFieldError(fieldId, message);
+            if (!firstErrorId) firstErrorId = fieldId;
+            hasError = true;
+        };
+
+        if (!title) fail('jobTitleIn', 'Job title is required — enter a role name.');
+        if (!jd_text) fail('jobJdIn', 'Job description is required — upload a template or generate with AI.');
         if (!interviewer_email) {
-            deps.banner('Interviewer email is required.', 'err');
+            fail('jobIntIn', 'Interviewer email is required.');
+        } else if (!JOB_EMAIL_RE.test(interviewer_email)) {
+            fail('jobIntIn', 'Enter a valid email address (e.g. interviewer@company.com).');
+        }
+
+        if (hasError) {
+            document.getElementById(firstErrorId)?.focus();
+            deps.banner('Please fill in the highlighted fields before saving.', 'err');
             return;
         }
+
         const experience = document.getElementById('jobExpIn')?.value.trim() || null;
         const tech_stack = document.getElementById('jobStackIn')?.value.trim() || null;
         const salary_range = document.getElementById('jobSalaryIn')?.value.trim() || null;
@@ -509,7 +580,7 @@
         const row = {
             title,
             jd_text,
-            job_id: slugFromTitle(title),
+            job_id: existing ? existing.job_id : uniqueJobSlug(title),
             department: document.getElementById('jobDeptIn').value.trim() || null,
             location: document.getElementById('jobLocIn').value || 'Remote',
             employment_type: document.getElementById('jobTypeIn').value || 'Full-time',
@@ -545,7 +616,17 @@
             usedFallback = !error;
         }
         if (error) {
-            deps.banner('Save job failed: ' + error.message, 'err');
+            const msg = String(error.message || error);
+            if (/duplicate key|unique constraint|jobs_job_id/i.test(msg)) {
+                if (id) {
+                    deps.banner('Save failed: job link ID conflict. Refresh the page and try again.', 'err');
+                } else {
+                    setJobFieldError('jobTitleIn', 'A job with a similar title already exists — change the title slightly.');
+                    deps.banner('This job title already exists. Use a different title.', 'err');
+                }
+            } else {
+                deps.banner('Save job failed: ' + msg, 'err');
+            }
             return;
         }
         deps.banner(
@@ -560,6 +641,410 @@
         resetJobTemplateUi();
         await loadJobs();
         deps.setView('jobs');
+    }
+
+    /* ---------- LinkedIn / social post image ---------- */
+    let socialPostFormat = 'linkedin';
+    let lastSocialData = null;
+    const SOCIAL_FORMATS = {
+        linkedin: { w: 1200, h: 627, label: 'linkedin' },
+        square: { w: 1080, h: 1080, label: 'square' },
+    };
+    const SOCIAL_FONT = 'Inter, system-ui, -apple-system, sans-serif';
+
+    function roundRect(ctx, x, y, w, h, r) {
+        const rr = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + rr, y);
+        ctx.arcTo(x + w, y, x + w, y + h, rr);
+        ctx.arcTo(x + w, y + h, x, y + h, rr);
+        ctx.arcTo(x, y + h, x, y, rr);
+        ctx.arcTo(x, y, x + w, y, rr);
+        ctx.closePath();
+    }
+
+    function wrapCanvasText(ctx, text, maxWidth) {
+        const words = String(text || '').split(/\s+/).filter(Boolean);
+        if (!words.length) return [];
+        const lines = [];
+        let line = words[0];
+        for (let i = 1; i < words.length; i++) {
+            const test = line + ' ' + words[i];
+            if (ctx.measureText(test).width > maxWidth && line) {
+                lines.push(line);
+                line = words[i];
+            } else {
+                line = test;
+            }
+        }
+        if (line) lines.push(line);
+        return lines;
+    }
+
+    function truncateCanvasText(ctx, text, maxWidth) {
+        let t = String(text || '');
+        if (ctx.measureText(t).width <= maxWidth) return t;
+        while (t.length > 1 && ctx.measureText(t + '…').width > maxWidth) t = t.slice(0, -1);
+        return t + '…';
+    }
+
+    async function ensureSocialFonts() {
+        if (!document.fonts?.load) return;
+        await Promise.all([
+            document.fonts.load('800 36px ' + SOCIAL_FONT),
+            document.fonts.load('700 42px ' + SOCIAL_FONT),
+            document.fonts.load('600 18px ' + SOCIAL_FONT),
+            document.fonts.load('500 16px ' + SOCIAL_FONT),
+        ]);
+    }
+
+    function paintSocialBackground(ctx, w, h) {
+        const g = ctx.createLinearGradient(0, 0, w, h);
+        g.addColorStop(0, '#0f172a');
+        g.addColorStop(0.5, '#1e3a8a');
+        g.addColorStop(1, '#2563eb');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = 'rgba(255,255,255,0.07)';
+        ctx.beginPath();
+        ctx.arc(w * 0.88, h * 0.12, Math.min(w, h) * 0.14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(w * 0.08, h * 0.88, Math.min(w, h) * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(w * 0.55, h * 0.05, Math.min(w, h) * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    function drawSocialChip(ctx, x, y, text) {
+        const padX = 14;
+        const padY = 8;
+        ctx.font = '600 15px ' + SOCIAL_FONT;
+        const tw = ctx.measureText(text).width;
+        const cw = tw + padX * 2;
+        const ch = 30;
+        roundRect(ctx, x, y, cw, ch, 15);
+        ctx.fillStyle = '#eff6ff';
+        ctx.fill();
+        ctx.strokeStyle = '#bfdbfe';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = '#1d4ed8';
+        ctx.fillText(text, x + padX, y + 20);
+        return cw + 10;
+    }
+
+    function drawSocialMetaRow(ctx, x, y, label, value, maxWidth) {
+        if (!value) return y;
+        ctx.font = '700 15px ' + SOCIAL_FONT;
+        ctx.fillStyle = '#64748b';
+        ctx.fillText(label, x, y);
+        ctx.font = '600 17px ' + SOCIAL_FONT;
+        ctx.fillStyle = '#0f172a';
+        const lines = wrapCanvasText(ctx, value, maxWidth - 130);
+        lines.forEach((line, i) => ctx.fillText(line, x + 120, y + i * 24));
+        return y + lines.length * 24 + 14;
+    }
+
+    function collectJobSocialData() {
+        const id = document.getElementById('jobEditId')?.value || '';
+        const existing = id ? JOBS.find((x) => x.id === id) : null;
+        const title = document.getElementById('jobTitleIn')?.value.trim() || '';
+        const slug = existing?.job_id || (title ? uniqueJobSlug(title) : '');
+        const apply_url = new URL(applyPageUrl(slug), location.href).href;
+        const careers_url = new URL('careers.html', location.href).href;
+        return {
+            title,
+            department: document.getElementById('jobDeptIn')?.value.trim() || '',
+            location: document.getElementById('jobLocIn')?.value || 'Remote',
+            employment_type: document.getElementById('jobTypeIn')?.value || 'Full-time',
+            experience: document.getElementById('jobExpIn')?.value.trim() || '',
+            tech_stack: document.getElementById('jobStackIn')?.value.trim() || '',
+            salary_range: document.getElementById('jobSalaryIn')?.value.trim() || '',
+            criteria: parseBulletLines(document.getElementById('jobCriteriaIn')?.value).slice(0, 4),
+            job_slug: slug,
+            is_saved: !!existing,
+            is_live: existing?.status === 'open',
+            apply_url,
+            careers_url,
+        };
+    }
+
+    function buildLinkedInCaption(data) {
+        const lines = [];
+        lines.push('🚀 We\'re hiring: ' + data.title);
+        lines.push('');
+        const meta = [data.location, data.employment_type, data.department].filter(Boolean);
+        if (meta.length) lines.push(meta.join(' · '));
+        if (data.experience) lines.push('Experience: ' + data.experience);
+        if (data.tech_stack) lines.push('Tech stack: ' + data.tech_stack);
+        if (data.salary_range) lines.push('Compensation: ' + data.salary_range);
+        if (data.criteria.length) {
+            lines.push('');
+            lines.push('What we\'re looking for:');
+            data.criteria.forEach((c) => lines.push('• ' + c));
+        }
+        lines.push('');
+        if (data.is_live) {
+            lines.push('Apply now: ' + data.apply_url);
+        } else if (data.is_saved) {
+            lines.push('Careers portal: ' + data.careers_url);
+            lines.push('Tip: set status to Open and save for a direct apply link.');
+        } else {
+            lines.push('Save this job and set status to Open for a live apply link.');
+            lines.push('Careers portal: ' + data.careers_url);
+        }
+        lines.push('');
+        lines.push('#hiring #jobs #careers #CONVO');
+        return lines.join('\n');
+    }
+
+    function drawSocialCardContent(ctx, data, cardX, cardY, cardW, cardH, isSquare) {
+        const pad = isSquare ? 48 : 40;
+        const innerW = cardW - pad * 2;
+        let y = cardY + pad + (isSquare ? 8 : 4);
+
+        ctx.font = '800 ' + (isSquare ? '52' : '44') + 'px ' + SOCIAL_FONT;
+        ctx.fillStyle = '#0f172a';
+        const titleLines = wrapCanvasText(ctx, data.title || 'Open Position', innerW);
+        const titleSize = isSquare ? 52 : 44;
+        const titleLineH = isSquare ? 58 : 50;
+        titleLines.slice(0, isSquare ? 3 : 2).forEach((line) => {
+            ctx.fillText(line, cardX + pad, y);
+            y += titleLineH;
+        });
+        y += 12;
+
+        let chipX = cardX + pad;
+        let chipRowY = y;
+        const chips = [data.location, data.employment_type, data.department].filter(Boolean);
+        chips.forEach((chip) => {
+            ctx.font = '600 15px ' + SOCIAL_FONT;
+            const cw = ctx.measureText(chip).width + 28;
+            if (chipX + cw > cardX + cardW - pad) {
+                chipX = cardX + pad;
+                chipRowY += 40;
+            }
+            drawSocialChip(ctx, chipX, chipRowY, chip);
+            chipX += cw + 10;
+        });
+        y = chips.length ? chipRowY + 44 : y + 8;
+
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cardX + pad, y);
+        ctx.lineTo(cardX + cardW - pad, y);
+        ctx.stroke();
+        y += 28;
+
+        y = drawSocialMetaRow(ctx, cardX + pad, y, 'Experience', data.experience, innerW);
+        y = drawSocialMetaRow(ctx, cardX + pad, y, 'Tech stack', data.tech_stack, innerW);
+        y = drawSocialMetaRow(ctx, cardX + pad, y, 'Salary', data.salary_range, innerW);
+
+        const bulletStart = y;
+        const maxBulletY = cardY + cardH - (isSquare ? 100 : 88);
+        if (data.criteria.length && y < maxBulletY - 30) {
+            ctx.font = '700 15px ' + SOCIAL_FONT;
+            ctx.fillStyle = '#64748b';
+            ctx.fillText('Key requirements', cardX + pad, y);
+            y += 26;
+            ctx.font = '600 17px ' + SOCIAL_FONT;
+            ctx.fillStyle = '#334155';
+            for (const item of data.criteria) {
+                if (y > maxBulletY) break;
+                const lines = wrapCanvasText(ctx, item, innerW - 28);
+                lines.forEach((line, i) => {
+                    if (y > maxBulletY) return;
+                    if (i === 0) {
+                        ctx.fillStyle = '#2563eb';
+                        ctx.fillText('•', cardX + pad, y);
+                    }
+                    ctx.fillStyle = '#334155';
+                    ctx.fillText(line, cardX + pad + 22, y);
+                    y += 24;
+                });
+                y += 4;
+            }
+        }
+        if (y === bulletStart && !data.experience && !data.tech_stack && !data.salary_range) {
+            ctx.font = '600 17px ' + SOCIAL_FONT;
+            ctx.fillStyle = '#64748b';
+            ctx.fillText('Join our team — details in the job post.', cardX + pad, y);
+        }
+    }
+
+    function drawSocialFooter(ctx, cardX, cardY, cardW, cardH, data) {
+        const footH = 64;
+        const fy = cardY + cardH - footH;
+        const r = 22;
+        ctx.beginPath();
+        ctx.moveTo(cardX, fy);
+        ctx.lineTo(cardX + cardW, fy);
+        ctx.lineTo(cardX + cardW, cardY + cardH - r);
+        ctx.arcTo(cardX + cardW, cardY + cardH, cardX + cardW - r, cardY + cardH, r);
+        ctx.arcTo(cardX, cardY + cardH, cardX, cardY + cardH - r, r);
+        ctx.lineTo(cardX, fy);
+        ctx.closePath();
+        ctx.fillStyle = '#2563eb';
+        ctx.fill();
+        ctx.font = '800 22px ' + SOCIAL_FONT;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('Apply now →', cardX + 36, fy + 40);
+        ctx.font = '600 15px ' + SOCIAL_FONT;
+        const link = data.is_live ? data.apply_url : data.careers_url;
+        const linkText = truncateCanvasText(ctx, link.replace(/^https?:\/\//, ''), cardW - 220);
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.fillText(linkText, cardX + 200, fy + 40);
+    }
+
+    async function renderSocialPostCanvas(canvas, data, format) {
+        const spec = SOCIAL_FORMATS[format] || SOCIAL_FORMATS.linkedin;
+        const { w, h } = spec;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        canvas.style.width = '100%';
+        canvas.style.maxWidth = w + 'px';
+        canvas.style.aspectRatio = w + ' / ' + h;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+
+        paintSocialBackground(ctx, w, h);
+
+        const isSquare = format === 'square';
+        const margin = isSquare ? 56 : 48;
+        const cardX = margin;
+        const cardY = isSquare ? 120 : 96;
+        const cardW = w - margin * 2;
+        const cardH = h - cardY - margin;
+
+        ctx.font = '800 ' + (isSquare ? '40' : '34') + 'px ' + SOCIAL_FONT;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('CONVO', cardX, isSquare ? 72 : 58);
+
+        const badge = "WE'RE HIRING";
+        ctx.font = '800 14px ' + SOCIAL_FONT;
+        const bw = ctx.measureText(badge).width + 28;
+        const bx = w - margin - bw;
+        const by = isSquare ? 48 : 36;
+        roundRect(ctx, bx, by, bw, 34, 17);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.fillStyle = '#1d4ed8';
+        ctx.fillText(badge, bx + 14, by + 22);
+
+        ctx.shadowColor = 'rgba(15, 23, 42, 0.18)';
+        ctx.shadowBlur = 28;
+        ctx.shadowOffsetY = 10;
+        roundRect(ctx, cardX, cardY, cardW, cardH, 22);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+
+        drawSocialCardContent(ctx, data, cardX, cardY, cardW, cardH, isSquare);
+        drawSocialFooter(ctx, cardX, cardY, cardW, cardH, data);
+    }
+
+    async function refreshSocialPostPreview() {
+        if (!lastSocialData) return;
+        const canvas = document.getElementById('socialPostCanvas');
+        if (!canvas) return;
+        await ensureSocialFonts();
+        await renderSocialPostCanvas(canvas, lastSocialData, socialPostFormat);
+    }
+
+    function setSocialPostFormat(format) {
+        socialPostFormat = SOCIAL_FORMATS[format] ? format : 'linkedin';
+        document.querySelectorAll('[data-social-format]').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.socialFormat === socialPostFormat);
+        });
+        refreshSocialPostPreview();
+    }
+
+    function updateSocialPostHint(data) {
+        const hint = document.getElementById('socialPostHint');
+        if (!hint) return;
+        if (data.is_live) {
+            hint.textContent = 'Live apply link is included in the image and caption.';
+        } else if (data.is_saved) {
+            hint.textContent = 'Job is saved as draft/closed — set status to Open for a direct apply link.';
+        } else {
+            hint.textContent = 'Save the job and set status to Open for a live apply link in posts.';
+        }
+    }
+
+    async function openSocialPostModal() {
+        const title = document.getElementById('jobTitleIn')?.value.trim();
+        if (!title) {
+            setJobFieldError('jobTitleIn', 'Enter a job title before creating a social post.');
+            deps.banner('Add a job title first, then generate the LinkedIn post.', 'err');
+            document.getElementById('jobTitleIn')?.focus();
+            return;
+        }
+        lastSocialData = collectJobSocialData();
+        const modal = document.getElementById('socialPostModal');
+        const caption = document.getElementById('socialPostCaption');
+        if (caption) caption.value = buildLinkedInCaption(lastSocialData);
+        updateSocialPostHint(lastSocialData);
+        if (modal) {
+            modal.classList.add('show');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+        await refreshSocialPostPreview();
+    }
+
+    function closeSocialPostModal() {
+        const modal = document.getElementById('socialPostModal');
+        if (modal) {
+            modal.classList.remove('show');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+    }
+
+    async function downloadSocialPostImage() {
+        const canvas = document.getElementById('socialPostCanvas');
+        if (!canvas || !lastSocialData) return;
+        await refreshSocialPostPreview();
+        const slug = lastSocialData.job_slug || 'job';
+        const link = document.createElement('a');
+        link.download = 'convo-hiring-' + slug + '-' + socialPostFormat + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        deps.banner('Image downloaded — ready to post on LinkedIn.', 'ok');
+    }
+
+    async function copySocialPostCaption() {
+        const caption = document.getElementById('socialPostCaption');
+        const text = caption?.value || (lastSocialData ? buildLinkedInCaption(lastSocialData) : '');
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+            deps.banner('Caption copied to clipboard.', 'ok');
+        } catch (_) {
+            caption?.select();
+            document.execCommand('copy');
+            deps.banner('Caption copied.', 'ok');
+        }
+    }
+
+    function bindSocialPostEvents() {
+        document.getElementById('jobSocialBtn')?.addEventListener('click', openSocialPostModal);
+        document.getElementById('socialPostModalClose')?.addEventListener('click', closeSocialPostModal);
+        document.getElementById('socialPostModalBackdrop')?.addEventListener('click', closeSocialPostModal);
+        document.getElementById('socialDownloadBtn')?.addEventListener('click', downloadSocialPostImage);
+        document.getElementById('socialCopyCaptionBtn')?.addEventListener('click', copySocialPostCaption);
+        document.querySelectorAll('[data-social-format]').forEach((btn) => {
+            btn.addEventListener('click', () => setSocialPostFormat(btn.dataset.socialFormat));
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.getElementById('socialPostModal')?.classList.contains('show')) {
+                closeSocialPostModal();
+            }
+        });
     }
 
     async function deleteJob(id) {
@@ -1819,6 +2304,7 @@
         document.getElementById('jobResetBtn')?.addEventListener('click', () => {
             document.getElementById('jobForm').reset();
             document.getElementById('jobEditId').value = '';
+            clearJobFieldErrors();
             resetJobTemplateUi();
         });
         document.getElementById('jobEditId')?.addEventListener('change', (e) => {
@@ -1828,9 +2314,12 @@
                 return;
             }
             document.getElementById('jobForm')?.reset();
+            clearJobFieldErrors();
             resetJobTemplateUi();
         });
         bindJobTemplateUpload();
+        bindJobFieldValidation();
+        bindSocialPostEvents();
         document.getElementById('screenForm')?.addEventListener('submit', submitManualScreen);
         document.getElementById('scrJob')?.addEventListener('change', onScreenJobPick);
         document.getElementById('scrCvFile')?.addEventListener('change', onScreenFileChange);

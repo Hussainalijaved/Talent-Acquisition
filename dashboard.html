@@ -325,6 +325,7 @@
                                     </div>
                                     <div class="form-actions job-jd-actions">
                                         <button type="button" class="btn-secondary" id="jobGenBtn">Generate with AI</button>
+                                        <button type="button" class="btn-secondary" id="jobSocialBtn">LinkedIn post</button>
                                         <button type="button" class="btn-primary" data-requires-perm="edit_jobs" onclick="document.getElementById('jobForm').dispatchEvent(new Event('submit'))">Save job</button>
                                         <button type="button" class="btn-secondary" id="jobResetBtn">Clear form</button>
                                     </div>
@@ -584,6 +585,40 @@
         </div>
         <div class="drawer-body" id="drawerBody"></div>
     </aside>
+
+    <!-- LinkedIn / social post generator -->
+    <div class="social-modal" id="socialPostModal" aria-hidden="true">
+        <div class="social-modal-backdrop" id="socialPostModalBackdrop"></div>
+        <div class="social-modal-card" role="dialog" aria-labelledby="socialPostModalTitle">
+            <div class="social-modal-head">
+                <div>
+                    <div class="social-modal-title" id="socialPostModalTitle">LinkedIn post</div>
+                    <div class="social-modal-sub">Preview, download image, and copy caption for social media</div>
+                </div>
+                <button type="button" class="drawer-close" id="socialPostModalClose" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="social-modal-body">
+                <div class="social-format-toggle">
+                    <button type="button" class="mode-btn active" data-social-format="linkedin">LinkedIn wide (1200×627)</button>
+                    <button type="button" class="mode-btn" data-social-format="square">Square (1080×1080)</button>
+                </div>
+                <div class="social-preview-wrap">
+                    <canvas id="socialPostCanvas" aria-label="Job post preview"></canvas>
+                </div>
+                <p class="social-preview-hint" id="socialPostHint">Save job as Open for a live apply link in the caption.</p>
+                <div class="form-group social-caption-group">
+                    <label for="socialPostCaption">Suggested caption</label>
+                    <textarea id="socialPostCaption" class="textarea-compact social-caption" readonly rows="7"></textarea>
+                </div>
+            </div>
+            <div class="social-modal-foot">
+                <button type="button" class="btn-secondary" id="socialCopyCaptionBtn">Copy caption</button>
+                <button type="button" class="btn-success" id="socialDownloadBtn">Download PNG</button>
+            </div>
+        </div>
+    </div>
 
     <script src="auth-config.js"></script>
     <script src="admin-auth.js"></script>

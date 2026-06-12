@@ -46,6 +46,7 @@
                 <summary class="nav-dropdown-label"><span>Screening</span><svg class="nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></summary>
                 <div class="nav-dropdown-body">
                     <button type="button" class="nav-item nav-sub" data-view="screen">CV screening</button>
+                    <button type="button" class="nav-item nav-sub" data-view="assessments">Assessments</button>
                 </div>
             </details>
 
@@ -169,6 +170,46 @@
                     <table>
                         <thead><tr><th>Candidate</th><th>Role</th><th>CV Score</th><th>Stage</th><th>Assessment</th><th>Applied</th></tr></thead>
                         <tbody id="candBody"><tr><td class="loading-row" colspan="6">Loading candidates…</td></tr></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ASSESSMENTS -->
+            <section class="view" id="view-assessments">
+                <div class="kpi-grid assess-kpi-grid" id="assessKpiGrid"></div>
+                <div class="toolbar">
+                    <select class="filter" id="fAssessStatus">
+                        <option value="">All statuses</option>
+                        <option value="assessment">In progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="PASS">Passed</option>
+                        <option value="FAIL">Failed</option>
+                        <option value="started">Started (has answers)</option>
+                    </select>
+                    <select class="filter" id="fAssessRole"><option value="">All roles</option></select>
+                    <select class="filter" id="fAssessSort">
+                        <option value="updated">Recently updated</option>
+                        <option value="score_desc">Score: high → low</option>
+                        <option value="score_asc">Score: low → high</option>
+                        <option value="email">Email A → Z</option>
+                        <option value="started">Newest session</option>
+                    </select>
+                    <span class="count-tag" id="assessCount"></span>
+                </div>
+                <div class="table-card table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Candidate</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Result</th>
+                                <th>Score</th>
+                                <th>Phases</th>
+                                <th>Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody id="assessBody"><tr><td class="loading-row" colspan="7">Loading assessments…</td></tr></tbody>
                     </table>
                 </div>
             </section>
@@ -635,6 +676,7 @@
         let sb = null;
 
         let MERGED = [];
+        let SESSION_LIST = [];
         let charts = {};
 
         /* ---------- helpers ---------- */
@@ -759,6 +801,29 @@
             return '<span class="pill p-assess">' + esc(sess.status || 'Active') + progress + '</span>';
         }
 
+        function sessionRoleLabel(sess) {
+            const cfg = parseJson(sess?.config);
+            return cfg.requisition_title || sess?.requisition_id || '—';
+        }
+
+        function filterSessionsForScope(sessions) {
+            if (!window.TAAuth?.isJobScopedRole?.()) return sessions || [];
+            const ids = new Set(MERGED.map((m) => m.session?.id).filter(Boolean));
+            return (sessions || []).filter((s) => ids.has(s.id));
+        }
+
+        function findMergedForSession(sess) {
+            if (!sess) return null;
+            const byId = MERGED.find((m) => m.session?.id === sess.id);
+            if (byId) return byId;
+            const em = String(sess.candidate_email || '').toLowerCase();
+            return MERGED.find((m) => {
+                if (String(m.email || '').toLowerCase() !== em) return false;
+                if (!m.session) return true;
+                return m.session.id === sess.id;
+            }) || MERGED.find((m) => String(m.email || '').toLowerCase() === em) || null;
+        }
+
         function assessCellHtml(m) {
             const pill = assessPill(m.session, m.stage);
             if (!m.session) return pill;
@@ -817,7 +882,7 @@
                     .select('id, candidate_email, stage, score, requisition_id, notes, created_at')
                     .order('created_at', { ascending: false }).limit(1000),
                 sb.from('assessment_sessions')
-                    .select('id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, created_at, updated_at')
+                    .select('id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, created_at, updated_at')
                     .order('updated_at', { ascending: false }).limit(1000),
             ]);
 
@@ -875,6 +940,7 @@
                 MERGED = TAAdmin.applyScopeFilter(MERGED);
                 TAAdmin.showScopeBanner();
             }
+            SESSION_LIST = filterSessionsForScope(allSessions);
             render();
             banner('Loaded ' + MERGED.length + ' candidate record(s) — updated ' + new Date().toLocaleTimeString() + '.', 'ok');
             setTimeout(() => banner('', ''), 3500);
@@ -892,8 +958,10 @@
             renderKpis();
             renderChartsAfterLayout();
             renderRoleFilter();
+            renderAssessRoleFilter();
             renderRecent();
             renderCandidates();
+            renderAssessments();
             renderPipeline();
         }
 
@@ -1114,6 +1182,134 @@
             bindRows(tb);
         }
 
+        function assessStats() {
+            const list = SESSION_LIST || [];
+            const pass = list.filter((s) => s.result === 'PASS').length;
+            const fail = list.filter((s) => s.result === 'FAIL').length;
+            const active = list.filter((s) => s.status === 'assessment').length;
+            const completed = list.filter((s) => s.status === 'completed').length;
+            return { total: list.length, pass, fail, active, completed };
+        }
+
+        function renderAssessKpis() {
+            const el = document.getElementById('assessKpiGrid');
+            if (!el) return;
+            const s = assessStats();
+            const cards = [
+                { label: 'Total sessions', value: s.total, sub: 'Saved in portal' },
+                { label: 'In progress', value: s.active, sub: 'Currently taking assessment' },
+                { label: 'Completed', value: s.completed, sub: 'Finished all phases' },
+                { label: 'Passed', value: s.pass, sub: 'Met pass threshold' },
+                { label: 'Failed', value: s.fail, sub: 'Did not pass' },
+            ];
+            el.innerHTML = cards.map((c) =>
+                '<div class="kpi"><div class="kpi-top"><span class="kpi-label">' + esc(c.label) + '</span></div>' +
+                '<div class="kpi-val">' + c.value + '</div><div class="kpi-foot">' + esc(c.sub) + '</div></div>'
+            ).join('');
+        }
+
+        function renderAssessRoleFilter() {
+            const sel = document.getElementById('fAssessRole');
+            if (!sel) return;
+            const cur = sel.value;
+            const roles = new Set();
+            (SESSION_LIST || []).forEach((s) => {
+                const lbl = sessionRoleLabel(s);
+                if (lbl && lbl !== '—') roles.add(lbl);
+            });
+            const sorted = [...roles].sort((a, b) => a.localeCompare(b));
+            sel.innerHTML = '<option value="">All roles</option>' +
+                sorted.map((r) => '<option value="' + esc(r) + '">' + esc(roleLabel(r)) + '</option>').join('');
+            if (cur && sorted.includes(cur)) sel.value = cur;
+        }
+
+        function filteredAssessments() {
+            const q = (document.getElementById('globalSearch')?.value || '').toLowerCase().trim();
+            const status = document.getElementById('fAssessStatus')?.value || '';
+            const role = document.getElementById('fAssessRole')?.value || '';
+            const sort = document.getElementById('fAssessSort')?.value || 'updated';
+            let list = (SESSION_LIST || []).slice();
+
+            if (q) {
+                list = list.filter((s) => {
+                    const cfg = parseJson(s.config);
+                    const hay = [
+                        s.candidate_email,
+                        s.id,
+                        sessionRoleLabel(s),
+                        cfg.requisition_title,
+                        s.requisition_id,
+                    ].join(' ').toLowerCase();
+                    return hay.includes(q);
+                });
+            }
+            if (status === 'assessment') list = list.filter((s) => s.status === 'assessment');
+            else if (status === 'completed') list = list.filter((s) => s.status === 'completed');
+            else if (status === 'PASS') list = list.filter((s) => s.result === 'PASS');
+            else if (status === 'FAIL') list = list.filter((s) => s.result === 'FAIL');
+            else if (status === 'started') list = list.filter((s) => historyStats(s).answered > 0);
+
+            if (role) {
+                list = list.filter((s) => {
+                    const lbl = sessionRoleLabel(s);
+                    return lbl === role || normalizeJobId(lbl) === normalizeJobId(role) || jobIdSlug(lbl) === jobIdSlug(role);
+                });
+            }
+
+            list.sort((a, b) => {
+                if (sort === 'score_desc') return (Number(b.score) || -1) - (Number(a.score) || -1);
+                if (sort === 'score_asc') return (Number(a.score) || 999) - (Number(b.score) || 999);
+                if (sort === 'email') return String(a.candidate_email).localeCompare(String(b.candidate_email));
+                if (sort === 'started') return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+                return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0);
+            });
+            return list;
+        }
+
+        function assessmentRowHtml(sess) {
+            const av = avatarFor(sess.candidate_email);
+            const { answered, maxPh } = historyStats(sess);
+            const merged = findMergedForSession(sess);
+            const stage = merged?.stage || (sess.status === 'completed' ? 'Shortlisted' : '—');
+            return '<tr data-session-id="' + esc(sess.id) + '">' +
+                '<td><div class="c-email"><span class="avatar" style="background:' + av.color + '">' + esc(av.init) + '</span>' +
+                esc(sess.candidate_email || '—') + '</div></td>' +
+                '<td>' + esc(roleLabel(sessionRoleLabel(sess))) + '</td>' +
+                '<td>' + assessPill(sess, stage) + '</td>' +
+                '<td>' + (sess.result === 'PASS' ? '<span class="pill p-pass">PASS</span>' :
+                    sess.result === 'FAIL' ? '<span class="pill p-reject">FAIL</span>' :
+                    '<span class="c-role">—</span>') + '</td>' +
+                '<td>' + scoreBadge(sess.score) + '</td>' +
+                '<td><span class="assess-progress">' + answered + ' / ' + maxPh + '</span></td>' +
+                '<td>' + esc(fmtDate(sess.updated_at || sess.created_at)) + '</td>' +
+                '</tr>';
+        }
+
+        function bindAssessmentRows(tb) {
+            tb.querySelectorAll('tr[data-session-id]').forEach((tr) => {
+                tr.addEventListener('click', () => {
+                    const id = tr.dataset.sessionId;
+                    const sess = (SESSION_LIST || []).find((s) => s.id === id);
+                    if (sess) openAssessmentDrawer(sess);
+                });
+            });
+        }
+
+        function renderAssessments() {
+            const tb = document.getElementById('assessBody');
+            if (!tb) return;
+            renderAssessKpis();
+            const list = filteredAssessments();
+            const countEl = document.getElementById('assessCount');
+            if (countEl) countEl.textContent = list.length + ' of ' + (SESSION_LIST?.length || 0) + ' sessions';
+            if (!list.length) {
+                tb.innerHTML = '<tr><td class="empty" colspan="7">No assessment sessions match these filters.</td></tr>';
+                return;
+            }
+            tb.innerHTML = list.map((s) => assessmentRowHtml(s)).join('');
+            bindAssessmentRows(tb);
+        }
+
         function renderPipeline() {
             const s = stats();
             const steps = [
@@ -1265,6 +1461,79 @@
         }
 
         /* ---------- drawer ---------- */
+        function openAssessmentDrawer(sess) {
+            if (!sess) return;
+            const merged = findMergedForSession(sess);
+            const av = avatarFor(sess.candidate_email);
+            const cfg = parseJson(sess.config);
+            const role = sessionRoleLabel(sess);
+            const delBtn = document.getElementById('drawerDeleteBtn');
+            if (delBtn) delBtn.style.display = merged && window.TAAuth?.can?.('delete_candidate') ? '' : 'none';
+
+            document.getElementById('dAvatar').style.background = av.color;
+            document.getElementById('dAvatar').textContent = av.init;
+            document.getElementById('dTitle').textContent = sess.candidate_email || '—';
+            document.getElementById('dSub').innerHTML = roleLabel(role) + ' · Session ' + fmtDateTime(sess.updated_at || sess.created_at);
+
+            let html = '<div class="section"><div class="section-h">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"/><path d="M9 7a3 3 0 0 1 6 0v4H9z"/></svg>' +
+                'Session snapshot</div>' +
+                kv('Session ID', esc(sess.id || '—')) +
+                kv('Candidate email', esc(sess.candidate_email || '—')) +
+                kv('Role', esc(roleLabel(role))) +
+                kv('Portal status', esc(sess.status || '—')) +
+                kv('Result', sess.result === 'PASS' ? '<span class="pill p-pass">PASS</span>' :
+                    sess.result === 'FAIL' ? '<span class="pill p-reject">FAIL</span>' : '<span class="c-role">—</span>') +
+                kv('Final score', scoreBadge(sess.score)) +
+                (sess.scheduling_status ? kv('Scheduling', esc(sess.scheduling_status)) : '') +
+                '</div>';
+
+            html += renderAssessmentReport(sess);
+
+            if (merged) {
+                const n = merged.notes || {};
+                html += '<div class="section"><div class="section-h">' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>' +
+                    'CV screening</div>' +
+                    kv('Stage', stagePill(merged.stage)) +
+                    kv('CV score', scoreBadge(merged.cvScore)) +
+                    '<div class="reason">' + esc(buildReason(merged.rawNotes || merged.notes, merged.stage)) + '</div>' +
+                    (n.strengths ? '<div class="qlabel">Strengths</div><div class="qtext">' + esc(Array.isArray(n.strengths) ? n.strengths.join(', ') : n.strengths) + '</div>' : '') +
+                    (n.weaknesses ? '<div class="qlabel">Gaps</div><div class="qtext ans">' + esc(Array.isArray(n.weaknesses) ? n.weaknesses.join(', ') : n.weaknesses) + '</div>' : '') +
+                    '</div>';
+                if (window.TAAdmin) {
+                    TAAdmin.setActiveCandidate(merged);
+                    html += TAAdmin.renderOnsiteForDrawer(merged.email);
+                    html += TAAdmin.renderHmNotesPanelHtml();
+                }
+            } else if (sess.screening) {
+                const scr = parseJson(sess.screening);
+                html += '<div class="section"><div class="section-h">CV screening (session)</div>' +
+                    '<div class="reason">' + esc(scr.summary || scr.recommendation || JSON.stringify(scr)) + '</div></div>';
+            }
+
+            if (cfg.interviewer_email || sess.gmail_thread_id) {
+                html += '<div class="section"><div class="section-h">Scheduling &amp; email</div>' +
+                    (cfg.interviewer_email ? kv('Interviewer', esc(cfg.interviewer_email)) : '') +
+                    (sess.gmail_thread_id ? kv('Gmail thread', esc(sess.gmail_thread_id)) : '') +
+                    '</div>';
+            }
+
+            const portalUrl = 'index.html?session=' + encodeURIComponent(sess.id) +
+                (sess.candidate_email ? '&email=' + encodeURIComponent(sess.candidate_email) : '');
+            html += '<div class="section"><div class="section-h">Candidate portal</div>' +
+                '<p class="qtext">Same responses the candidate sees after completing the assessment.</p>' +
+                '<a class="btn-secondary" href="' + esc(portalUrl) + '" target="_blank" rel="noopener" style="display:inline-flex;margin-top:8px;text-decoration:none">Open assessment portal ↗</a></div>';
+
+            html += '<details class="raw-fold section"><summary>Developer — raw JSON</summary>' +
+                '<div class="raw-json">' + esc(JSON.stringify({ session: sess, candidate: merged }, null, 2)) + '</div></details>';
+
+            document.getElementById('drawerBody').innerHTML = html;
+            document.getElementById('overlay').classList.add('show');
+            document.getElementById('drawer').classList.add('show');
+            if (merged && window.TAAdmin) TAAdmin.bindDrawerNotes(merged);
+        }
+
         function openDrawer(m) {
             if (!m) return;
             if (window.TAAdmin) TAAdmin.setActiveCandidate(m);
@@ -1344,6 +1613,7 @@
         const TITLES = {
             overview: ['Overview', 'Hiring pipeline at a glance'],
             candidates: ['Candidates', 'Every applicant, score and decision'],
+            assessments: ['Assessments', 'All candidate assessment sessions — questions, answers & scores'],
             pipeline: ['Pipeline', 'Funnel from application to hire'],
             jobs: ['All jobs', 'Published roles, status, and apply links'],
             'jobs-create': ['Create job', 'Generate JD from criteria and publish a role'],
@@ -1373,7 +1643,16 @@
             document.getElementById('pageTitle').textContent = t[0];
             document.getElementById('pageSub').textContent = t[1];
             const searchWrap = document.querySelector('.search');
-            if (searchWrap) searchWrap.style.display = (v === 'candidates' || v === 'overview') ? 'flex' : 'none';
+            if (searchWrap) {
+                searchWrap.style.display = (v === 'candidates' || v === 'overview' || v === 'assessments') ? 'flex' : 'none';
+                const inp = document.getElementById('globalSearch');
+                if (inp) {
+                    inp.placeholder = v === 'assessments'
+                        ? 'Search by email, role, or session ID…'
+                        : 'Search candidates by email or role…';
+                }
+            }
+            if (v === 'assessments') renderAssessments();
             if (v === 'overview' || v === 'pipeline') renderChartsAfterLayout();
             if (window.TAAdmin) TAAdmin.onViewChange(v);
             try {
@@ -1431,7 +1710,18 @@
         });
         document.getElementById('refreshBtn').addEventListener('click', () => { banner('Refreshing…', 'ok'); loadData(); });
         ['globalSearch', 'fStage', 'fRole', 'fAssess', 'fSort'].forEach(id => {
-            document.getElementById(id).addEventListener('input', () => { renderCandidates(); if (id === 'globalSearch') renderRecent(); });
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('input', () => {
+                renderCandidates();
+                if (id === 'globalSearch') {
+                    renderRecent();
+                    renderAssessments();
+                }
+            });
+        });
+        ['fAssessStatus', 'fAssessRole', 'fAssessSort'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', renderAssessments);
         });
 
         async function bootDashboard() {

@@ -41,6 +41,7 @@
         overview: 'Overview',
         candidates: 'Candidates',
         pipeline: 'Pipeline',
+        assessments: 'Assessments',
         jobs: 'All jobs',
         'jobs-create': 'Create / edit job',
         screen: 'CV screening',
@@ -73,27 +74,27 @@
     const DEFAULT_ROLE_ACCESS = {
         super_admin: { views: ALL_VIEWS, perms: ALL_PERMS },
         hr_head: {
-            views: ['overview', 'candidates', 'pipeline', 'jobs', 'jobs-create', 'screen', 'users', 'users-invite'],
+            views: ['overview', 'candidates', 'pipeline', 'assessments', 'jobs', 'jobs-create', 'screen', 'users', 'users-invite'],
             perms: ['edit_jobs', 'screen_cv', 'manage_users', 'add_candidate_notes'],
         },
         hiring_manager_head: {
-            views: ['overview', 'candidates', 'pipeline', 'jobs', 'onsite', 'users', 'users-invite'],
+            views: ['overview', 'candidates', 'pipeline', 'assessments', 'jobs', 'onsite', 'users', 'users-invite'],
             perms: ['onsite_write', 'manage_users', 'add_candidate_notes'],
         },
         recruiter: {
-            views: ['overview', 'candidates', 'pipeline', 'jobs', 'jobs-create', 'screen'],
+            views: ['overview', 'candidates', 'pipeline', 'assessments', 'jobs', 'jobs-create', 'screen'],
             perms: ['edit_jobs', 'screen_cv', 'add_candidate_notes'],
         },
         hiring_manager: {
-            views: ['overview', 'candidates', 'pipeline', 'onsite'],
+            views: ['overview', 'candidates', 'pipeline', 'assessments', 'onsite'],
             perms: ['onsite_write', 'add_candidate_notes'],
         },
         interviewer: {
-            views: ['overview', 'candidates', 'onsite'],
+            views: ['overview', 'candidates', 'assessments', 'onsite'],
             perms: ['add_candidate_notes'],
         },
         viewer: {
-            views: ['overview', 'candidates', 'pipeline'],
+            views: ['overview', 'candidates', 'pipeline', 'assessments'],
             perms: [],
         },
     };

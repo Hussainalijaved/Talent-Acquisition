@@ -836,25 +836,17 @@
         }
 
         function assessCellHtml(m) {
-            const pill = assessPill(m.session, m.stage);
-            if (!m.session) return pill;
-            const { hist, answered, withQ, maxPh } = historyStats(m.session);
-            if (!hist.length) return pill;
-            const preview = hist
-                .filter((h) => h && (h.question_text || h.question))
-                .slice(0, 2)
-                .map((h) => {
-                    const q = String(h.question_text || h.question || '').trim();
-                    const short = q.length > 72 ? q.slice(0, 72) + '…' : q;
-                    const ans = h.answer_text != null && String(h.answer_text).trim() !== '';
-                    return '<div class="hist-preview-line"><span class="hist-preview-phase">P' + esc(h.phase || '?') + '</span> ' +
-                        esc(short) + (ans ? ' <span class="hist-preview-ok">✓</span>' : '') + '</div>';
-                })
-                .join('');
-            const more = withQ > 2 ? '<div class="hist-preview-more">+' + (withQ - 2) + ' more — open row for full history</div>' : '';
-            return '<div class="assess-cell">' + pill +
-                '<div class="hist-preview">' + preview + more + '</div>' +
-                '<div class="hist-preview-foot">' + answered + ' of ' + maxPh + ' phases answered</div></div>';
+            const sess = m.session;
+            const stage = m.stage;
+            if (!sess) {
+                if (stage === 'Shortlisted') return '<span class="pill p-pending">Not started</span>';
+                return '<span class="c-role">—</span>';
+            }
+            if (sess.result === 'PASS') return '<span class="pill p-pass">Pass</span>';
+            if (sess.result === 'FAIL') return '<span class="pill p-reject">Fail</span>';
+            if (sess.status === 'assessment') return '<span class="pill p-pending">In progress</span>';
+            if (sess.status === 'completed') return '<span class="pill p-assess">Completed</span>';
+            return '<span class="pill p-assess">' + esc(sess.status || '—') + '</span>';
         }
         const AV_COLORS = ['#475569', '#64748b', '#334155', '#1e40af', '#0369a1', '#0f766e', '#4b5563', '#52525b'];
         function avatarFor(email) {

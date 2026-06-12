@@ -1,0 +1,50 @@
+Senior Backend Engineer
+
+Department: Engineering
+Location: Remote
+Employment type: Full-time
+Interviewer: interviewer@company.com
+
+Experience: 3–5 years, Mid-level
+Tech stack: C#, .NET Core, ASP.NET Core, SQL Server, Entity Framework, Azure
+Salary: PKR 200k–280k / month
+
+About the Role
+We are looking for a Senior Backend Engineer to design, build, and maintain scalable APIs and services. You will work closely with product and frontend teams to deliver reliable features in a fast-paced Agile environment.
+
+What You'll Do
+• Design and implement RESTful APIs using ASP.NET Core and Web API
+• Build data access layers with Entity Framework and SQL Server
+• Write clean, testable code with unit and integration tests
+• Participate in code reviews, sprint planning, and technical design discussions
+• Troubleshoot production issues and improve system performance
+• Mentor junior developers and share best practices
+
+What We're Looking For
+• Strong experience with C# and .NET Core
+• Hands-on ASP.NET Core / Web API development
+• Solid SQL Server knowledge and Entity Framework
+• Git, CI/CD, and Agile teamwork
+• Good communication and problem-solving skills
+
+Nice to Have
+• AWS or Azure cloud services
+• Kubernetes and container orchestration
+• Open-source contributions
+• Experience with message queues (RabbitMQ, Azure Service Bus)
+
+Qualifications
+• 3–5 years of relevant backend development experience
+• Bachelor's degree in Computer Science or equivalent practical experience
+• Ability to work independently and collaboratively
+
+What We Offer
+• Competitive compensation aligned with experience
+• Remote-friendly working arrangements
+• Collaborative culture with mentorship and growth opportunities
+• Exposure to modern tooling and industry best practices
+
+How to Apply
+Submit your CV through our careers portal. Shortlisted candidates will complete a structured technical assessment as the next step in our hiring process.
+
+We are an equal opportunity employer and welcome applications from qualified candidates.

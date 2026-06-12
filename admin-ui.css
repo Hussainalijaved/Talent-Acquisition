@@ -619,15 +619,61 @@ tbody tr:last-child td { border-bottom: none; }
 .job-create-card { max-width: none; width: 100%; }
 .job-create-split {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 42%);
-    gap: 24px;
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 44%);
+    gap: 20px;
     align-items: start;
 }
-.job-create-left .form-grid { margin-bottom: 0; }
+.job-form-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.job-form-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+}
+.job-form-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+.job-form-row {
+    display: grid;
+    gap: 12px 14px;
+    margin-bottom: 12px;
+}
+.job-form-row:last-child { margin-bottom: 0; }
+.job-form-row.cols-1 { grid-template-columns: 1fr; }
+.job-form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+.job-form-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.job-form-section .form-group { gap: 7px; margin-bottom: 0; }
+.job-form-section .form-group label {
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: var(--text-soft);
+}
+.job-form-section .form-group input,
+.job-form-section .form-group select,
+.job-form-section .form-group textarea {
+    padding: 10px 12px;
+    font-size: var(--text-sm);
+}
+.textarea-compact {
+    min-height: 96px !important;
+    max-height: 140px;
+    resize: vertical;
+}
 .job-create-right { position: sticky; top: 88px; }
 .job-jd-panel {
     background: var(--surface-2);
-    border: 1px solid var(--border);
+    border: 2px solid var(--border);
     border-radius: var(--radius);
     padding: 18px;
     display: flex;
@@ -636,11 +682,18 @@ tbody tr:last-child td { border-bottom: none; }
     min-height: 520px;
 }
 .job-jd-panel-title {
-    font-size: 11px;
+    font-size: var(--text-sm);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--text-faint);
+    color: var(--text);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+.job-jd-panel .form-group label {
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: var(--text-soft);
 }
 .job-template-zone {
     display: flex;
@@ -826,6 +879,12 @@ body.sidebar-open { overflow: hidden; }
     .job-create-split { grid-template-columns: 1fr; }
     .job-create-right { position: static; }
     .job-jd-panel { min-height: 0; }
+    .job-form-row.cols-3 { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 720px) {
+    .job-form-row.cols-2,
+    .job-form-row.cols-3 { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 980px) {

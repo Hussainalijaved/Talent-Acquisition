@@ -292,17 +292,6 @@
                                     </section>
 
                                     <section class="job-form-section">
-                                        <div class="job-form-section-title">Apply page template</div>
-                                        <div class="job-form-row cols-1">
-                                            <div class="form-group">
-                                                <label for="jobDisplayStyleIn">Hiring post layout</label>
-                                                <select id="jobDisplayStyleIn"></select>
-                                                <div class="form-hint" id="jobDisplayStyleHint">LinkedIn-style apply page — candidate clicks Apply now to open the CV form.</div>
-                                            </div>
-                                        </div>
-                                    </section>
-
-                                    <section class="job-form-section">
                                         <div class="job-form-section-title">Screening criteria</div>
                                         <div class="job-form-row cols-2">
                                             <div class="form-group">
@@ -322,17 +311,24 @@
                             <div class="job-create-right">
                                 <div class="job-jd-panel">
                                     <div class="job-jd-panel-title">Job description</div>
-                                    <label class="job-template-zone" id="jobTemplateZone" for="jobTemplateFile">
-                                        <input type="file" id="jobTemplateFile" accept=".pdf,.doc,.docx,.txt,.md,.html,.htm,.rtf,.odt" />
-                                        <div class="job-template-icon">📄</div>
-                                        <div class="job-template-title">Upload JD template</div>
-                                        <div class="job-template-sub">PDF, Word, TXT, HTML — any file. Existing JD text loads here in original layout.</div>
-                                        <div class="job-template-name" id="jobTemplateName"></div>
-                                    </label>
-                                    <div class="form-group" style="margin-bottom:0">
+                                    <div class="form-group job-jd-toolbar">
+                                        <label class="job-jd-toolbar-label">JD source</label>
+                                        <div class="job-template-upload" id="jobTemplateZone">
+                                            <input type="file" id="jobTemplateFile" class="job-template-file-input" accept=".pdf,.doc,.docx,.txt,.md,.html,.htm,.rtf,.odt" />
+                                            <button type="button" class="btn-secondary btn-sm" id="jobTemplateBtn">Upload template</button>
+                                            <span class="job-template-name" id="jobTemplateName"></span>
+                                        </div>
+                                        <div class="form-hint">PDF, Word, TXT, HTML — loads into description below</div>
+                                    </div>
+                                    <div class="form-group job-jd-main">
                                         <label for="jobJdIn">Full job description *</label>
                                         <textarea id="jobJdIn" class="textarea-jd" placeholder="Upload a template or click Generate with AI…" required></textarea>
                                         <div class="form-hint" id="jobTemplateHint">Used for careers page, CV screening, and assessment.</div>
+                                    </div>
+                                    <div class="form-group job-display-style-group">
+                                        <label for="jobDisplayStyleIn">Hiring post layout</label>
+                                        <select id="jobDisplayStyleIn"></select>
+                                        <div class="form-hint" id="jobDisplayStyleHint">How this role appears on the public apply page.</div>
                                     </div>
                                     <div class="form-actions job-jd-actions">
                                         <button type="button" class="btn-secondary" id="jobGenBtn">Generate with AI</button>

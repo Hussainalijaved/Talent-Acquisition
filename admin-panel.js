@@ -1388,22 +1388,28 @@
     function resetJobTemplateUi() {
         const input = document.getElementById('jobTemplateFile');
         const name = document.getElementById('jobTemplateName');
-        const zone = document.getElementById('jobTemplateZone');
+        const btn = document.getElementById('jobTemplateBtn');
         const hint = document.getElementById('jobTemplateHint');
         if (input) input.value = '';
         if (name) name.textContent = '';
-        if (zone) zone.classList.remove('has-file', 'drag-over');
+        if (btn) {
+            btn.classList.remove('has-file');
+            btn.textContent = 'Upload template';
+        }
         if (hint) hint.textContent = 'Used for careers page, CV screening, and assessment.';
     }
 
     async function onJobTemplateFileChange(file) {
         if (!file) return;
-        const zone = document.getElementById('jobTemplateZone');
+        const btn = document.getElementById('jobTemplateBtn');
         const nameEl = document.getElementById('jobTemplateName');
         const hint = document.getElementById('jobTemplateHint');
         const jdIn = document.getElementById('jobJdIn');
 
-        if (zone) zone.classList.add('has-file');
+        if (btn) {
+            btn.classList.add('has-file');
+            btn.textContent = 'Change template';
+        }
         if (nameEl) nameEl.textContent = file.name;
         if (hint) hint.textContent = 'Reading template…';
 
@@ -1415,7 +1421,10 @@
             if (hint) hint.textContent = 'Template loaded — review and edit before saving.';
             deps.banner('JD loaded from template: ' + file.name, 'ok');
         } catch (err) {
-            if (zone) zone.classList.remove('has-file');
+            if (btn) {
+                btn.classList.remove('has-file');
+                btn.textContent = 'Upload template';
+            }
             if (nameEl) nameEl.textContent = '';
             if (hint) hint.textContent = 'Used for careers page, CV screening, and assessment.';
             deps.banner('Template upload failed: ' + (err.message || err), 'err');
@@ -1424,38 +1433,13 @@
 
     function bindJobTemplateUpload() {
         const input = document.getElementById('jobTemplateFile');
-        const zone = document.getElementById('jobTemplateZone');
+        const btn = document.getElementById('jobTemplateBtn');
         if (!input) return;
 
+        btn?.addEventListener('click', () => input.click());
         input.addEventListener('change', () => {
             const file = input.files?.[0];
             if (file) onJobTemplateFileChange(file);
-        });
-
-        if (!zone) return;
-        ['dragenter', 'dragover'].forEach((ev) => {
-            zone.addEventListener(ev, (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                zone.classList.add('drag-over');
-            });
-        });
-        ['dragleave', 'drop'].forEach((ev) => {
-            zone.addEventListener(ev, (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                zone.classList.remove('drag-over');
-            });
-        });
-        zone.addEventListener('drop', (e) => {
-            const file = e.dataTransfer?.files?.[0];
-            if (!file) return;
-            try {
-                const dt = new DataTransfer();
-                dt.items.add(file);
-                input.files = dt.files;
-            } catch (_) { /* read-only in some browsers */ }
-            onJobTemplateFileChange(file);
         });
     }
 

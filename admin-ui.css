@@ -691,8 +691,8 @@ tbody tr:last-child td { border-bottom: none; }
     padding: 18px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    min-height: 520px;
+    gap: 12px;
+    min-height: 640px;
 }
 .job-jd-panel-title {
     font-size: var(--text-sm);
@@ -708,26 +708,21 @@ tbody tr:last-child td { border-bottom: none; }
     font-weight: 700;
     color: var(--text-soft);
 }
-.job-template-zone {
+.job-jd-toolbar { margin-bottom: 0; }
+.job-jd-toolbar-label {
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: var(--text-soft);
+    margin-bottom: 6px;
+    display: block;
+}
+.job-template-upload {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
     align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 18px 16px;
-    border: 2px dashed var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-    cursor: pointer;
-    text-align: center;
-    transition: border-color 0.15s, background 0.15s;
+    gap: 10px 12px;
 }
-.job-template-zone:hover,
-.job-template-zone.drag-over {
-    border-color: var(--accent);
-    background: rgba(37, 99, 235, 0.04);
-}
-.job-template-zone input[type="file"] {
+.job-template-file-input {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -735,33 +730,30 @@ tbody tr:last-child td { border-bottom: none; }
     overflow: hidden;
     clip: rect(0, 0, 0, 0);
 }
-.job-template-icon { font-size: 28px; line-height: 1; }
-.job-template-title {
-    font-size: var(--text-md);
-    font-weight: 700;
-    color: var(--text);
-}
-.job-template-sub {
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--text-soft);
-    max-width: 280px;
-    line-height: 1.45;
-}
 .job-template-name {
     font-size: var(--text-sm);
     font-weight: 600;
     color: var(--accent);
-    margin-top: 4px;
     word-break: break-all;
+    flex: 1;
+    min-width: 100px;
 }
-.job-template-zone.has-file {
-    border-style: solid;
-    border-color: var(--accent);
-    background: rgba(37, 99, 235, 0.06);
+#jobTemplateBtn.has-file {
+    border-color: var(--success);
+    color: var(--success);
+    background: var(--success-bg);
 }
+.job-jd-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-bottom: 0;
+}
+.job-jd-main .textarea-jd { flex: 1; }
+.job-display-style-group { margin-bottom: 0; }
 .textarea-jd {
-    min-height: 280px;
+    min-height: 400px;
     resize: vertical;
     line-height: 1.55;
     font-size: var(--text-md);

@@ -22,12 +22,93 @@
 
     function speakQuestion(text) {
         const t = String(text || '').trim();
-        if (!t || !global.speechSynthesis) return;
+        if (!t || !global.speechSynthesis) return { cancel() {} };
         global.speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(t);
         u.lang = 'en-US';
         u.rate = 0.95;
         global.speechSynthesis.speak(u);
+        return { cancel() { global.speechSynthesis.cancel(); } };
+    }
+
+    /**
+     * TTS + typewriter — question text appears as AI speaks.
+     * callbacks: { onUpdate(text), onStart(), onEnd() }
+     */
+    function speakQuestionWithTypewriter(text, callbacks) {
+        const t = String(text || '').trim();
+        const { onUpdate, onStart, onEnd } = callbacks || {};
+        let cancelled = false;
+        let typeTimer = null;
+        let boundarySeen = false;
+
+        const finish = (full) => {
+            if (typeTimer) clearInterval(typeTimer);
+            typeTimer = null;
+            if (!cancelled) {
+                onUpdate?.(full || t);
+                onEnd?.();
+            }
+        };
+
+        const cancel = () => {
+            cancelled = true;
+            if (typeTimer) clearInterval(typeTimer);
+            if (global.speechSynthesis) global.speechSynthesis.cancel();
+        };
+
+        if (!t) {
+            onEnd?.();
+            return { cancel };
+        }
+
+        onUpdate?.('');
+        onStart?.();
+
+        if (!global.speechSynthesis) {
+            let i = 0;
+            typeTimer = setInterval(() => {
+                if (cancelled) return;
+                i += 1;
+                onUpdate?.(t.slice(0, i));
+                if (i >= t.length) finish(t);
+            }, 28);
+            return { cancel };
+        }
+
+        global.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(t);
+        u.lang = 'en-US';
+        u.rate = 0.95;
+
+        u.onboundary = (ev) => {
+            if (cancelled) return;
+            boundarySeen = true;
+            const end = Math.min(t.length, Number(ev.charIndex || 0) + Number(ev.charLength || 1));
+            onUpdate?.(t.slice(0, end));
+        };
+
+        u.onstart = () => {
+            if (cancelled) return;
+            onUpdate?.('');
+            const cps = 13 * (u.rate || 1);
+            let idx = 0;
+            typeTimer = setInterval(() => {
+                if (cancelled || boundarySeen) return;
+                idx += 1;
+                if (idx <= t.length) onUpdate?.(t.slice(0, idx));
+                if (idx >= t.length) {
+                    clearInterval(typeTimer);
+                    typeTimer = null;
+                }
+            }, Math.max(20, Math.round(1000 / cps)));
+        };
+
+        u.onend = () => finish(t);
+        u.onerror = () => finish(t);
+
+        global.speechSynthesis.speak(u);
+        return { cancel };
     }
 
     function createRecorder() {
@@ -71,8 +152,9 @@
         };
     }
 
-    /** Live browser STT — start before recording, stop after */
-    function createSpeechRecognizer() {
+    /** Live browser STT — onTranscript(text) fires as candidate speaks */
+    function createSpeechRecognizer(options) {
+        const onTranscript = typeof options === 'function' ? options : options?.onTranscript;
         const SR = global.SpeechRecognition || global.webkitSpeechRecognition;
         if (!SR) {
             return {
@@ -82,21 +164,34 @@
         }
 
         let rec = null;
-        let text = '';
+        let finalized = '';
+
+        const emit = () => {
+            if (onTranscript) onTranscript(finalized.trim());
+        };
 
         return {
             start() {
-                text = '';
+                finalized = '';
+                emit();
                 rec = new SR();
                 rec.lang = 'en-US';
                 rec.continuous = true;
                 rec.interimResults = true;
                 rec.onresult = (e) => {
-                    text = Array.from(e.results)
-                        .map((r) => r[0].transcript)
-                        .join(' ')
-                        .trim();
+                    let interim = '';
+                    let finals = '';
+                    for (let i = 0; i < e.results.length; i++) {
+                        const r = e.results[i];
+                        const piece = r[0]?.transcript || '';
+                        if (r.isFinal) finals += piece;
+                        else interim += piece;
+                    }
+                    if (finals) finalized += finals;
+                    const combined = (finalized + interim).replace(/\s+/g, ' ').trim();
+                    if (onTranscript) onTranscript(combined);
                 };
+                rec.onerror = () => emit();
                 try {
                     rec.start();
                 } catch (_) {
@@ -104,9 +199,9 @@
                 }
             },
             async stop() {
-                if (!rec) return text.trim();
+                if (!rec) return finalized.trim();
                 return new Promise((resolve) => {
-                    const done = () => resolve(text.trim());
+                    const done = () => resolve(finalized.trim());
                     rec.onend = done;
                     rec.onerror = done;
                     try {
@@ -148,6 +243,7 @@
     global.TA_SPEECH = {
         computeMetrics,
         speakQuestion,
+        speakQuestionWithTypewriter,
         createRecorder,
         createSpeechRecognizer,
         transcribeWithWebSpeech,

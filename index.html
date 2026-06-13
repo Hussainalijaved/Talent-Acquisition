@@ -1282,7 +1282,10 @@
         }) => {
             const recorderRef = React.useRef(null);
             const sttRef = React.useRef(null);
+            const speakRef = React.useRef(null);
             const [isRecording, setIsRecording] = React.useState(false);
+            const [isSpeaking, setIsSpeaking] = React.useState(false);
+            const [typedQuestion, setTypedQuestion] = React.useState('');
             const [transcript, setTranscript] = React.useState('');
             const [recordError, setRecordError] = React.useState('');
             const phases = Array.from({ length: speechTotal }, (_, i) => i + 1);
@@ -1292,15 +1295,31 @@
                 recorderRef.current = window.TA_SPEECH.createRecorder();
             }
 
-            const handlePlay = () => {
-                if (window.TA_SPEECH) window.TA_SPEECH.speakQuestion(question);
-            };
+            const startQuestionPlayback = React.useCallback(() => {
+                if (!question || !window.TA_SPEECH) return;
+                speakRef.current?.cancel?.();
+                setTypedQuestion('');
+                setIsSpeaking(true);
+                if (window.TA_SPEECH.speakQuestionWithTypewriter) {
+                    speakRef.current = window.TA_SPEECH.speakQuestionWithTypewriter(question, {
+                        onUpdate: setTypedQuestion,
+                        onEnd: () => setIsSpeaking(false),
+                    });
+                } else {
+                    window.TA_SPEECH.speakQuestion(question);
+                    setTypedQuestion(question);
+                    setIsSpeaking(false);
+                }
+            }, [question]);
 
             React.useEffect(() => {
-                if (!question || contentMasked || isLoading) return;
-                const t = setTimeout(() => handlePlay(), 400);
-                return () => clearTimeout(t);
-            }, [question, speechIndex, contentMasked, isLoading]);
+                if (!question || contentMasked || isLoading) return undefined;
+                const t = setTimeout(() => startQuestionPlayback(), 400);
+                return () => {
+                    clearTimeout(t);
+                    speakRef.current?.cancel?.();
+                };
+            }, [question, speechIndex, contentMasked, isLoading, startQuestionPlayback]);
 
             const toggleRecord = async () => {
                 setRecordError('');
@@ -1326,9 +1345,14 @@
                     }
                 } else {
                     try {
+                        speakRef.current?.cancel?.();
+                        setIsSpeaking(false);
+                        setTypedQuestion(question);
                         setTranscript('');
                         if (window.TA_SPEECH?.createSpeechRecognizer) {
-                            sttRef.current = window.TA_SPEECH.createSpeechRecognizer();
+                            sttRef.current = window.TA_SPEECH.createSpeechRecognizer({
+                                onTranscript: (text) => setTranscript(text),
+                            });
                             sttRef.current.start();
                         }
                         await recorderRef.current.start();
@@ -1372,20 +1396,37 @@
                                         </div>
                                     )}
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Question (phase {absolutePhase})</p>
-                                    <p className="text-base sm:text-lg text-slate-100 leading-relaxed mb-4">{question}</p>
-                                    <button type="button" onClick={handlePlay} disabled={contentMasked || isLoading}
+                                    <p className="text-base sm:text-lg text-slate-100 leading-relaxed mb-4 min-h-[3.5rem]">
+                                        {typedQuestion || (isSpeaking ? '' : question)}
+                                        {(isSpeaking || (isRecording && !transcript)) ? (
+                                            <span className="inline-block w-0.5 h-[1.1em] bg-accent ml-0.5 align-middle animate-pulse" aria-hidden="true" />
+                                        ) : null}
+                                    </p>
+                                    <button type="button" onClick={startQuestionPlayback} disabled={contentMasked || isLoading || isRecording}
                                         className="btn-secondary px-4 py-2 rounded-lg text-sm mb-6">
-                                        Play question
+                                        {isSpeaking ? 'Playing…' : 'Replay question'}
                                     </button>
                                     <div className="border border-surface-border rounded-lg p-4 bg-[#0c121a]/60">
-                                        <p className="text-xs text-slate-500 mb-3">Tap record, speak your answer, tap again to submit.</p>
+                                        <p className="text-xs text-slate-500 mb-3">
+                                            {isRecording
+                                                ? 'Speak now — your words appear below as you talk.'
+                                                : 'Tap record, speak your answer, tap again to submit.'}
+                                        </p>
                                         <button type="button" onClick={toggleRecord} disabled={contentMasked || isLoading}
                                             className={`px-6 py-3 rounded-xl text-sm font-semibold w-full sm:w-auto ${isRecording ? 'bg-red-600 hover:bg-red-500' : 'btn-primary'}`}>
                                             {isRecording ? 'Stop & submit' : 'Start recording'}
                                         </button>
-                                        {transcript ? (
-                                            <p className="text-sm text-slate-400 mt-4 leading-relaxed">Preview: {transcript}</p>
-                                        ) : null}
+                                        <div className={`mt-4 rounded-lg border p-3 min-h-[4rem] ${isRecording ? 'border-accent/30 bg-accent/5' : 'border-surface-border/60 bg-[#0a0f16]/50'}`}>
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
+                                                {isRecording ? 'Live transcript' : 'Your answer'}
+                                            </p>
+                                            <p className="text-sm text-slate-200 leading-relaxed">
+                                                {transcript || (isRecording ? '' : '—')}
+                                                {isRecording ? (
+                                                    <span className="inline-block w-0.5 h-[1em] bg-emerald-400 ml-0.5 align-middle animate-pulse" aria-hidden="true" />
+                                                ) : null}
+                                            </p>
+                                        </div>
                                         {recordError ? <p className="text-sm text-red-400 mt-3">{recordError}</p> : null}
                                     </div>
                                 </div>

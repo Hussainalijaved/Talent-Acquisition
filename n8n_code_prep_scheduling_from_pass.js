@@ -25,7 +25,13 @@ function pickSessionRow() {
 }
 
 const parse =
-  pickNodeJson('CODE - Parse Result', 'CODE - Parse Result1') || {};
+  pickNodeJson(
+    'CODE - Pick Parse Result',
+    'CODE - Parse Speech Result',
+    'CODE - Parse Technical Result',
+    'CODE - Parse Result',
+    'CODE - Parse Result1'
+  ) || {};
 const session = pickSessionRow();
 const cfg = { ...(session.config || {}), ...(parse.config || {}) };
 

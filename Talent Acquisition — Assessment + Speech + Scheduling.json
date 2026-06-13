@@ -1,0 +1,1633 @@
+{
+  "name": "Talent Acquisition — Assessment + Speech + Scheduling",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "assessment-answer",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "eb3dedc4-9901-4f6b-a387-95abc039f554",
+      "name": "TRG - Assessment Answer",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        1888
+      ],
+      "webhookId": "assessment-submit-id"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-1",
+              "name": "supabase_url",
+              "value": "=https://vnxstyadacgntnsvcvzn.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "cfg-2",
+              "name": "supabase_key",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}",
+              "type": "string"
+            },
+            {
+              "id": "cfg-3",
+              "name": "gemini_model",
+              "value": "gemini-2.0-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg-4",
+              "name": "max_questions",
+              "value": "5",
+              "type": "string"
+            },
+            {
+              "id": "cfg-5",
+              "name": "interviewer_email",
+              "value": "hussainalijaved712@gmail.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg-6",
+              "name": "organization_name",
+              "value": "Convo Pvt Ltd",
+              "type": "string"
+            },
+            {
+              "id": "a_groq",
+              "name": "groq_model",
+              "value": "llama-3.3-70b-versatile",
+              "type": "string"
+            },
+            {
+              "id": "a_fail",
+              "name": "fail_score_threshold",
+              "value": 30,
+              "type": "number"
+            },
+            {
+              "id": "a_pass",
+              "name": "pass_score_threshold",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "a_tmin",
+              "name": "timer_min_seconds",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "a_tmax",
+              "name": "timer_max_seconds",
+              "value": 600,
+              "type": "number"
+            },
+            {
+              "id": "a_tbl",
+              "name": "table_assessment_sessions",
+              "value": "assessment_sessions",
+              "type": "string"
+            },
+            {
+              "id": "cfg-cal",
+              "name": "calendar_id",
+              "value": "primary",
+              "type": "string"
+            },
+            {
+              "id": "cfg-n8n",
+              "name": "n8n_public_url",
+              "value": "https://randy-gaunt-bradley.ngrok-free.dev",
+              "type": "string"
+            },
+            {
+              "id": "cfg-portal",
+              "name": "portal_base_url",
+              "value": "https://talent-acquisition-six.vercel.app",
+              "type": "string"
+            },
+            {
+              "id": "sp-en",
+              "name": "speech_enabled",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "sp-ph",
+              "name": "speech_phases",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "sp-tw",
+              "name": "technical_weight",
+              "value": 0.7,
+              "type": "number"
+            },
+            {
+              "id": "sp-sw",
+              "name": "speech_weight",
+              "value": 0.3,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "28b3abd4-ec36-401e-999e-9bda43703cf1",
+      "name": "CFG - Assessment Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        1888
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Normalize Data (technical + speech assessment)\n// Paste into: CODE - Normalize Data (after CFG - Assessment Config)\n\nconst item = $input.first().json;\nconst body = item.body || {};\nconst query = item.query || {};\n\nconst cleanEmail = (raw) => {\n  const first = String(raw || '').trim().toLowerCase().split(/\\n/)[0].trim();\n  return first.split(/\\s+regards/i)[0].trim();\n};\n\nconst session_id = String(\n  body.sessionId || body.session_id || query.sessionId || query.session_id || ''\n).trim();\nconst candidate_email = cleanEmail(\n  body.email || body.candidate_email || query.email || query.candidate_email\n);\nconst answer = String(body.answer || query.answer || '').trim();\nconst current_phase = parseInt(body.phase || body.current_phase || query.phase || '1', 10);\nconst tab_switches = parseInt(body.tabSwitches ?? body.tab_switches ?? '0', 10);\nconst assessment_mode = String(\n  body.assessment_mode || body.mode || query.assessment_mode || 'text'\n).trim().toLowerCase();\n\nconst speech_metrics =\n  body.speech_metrics && typeof body.speech_metrics === 'object'\n    ? body.speech_metrics\n    : {};\nconst audio_url = String(body.audio_url || body.audioUrl || '').trim();\n\nconst nested = item.config || {};\nconst config = {\n  supabase_url: nested.supabase_url || item.supabase_url || '',\n  supabase_key: nested.supabase_key || item.supabase_key || '',\n  gemini_model: nested.gemini_model || nested.groq_model || item.gemini_model || item.groq_model || '',\n  groq_model: nested.groq_model || item.groq_model || '',\n  max_questions: Number(nested.max_questions ?? item.max_questions ?? 5),\n  speech_phases: Number(nested.speech_phases ?? item.speech_phases ?? 3),\n  speech_enabled:\n    nested.speech_enabled === true ||\n    nested.speech_enabled === 'true' ||\n    item.speech_enabled === true ||\n    item.speech_enabled === 'true' ||\n    Number(nested.speech_phases ?? item.speech_phases ?? 3) > 0,\n  technical_weight: Number(nested.technical_weight ?? item.technical_weight ?? 0.7),\n  speech_weight: Number(nested.speech_weight ?? item.speech_weight ?? 0.3),\n  interviewer_email: nested.interviewer_email || item.interviewer_email || '',\n  organization_name: nested.organization_name || item.organization_name || '',\n  requisition_title: nested.requisition_title || '',\n  requisition_requirements: nested.requisition_requirements || '',\n  fail_score_threshold: Number(nested.fail_score_threshold ?? item.fail_score_threshold ?? 30),\n  pass_score_threshold: Number(nested.pass_score_threshold ?? item.pass_score_threshold ?? 60),\n  timer_min_seconds: Number(nested.timer_min_seconds ?? item.timer_min_seconds ?? 60),\n  timer_max_seconds: Number(nested.timer_max_seconds ?? item.timer_max_seconds ?? 600),\n  table_assessment_sessions: nested.table_assessment_sessions || 'assessment_sessions',\n};\n\nreturn [\n  {\n    json: {\n      session_id,\n      candidate_email,\n      answer,\n      current_phase,\n      tab_switches,\n      assessment_mode,\n      speech_metrics,\n      audio_url,\n      config,\n    },\n  },\n];"
+      },
+      "id": "4ca35e4f-2007-4a34-b553-eee432607ed6",
+      "name": "CODE - Normalize Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        1888
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('CFG - Assessment Config').first().json.supabase_url.replace(/\\/$/, '') }}/rest/v1/assessment_sessions?id=eq.{{ $('CODE - Normalize Data').first().json.session_id }}&select=*",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "46fd8d18-eae1-4fd3-9bd4-7781420f0bb4",
+      "name": "HTTP - Fetch Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        928,
+        1888
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "speech-mode",
+              "leftValue": "={{ $('CODE - Normalize Data').first().json.assessment_mode === 'speech' || (Array.isArray($json) ? $json[0].assessment_stage : $json.assessment_stage) === 'speech' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f5404a76-0afd-4f3d-8284-a854113a9177",
+      "name": "IF - Speech mode?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1152,
+        1888
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Build LLM context (assessment phases 1–5)\r\n// Paste into: CODE - Build LLM context (before Basic LLM Chain)\r\n\r\nconst norm = $('CODE - Normalize Data').first().json;\r\nconst raw = $input.first().json;\r\nconst session = Array.isArray(raw) ? raw[0] : raw;\r\nif (!session?.id) {\r\n  throw new Error('No assessment session row for id=' + norm.session_id);\r\n}\r\n\r\nlet history = session.interview_history;\r\nif (typeof history === 'string') {\r\n  try {\r\n    history = JSON.parse(history);\r\n  } catch (e) {\r\n    history = [];\r\n  }\r\n}\r\nif (!Array.isArray(history)) history = [];\r\n\r\nlet sessionConfig = session.config;\r\nif (typeof sessionConfig === 'string') {\r\n  try {\r\n    sessionConfig = JSON.parse(sessionConfig);\r\n  } catch (e) {\r\n    sessionConfig = {};\r\n  }\r\n}\r\nif (!sessionConfig || typeof sessionConfig !== 'object') sessionConfig = {};\r\n\r\nconst cfg = {\r\n  ...norm.config,\r\n  ...sessionConfig,\r\n  requisition_title:\r\n    sessionConfig.requisition_title || norm.config?.requisition_title || '',\r\n  requisition_requirements:\r\n    sessionConfig.requisition_requirements || norm.config?.requisition_requirements || '',\r\n  groq_model:\r\n    sessionConfig.groq_model || norm.config?.groq_model || 'llama-3.3-70b-versatile',\r\n  max_questions: Number(sessionConfig.max_questions || norm.config?.max_questions || 5),\r\n  fail_score_threshold: Number(\r\n    sessionConfig.fail_score_threshold ?? norm.config?.fail_score_threshold ?? 30\r\n  ),\r\n  pass_score_threshold: Number(\r\n    sessionConfig.pass_score_threshold ?? norm.config?.pass_score_threshold ?? 60\r\n  ),\r\n  timer_min_seconds: Number(sessionConfig.timer_min_seconds ?? norm.config?.timer_min_seconds ?? 60),\r\n  timer_max_seconds: Number(sessionConfig.timer_max_seconds ?? norm.config?.timer_max_seconds ?? 600),\r\n};\r\n\r\nconst ph = Number(norm.current_phase || 1);\r\nconst maxQ = Number(cfg.max_questions || 5);\r\nconst isFinal = ph >= maxQ;\r\nconst failThreshold = Number(cfg.fail_score_threshold ?? 30);\r\n\r\nconst jdTitle = String(cfg.requisition_title || '').trim();\r\nconst jdReq = String(cfg.requisition_requirements || '').trim();\r\nif (!jdTitle || !jdReq) {\r\n  throw new Error(\r\n    'JD missing on assessment session. Complete CV screening with recruiter form JD first (session.config.requisition_title / requisition_requirements).'\r\n  );\r\n}\r\n\r\nfunction extractJdThemes(text) {\r\n  const lines = String(text)\r\n    .split(/\\r?\\n|(?<=[.;])\\s+/)\r\n    .flatMap((chunk) => chunk.split(/\\s*[•\\-*]\\s+/))\r\n    .map((s) => s.replace(/^[\\s\\d.)(]+/, '').trim())\r\n    .filter((s) => s.length >= 12);\r\n  return lines.length ? [...new Set(lines)].slice(0, 10) : [String(text).slice(0, 500)];\r\n}\r\n\r\nconst jdThemes = extractJdThemes(jdReq);\r\nconst phaseFocusLanes = [\r\n  'JD core responsibilities and must-have skills for this role (breadth, not deep-dive on one tool)',\r\n  'JD system design / architecture / integration — how systems connect and scale for this role',\r\n  'JD hands-on implementation, APIs, data, delivery, or feature ownership',\r\n  'JD quality bar: security, performance, reliability, testing, monitoring, or DevOps',\r\n  'Holistic JD role fit — can this candidate perform the full job',\r\n];\r\n\r\nconst cvText = String(session.cv_plaintext || '').slice(0, 8000);\r\nconst historyText = history\r\n  .map(\r\n    (h) =>\r\n      `Phase ${h.phase} Q: ${h.question_text || h.question || ''} | A: ${h.answer_text ?? 'pending'} | Score: ${h.score ?? 'N/A'}`\r\n  )\r\n  .join('\\n');\r\n\r\nconst themesAsked = history\r\n  .filter((h) => h.question_text || h.question)\r\n  .map((h) => `Phase ${h.phase}: ${String(h.question_text || h.question).slice(0, 140)}`)\r\n  .join('\\n');\r\n\r\nconst cvTopicsUsed = history\r\n  .filter((h) => h.question_text || h.question)\r\n  .map((h) => String(h.question_text || h.question).slice(0, 100))\r\n  .join('\\n');\r\n\r\nfunction extractCvAnchors(text) {\r\n  const cv = String(text || '');\r\n  const projects =\r\n    cv.match(/(?:project|built|developed|engineered|implemented|led)[^.]{10,120}/gi) || [];\r\n  const skills =\r\n    cv.match(\r\n      /\\b(React|Angular|Vue|Node\\.?js|Python|Django|Flask|SQL|PostgreSQL|MySQL|MongoDB|\\.NET|ASP\\.NET|C#|Java|Spring|AWS|Azure|GCP|Docker|Kubernetes|Redis|Kafka|REST|GraphQL|TypeScript|JavaScript|EF\\s*Core|LINQ|JWT|OAuth|microservices?|APIM|CI\\/CD|GitHub Actions)\\b/gi\r\n    ) || [];\r\n  const employers = cv.match(/(?:at|@)\\s+[A-Z][A-Za-z0-9&.\\s]{2,40}(?:,|\\.|\\s{2})/g) || [];\r\n  const anchors = [\r\n    ...new Set([\r\n      ...projects.slice(0, 5).map((p) => p.trim().slice(0, 100)),\r\n      ...skills.slice(0, 8),\r\n      ...employers.slice(0, 3).map((e) => e.trim()),\r\n    ]),\r\n  ].filter(Boolean);\r\n  return anchors.length ? anchors : ['(parse named projects, tools, employers from CV excerpt)'];\r\n}\r\n\r\nconst cvAnchors = extractCvAnchors(cvText);\r\n\r\nconst currentQuestionRow = history.find((h) => Number(h.phase) === ph);\r\nconst currentQuestionText = String(\r\n  currentQuestionRow?.question_text || currentQuestionRow?.question || ''\r\n).trim();\r\n\r\nconst prevPhaseRow = history.find((h) => Number(h.phase) === ph - 1);\r\nconst prevTimeLimit = prevPhaseRow?.time_limit_seconds ?? null;\r\n\r\nconst nextPhaseNum = ph + 1;\r\nconst nextFocusLane = !isFinal\r\n  ? phaseFocusLanes[Math.min(nextPhaseNum - 1, phaseFocusLanes.length - 1)]\r\n  : '';\r\nconst nextJdTheme = !isFinal\r\n  ? jdThemes[(nextPhaseNum - 1) % jdThemes.length] || nextFocusLane\r\n  : '';\r\nconst nextCvAnchor = !isFinal\r\n  ? cvAnchors[(nextPhaseNum - 1) % cvAnchors.length] || cvAnchors[0]\r\n  : '';\r\n\r\nconst sharedRules = `\"\"\"You are an elite technical interviewer running a structured ${maxQ}-phase screening for ${cfg.organization_name || 'the company'}.\r\n\r\nPRIMARY GOAL: Each phase tests a DIFFERENT combination of JD requirement + CV evidence. Never from CV alone. Never from JD alone.\r\n\r\n═══════════════════════════════════════ CV + JD DUAL-SOURCE (MOST IMPORTANT) ═══════════════════════════════════════\r\nEvery question MUST explicitly combine BOTH sources in one cohesive prompt:\r\n  (A) A specific JD requirement, responsibility, or outcome from the Job Description, AND\r\n  (B) A specific CV anchor — named project, employer, tool, or experience from the candidate's CV.\r\n\r\nQuestion formula (use every time):\r\n  \"The role requires [JD requirement]. Your CV shows [CV project/skill/employer] — how did/would you [technical task linking both]?\"\r\n\r\nRules:\r\n  - Each phase = NEW JD theme + NEW CV anchor (rotate both — do not reuse).\r\n  - Spread coverage across the full JD AND across different parts of the CV.\r\n  - NEVER ask a question answerable without reading BOTH the JD and this CV.\r\n  - NEVER deep-dive the same CV project or same JD bullet in more than one phase.\r\n\r\nPhase topic lanes (pair with a fresh JD theme + CV anchor each phase):\r\n  Phase 1: ${phaseFocusLanes[0]}\r\n  Phase 2: ${phaseFocusLanes[1]}\r\n  Phase 3: ${phaseFocusLanes[2]}\r\n  Phase 4: ${phaseFocusLanes[3]}\r\n  Phase 5: ${phaseFocusLanes[4]}\r\n\r\nJD themes (rotate — one per phase):\r\n${jdThemes.map((t, i) => `  ${i + 1}. ${t}`).join('\\n')}\r\n\r\nCV anchors detected (rotate — pick a different one each phase):\r\n${cvAnchors.map((a, i) => `  ${i + 1}. ${a}`).join('\\n')}\r\n\r\nWhen writing next_question:\r\n  1. Pick JD theme for phase N NOT used in \"Themes already asked\".\r\n  2. Pick CV anchor NOT used in \"CV anchors already used\".\r\n  3. Write ONE question that names BOTH in the same sentence.\r\n  4. If CV lacks a skill the JD requires, pair the JD theme with the closest related CV experience and ask how they would bridge the gap.\r\n\r\nFORBIDDEN:\r\n  - CV-only questions (no JD requirement named).\r\n  - JD-only questions (no CV project/skill/employer named).\r\n  - Repeating the same CV project or same JD theme across phases.\r\n  - Generic textbook questions any candidate could answer.\r\n\r\n═══════════════════════════════════════ SCORING — ANSWER MUST MATCH THE QUESTION ASKED ═══════════════════════════════════════\r\nScore ONLY how well the candidate answered THE SPECIFIC question for this phase (see \"Question asked this phase\" below).\r\n\r\nWeighting:\r\n  - 50% RELEVANCE: Did they answer what was asked (both JD and CV parts of the question)?\r\n  - 25% JD FIT: Does the answer show they can meet the role requirement?\r\n  - 25% CV EVIDENCE: Concrete examples from their stated experience (not invented).\r\n\r\nOff-topic / mismatch penalties (apply FIRST):\r\n  - Answer is about a different topic than the question → score ≤ 15\r\n  - Buzzwords only, no link to the question → score ≤ 25\r\n  - Partially on-topic but vague → 30–50\r\n  - Directly answers the question with technical detail → 55–75\r\n  - Strong, specific, JD-aligned answer with evidence → 76–100\r\n\r\nDo NOT give high scores for impressive but irrelevant content.\r\n\r\n═══════════════════════════════════════ STRUCTURE ═══════════════════════════════════════\r\n- Exactly ${maxQ} phases. Phases 1–4: score + one next_question. Phase ${maxQ}: score + PASS/FAIL, next_question \"\".\r\n- Phase 1 question already exists in history — grade it; write phase 2 when current phase is 1.\r\n- Empty/timeout/[SYSTEM TERMINATION] → score 0–15, next_question \"\" if integrity.\r\n\r\n═══════════════════════════════════════ TIME LIMIT (phases 1–4) ═══════════════════════════════════════\r\nSet time_limit_seconds (60–600) and complexity_tier A|B|C|D from next_question depth.\r\n\r\n═══════════════════════════════════════ OUTPUT — JSON ONLY ═══════════════════════════════════════\r\nPhases 1–4: {\"score\":number,\"feedback\":string,\"suggested_answer\":string,\"next_question\":string,\"time_limit_seconds\":number,\"complexity_tier\":\"A\"|\"B\"|\"C\"|\"D\"}\r\nPhase ${maxQ}: {\"status\":\"finished\",\"result\":\"PASS\"|\"FAIL\",\"score\":number,\"feedback\":string,\"suggested_answer\":string,\"next_question\":\"\"}\r\n\r\nJob title: ${jdTitle}\r\nJD requirements:\r\n${jdReq}\r\n\r\nCandidate CV (excerpt):\r\n${cvText}\r\n\r\nPrior Q&A:\r\n${historyText || '(none yet)'}\r\n\r\nThemes already asked (next question MUST use a DIFFERENT JD topic):\r\n${themesAsked || '(none yet)'}\r\n\r\nCV anchors already used (do NOT reuse same project/stack):\r\n${cvTopicsUsed || '(none yet)'}\r\n\r\nTab switches: ${norm.tab_switches || 0}`;\r\n\r\nlet systemContent;\r\nif (isFinal) {\r\n  systemContent = `${sharedRules}\r\n\r\nCurrent phase: ${ph} of ${maxQ} (FINAL).\r\nQuestion asked this phase:\r\n${currentQuestionText || '(see prior Q&A)'}\r\n\r\nAnswer to grade:\r\n${norm.answer}\r\n\r\nTasks:\r\n1. Score 0–100 based on relevance to the question above + JD holistic fit.\r\n2. result = PASS only if candidate demonstrated breadth across JD topics in the session; else FAIL.\r\n3. feedback + suggested_answer (max 2 short paragraphs).\r\n\r\nOutput: {\"status\":\"finished\",\"result\":\"PASS\"|\"FAIL\",\"score\":number,\"feedback\":string,\"suggested_answer\":string,\"next_question\":\"\"}`;\r\n} else {\r\n  systemContent = `${sharedRules}\r\n\r\nCurrent phase: ${ph} of ${maxQ}.\r\nQuestion asked this phase (score against THIS):\r\n${currentQuestionText || '(see prior Q&A)'}\r\n\r\nAnswer to grade:\r\n${norm.answer}\r\n${prevTimeLimit != null ? `Previous phase time_limit_seconds: ${prevTimeLimit}` : ''}\r\n\r\nNext question target — phase ${nextPhaseNum}:\r\n  Focus lane: ${nextFocusLane}\r\n  JD theme to use: ${nextJdTheme}\r\n  CV anchor to use: ${nextCvAnchor}\r\n\r\nTasks:\r\n1. Score current answer 0–100 (must address BOTH JD and CV parts of the question asked).\r\n2. feedback — note if answer ignored JD requirement or lacked CV-specific evidence.\r\n3. suggested_answer (max 2 short paragraphs).\r\n4. next_question for phase ${nextPhaseNum} — MUST name one JD requirement AND one CV anchor; new topic pair, no repeats.\r\n5. time_limit_seconds + complexity_tier.\r\n\r\nOutput: {\"score\":number,\"feedback\":string,\"suggested_answer\":string,\"next_question\":string,\"time_limit_seconds\":number,\"complexity_tier\":\"A\"|\"B\"|\"C\"|\"D\"}`;\r\n}\r\n\r\nconst body = {\r\n  model: cfg.groq_model || 'llama-3.3-70b-versatile',\r\n  messages: [\r\n    { role: 'system', content: systemContent },\r\n    { role: 'user', content: 'Evaluate and respond with JSON only.' },\r\n  ],\r\n  temperature: isFinal ? 0.1 : 0.35,\r\n  response_format: { type: 'json_object' },\r\n};\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      groq_assessment_request: body,\r\n      prompt: systemContent,\r\n      session,\r\n      norm: { ...norm, config: cfg },\r\n      isFinal,\r\n      failThreshold,\r\n      current_question_text: currentQuestionText,\r\n      next_jd_theme: nextJdTheme,\r\n      next_cv_anchor: nextCvAnchor,\r\n      next_focus_lane: nextFocusLane,\r\n    },\r\n  },\r\n];"
+      },
+      "id": "0d56fbf5-e528-476e-a743-57e9b2da38ce",
+      "name": "CODE - Build LLM context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "hasOutputParser": false
+      },
+      "id": "3f42e1a7-ad24-4c70-ae1a-59ec4b3a552e",
+      "name": "Basic LLM Chain",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        1600,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.GOOGLE_CLOUD_PROJECT }}"
+        },
+        "modelName": "gemini-2.0-flash-001",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "9700357c-fcbe-46fd-97ea-b93fae9fbeb1",
+      "name": "Google Vertex Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        1880
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "GOOGLE_VERTEX_CREDENTIAL_ID",
+          "name": "Google Vertex account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Parse Technical Result (phases 1–5, speech handoff)\n// Paste into: CODE - Parse Technical Result (after Basic LLM Chain — technical branch)\n\nfunction timerBounds(config) {\n  const min = Number(config?.timer_min_seconds);\n  const max = Number(config?.timer_max_seconds);\n  return {\n    min: Number.isFinite(min) && min > 0 ? min : 60,\n    max: Number.isFinite(max) && max > 0 ? max : 600,\n  };\n}\n\nfunction clampSeconds(sec, config) {\n  const { min, max } = timerBounds(config);\n  return Math.min(max, Math.max(min, Math.round(sec)));\n}\n\n// Seconds band per complexity tier\nfunction tierTimeRange(tier) {\n  switch (String(tier || '').toUpperCase()) {\n    case 'A':\n      return [60, 120];\n    case 'B':\n      return [150, 240];\n    case 'C':\n      return [270, 390];\n    case 'D':\n      return [420, 600];\n    default:\n      return null;\n  }\n}\n\n// Infer a tier when the model omits or returns a junk tier\nfunction inferTierFromQuestion(questionText) {\n  const q = String(questionText || '');\n  const words = q.trim().split(/\\s+/).filter(Boolean).length;\n  const subParts =\n    (q.match(/\\?/g) || []).length +\n    (q.match(/\\b(and|also|furthermore|additionally|then|as well as)\\b/gi) || []).length;\n  const heavy =\n    /\\b(architecture|design|schema|scalable|scalability|concurrency|distributed|trade-?off|optimi[sz]e|throughput|migration|pipeline|multi-?tenant|security|performance|caching|indexing)\\b/i.test(\n      q\n    );\n\n  if (words <= 28 && subParts <= 1 && !heavy) return 'A';\n  if (words >= 80 || (heavy && subParts >= 3)) return 'D';\n  if (words >= 50 || heavy) return 'C';\n  return 'B';\n}\n\n// Deterministic per-question time: tier sets the band, question length positions\n// within it, the model's value (if sane) is blended in. Different questions →\n// different times, longer/harder questions → more seconds.\nfunction deriveTimeLimitSeconds(rawLlmTime, tier, questionText, config, phase) {\n  const usableTier =\n    tierTimeRange(tier) ? tier : inferTierFromQuestion(questionText);\n  const [lo, hi] = tierTimeRange(usableTier) || [150, 240];\n\n  const words = String(questionText || '').trim().split(/\\s+/).filter(Boolean).length;\n  const span = Math.max(1, 90 - 20);\n  const t = Math.max(0, Math.min(1, (words - 20) / span));\n  let computed = lo + t * (hi - lo);\n\n  const llm = Number(rawLlmTime);\n  if (Number.isFinite(llm) && llm >= lo && llm <= hi) {\n    computed = (llm + computed) / 2;\n  }\n\n  let sec = Math.round(computed / 15) * 15;\n  sec = Math.max(lo, Math.min(hi, sec));\n  return { seconds: clampSeconds(sec, config), tier: usableTier };\n}\n\nfunction buildDeadline(isoStart, seconds) {\n  const start = isoStart ? new Date(isoStart) : new Date();\n  return new Date(start.getTime() + seconds * 1000).toISOString();\n}\n\nfunction extractLlmText(api) {\n  if (!api || typeof api !== 'object') return '';\n  if (typeof api.text === 'string' && api.text.trim()) return api.text.trim();\n  if (typeof api.output === 'string' && api.output.trim()) return api.output.trim();\n  if (typeof api.response === 'string' && api.response.trim()) return api.response.trim();\n  const c0 = api.choices?.[0];\n  if (c0?.message?.content) return String(c0.message.content).trim();\n  if (typeof c0?.text === 'string') return c0.text.trim();\n  const parts = api.candidates?.[0]?.content?.parts;\n  if (Array.isArray(parts) && parts[0]?.text) return String(parts[0].text).trim();\n  return '';\n}\n\nfunction salvageNextQuestionFromText(rawText) {\n  const text = String(rawText || '');\n  if (!text.trim()) return '';\n\n  const patterns = [\n    /\"next_question\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"/i,\n    /\"nextQuestion\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"/i,\n    /next_question\\s*[:=]\\s*\"((?:\\\\.|[^\"\\\\])*)\"/i,\n  ];\n  for (const re of patterns) {\n    const m = text.match(re);\n    if (m?.[1]) {\n      return m[1].replace(/\\\\n/g, '\\n').replace(/\\\\\"/g, '\"').replace(/\\\\\\\\/g, '\\\\').trim();\n    }\n  }\n  return '';\n}\n\nfunction parseLlmContent(api) {\n  if (\n    api &&\n    (api.score != null ||\n      api.feedback ||\n      api.next_question ||\n      api.nextQuestion ||\n      api.result ||\n      api.status === 'finished')\n  ) {\n    const nextQ = String(api.next_question || api.nextQuestion || api.question || '').trim();\n    if (!nextQ) {\n      const salvaged = salvageNextQuestionFromText(extractLlmText(api));\n      if (salvaged) {\n        return { ...api, next_question: salvaged, nextQuestion: salvaged };\n      }\n    }\n    return api;\n  }\n  const rawText = extractLlmText(api);\n  if (!rawText) {\n    return {\n      status: 'in_progress',\n      score: 0,\n      feedback: 'Empty model output.',\n      next_question: '',\n      nextQuestion: '',\n    };\n  }\n  try {\n    const cleaned = rawText.replace(/^```json\\s*/i, '').replace(/```\\s*$/i, '').trim();\n    const parsed = JSON.parse(cleaned);\n    const nextQ = String(parsed.next_question || parsed.nextQuestion || parsed.question || '').trim();\n    if (!nextQ) {\n      const salvaged = salvageNextQuestionFromText(rawText);\n      if (salvaged) {\n        parsed.next_question = salvaged;\n        parsed.nextQuestion = salvaged;\n      }\n    }\n    return parsed;\n  } catch (e) {\n    const salvaged = salvageNextQuestionFromText(rawText);\n    return {\n      status: 'in_progress',\n      score: 0,\n      feedback: salvaged ? 'Recovered question from partial model output.' : 'Could not parse model output.',\n      next_question: salvaged,\n      nextQuestion: salvaged,\n    };\n  }\n}\n\nfunction extractJdThemes(text) {\n  const lines = String(text)\n    .split(/\\r?\\n|(?<=[.;])\\s+/)\n    .flatMap((chunk) => chunk.split(/\\s*[•\\-*]\\s+/))\n    .map((s) => s.replace(/^[\\s\\d.)(]+/, '').trim())\n    .filter((s) => s.length >= 12);\n  return lines.length ? [...new Set(lines)].slice(0, 10) : [String(text).slice(0, 400)];\n}\n\nfunction extractCvAnchors(text) {\n  const cv = String(text || '');\n  const projects =\n    cv.match(/(?:project|built|developed|engineered|implemented|led)[^.]{10,120}/gi) || [];\n  const skills =\n    cv.match(\n      /\\b(React|Angular|Vue|Node\\.?js|Python|Django|Flask|SQL|PostgreSQL|MySQL|MongoDB|\\.NET|ASP\\.NET|C#|Java|Spring|AWS|Azure|GCP|Docker|Kubernetes|Redis|Kafka|REST|GraphQL|TypeScript|JavaScript|EF\\s*Core|LINQ|JWT|OAuth|microservices?|APIM|CI\\/CD|GitHub Actions)\\b/gi\n    ) || [];\n  return [\n    ...new Set([\n      ...projects.slice(0, 5).map((p) => p.trim().slice(0, 80)),\n      ...skills.slice(0, 6),\n    ]),\n  ].filter(Boolean);\n}\n\nfunction buildFirstSpeechQuestion(cfg, session, speechIndex) {\n  const role = String(cfg.requisition_title || 'this role').trim();\n  const org = String(cfg.organization_name || 'the company').trim();\n  const cvSnippet = String(session.cv_plaintext || '').slice(0, 400).trim();\n  const lanes = [\n    `Tell me about a time you had to explain a complex technical topic to a non-technical stakeholder at ${org}. How did you ensure they understood, and what was the outcome?`,\n    `Describe a situation where you faced pressure, a tight deadline, or conflict at work. How did you communicate with your team and stay composed?`,\n    `Why are you interested in the ${role} role, and based on your background, what would you focus on in your first 90 days?`,\n  ];\n  const idx = Math.max(0, Math.min(lanes.length - 1, Number(speechIndex || 1) - 1));\n  let q = lanes[idx];\n  if (cvSnippet.length > 40) {\n    q += ` (Your CV mentions relevant experience — use a concrete example if possible.)`;\n  }\n  return q;\n}\n\nfunction buildFallbackNextQuestion(ph, history, cfg, session) {\n  const role = String(cfg.requisition_title || 'this role').trim();\n  const jdReq = String(cfg.requisition_requirements || '').trim();\n  const cv = String(session.cv_plaintext || '');\n  const nextPhase = ph + 1;\n  const jdThemes = extractJdThemes(jdReq);\n  const jdTheme = jdThemes[(nextPhase - 1) % jdThemes.length] || jdReq.slice(0, 200);\n  const cvAnchors = extractCvAnchors(cv);\n  const cvAnchor = cvAnchors[(nextPhase - 1) % cvAnchors.length] || 'your listed project experience';\n\n  const lanes = [\n    `This role requires: \"${jdTheme}\". Your CV mentions ${cvAnchor} — describe how you applied this to deliver that JD outcome. What did you build and what was the measurable result?`,\n    `JD expectation: \"${jdTheme}\". Drawing on ${cvAnchor} from your CV, explain the architecture and integration choices you would make for this ${role} role.`,\n    `For \"${jdTheme}\" (${role}): Using your experience with ${cvAnchor}, walk through implementation steps, tools, and how you would validate it in production.`,\n    `JD quality bar — \"${jdTheme}\": With ${cvAnchor} on your CV, what security, performance, or reliability risks would you address and how?`,\n    `Final phase (${role}): JD requires \"${jdTheme}\" and your CV shows ${cvAnchor}. Synthesise how your experience maps to this role and what you would deliver in the first 90 days.`,\n  ];\n\n  return lanes[Math.min(nextPhase - 1, lanes.length - 1)] || lanes[4];\n}\n\nfunction isIntegrityTermination(answerText) {\n  return /^\\[system\\s+termination/i.test(String(answerText || '').trim());\n}\n\nfunction isScorablePhaseRow(row) {\n  if (!row || row.answer_text == null || row.score == null) return false;\n  if (row.integrity_terminated || isIntegrityTermination(row.answer_text)) return false;\n  const n = Number(row.score);\n  return Number.isFinite(n);\n}\n\nfunction buildPhaseSummary(rows) {\n  return rows\n    .filter((row) => row.answer_text != null)\n    .map((row) => {\n      if (row.integrity_terminated || isIntegrityTermination(row.answer_text)) {\n        return `P${row.phase}:integrity-fail`;\n      }\n      if (row.score != null) return `P${row.phase}:${row.score}`;\n      return null;\n    })\n    .filter(Boolean)\n    .join(', ');\n}\n\nfunction questionRelevanceCap(answerText, questionText) {\n  const question = String(questionText || '').trim();\n  if (!question || question.length < 20) return null;\n\n  const tokens = question\n    .toLowerCase()\n    .replace(/[^a-z0-9\\s]/g, ' ')\n    .split(/\\s+/)\n    .filter((w) => w.length > 4);\n  const stop = new Set([\n    'would', 'could', 'should', 'their', 'there', 'which', 'about', 'describe',\n    'explain', 'candidate', 'please', 'specific', 'technical', 'question',\n    'implement', 'approach', 'system', 'using',\n  ]);\n  const keys = [...new Set(tokens.filter((w) => !stop.has(w)))].slice(0, 18);\n  if (keys.length < 3) return null;\n\n  const lower = String(answerText || '').toLowerCase();\n  const hits = keys.filter((k) => lower.includes(k)).length;\n  const ratio = hits / keys.length;\n\n  if (ratio < 0.06) return 12;\n  if (ratio < 0.12) return 22;\n  if (ratio < 0.2) return 32;\n  return null;\n}\n\n/** Clamp LLM scores — off-topic and garbage answers must not get free points */\nfunction normalizePhaseScore(answerText, llmScore, questionText) {\n  const answer = String(answerText || '').trim();\n  let score = Number(llmScore);\n  if (!Number.isFinite(score)) score = 0;\n\n  if (!answer) return 0;\n  if (isIntegrityTermination(answer)) return null;\n  if (/^\\[timeout/i.test(answer)) return 0;\n\n  const relevanceCap = questionRelevanceCap(answer, questionText);\n  if (relevanceCap != null) score = Math.min(score, relevanceCap);\n\n  const lower = answer.toLowerCase().replace(/\\s+/g, ' ').trim();\n  const compact = answer.replace(/\\s+/g, '');\n  const len = compact.length;\n\n  // Keyboard mash: mmmm, qqqqq, ooooo (same char repeated)\n  if (len >= 4) {\n    const chars = compact.toLowerCase().split('');\n    const freq = {};\n    for (const c of chars) freq[c] = (freq[c] || 0) + 1;\n    const top = Math.max(...Object.values(freq));\n    if (Object.keys(freq).length === 1 || top / chars.length >= 0.8) return 0;\n  }\n\n  // Trivial non-answers\n  if (/^(ok|okay|yes|no|n\\/a|na|idk|dunno|sure|fine|\\.+|-+)$/i.test(lower)) {\n    return Math.min(score, 3);\n  }\n  if (/^(ok\\s+ok|yes\\s+yes|no\\s+no)$/i.test(lower)) {\n    return Math.min(score, 3);\n  }\n\n  const techMarkers =\n    /\\b(api|sql|database|entity|framework|asp\\.net|\\.net|core|jwt|controller|service|schema|ef\\s*core|linq|rest|dto|validation|fluentvalidation|dependency|injection|tenant|auth|middleware|repository|campaign|promotion|bcrypt|rbac|sso|endpoint|migration|index|query|table|class|interface|async|await)\\b/i;\n\n  const wordCount = lower.split(/\\s+/).filter(Boolean).length;\n\n  // One-liner generic with no technical terms (e.g. phase 1 \"yes, system handles products...\")\n  if (wordCount <= 25 && !techMarkers.test(answer)) {\n    return Math.min(score, 15);\n  }\n\n  // Very short, no technical signal\n  if (len < 30 && !techMarkers.test(answer)) {\n    return Math.min(score, 8);\n  }\n\n  // Short answer without technical depth — cap generous LLM scores\n  if (len < 120 && !techMarkers.test(answer)) {\n    return Math.min(score, 18);\n  }\n\n  if (len < 200 && score > 40 && !techMarkers.test(answer)) {\n    return Math.min(score, 25);\n  }\n\n  return Math.max(0, Math.min(100, Math.round(score)));\n}\n\nfunction pickNodeJson(...names) {\n  for (const name of names) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object') return raw;\n    } catch (_) {}\n  }\n  return null;\n}\n\nfunction pickBuildContext() {\n  const built =\n    pickNodeJson('CODE - Build LLM context', 'CODE - Build LLM context1') || {};\n\n  if (built.session?.id && built.norm) return built;\n\n  const norm =\n    pickNodeJson('CODE - Normalize Data', 'CODE - Normalize Data1') || {};\n  const fetchRaw = pickNodeJson('HTTP - Fetch Session', 'HTTP - Fetch Session1');\n  const session = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;\n\n  if (session?.id) {\n    let history = session.interview_history;\n    if (typeof history === 'string') {\n      try {\n        history = JSON.parse(history);\n      } catch (_) {\n        history = [];\n      }\n    }\n    return {\n      session: { ...session, interview_history: history },\n      norm,\n    };\n  }\n\n  throw new Error(\n    'Session context missing. Wire CODE - Build LLM context before Parse Result, or rename node to match (no stray \"1\" suffix).'\n  );\n}\n\nfunction parseSessionConfig(raw) {\n  if (!raw) return {};\n  if (typeof raw === 'string') {\n    try {\n      return JSON.parse(raw);\n    } catch (_) {\n      return {};\n    }\n  }\n  return typeof raw === 'object' ? raw : {};\n}\n\nfunction resolveWorkflowConfig(current, session, built) {\n  const cfgNode =\n    pickNodeJson('CFG - Assessment Config', 'CFG - Assessment Config1') || {};\n  const normCfg = current?.config || {};\n  const sessionCfg = parseSessionConfig(session?.config);\n  const builtCfg = built?.norm?.config || {};\n\n  const supabase_url =\n    normCfg.supabase_url ||\n    sessionCfg.supabase_url ||\n    builtCfg.supabase_url ||\n    cfgNode.supabase_url ||\n    cfgNode.config?.supabase_url ||\n    '';\n\n  const supabase_key =\n    normCfg.supabase_key ||\n    sessionCfg.supabase_key ||\n    builtCfg.supabase_key ||\n    cfgNode.supabase_key ||\n    cfgNode.config?.supabase_key ||\n    '';\n\n  return {\n    ...cfgNode,\n    ...builtCfg,\n    ...sessionCfg,\n    ...normCfg,\n    supabase_url,\n    supabase_key,\n  };\n}\n\nconst llm = $input.first().json;\nconst built = pickBuildContext();\nconst session = built.session;\nconst current = built.norm;\nconst cfg = resolveWorkflowConfig(current, session, built);\nconst content = parseLlmContent(llm);\n\nlet history = session.interview_history;\nif (typeof history === 'string') {\n  try {\n    history = JSON.parse(history);\n  } catch (err) {\n    history = [];\n  }\n}\nif (!Array.isArray(history)) history = [];\n\nconst ph = Number(current.current_phase || 1);\nconst maxQ = Number(cfg.max_questions || 5);\nconst failThreshold = Number(cfg.fail_score_threshold ?? 30);\nconst passThreshold = Number(cfg.pass_score_threshold ?? 60);\nconst iso = new Date().toISOString();\n\nconst integrityTerminated = isIntegrityTermination(current.answer);\nconst rawLlmScore = Number(content.score ?? 0);\nlet normalizedScore = null;\nlet scoreAdjusted = false;\n\nconst questionForPhase = String(\n  history.find((x) => Number(x.phase) === ph)?.question_text ||\n    history.find((x) => Number(x.phase) === ph)?.question ||\n    built.current_question_text ||\n    ''\n).trim();\n\nif (integrityTerminated) {\n  normalizedScore = null;\n} else {\n  normalizedScore = normalizePhaseScore(current.answer, rawLlmScore, questionForPhase);\n  scoreAdjusted = normalizedScore !== Math.round(rawLlmScore);\n}\n\nlet idx = history.findIndex((x) => Number(x.phase) === ph);\nconst patch = {\n  answer_text: current.answer,\n  received_at: iso,\n  feedback: content.feedback || null,\n  suggested_answer: content.suggested_answer || content.suggestedAnswer || null,\n  score: normalizedScore,\n  integrity_terminated: integrityTerminated || undefined,\n};\nif (integrityTerminated) {\n  patch.feedback =\n    `Integrity violation on phase ${ph} — this phase is not scored. Prior completed phases keep their recorded scores.`;\n} else if (scoreAdjusted && normalizedScore < rawLlmScore) {\n  const relCap = questionRelevanceCap(current.answer, questionForPhase);\n  patch.feedback = [\n    patch.feedback,\n    relCap != null && relCap <= 32\n      ? `[Score adjusted ${rawLlmScore}→${normalizedScore}: answer did not address the question asked.]`\n      : `[Score adjusted ${rawLlmScore}→${normalizedScore}: answer lacks required technical substance.]`,\n  ]\n    .filter(Boolean)\n    .join(' ');\n}\n\nif (idx >= 0) history[idx] = { ...history[idx], ...patch };\nelse history.push({ phase: ph, question_text: '', sent_at: iso, ...patch });\n\nconst getPhaseScore = (phase) => {\n  const row = history.find((x) => Number(x.phase) === phase);\n  if (!row || row.answer_text == null || row.score == null) return null;\n  const n = Number(row.score);\n  return Number.isFinite(n) ? n : null;\n};\n\nfunction computeAverageScore(rows, maxPhases) {\n  const scores = rows\n    .filter((row) => {\n      const phase = Number(row.phase);\n      if (!Number.isFinite(phase) || phase < 1 || phase > maxPhases) return false;\n      return isScorablePhaseRow(row);\n    })\n    .map((row) => Number(row.score));\n  if (!scores.length) return null;\n  return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);\n}\n\n// Run all maxQ phases — no early exit on low scores (final PASS/FAIL only on phase maxQ).\nconst earlyTerminate = false;\nconst earlyTerminateReason = '';\n\nlet nextQ = String(content.nextQuestion || content.next_question || '').trim();\nlet timeLimitSeconds = null;\nlet complexityTier = null;\n\n// LLM sometimes omits next_question (esp. phase 4→5). Recover from history, then fallback.\nlet usedFallbackQuestion = false;\nif (!nextQ && ph < maxQ && !integrityTerminated) {\n  const existingNext = history.find(\n    (x) => Number(x.phase) === ph + 1 && String(x.question_text || x.question || '').trim()\n  );\n  if (existingNext) {\n    nextQ = String(existingNext.question_text || existingNext.question || '').trim();\n    timeLimitSeconds = existingNext.time_limit_seconds ?? null;\n    complexityTier = existingNext.complexity_tier ?? null;\n  } else {\n    nextQ = buildFallbackNextQuestion(ph, history, cfg, session);\n    usedFallbackQuestion = Boolean(nextQ);\n    if (usedFallbackQuestion) {\n      content.feedback = [\n        content.feedback || '',\n        `[System: AI omitted phase ${ph + 1} question — auto-generated CV-grounded fallback.]`,\n      ]\n        .filter(Boolean)\n        .join(' ');\n    }\n  }\n}\n\nconst isActualFinalPhase = ph >= maxQ;\n\n// Ignore premature LLM finished/PASS/FAIL before the last phase.\nif (!isActualFinalPhase) {\n  if (content.status === 'finished') content.status = 'in_progress';\n  content.result = '';\n}\n\nlet isFinal = isActualFinalPhase || integrityTerminated;\n\nif (integrityTerminated) {\n  nextQ = '';\n  content.result = 'FAIL';\n}\n\nif (nextQ && ph < maxQ && !integrityTerminated) {\n  const llmTier = content.complexity_tier || content.complexityTier || null;\n  const derived = deriveTimeLimitSeconds(\n    content.time_limit_seconds,\n    llmTier,\n    nextQ,\n    cfg,\n    ph + 1\n  );\n  timeLimitSeconds = derived.seconds;\n  complexityTier = derived.tier;\n}\n\nif (nextQ && !isFinal) {\n  const sentAt = iso;\n  const nextPhase = ph + 1;\n  const existingIdx = history.findIndex((x) => Number(x.phase) === nextPhase);\n  const nextEntry = {\n    phase: nextPhase,\n    question_text: nextQ,\n    answer_text: null,\n    sent_at: sentAt,\n    received_at: null,\n    score: null,\n    suggested_answer: null,\n    feedback: null,\n    time_limit_seconds: timeLimitSeconds,\n    complexity_tier: complexityTier,\n    deadline_at: timeLimitSeconds ? buildDeadline(sentAt, timeLimitSeconds) : null,\n  };\n  if (existingIdx >= 0) {\n    history[existingIdx] = { ...history[existingIdx], ...nextEntry };\n  } else {\n    history.push(nextEntry);\n  }\n}\n\n// Before final phase: missing next question must not end the assessment.\nif (ph < maxQ && !integrityTerminated && !nextQ) {\n  isFinal = false;\n  content.feedback = [\n    content.feedback || '',\n    `[System: model did not return phase ${ph + 1} question — submit again or contact support.]`,\n  ]\n    .filter(Boolean)\n    .join(' ');\n}\n\nconst phaseScore = normalizedScore;\n\nconst speechEnabled =\n  cfg.speech_enabled === true ||\n  cfg.speech_enabled === 'true' ||\n  Number(cfg.speech_phases || 0) > 0;\nconst speechPhases = Number(cfg.speech_phases || 3);\nlet startSpeech = false;\nlet technicalScore = null;\n\nif (isActualFinalPhase && !integrityTerminated) {\n  const techAvg = computeAverageScore(history, maxQ);\n  technicalScore = techAvg;\n\n  if (speechEnabled && techAvg != null && techAvg >= passThreshold) {\n    isFinal = false;\n    startSpeech = true;\n    nextQ = buildFirstSpeechQuestion(cfg, session, 1);\n    const speechStartPhase = maxQ + 1;\n    const derived = deriveTimeLimitSeconds(180, 'B', nextQ, cfg, speechStartPhase);\n    timeLimitSeconds = derived.seconds;\n    complexityTier = derived.tier;\n\n    const sentAt = iso;\n    const speechEntry = {\n      phase: speechStartPhase,\n      mode: 'speech',\n      question_text: nextQ,\n      answer_text: null,\n      sent_at: sentAt,\n      received_at: null,\n      score: null,\n      time_limit_seconds: timeLimitSeconds,\n      complexity_tier: complexityTier,\n      deadline_at: timeLimitSeconds ? buildDeadline(sentAt, timeLimitSeconds) : null,\n    };\n    const speechIdx = history.findIndex((x) => Number(x.phase) === speechStartPhase);\n    if (speechIdx >= 0) history[speechIdx] = { ...history[speechIdx], ...speechEntry };\n    else history.push(speechEntry);\n\n    content.feedback = [\n      content.feedback || '',\n      `Technical assessment complete (${techAvg}/100). Communication round — answer the next question by voice.`,\n    ]\n      .filter(Boolean)\n      .join(' ');\n  } else {\n    if (content.status === 'finished' || content.result) isFinal = true;\n    if (!content.result) {\n      const finalScore =\n        techAvg ?? (Number.isFinite(phaseScore) && phaseScore != null ? phaseScore : 0);\n      content.result = finalScore >= passThreshold ? 'PASS' : 'FAIL';\n    }\n  }\n}\n\nconst body = { interview_history: history, updated_at: iso };\nif (startSpeech) {\n  body.assessment_stage = 'speech';\n  body.technical_score = technicalScore;\n  body.current_phase = maxQ + 1;\n} else if (nextQ && !isFinal) {\n  body.current_phase = ph + 1;\n} else if (!isFinal) {\n  body.current_phase = ph;\n} else {\n  body.current_phase = ph;\n}\n\nconst averageScore = computeAverageScore(history, maxQ);\n\nlet finalResult = null;\nlet finalFeedback = content.feedback || '';\nif (isFinal) {\n  body.status = 'completed';\n  body.assessment_stage = 'completed';\n  const finalScore =\n    averageScore ??\n    (Number.isFinite(phaseScore) && phaseScore != null ? phaseScore : null) ??\n    0;\n  body.score = finalScore;\n\n  if (integrityTerminated) {\n    body.result = 'FAIL';\n    finalResult = 'FAIL';\n    const phaseSummary = buildPhaseSummary(history);\n    finalFeedback = [\n      `Assessment failed: integrity violation on phase ${ph}.`,\n      averageScore != null\n        ? `Recorded average from completed phases before termination: ${averageScore}/100 (${phaseSummary}).`\n        : `No prior scored phases (${phaseSummary || 'none'}).`,\n    ]\n      .filter(Boolean)\n      .join(' ');\n  } else if (earlyTerminate) {\n    body.result = 'FAIL';\n    finalResult = 'FAIL';\n    const phaseSummary = buildPhaseSummary(history);\n    if (averageScore != null) {\n      finalFeedback = [\n        finalFeedback,\n        `Average score across completed phases: ${averageScore}/100 (${phaseSummary}). Pass mark: ${passThreshold}.`,\n      ]\n        .filter(Boolean)\n        .join(' ');\n    }\n  } else {\n    body.result = finalScore >= passThreshold ? 'PASS' : 'FAIL';\n    finalResult = body.result;\n    if (averageScore != null) {\n      const phaseSummary = buildPhaseSummary(history);\n      finalFeedback = [\n        finalFeedback,\n        `Average technical score: ${averageScore}/100 (${phaseSummary}). Pass mark: ${passThreshold}.`,\n      ]\n        .filter(Boolean)\n        .join(' ');\n    }\n  }\n}\n\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nif (!b || !/^https?:\\/\\//i.test(b)) {\n  throw new Error(\n    'supabase_url missing or invalid. Set top-level supabase_url in CFG - Assessment Config (e.g. https://xxx.supabase.co).'\n  );\n}\nconst patchUrl = `${b}/rest/v1/assessment_sessions?id=eq.${encodeURIComponent(String(session.id))}`;\nconst nextRow = history.find((x) => Number(x.phase) === ph + 1);\n\nreturn [\n  {\n    json: {\n      score: isFinal ? (body.score ?? averageScore ?? phaseScore) : phaseScore,\n      phase_score: phaseScore,\n      llm_score_raw: rawLlmScore,\n      score_adjusted: scoreAdjusted,\n      average_score: isFinal ? (body.score ?? averageScore) : null,\n      feedback: isFinal ? finalFeedback : (patch.feedback || content.feedback || ''),\n      nextQuestion: nextQ,\n      suggested_answer: content.suggested_answer || content.suggestedAnswer || '',\n      time_limit_seconds: nextRow?.time_limit_seconds ?? timeLimitSeconds,\n      deadline_at: nextRow?.deadline_at ?? null,\n      complexity_tier: nextRow?.complexity_tier ?? complexityTier,\n      isFinal,\n      startSpeech,\n      assessment_mode: startSpeech ? 'speech' : 'text',\n      result: isFinal ? finalResult : null,\n      terminatedEarly: earlyTerminate,\n      integrity_terminated: integrityTerminated,\n      candidate_email: current.candidate_email,\n      session_id: current.session_id || session.id,\n      current_phase: ph,\n      config: cfg,\n      gmail_thread_id: session.gmail_thread_id || null,\n      gmail_message_id: session.gmail_message_id || null,\n      mail_subject: session.mail_subject || null,\n      _session_patch_url: patchUrl,\n      _session_patch_body: body,\n    },\n  },\n];"
+      },
+      "id": "0b67933c-885d-463a-b5dc-cbccbb49bbcc",
+      "name": "CODE - Parse Technical Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Build Speech LLM context (communication phases)\n// Paste into: CODE - Build Speech LLM context (speech branch, before Basic LLM Chain Speech)\n\nconst norm = $('CODE - Normalize Data').first().json;\nconst raw = $input.first().json;\nconst session = Array.isArray(raw) ? raw[0] : raw;\nif (!session?.id) {\n  throw new Error('No assessment session row for id=' + norm.session_id);\n}\n\nlet history = session.interview_history;\nif (typeof history === 'string') {\n  try {\n    history = JSON.parse(history);\n  } catch (e) {\n    history = [];\n  }\n}\nif (!Array.isArray(history)) history = [];\n\nlet sessionConfig = session.config;\nif (typeof sessionConfig === 'string') {\n  try {\n    sessionConfig = JSON.parse(sessionConfig);\n  } catch (e) {\n    sessionConfig = {};\n  }\n}\nif (!sessionConfig || typeof sessionConfig !== 'object') sessionConfig = {};\n\nconst cfg = {\n  ...norm.config,\n  ...sessionConfig,\n  requisition_title:\n    sessionConfig.requisition_title || norm.config?.requisition_title || '',\n  requisition_requirements:\n    sessionConfig.requisition_requirements || norm.config?.requisition_requirements || '',\n  groq_model:\n    sessionConfig.groq_model || norm.config?.groq_model || 'llama-3.3-70b-versatile',\n  max_questions: Number(sessionConfig.max_questions || norm.config?.max_questions || 5),\n  speech_phases: Number(sessionConfig.speech_phases || norm.config?.speech_phases || 3),\n  pass_score_threshold: Number(\n    sessionConfig.pass_score_threshold ?? norm.config?.pass_score_threshold ?? 60\n  ),\n  timer_min_seconds: Number(sessionConfig.timer_min_seconds ?? norm.config?.timer_min_seconds ?? 60),\n  timer_max_seconds: Number(sessionConfig.timer_max_seconds ?? norm.config?.timer_max_seconds ?? 600),\n};\n\nconst maxQ = Number(cfg.max_questions || 5);\nconst speechPhases = Number(cfg.speech_phases || 3);\nconst ph = Number(norm.current_phase || maxQ + 1);\nconst speechIndex = ph - maxQ;\nconst isFinal = speechIndex >= speechPhases;\n\nconst jdTitle = String(cfg.requisition_title || '').trim();\nconst jdReq = String(cfg.requisition_requirements || '').trim();\nconst cvText = String(session.cv_plaintext || '').slice(0, 4000);\n\nconst currentRow = history.find((h) => Number(h.phase) === ph);\nconst currentQuestionText = String(\n  currentRow?.question_text || currentRow?.question || ''\n).trim();\n\nconst speechHistory = history\n  .filter((h) => Number(h.phase) > maxQ)\n  .map(\n    (h) =>\n      `Speech ${Number(h.phase) - maxQ} Q: ${h.question_text || ''} | A: ${h.answer_text ?? 'pending'} | Score: ${h.score ?? 'N/A'}`\n  )\n  .join('\\n');\n\nconst metrics = norm.speech_metrics || {};\nconst metricsText = [\n  metrics.duration_seconds != null ? `duration_seconds: ${metrics.duration_seconds}` : '',\n  metrics.words_per_minute != null ? `words_per_minute: ${metrics.words_per_minute}` : '',\n  metrics.filler_word_count != null ? `filler_word_count: ${metrics.filler_word_count}` : '',\n  metrics.long_pause_count != null ? `long_pause_count: ${metrics.long_pause_count}` : '',\n]\n  .filter(Boolean)\n  .join(', ');\n\nconst speechLanes = [\n  'Communication — explain a technical concept to a non-technical audience (clarity, patience, structure)',\n  'Confidence & composure — pressure, deadline, conflict, or failure (tone, ownership, calm)',\n  'Professionalism & role fit — motivation for this role, collaboration, first 90 days (engagement, maturity)',\n];\n\nconst nextLane = !isFinal ? speechLanes[Math.min(speechIndex, speechLanes.length - 1)] : '';\n\nconst systemContent = `You are an expert behavioral interviewer evaluating SPOKEN communication for ${cfg.organization_name || 'the company'}.\n\nROLE: ${jdTitle}\nThis is the COMMUNICATION round (speech phases ${speechIndex} of ${speechPhases}) after a technical assessment.\n\n═══════════════════════════════════════ SCORING DIMENSIONS (0–100 each) ═══════════════════════════════════════\n1. clarity — logical structure, easy to follow, complete thoughts\n2. confidence — steady pace, minimal hesitation, assured delivery (use audio metrics + transcript)\n3. professionalism — appropriate language, respectful tone, workplace-ready\n4. relevance — directly answers the question asked (STAR when behavioral)\n\nPhase score = weighted average:\n  clarity 30%, confidence 25%, professionalism 20%, relevance 25%\n\nUse delivery signals when provided (WPM, fillers, pauses):\n  - High fillers (>5/min) or very slow WPM (<90) → cap confidence ≤ 55\n  - Very fast WPM (>200) with thin content → cap clarity ≤ 50\n  - Empty or < 20 words → score ≤ 15\n\nJD context (role expectations):\n${jdReq.slice(0, 1500)}\n\nCV excerpt (for grounding examples — do not invent employers/projects):\n${cvText || '(none)'}\n\nPrior speech Q&A:\n${speechHistory || '(none yet)'}\n\nQuestion asked this phase:\n${currentQuestionText || '(see history)'}\n\nCandidate spoken answer (STT transcript):\n${norm.answer}\n\nAudio delivery metrics: ${metricsText || 'not provided'}\n\n${!isFinal ? `Next speech phase ${speechIndex + 1} focus: ${nextLane}` : 'FINAL speech phase — no next_question.'}\n\nOUTPUT — JSON ONLY:\n${!isFinal\n  ? '{\"score\":number,\"clarity\":number,\"confidence\":number,\"professionalism\":number,\"relevance\":number,\"feedback\":string,\"next_question\":string,\"time_limit_seconds\":number,\"complexity_tier\":\"A\"|\"B\"|\"C\"|\"D\"}'\n  : '{\"status\":\"finished\",\"score\":number,\"clarity\":number,\"confidence\":number,\"professionalism\":number,\"relevance\":number,\"feedback\":string,\"next_question\":\"\"}'}`;\n\nconst body = {\n  model: cfg.groq_model || 'llama-3.3-70b-versatile',\n  messages: [\n    { role: 'system', content: systemContent },\n    { role: 'user', content: 'Evaluate the spoken answer. Respond with JSON only.' },\n  ],\n  temperature: 0.25,\n  response_format: { type: 'json_object' },\n};\n\nreturn [\n  {\n    json: {\n      groq_assessment_request: body,\n      prompt: systemContent,\n      session,\n      norm: { ...norm, config: cfg },\n      isFinal,\n      speech_index: speechIndex,\n      speech_phases: speechPhases,\n      max_questions: maxQ,\n      current_question_text: currentQuestionText,\n    },\n  },\n];"
+      },
+      "id": "5e9fe628-cffd-4b8c-a2cf-f3e78ccf01de",
+      "name": "CODE - Build Speech LLM context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        2080
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "hasOutputParser": false
+      },
+      "id": "c38933a2-6a7a-4a8a-843c-79bb3233c7ad",
+      "name": "Basic LLM Chain Speech",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        1600,
+        2080
+      ]
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.GOOGLE_CLOUD_PROJECT }}"
+        },
+        "modelName": "gemini-2.0-flash-001",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "06f1266a-ea82-4f12-9b8e-d55374d9dbbf",
+      "name": "Google Vertex Chat Model Speech",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        2280
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "GOOGLE_VERTEX_CREDENTIAL_ID",
+          "name": "Google Vertex account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Parse Speech Result\n// Paste into: CODE - Parse Speech Result (after Basic LLM Chain Speech)\n\nfunction timerBounds(config) {\n  const min = Number(config?.timer_min_seconds);\n  const max = Number(config?.timer_max_seconds);\n  return {\n    min: Number.isFinite(min) && min > 0 ? min : 60,\n    max: Number.isFinite(max) && max > 0 ? max : 600,\n  };\n}\n\nfunction clampSeconds(sec, config) {\n  const { min, max } = timerBounds(config);\n  return Math.min(max, Math.max(min, Math.round(sec)));\n}\n\nfunction tierTimeRange(tier) {\n  switch (String(tier || '').toUpperCase()) {\n    case 'A':\n      return [60, 120];\n    case 'B':\n      return [150, 240];\n    case 'C':\n      return [270, 390];\n    case 'D':\n      return [420, 600];\n    default:\n      return [120, 180];\n  }\n}\n\nfunction deriveTimeLimitSeconds(rawLlmTime, tier, questionText, config) {\n  const [lo, hi] = tierTimeRange(tier) || [120, 180];\n  let sec = Number(rawLlmTime);\n  if (!Number.isFinite(sec) || sec <= 0) sec = 150;\n  sec = Math.max(lo, Math.min(hi, Math.round(sec)));\n  return { seconds: clampSeconds(sec, config), tier: tier || 'B' };\n}\n\nfunction buildDeadline(isoStart, seconds) {\n  const start = isoStart ? new Date(isoStart) : new Date();\n  return new Date(start.getTime() + seconds * 1000).toISOString();\n}\n\nfunction extractLlmText(api) {\n  if (!api || typeof api !== 'object') return '';\n  if (typeof api.text === 'string' && api.text.trim()) return api.text.trim();\n  if (typeof api.output === 'string' && api.output.trim()) return api.output.trim();\n  const c0 = api.choices?.[0];\n  if (c0?.message?.content) return String(c0.message.content).trim();\n  const parts = api.candidates?.[0]?.content?.parts;\n  if (Array.isArray(parts) && parts[0]?.text) return String(parts[0].text).trim();\n  return '';\n}\n\nfunction parseLlmContent(api) {\n  if (api && (api.score != null || api.feedback || api.next_question || api.status === 'finished')) {\n    return api;\n  }\n  const rawText = extractLlmText(api);\n  if (!rawText) return { score: 0, feedback: 'Empty model output.', next_question: '' };\n  try {\n    const cleaned = rawText.replace(/^```json\\s*/i, '').replace(/```\\s*$/i, '').trim();\n    return JSON.parse(cleaned);\n  } catch (e) {\n    return { score: 0, feedback: 'Could not parse model output.', next_question: '' };\n  }\n}\n\nfunction pickNodeJson(...names) {\n  for (const name of names) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object') return raw;\n    } catch (_) {}\n  }\n  return null;\n}\n\nfunction buildNextSpeechQuestion(cfg, speechIndex) {\n  const role = String(cfg.requisition_title || 'this role').trim();\n  const lanes = [\n    `Describe a situation where you had to explain a complex technical topic to a non-technical stakeholder. How did you ensure they understood?`,\n    `Tell me about a time you faced pressure, a tight deadline, or conflict at work. How did you communicate and stay composed?`,\n    `Why are you interested in the ${role} role, and what would you focus on in your first 90 days?`,\n  ];\n  const idx = Math.max(0, Math.min(lanes.length - 1, Number(speechIndex || 1) - 1));\n  return lanes[idx];\n}\n\nfunction computeSpeechAverage(rows, maxQ, speechPhases) {\n  const scores = rows\n    .filter((row) => {\n      const phase = Number(row.phase);\n      return phase > maxQ && phase <= maxQ + speechPhases && row.score != null;\n    })\n    .map((row) => Number(row.score))\n    .filter((n) => Number.isFinite(n));\n  if (!scores.length) return null;\n  return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);\n}\n\nfunction computeTechnicalAverage(rows, maxQ) {\n  const scores = rows\n    .filter((row) => {\n      const phase = Number(row.phase);\n      return phase >= 1 && phase <= maxQ && row.score != null;\n    })\n    .map((row) => Number(row.score))\n    .filter((n) => Number.isFinite(n));\n  if (!scores.length) return null;\n  return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);\n}\n\nconst llm = $input.first().json;\nconst built = pickNodeJson('CODE - Build Speech LLM context') || {};\nconst session = built.session || {};\nconst current = built.norm || $('CODE - Normalize Data').first().json;\nconst cfg = built.norm?.config || current.config || {};\nconst content = parseLlmContent(llm);\n\nlet history = session.interview_history;\nif (typeof history === 'string') {\n  try {\n    history = JSON.parse(history);\n  } catch (_) {\n    history = [];\n  }\n}\nif (!Array.isArray(history)) history = [];\n\nconst maxQ = Number(cfg.max_questions || built.max_questions || 5);\nconst speechPhases = Number(cfg.speech_phases || built.speech_phases || 3);\nconst ph = Number(current.current_phase || maxQ + 1);\nconst speechIndex = ph - maxQ;\nconst passThreshold = Number(cfg.pass_score_threshold ?? 60);\nconst techWeight = Number(cfg.technical_weight ?? 0.7);\nconst speechWeight = Number(cfg.speech_weight ?? 0.3);\nconst iso = new Date().toISOString();\n\nconst phaseScore = Math.max(0, Math.min(100, Math.round(Number(content.score ?? 0))));\nconst softSkills = {\n  clarity: Math.round(Number(content.clarity ?? phaseScore)),\n  confidence: Math.round(Number(content.confidence ?? phaseScore)),\n  professionalism: Math.round(Number(content.professionalism ?? phaseScore)),\n  relevance: Math.round(Number(content.relevance ?? phaseScore)),\n};\n\nlet idx = history.findIndex((x) => Number(x.phase) === ph);\nconst patch = {\n  mode: 'speech',\n  answer_text: current.answer,\n  received_at: iso,\n  feedback: content.feedback || null,\n  score: phaseScore,\n  soft_skills: softSkills,\n  speech_metrics: current.speech_metrics || {},\n  answer_audio_url: current.audio_url || null,\n};\nif (idx >= 0) history[idx] = { ...history[idx], ...patch };\nelse history.push({ phase: ph, question_text: built.current_question_text || '', sent_at: iso, ...patch });\n\nlet nextQ = String(content.next_question || content.nextQuestion || '').trim();\nlet timeLimitSeconds = null;\nlet complexityTier = 'B';\nconst isSpeechFinal = speechIndex >= speechPhases;\nlet isFinal = isSpeechFinal;\n\nif (!isSpeechFinal && !nextQ) {\n  nextQ = buildNextSpeechQuestion(cfg, speechIndex + 1);\n}\n\nif (nextQ && !isFinal) {\n  const derived = deriveTimeLimitSeconds(content.time_limit_seconds, content.complexity_tier, nextQ, cfg);\n  timeLimitSeconds = derived.seconds;\n  complexityTier = derived.tier;\n  const nextPhase = ph + 1;\n  const nextEntry = {\n    phase: nextPhase,\n    mode: 'speech',\n    question_text: nextQ,\n    answer_text: null,\n    sent_at: iso,\n    received_at: null,\n    score: null,\n    time_limit_seconds: timeLimitSeconds,\n    complexity_tier: complexityTier,\n    deadline_at: buildDeadline(iso, timeLimitSeconds),\n  };\n  const nextIdx = history.findIndex((x) => Number(x.phase) === nextPhase);\n  if (nextIdx >= 0) history[nextIdx] = { ...history[nextIdx], ...nextEntry };\n  else history.push(nextEntry);\n}\n\nconst body = {\n  interview_history: history,\n  updated_at: iso,\n  assessment_stage: isFinal ? 'completed' : 'speech',\n};\n\nif (!isFinal) body.current_phase = ph + 1;\nelse body.current_phase = ph;\n\nlet finalResult = null;\nlet finalFeedback = content.feedback || '';\nlet combinedScore = null;\n\nif (isFinal) {\n  const techAvg =\n    Number(session.technical_score) ||\n    computeTechnicalAverage(history, maxQ) ||\n    0;\n  const speechAvg = computeSpeechAverage(history, maxQ, speechPhases) ?? phaseScore;\n  combinedScore = Math.round(techAvg * techWeight + speechAvg * speechWeight);\n\n  body.status = 'completed';\n  body.technical_score = techAvg;\n  body.speech_score = speechAvg;\n  body.score = combinedScore;\n  body.result = combinedScore >= passThreshold ? 'PASS' : 'FAIL';\n  finalResult = body.result;\n  finalFeedback = [\n    finalFeedback,\n    `Technical: ${techAvg}/100 | Communication: ${speechAvg}/100 | Combined: ${combinedScore}/100 (pass ${passThreshold}).`,\n  ]\n    .filter(Boolean)\n    .join(' ');\n}\n\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nconst patchUrl = `${b}/rest/v1/assessment_sessions?id=eq.${encodeURIComponent(String(session.id))}`;\nconst nextRow = history.find((x) => Number(x.phase) === ph + 1);\n\nreturn [\n  {\n    json: {\n      score: isFinal ? combinedScore : phaseScore,\n      phase_score: phaseScore,\n      soft_skills: softSkills,\n      feedback: isFinal ? finalFeedback : patch.feedback || '',\n      nextQuestion: nextQ,\n      time_limit_seconds: nextRow?.time_limit_seconds ?? timeLimitSeconds,\n      deadline_at: nextRow?.deadline_at ?? null,\n      complexity_tier: nextRow?.complexity_tier ?? complexityTier,\n      isFinal,\n      assessment_mode: 'speech',\n      result: isFinal ? finalResult : null,\n      candidate_email: current.candidate_email,\n      session_id: session.id,\n      current_phase: ph,\n      config: cfg,\n      gmail_thread_id: session.gmail_thread_id || null,\n      gmail_message_id: session.gmail_message_id || null,\n      mail_subject: session.mail_subject || null,\n      _session_patch_url: patchUrl,\n      _session_patch_body: body,\n    },\n  },\n];"
+      },
+      "id": "5c09c4dd-a62d-42a1-8c3c-323af09868bd",
+      "name": "CODE - Parse Speech Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        2080
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Pick Parse Result\n// Wire AFTER: CODE - Parse Technical Result OR CODE - Parse Speech Result\n// Unifies portal response + downstream IF nodes.\n\nfunction pickParseJson() {\n  const names = [\n    'CODE - Parse Speech Result',\n    'CODE - Parse Technical Result',\n    'CODE - Parse Result',\n  ];\n  for (const name of names) {\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object' && raw.session_id) return raw;\n    } catch (_) {}\n  }\n  const inp = $input.first().json;\n  if (inp && inp.session_id) return inp;\n  throw new Error('No parse result from speech or technical branch.');\n}\n\nreturn [{ json: pickParseJson() }];"
+      },
+      "id": "f34cdb35-5a74-4141-9fdc-6b40be44b69e",
+      "name": "CODE - Pick Parse Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2048,
+        1888
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $(\"CODE - Pick Parse Result\").first().json._session_patch_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $(\"CODE - Pick Parse Result\").first().json._session_patch_body }}",
+        "options": {}
+      },
+      "id": "9e86b92f-4192-4e4e-9ec4-1aac1e7f2f8f",
+      "name": "HTTP - SB PATCH session interview_history",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2272,
+        1888
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  score: $(\"CODE - Pick Parse Result\").first().json.score,\n  feedback: $(\"CODE - Pick Parse Result\").first().json.feedback,\n  nextQuestion: $(\"CODE - Pick Parse Result\").first().json.nextQuestion,\n  time_limit_seconds: $(\"CODE - Pick Parse Result\").first().json.time_limit_seconds,\n  deadline_at: $(\"CODE - Pick Parse Result\").first().json.deadline_at,\n  complexity_tier: $(\"CODE - Pick Parse Result\").first().json.complexity_tier,\n  isFinal: $(\"CODE - Pick Parse Result\").first().json.isFinal,\n  result: $(\"CODE - Pick Parse Result\").first().json.result || '',\n  assessment_mode: $(\"CODE - Pick Parse Result\").first().json.assessment_mode || 'text',\n  startSpeech: $(\"CODE - Pick Parse Result\").first().json.startSpeech || false,\n  soft_skills: $(\"CODE - Pick Parse Result\").first().json.soft_skills || null\n} }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "c1e3e44d-9050-4e3a-99ff-d136dfe573a9",
+      "name": "Respond to Portal",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        1760
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "final-check",
+              "leftValue": "={{ $(\"CODE - Pick Parse Result\").first().json.isFinal }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e52fa3ad-a0fe-4b74-9462-e3d98c1d717b",
+      "name": "IF - Assessment finished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2496,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Build assessment result mail (PASS/FAIL — thread reply)\n// Place AFTER: CODE - Parse Result (when isFinal = true)\n// Place BEFORE: Gmail Thread Reply node\n//\n// Gmail node settings:\n//   Resource:   thread\n//   Operation:  reply\n//   Thread ID:  {{ $json.gmail_thread_id }}\n//   Message ID: {{ $json.gmail_message_id }}\n//   Email Type: HTML\n//   Message:    {{ $json.mail_body_html }}\n\nfunction pickNodeJson(...names) {\n  for (const name of names) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object') return raw;\n    } catch (_) {}\n  }\n  return null;\n}\n\nfunction pickSessionRow() {\n  const built =\n    pickNodeJson('CODE - Build LLM context', 'CODE - Build LLM context1') || {};\n  if (built.session?.id) return built.session;\n\n  const fetchRaw = pickNodeJson('HTTP - Fetch Session', 'HTTP - Fetch Session1');\n  const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;\n  if (row?.id) return row;\n\n  return {};\n}\n\nconst parse =\n  pickNodeJson(\n    'CODE - Pick Parse Result',\n    'CODE - Parse Speech Result',\n    'CODE - Parse Technical Result',\n    'CODE - Parse Result'\n  ) || $input.first().json || {};\nconst session = pickSessionRow();\nconst cfg = parse.config || session.config || {};\n\nconst threadId = String(\n  session.gmail_thread_id || parse.gmail_thread_id || ''\n).trim();\nconst msgId = String(\n  session.gmail_message_id || parse.gmail_message_id || ''\n).trim();\n\nif (!threadId || threadId.startsWith('draft-')) {\n  const sid = session.id || parse.session_id || 'unknown';\n  throw new Error(\n    'gmail_thread_id missing on session ' +\n      sid +\n      ' — CV screening shortlist mail must PATCH gmail_thread_id to assessment_sessions. ' +\n      'Check Supabase row, run supabase_gmail_thread_columns.sql, and verify CV Screening workflow: ' +\n      'MAIL - Email outreach agent (shortlist) → HTTP - SB PATCH session gmail thread.'\n  );\n}\nif (!msgId) {\n  throw new Error(\n    'gmail_message_id missing on session — re-run shortlist flow or set from first mail.'\n  );\n}\n\nconst result = String(parse.result || 'FAIL').toUpperCase();\nconst passed = result === 'PASS';\nconst score = parse.score ?? parse.average_score ?? '—';\nconst role = String(cfg.requisition_title || 'the role');\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\nconst feedback = String(parse.feedback || '').trim();\nconst sessionId = String(session.id || parse.session_id || '');\n\nconst sectionTitle = passed ? 'Assessment Passed' : 'Assessment Result';\nconst headline = passed\n  ? `Congratulations — you passed the technical assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`\n  : `Thank you for completing the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`;\n\nconst portalBase = String(\n  cfg.portal_base_url || 'https://talent-acquisition-six.vercel.app'\n).replace(/\\/+$/, '');\nconst schedulingWaitLink = sessionId\n  ? `${portalBase}/scheduling-wait.html?session=${encodeURIComponent(sessionId)}`\n  : portalBase;\n\nconst nextStep = passed\n  ? `<p>Next step: schedule your interview. Open this page to pick a time as soon as slots are ready (you can leave and return later):</p>\n     <p style=\"text-align:center;margin:20px 0;\"><a href=\"${schedulingWaitLink}\" style=\"display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;\">Schedule interview</a></p>\n     <p style=\"font-size:13px;color:#64748b;\">If the interviewer is not available right now, they may add slots later — we will email you when options are ready.</p>`\n  : '<p>Unfortunately you did not meet the pass threshold for this role at this time.</p>';\n\nconst mailBodyHtml = `<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"></head>\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\n    <tr><td align=\"center\">\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── ${sectionTitle} ──</p>\n          <p>Hi,</p>\n          <p>${headline}</p>\n          <p><strong>Overall score:</strong> ${score}/100 &nbsp;|&nbsp; <strong>Result:</strong> ${result}</p>\n          ${feedback ? `<p style=\"color:#475569;font-size:14px;\">${feedback.replace(/</g, '&lt;')}</p>` : ''}\n          ${nextStep}\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\n        </td></tr>\n      </table>\n    </td></tr>\n  </table>\n</body></html>`;\n\nreturn [\n  {\n    json: {\n      ...parse,\n      session_id: sessionId,\n      gmail_thread_id: threadId,\n      gmail_message_id: msgId,\n      mail_subject: session.mail_subject || parse.mail_subject || '',\n      mail_body_html: mailBodyHtml,\n      mail_stage: passed ? 'pass' : 'fail',\n      candidate_email: parse.candidate_email || session.candidate_email,\n      config: cfg,\n    },\n  },\n];"
+      },
+      "id": "8cf27419-822d-45cd-87a4-fa48863c9d94",
+      "name": "CODE - Build assessment result mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2720,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "thread",
+        "operation": "reply",
+        "threadId": "={{ $json.gmail_thread_id }}",
+        "messageId": "={{ $json.gmail_message_id }}",
+        "emailType": "html",
+        "message": "={{ $json.mail_body_html }}",
+        "options": {}
+      },
+      "id": "563f05f1-bec0-4dd4-9d20-afc632576569",
+      "name": "MAIL - Reply candidate (assessment result)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2960,
+        2000
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "BA2SGIRvrMkcdHoQ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Merge Gmail reply response\n// Paste AFTER any Gmail \"Thread → Reply\" node.\n// Prepares Supabase PATCH so the next reply chains to this message.\n//\n// Wire:\n//   Gmail Thread Reply → this node → HTTP PATCH session gmail message\n//\n// Set HTTP PATCH node:\n//   URL:  {{ $json._gmail_patch_url }}\n//   Body: {{ $json._gmail_patch_body }}\n\nfunction pickSessionContext() {\n  const names = [\n    'CODE - Build candidate slot mail',\n    'CODE - Build assessment result mail',\n    'CODE - Build interview confirmed mail',\n    'CODE - Build Gmail thread reply context',\n    'CODE - Prep scheduling from PASS',\n    'CODE - Parse Result',\n    'HTTP - SB GET session (slots)',\n    'HTTP - SB GET session (confirmed)',\n    'HTTP - Fetch Session',\n    'HTTP - Fetch Session1',\n  ];\n  let merged = {};\n  for (const name of names) {\n    try {\n      merged = { ...merged, ...($input.first().json || {}), ...$(name).first().json };\n    } catch (_) {}\n  }\n  return merged;\n}\n\nfunction resolveGmailPayload(input, ...mailNodeNames) {\n  if (input && (input.id || input.messageId || input.threadId || input.thread_id)) {\n    return input;\n  }\n  for (const name of mailNodeNames) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && (raw.id || raw.messageId || raw.threadId || raw.thread_id)) return raw;\n    } catch (_) {}\n  }\n  return input || {};\n}\n\nconst gmail = resolveGmailPayload(\n  $input.first().json,\n  'MAIL - Candidate slot options',\n  'MAIL - Candidate slot options1',\n  'MAIL - Candidate pitch mail',\n  'MAIL - Candidate pitch mail1',\n  'MAIL - Notify candidate',\n  'MAIL - Notify candidate1',\n  'MAIL - Reply candidate (assessment result)',\n  'MAIL - Reply candidate (assessment result)1'\n);\nconst ctx = pickSessionContext();\nconst cfg = ctx.config || {};\n\nconst msgId = String(gmail.id || gmail.messageId || '').trim();\nconst threadId = String(gmail.threadId || gmail.thread_id || ctx.gmail_thread_id || '').trim();\n\nconst sessionId = String(\n  ctx.session_id || ctx.session_db_id || ctx.id || ''\n).trim();\n\nconst patchReady = Boolean(sessionId && threadId && msgId);\nif (!patchReady) {\n  return [\n    {\n      json: {\n        ...ctx,\n        _gmail_patch_skipped: true,\n        _gmail_patch_skip_reason: [\n          !sessionId ? 'missing session_id' : null,\n          !threadId ? 'missing gmail_thread_id' : null,\n          !msgId ? 'missing gmail message id' : null,\n        ]\n          .filter(Boolean)\n          .join('; '),\n        _gmail_patch_url: '',\n        _gmail_patch_body: {},\n      },\n    },\n  ];\n}\n\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\n\nreturn [\n  {\n    json: {\n      ...ctx,\n      gmail_message_id: msgId,\n      gmail_thread_id: threadId,\n      _gmail_patch_url: `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`,\n      _gmail_patch_body: {\n        gmail_message_id: msgId,\n        gmail_thread_id: threadId,\n        updated_at: new Date().toISOString(),\n      },\n    },\n  },\n];"
+      },
+      "id": "7ff02d0e-820e-4b3d-80d5-299ae1f74634",
+      "name": "CODE - Merge Gmail reply response (result)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json._gmail_patch_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._gmail_patch_body }}",
+        "options": {}
+      },
+      "id": "95e38636-6bcd-4f22-9282-91292a9de941",
+      "name": "HTTP - PATCH candidate gmail (result)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        2000
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "pass-check",
+              "leftValue": "={{ $(\"CODE - Pick Parse Result\").first().json.result }}",
+              "rightValue": "PASS",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0d94153a-94dd-458c-8a0c-1617aed92394",
+      "name": "IF - Result PASS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3760,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Prep scheduling from PASS\n// After assessment result mail PATCH — loads session row for scheduling chain\n\nfunction pickNodeJson(...names) {\n  for (const name of names) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object') return raw;\n    } catch (_) {}\n  }\n  return null;\n}\n\nfunction pickSessionRow() {\n  const built =\n    pickNodeJson('CODE - Build LLM context', 'CODE - Build LLM context1') || {};\n  if (built.session?.id) return built.session;\n\n  const fetchRaw = pickNodeJson('HTTP - Fetch Session', 'HTTP - Fetch Session1');\n  const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;\n  if (row?.id) return row;\n\n  return {};\n}\n\nconst parse =\n  pickNodeJson(\n    'CODE - Pick Parse Result',\n    'CODE - Parse Speech Result',\n    'CODE - Parse Technical Result',\n    'CODE - Parse Result',\n    'CODE - Parse Result1'\n  ) || {};\nconst session = pickSessionRow();\nconst cfg = { ...(session.config || {}), ...(parse.config || {}) };\n\nreturn [\n  {\n    json: {\n      ...parse,\n      ...session,\n      session_id: session.id || parse.session_id,\n      candidate_email: parse.candidate_email || session.candidate_email,\n      score: parse.score ?? session.score,\n      result: parse.result || session.result,\n      requisition_title: cfg.requisition_title || session.requisition_title,\n      config: cfg,\n      gmail_thread_id: session.gmail_thread_id,\n      gmail_message_id: session.gmail_message_id,\n      mail_subject: session.mail_subject,\n      interviewer_gmail_thread_id: session.interviewer_gmail_thread_id,\n      interviewer_gmail_message_id: session.interviewer_gmail_message_id,\n    },\n  },\n];"
+      },
+      "id": "9cd2baaa-267d-4aa9-97c2-f1242b860e18",
+      "name": "CODE - Prep scheduling from PASS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4000,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Build interviewer mail context\n// Place BEFORE: MAIL - Interviewer pitch mail\n// Frontend scheduling: email link uses ?session=UUID (no n8n WAIT / resumeUrl)\n//\n// MAIL node settings:\n//   To:      {{ $json.interviewer_email }}\n//   Subject: {{ $json.mail_subject }}\n//   Message: {{ $json.mail_body_html }}  (HTML — no expression injection needed)\n\nfunction extractConfig(row) {\n  const out = {};\n  if (!row || typeof row !== 'object') return out;\n  if (row.config && typeof row.config === 'object') Object.assign(out, row.config);\n  for (const [k, v] of Object.entries(row)) {\n    if (k.startsWith('config.') && v != null && String(v).trim()) {\n      out[k.slice(7)] = String(v).trim();\n    }\n  }\n  return out;\n}\n\nfunction pickNodeJson(...names) {\n  for (const name of names) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object') return raw;\n    } catch (_) {}\n  }\n  return null;\n}\n\nfunction mergeConfig(...sources) {\n  const out = {};\n  for (const src of sources) {\n    if (!src || typeof src !== 'object') continue;\n    Object.assign(out, extractConfig(src));\n    if (src.config && typeof src.config === 'object') {\n      for (const [k, v] of Object.entries(src.config)) {\n        if (v != null && String(v).trim()) out[k] = String(v).trim();\n      }\n    }\n    for (const [k, v] of Object.entries(src)) {\n      if (k.startsWith('config.') && v != null && String(v).trim()) {\n        out[k.slice(7)] = String(v).trim();\n      }\n    }\n  }\n  return out;\n}\n\nfunction loadWorkflowConfig() {\n  const names = [\n    'CFG - Workflow configuration',\n    'CFG - Workflow configuration1',\n    'CFG - Workflow',\n    'CFG - Assessment Config',\n    'CFG - Assessment Config1',\n    'CFG - Reply track (merge)',\n    'CODE - Normalize Data',\n    'CODE - Normalize Data1',\n    'CODE - Prep scheduling from PASS',\n    'CODE - Prep scheduling from PASS1',\n    'CODE - Parse Result',\n    'CODE - Parse Result1',\n  ];\n  const rows = names.map((n) => pickNodeJson(n)).filter(Boolean);\n  return mergeConfig(...rows);\n}\n\nfunction pickAssessmentContext() {\n  const input = $input.first().json || {};\n  const names = [\n    'CODE - Prep scheduling from PASS',\n    'CODE - Prep scheduling from PASS1',\n    'CODE - Parse Result',\n    'CODE - Parse Result1',\n    'CODE - Normalize Data',\n    'CODE - Normalize Data1',\n    'HTTP - SB PATCH session interview_history',\n    'HTTP - SB PATCH session interview_history1',\n    'CODE - Update interview_history',\n  ];\n  const rows = [input, ...names.map((n) => pickNodeJson(n)).filter(Boolean)];\n  let merged = {};\n  for (const row of rows) {\n    merged = { ...merged, ...row };\n    if (row.config && typeof row.config === 'object') {\n      merged = { ...merged, ...row.config };\n    }\n  }\n  return merged;\n}\n\nfunction nameFromEmail(email) {\n  const e = String(email || '').trim().toLowerCase();\n  if (!e) return 'Candidate';\n  const local = e.split('@')[0] || e;\n  return local\n    .replace(/[._-]+/g, ' ')\n    .replace(/\\b\\w/g, (c) => c.toUpperCase())\n    .trim() || e;\n}\n\nconst base = $input.first().json || {};\nconst ctx = pickAssessmentContext();\nconst cfg = {\n  ...loadWorkflowConfig(),\n  ...mergeConfig(base, ctx),\n};\n\nconst portalBase = String(\n  base.interviewer_portal_base ||\n    cfg.interviewer_portal_base ||\n    cfg.portal_base_url ||\n    'https://talent-acquisition-six.vercel.app'\n).replace(/\\/interviewer\\.html.*$/i, '').replace(/\\/+$/, '');\n\nconst interviewerPortal = portalBase + '/interviewer.html';\n\nconst candidateEmail = String(\n  base.candidate_email || ctx.candidate_email || cfg.candidate_email || ''\n).trim();\n\nconst candidateName = String(\n  base.candidate_name || ctx.candidate_name || nameFromEmail(candidateEmail)\n).trim();\n\nconst sessionId = String(\n  base.session_id || ctx.session_id || ctx.session_db_id || ctx.id || ''\n).trim();\n\nconst scoreRaw = base.score ?? ctx.score ?? ctx.average_score ?? ctx.phase_score;\nconst score = scoreRaw != null && scoreRaw !== '' ? scoreRaw : '—';\n\nconst role = String(\n  base.requisition_title ||\n    ctx.requisition_title ||\n    cfg.requisition_title ||\n    'Open role'\n).trim();\n\nconst interviewerEmail = String(\n  base.interviewer_email ||\n    ctx.interviewer_email ||\n    cfg.interviewer_email ||\n    base.config?.interviewer_email ||\n    ctx.config?.interviewer_email ||\n    ''\n).trim();\n\nif (!candidateEmail) {\n  throw new Error(\n    'candidate_email missing — check CODE - Parse Result / CODE - Prep scheduling from PASS output.'\n  );\n}\n\nif (!interviewerEmail) {\n  throw new Error('interviewer_email missing — set in CFG or job/recruiter intake.');\n}\n\nif (!sessionId) {\n  throw new Error('session_id missing — required for frontend scheduling link.');\n}\n\nconst schedulingLink =\n  interviewerPortal + '?session=' + encodeURIComponent(sessionId);\n\nconst mailSubject =\n  base.mail_subject ||\n  `Schedule interview — ${candidateName} (${role})`;\n\nconst mailBody =\n  `Hello,\\n\\n` +\n  `Candidate: ${candidateName}\\n` +\n  `Email: ${candidateEmail}\\n` +\n  `Role: ${role}\\n` +\n  `Assessment score: ${score}/100 (PASSED)\\n\\n` +\n  `Please propose interview date/time options (45–60 minutes):\\n` +\n  `${schedulingLink}\\n\\n` +\n  `Session ID: ${sessionId}\\n\\n` +\n  `Thank you.`;\n\nconst esc = (s) =>\n  String(s)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n\nconst mailBodyHtml =\n  `<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"></head>\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:32px 16px;\">\n    <tr><td align=\"center\">\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:32px;\">\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\n          <p>Hello,</p>\n          <p><strong>${esc(candidateName)}</strong> passed the technical assessment for <strong>${esc(role)}</strong>.</p>\n          <table style=\"width:100%;margin:16px 0;font-size:14px;color:#475569;\">\n            <tr><td style=\"padding:4px 0;\">Email</td><td style=\"padding:4px 0;\"><strong>${esc(candidateEmail)}</strong></td></tr>\n            <tr><td style=\"padding:4px 0;\">Score</td><td style=\"padding:4px 0;\"><strong>${esc(score)}/100</strong></td></tr>\n            <tr><td style=\"padding:4px 0;\">Session</td><td style=\"padding:4px 0;\"><strong>${esc(sessionId)}</strong></td></tr>\n          </table>\n          <p>Please propose interview slots (45–60 minutes):</p>\n          <p style=\"text-align:center;margin:28px 0;\">\n            <a href=\"${schedulingLink}\" style=\"display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;\">Propose interview slots</a>\n          </p>\n          <p>Thank you.</p>\n        </td></tr>\n      </table>\n    </td></tr>\n  </table>\n</body></html>`;\n\nconst sb = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\nconst nowIso = new Date().toISOString();\n\nreturn [\n  {\n    json: {\n      ...base,\n      ...ctx,\n      config: cfg,\n      candidate_email: candidateEmail,\n      candidate_name: candidateName,\n      requisition_title: role,\n      session_id: sessionId,\n      score,\n      interviewer_portal_base: interviewerPortal,\n      scheduling_link: schedulingLink,\n      interviewer_email: interviewerEmail,\n      mail_subject: mailSubject,\n      mail_body: mailBody,\n      mail_body_html: mailBodyHtml,\n      _scheduling_patch_url: sessionId\n        ? `${sb}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`\n        : '',\n      _scheduling_patch_body: {\n        scheduling_status: 'pending_interviewer',\n        scheduling_updated_at: nowIso,\n        updated_at: nowIso,\n      },\n    },\n  },\n];"
+      },
+      "id": "983f1309-973c-4c46-be00-dbc2cd011270",
+      "name": "CODE - Build interviewer mail context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4224,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.interviewer_email }}",
+        "subject": "={{ $json.mail_subject }}",
+        "emailType": "html",
+        "message": "={{ (() => { let u = String($execution.resumeUrl || '').trim(); let b = String($json.config?.n8n_public_url || '').replace(/\\/+$/, ''); if (b && /localhost|127\\.0\\.0\\.1/i.test(u)) u = u.replace(/^https?:\\/\\/[^/]+/i, b); if (!u) throw new Error('resumeUrl empty'); return $json.mail_body_html.split($json.resume_url).join(encodeURIComponent(u)); })() }}",
+        "options": {}
+      },
+      "id": "2894c3c3-2bad-4ac8-80a0-d8442358b0a1",
+      "name": "MAIL - Interviewer pitch mail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4448,
+        1920
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "BA2SGIRvrMkcdHoQ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Merge Gmail interviewer mail response\n// After MAIL - Interviewer pitch (Send) OR MAIL - Reply interviewer thread\n// Saves interviewer_gmail_thread_id + interviewer_gmail_message_id on session\n\nfunction pickContext() {\n  const names = [\n    'CODE - Build interviewer mail context',\n    'CODE - Build interviewer confirmed mail',\n    'CODE - Prep scheduling from PASS',\n    'CODE - Parse Result',\n    'HTTP - Fetch Session',\n  ];\n  let merged = {};\n  for (const name of names) {\n    try {\n      merged = { ...merged, ...($input.first().json || {}), ...$(name).first().json };\n    } catch (_) {}\n  }\n  return merged;\n}\n\nfunction resolveGmailPayload(input, ...mailNodeNames) {\n  if (input && (input.id || input.messageId || input.threadId || input.thread_id)) {\n    return input;\n  }\n  for (const name of mailNodeNames) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && (raw.id || raw.messageId || raw.threadId || raw.thread_id)) return raw;\n    } catch (_) {}\n  }\n  return input || {};\n}\n\nconst gmail = resolveGmailPayload($input.first().json, 'MAIL - Interviewer pitch mail', 'MAIL - Interviewer pitch mail1', 'MAIL - Notify interviewer', 'MAIL - Notify interviewer1');\nconst ctx = pickContext();\nconst cfg = ctx.config || {};\n\nconst msgId = String(gmail.id || gmail.messageId || '').trim();\nconst threadId = String(gmail.threadId || gmail.thread_id || ctx.interviewer_gmail_thread_id || '').trim();\nconst sessionId = String(ctx.session_id || ctx.session_db_id || ctx.id || '').trim();\nconst mailSubject = String(ctx.mail_subject || ctx.interviewer_mail_subject || '').trim();\n\nconst patchReady = Boolean(sessionId && threadId && msgId);\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\n\nreturn [\n  {\n    json: {\n      ...ctx,\n      interviewer_gmail_thread_id: threadId || ctx.interviewer_gmail_thread_id || null,\n      interviewer_gmail_message_id: msgId || ctx.interviewer_gmail_message_id || null,\n      interviewer_mail_subject: mailSubject || ctx.interviewer_mail_subject || null,\n      _interviewer_patch_skipped: !patchReady,\n      _interviewer_patch_skip_reason: !patchReady\n        ? [\n            !sessionId ? 'missing session_id' : null,\n            !threadId ? 'missing gmail threadId' : null,\n            !msgId ? 'missing gmail message id' : null,\n          ]\n            .filter(Boolean)\n            .join('; ')\n        : '',\n      _interviewer_patch_url: patchReady\n        ? `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`\n        : '',\n      _interviewer_patch_body: patchReady\n        ? {\n            interviewer_gmail_thread_id: threadId,\n            interviewer_gmail_message_id: msgId,\n            interviewer_mail_subject: mailSubject || undefined,\n            updated_at: new Date().toISOString(),\n          }\n        : {},\n    },\n  },\n];"
+      },
+      "id": "46572db2-4b2a-460a-b002-75fc7fc187ec",
+      "name": "CODE - Merge Gmail interviewer send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4672,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json._interviewer_patch_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._interviewer_patch_body }}",
+        "options": {}
+      },
+      "id": "590ee53f-1b6d-4d08-8a15-cc860cc7e222",
+      "name": "HTTP - PATCH interviewer thread (pitch)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4896,
+        1920
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {
+          "webhookSuffix": "interviewer-availability"
+        }
+      },
+      "id": "56e66f68-7dd2-4231-a44b-17c1e05576c2",
+      "name": "WAIT - Interviewer availability",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        5120,
+        1920
+      ],
+      "webhookId": "interviewer-availability-wait"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Parse interviewer slot\r\n// After WAIT - Interviewer availability — normalizes slots from interviewer portal\r\n\r\nfunction pickNodeJson(...names) {\r\n  for (const name of names) {\r\n    if (!name) continue;\r\n    try {\r\n      const raw = $(name).first().json;\r\n      if (raw && typeof raw === 'object') return raw;\r\n    } catch (_) {}\r\n  }\r\n  return {};\r\n}\r\n\r\nconst wait = $input.first().json;\r\nconst body = wait.body || wait;\r\nconst query = wait.query || body.query || {};\r\nconst base = pickNodeJson(\r\n  'CODE - Prep scheduling from PASS',\r\n  'CODE - Prep scheduling from PASS1',\r\n  'CODE - Build interviewer mail context',\r\n  'CODE - Build interviewer mail context1'\r\n);\r\n\r\nlet slots =\r\n  body.slots ||\r\n  body.proposed_slots ||\r\n  body.availability ||\r\n  body.slots_json ||\r\n  query.slots_json ||\r\n  wait.slots_json ||\r\n  [];\r\nif (typeof slots === 'string') {\r\n  try {\r\n    slots = JSON.parse(slots);\r\n  } catch (_) {\r\n    slots = [];\r\n  }\r\n}\r\nif (!Array.isArray(slots)) slots = [];\r\n\r\nconst normalized = slots\r\n  .map((s, i) => {\r\n    const start = s.start_iso || s.start || s.from || '';\r\n    const end = s.end_iso || s.end || s.to || '';\r\n    const label =\r\n      s.label ||\r\n      (start && end ? `${start} → ${end}` : start || `Slot ${i + 1}`);\r\n    return { start_iso: start, end_iso: end, label };\r\n  })\r\n  .filter((s) => s.start_iso || s.label);\r\n\r\nif (!normalized.length) {\r\n  throw new Error('Interviewer submitted no valid slots.');\r\n}\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...base,\r\n      slots: normalized,\r\n      proposed_slots: normalized,\r\n      interviewer_submitted_at: new Date().toISOString(),\r\n    },\r\n  },\r\n];"
+      },
+      "id": "70e215a7-afa6-427c-94e3-798111962ad3",
+      "name": "CODE - Parse interviewer slot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5344,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Build candidate slot mail (scheduling — thread reply)\r\n// Triggered by: POST /webhook/talent/scheduling-slots { session_id }\r\n// Input: HTTP - SB GET session (slots) — reads proposed_slots from Supabase\r\n//\r\n// Gmail node settings:\r\n//   Resource:   thread\r\n//   Operation:  reply\r\n//   Thread ID:  {{ $json.gmail_thread_id }}\r\n//   Message ID: {{ $json.gmail_message_id }}\r\n//   Email Type: HTML\r\n//   Message:    {{ $json.mail_body_html }}\r\n\r\nfunction extractConfig(row) {\r\n  const out = {};\r\n  if (!row || typeof row !== 'object') return out;\r\n  if (row.config && typeof row.config === 'object') Object.assign(out, row.config);\r\n  for (const [k, v] of Object.entries(row)) {\r\n    if (k.startsWith('config.') && v != null && String(v).trim()) {\r\n      out[k.slice(7)] = String(v).trim();\r\n    }\r\n  }\r\n  return out;\r\n}\r\n\r\nfunction pickNodeJson(...names) {\r\n  for (const name of names) {\r\n    if (!name) continue;\r\n    try {\r\n      const raw = $(name).first().json;\r\n      if (raw && typeof raw === 'object') return raw;\r\n    } catch (_) {}\r\n  }\r\n  return null;\r\n}\r\n\r\nfunction pickSessionRow() {\r\n  const fetchRaw = pickNodeJson(\r\n    'HTTP - SB GET session (slots)',\r\n    'HTTP - SB GET session (scheduling)',\r\n    'HTTP - Fetch Session',\r\n    'HTTP - Fetch Session1'\r\n  );\r\n  const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;\r\n  if (row?.id) return row;\r\n\r\n  const input = $input.first().json;\r\n  if (input?.id) return input;\r\n  return {};\r\n}\r\n\r\nfunction normalizeSlots(raw) {\r\n  if (!raw) return [];\r\n  let slots = raw;\r\n  if (typeof slots === 'string') {\r\n    try {\r\n      slots = JSON.parse(slots);\r\n    } catch (_) {\r\n      return [];\r\n    }\r\n  }\r\n  if (!Array.isArray(slots)) return [];\r\n  return slots\r\n    .map((s, i) => ({\r\n      start_iso: s.start_iso || s.start || '',\r\n      end_iso: s.end_iso || s.end || '',\r\n      label: s.label || s.start_iso || `Slot ${i + 1}`,\r\n    }))\r\n    .filter((s) => s.start_iso || s.label);\r\n}\r\n\r\nconst session = pickSessionRow();\r\nconst cfg = {\r\n  ...extractConfig(session),\r\n  ...(typeof session.config === 'object' ? session.config : {}),\r\n};\r\n\r\nconst threadId = String(session.gmail_thread_id || '').trim();\r\nconst msgId = String(session.gmail_message_id || '').trim();\r\nif (!threadId || threadId.startsWith('draft-')) {\r\n  throw new Error('gmail_thread_id missing — shortlist mail must run first.');\r\n}\r\nif (!msgId) {\r\n  throw new Error('gmail_message_id missing — PATCH after shortlist/result mail first.');\r\n}\r\n\r\nconst portalBase = String(\r\n  cfg.portal_base_url || cfg.candidate_portal_base || 'https://talent-acquisition-six.vercel.app'\r\n).replace(/\\/+$/, '');\r\n\r\nconst pickPortal = portalBase + '/candidate-pick.html';\r\nconst sessionId = String(session.id || '').trim();\r\nif (!sessionId) {\r\n  throw new Error('session id missing from Supabase row.');\r\n}\r\n\r\nconst slots = normalizeSlots(session.proposed_slots);\r\nif (!slots.length) {\r\n  throw new Error(\r\n    'proposed_slots empty on session — interviewer must submit slots on interviewer.html first.'\r\n  );\r\n}\r\n\r\nconst schedulingLink = pickPortal + '?session=' + encodeURIComponent(sessionId);\r\n\r\nconst candidateEmail = String(session.candidate_email || '').trim();\r\nconst score = session.score != null ? session.score : '—';\r\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\r\nconst role = String(cfg.requisition_title || session.requisition_id || 'the role');\r\n\r\nconst mailBody =\r\n  `Hi,\\n\\n` +\r\n  `Congratulations! You passed our technical assessment for ${role} (score: ${score}/100).\\n\\n` +\r\n  `Next step: choose your interview time:\\n` +\r\n  `${schedulingLink}\\n\\n` +\r\n  `Best regards,\\n${org}`;\r\n\r\nconst slotListHtml = slots\r\n  .map(\r\n    (s) =>\r\n      `<li style=\"margin:6px 0;\">${String(s.label || s.start_iso || '').replace(/</g, '&lt;')}</li>`\r\n  )\r\n  .join('');\r\n\r\nconst mailBodyHtml =\r\n  `<!DOCTYPE html>\r\n<html><head><meta charset=\"UTF-8\"></head>\r\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\r\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:32px 16px;\">\r\n    <tr><td align=\"center\">\r\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:32px;\">\r\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\r\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── Interview Scheduling ──</p>\r\n          <p>Hi,</p>\r\n          <p><strong>Congratulations!</strong> You passed our technical assessment for <strong>${role.replace(/</g, '&lt;')}</strong> (score: <strong>${score}/100</strong>).</p>\r\n          <p>Next step — pick your interview time:</p>\r\n          <ul style=\"padding-left:20px;color:#475569;\">${slotListHtml}</ul>\r\n          <p style=\"text-align:center;margin:28px 0;\">\r\n            <a href=\"${schedulingLink}\" style=\"display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;\">Choose interview time</a>\r\n          </p>\r\n          <p style=\"font-size:13px;color:#64748b;\">Or copy this link: ${schedulingLink}</p>\r\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\r\n        </td></tr>\r\n      </table>\r\n    </td></tr>\r\n  </table>\r\n</body></html>`;\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...session,\r\n      config: cfg,\r\n      session_id: sessionId,\r\n      gmail_thread_id: threadId,\r\n      gmail_message_id: msgId,\r\n      scheduling_link: schedulingLink,\r\n      proposed_slots: slots,\r\n      slots,\r\n      mail_body: mailBody,\r\n      mail_body_html: mailBodyHtml,\r\n      mail_stage: 'scheduling',\r\n      candidate_email: candidateEmail,\r\n      score,\r\n      requisition_title: role,\r\n    },\r\n  },\r\n];"
+      },
+      "id": "1fddd898-f97e-483c-ab50-ab843113e7b9",
+      "name": "CODE - Build candidate slot mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5568,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "thread",
+        "operation": "reply",
+        "threadId": "={{ $json.gmail_thread_id }}",
+        "messageId": "={{ $json.gmail_message_id }}",
+        "emailType": "html",
+        "message": "={{ $json.mail_body_html }}",
+        "options": {}
+      },
+      "id": "eb142524-95d6-41e2-bad1-6b03f1643406",
+      "name": "MAIL - Candidate pitch mail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        5800,
+        1920
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "BA2SGIRvrMkcdHoQ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Merge Gmail reply response\n// Paste AFTER any Gmail \"Thread → Reply\" node.\n// Prepares Supabase PATCH so the next reply chains to this message.\n//\n// Wire:\n//   Gmail Thread Reply → this node → HTTP PATCH session gmail message\n//\n// Set HTTP PATCH node:\n//   URL:  {{ $json._gmail_patch_url }}\n//   Body: {{ $json._gmail_patch_body }}\n\nfunction pickSessionContext() {\n  const names = [\n    'CODE - Build candidate slot mail',\n    'CODE - Build assessment result mail',\n    'CODE - Build interview confirmed mail',\n    'CODE - Build Gmail thread reply context',\n    'CODE - Prep scheduling from PASS',\n    'CODE - Parse Result',\n    'HTTP - SB GET session (slots)',\n    'HTTP - SB GET session (confirmed)',\n    'HTTP - Fetch Session',\n    'HTTP - Fetch Session1',\n  ];\n  let merged = {};\n  for (const name of names) {\n    try {\n      merged = { ...merged, ...($input.first().json || {}), ...$(name).first().json };\n    } catch (_) {}\n  }\n  return merged;\n}\n\nfunction resolveGmailPayload(input, ...mailNodeNames) {\n  if (input && (input.id || input.messageId || input.threadId || input.thread_id)) {\n    return input;\n  }\n  for (const name of mailNodeNames) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && (raw.id || raw.messageId || raw.threadId || raw.thread_id)) return raw;\n    } catch (_) {}\n  }\n  return input || {};\n}\n\nconst gmail = resolveGmailPayload(\n  $input.first().json,\n  'MAIL - Candidate slot options',\n  'MAIL - Candidate slot options1',\n  'MAIL - Candidate pitch mail',\n  'MAIL - Candidate pitch mail1',\n  'MAIL - Notify candidate',\n  'MAIL - Notify candidate1',\n  'MAIL - Reply candidate (assessment result)',\n  'MAIL - Reply candidate (assessment result)1'\n);\nconst ctx = pickSessionContext();\nconst cfg = ctx.config || {};\n\nconst msgId = String(gmail.id || gmail.messageId || '').trim();\nconst threadId = String(gmail.threadId || gmail.thread_id || ctx.gmail_thread_id || '').trim();\n\nconst sessionId = String(\n  ctx.session_id || ctx.session_db_id || ctx.id || ''\n).trim();\n\nconst patchReady = Boolean(sessionId && threadId && msgId);\nif (!patchReady) {\n  return [\n    {\n      json: {\n        ...ctx,\n        _gmail_patch_skipped: true,\n        _gmail_patch_skip_reason: [\n          !sessionId ? 'missing session_id' : null,\n          !threadId ? 'missing gmail_thread_id' : null,\n          !msgId ? 'missing gmail message id' : null,\n        ]\n          .filter(Boolean)\n          .join('; '),\n        _gmail_patch_url: '',\n        _gmail_patch_body: {},\n      },\n    },\n  ];\n}\n\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\n\nreturn [\n  {\n    json: {\n      ...ctx,\n      gmail_message_id: msgId,\n      gmail_thread_id: threadId,\n      _gmail_patch_url: `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`,\n      _gmail_patch_body: {\n        gmail_message_id: msgId,\n        gmail_thread_id: threadId,\n        updated_at: new Date().toISOString(),\n      },\n    },\n  },\n];"
+      },
+      "id": "bd1b1c22-8ec0-49f4-922b-96bcc98ddb22",
+      "name": "CODE - Merge Gmail reply response (scheduling)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6024,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json._gmail_patch_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._gmail_patch_body }}",
+        "options": {}
+      },
+      "id": "23202903-2580-4633-a541-755f71589156",
+      "name": "HTTP - PATCH candidate gmail (scheduling)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6248,
+        1920
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {
+          "webhookSuffix": "candidate-slot-choice"
+        }
+      },
+      "id": "5564ee98-926c-4e8a-9718-3cae2b1fe696",
+      "name": "WAIT - Candidate slot choice",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        6472,
+        1920
+      ],
+      "webhookId": "candidate-slot-choice-wait"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Parse candidate choice\r\n// After WAIT - Candidate slot choice\r\n\r\nconst wait = $input.first().json;\r\nconst body = wait.body || wait;\r\nconst base = $('CODE - Build candidate slot mail').first().json;\r\n\r\nconst slot =\r\n  body.selected_slot ||\r\n  body.chosen_slot ||\r\n  body.slot ||\r\n  (body.slot_index != null && Array.isArray(base.slots)\r\n    ? base.slots[Number(body.slot_index)]\r\n    : null);\r\n\r\nif (!slot) {\r\n  throw new Error('Candidate did not select a slot.');\r\n}\r\n\r\nconst start_iso = slot.start_iso || slot.start || '';\r\nconst end_iso = slot.end_iso || slot.end || '';\r\nconst slot_label = slot.label || start_iso || 'Selected slot';\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...base,\r\n      selected_slot: slot,\r\n      selected_slot_label: slot_label,\r\n      slot_label,\r\n      chosen_slot: slot_label,\r\n      start_iso,\r\n      end_iso,\r\n      candidate_email: base.candidate_email,\r\n      interviewer_email: base.config?.interviewer_email || base.interviewer_email,\r\n    },\r\n  },\r\n];"
+      },
+      "id": "be0dc69a-dee3-438f-ac67-fec1403596cb",
+      "name": "CODE - Parse candidate choice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6696,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $json.config.calendar_id || 'primary' }}",
+          "mode": "list",
+          "cachedResultName": "primary"
+        },
+        "start": "={{ $json.start_iso || $now.toISO() }}",
+        "end": "={{ $json.end_iso || $now.plus({ hours: 1 }).toISO() }}",
+        "additionalFields": {
+          "attendees": "={{ [$json.candidate_email, $json.interviewer_email || $json.config.interviewer_email].filter(Boolean) }}",
+          "summary": "=Interview — {{ $json.candidate_email }} ({{ $json.config.requisition_title || \"Role\" }})"
+        }
+      },
+      "id": "0be16edf-ef40-4d54-8bc1-683f428f3db9",
+      "name": "CAL - Create interview event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        6920,
+        1920
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "GOOGLE_CALENDAR_CREDENTIAL_ID",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Build interview confirmed mail (thread reply)\n// After CAL (or scheduling-confirmed webhook) — replies in candidate Gmail thread\n\nfunction pickNodeJson(...names) {\n  for (const name of names) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object') return raw;\n    } catch (_) {}\n  }\n  return null;\n}\n\nfunction pickSessionRow() {\n  const names = [\n    'CODE - Scheduling confirmed from session',\n    'HTTP - SB GET session (confirmed)',\n    'HTTP - SB GET session (slots)',\n    'HTTP - Fetch Session',\n    'HTTP - Fetch Session1',\n    'CODE - Parse candidate choice',\n    'CODE - Prep scheduling from PASS',\n    'CODE - Build candidate slot mail',\n  ];\n  for (const name of names) {\n    const raw = pickNodeJson(name);\n    if (!raw) continue;\n    const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);\n    if (row?.id) return row;\n  }\n  return {};\n}\n\nconst ctx = pickNodeJson('CODE - Scheduling confirmed from session') || {};\nconst base = { ...ctx, ...($input.first().json || {}) };\nconst session = pickSessionRow();\nconst cfg = {\n  ...(typeof session.config === 'object' ? session.config : {}),\n  ...(base.config || {}),\n};\n\nconst threadId = String(\n  session.gmail_thread_id || base.gmail_thread_id || ctx.gmail_thread_id || ''\n).trim();\nconst msgId = String(\n  session.gmail_message_id || base.gmail_message_id || ctx.gmail_message_id || ''\n).trim();\n\nif (!threadId || threadId.startsWith('draft-')) {\n  const sid = session.id || base.session_id || ctx.session_id || 'unknown';\n  throw new Error(\n    'gmail_thread_id missing on session ' +\n      sid +\n      ' — run CV Screening shortlist mail and supabase_gmail_thread_columns.sql; ' +\n      'candidate thread must exist before scheduling replies.'\n  );\n}\nif (!msgId) {\n  throw new Error(\n    'gmail_message_id missing — send candidate slot options mail first (scheduling-slots webhook).'\n  );\n}\n\nconst role = String(cfg.requisition_title || base.requisition_title || 'the role');\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\nconst slotLabel = String(\n  base.selected_slot_label ||\n    base.slot_label ||\n    (typeof base.chosen_slot === 'object' ? base.chosen_slot?.label : base.chosen_slot) ||\n    base.start_iso ||\n    'your selected time'\n);\nconst sessionId = String(session.id || base.session_id || ctx.session_id || '');\n\nconst mailBodyHtml = `<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"></head>\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\n    <tr><td align=\"center\">\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── Interview Confirmed ──</p>\n          <p>Hi,</p>\n          <p>Your interview for <strong>${role.replace(/</g, '&lt;')}</strong> is confirmed.</p>\n          <p><strong>Time:</strong> ${slotLabel.replace(/</g, '&lt;')}</p>\n          <p>Please join on time. If you need to reschedule, reply to this email.</p>\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\n        </td></tr>\n      </table>\n    </td></tr>\n  </table>\n</body></html>`;\n\nreturn [\n  {\n    json: {\n      ...base,\n      session_id: sessionId,\n      gmail_thread_id: threadId,\n      gmail_message_id: msgId,\n      mail_body_html: mailBodyHtml,\n      mail_stage: 'confirmed',\n      candidate_email: base.candidate_email || session.candidate_email,\n      config: cfg,\n    },\n  },\n];"
+      },
+      "id": "d2c5a2a0-0292-427f-90a9-914339ba8d08",
+      "name": "CODE - Build interview confirmed mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7144,
+        1800
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "thread",
+        "operation": "reply",
+        "threadId": "={{ $json.gmail_thread_id }}",
+        "messageId": "={{ $json.gmail_message_id }}",
+        "emailType": "html",
+        "message": "={{ $json.mail_body_html }}",
+        "options": {}
+      },
+      "id": "5d4bec8f-36d0-4a67-b2af-08b1b9cbb5e3",
+      "name": "MAIL - Notify candidate",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        7368,
+        1800
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "BA2SGIRvrMkcdHoQ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Merge Gmail reply response\n// Paste AFTER any Gmail \"Thread → Reply\" node.\n// Prepares Supabase PATCH so the next reply chains to this message.\n//\n// Wire:\n//   Gmail Thread Reply → this node → HTTP PATCH session gmail message\n//\n// Set HTTP PATCH node:\n//   URL:  {{ $json._gmail_patch_url }}\n//   Body: {{ $json._gmail_patch_body }}\n\nfunction pickSessionContext() {\n  const names = [\n    'CODE - Build candidate slot mail',\n    'CODE - Build assessment result mail',\n    'CODE - Build interview confirmed mail',\n    'CODE - Build Gmail thread reply context',\n    'CODE - Prep scheduling from PASS',\n    'CODE - Parse Result',\n    'HTTP - SB GET session (slots)',\n    'HTTP - SB GET session (confirmed)',\n    'HTTP - Fetch Session',\n    'HTTP - Fetch Session1',\n  ];\n  let merged = {};\n  for (const name of names) {\n    try {\n      merged = { ...merged, ...($input.first().json || {}), ...$(name).first().json };\n    } catch (_) {}\n  }\n  return merged;\n}\n\nfunction resolveGmailPayload(input, ...mailNodeNames) {\n  if (input && (input.id || input.messageId || input.threadId || input.thread_id)) {\n    return input;\n  }\n  for (const name of mailNodeNames) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && (raw.id || raw.messageId || raw.threadId || raw.thread_id)) return raw;\n    } catch (_) {}\n  }\n  return input || {};\n}\n\nconst gmail = resolveGmailPayload(\n  $input.first().json,\n  'MAIL - Candidate slot options',\n  'MAIL - Candidate slot options1',\n  'MAIL - Candidate pitch mail',\n  'MAIL - Candidate pitch mail1',\n  'MAIL - Notify candidate',\n  'MAIL - Notify candidate1',\n  'MAIL - Reply candidate (assessment result)',\n  'MAIL - Reply candidate (assessment result)1'\n);\nconst ctx = pickSessionContext();\nconst cfg = ctx.config || {};\n\nconst msgId = String(gmail.id || gmail.messageId || '').trim();\nconst threadId = String(gmail.threadId || gmail.thread_id || ctx.gmail_thread_id || '').trim();\n\nconst sessionId = String(\n  ctx.session_id || ctx.session_db_id || ctx.id || ''\n).trim();\n\nconst patchReady = Boolean(sessionId && threadId && msgId);\nif (!patchReady) {\n  return [\n    {\n      json: {\n        ...ctx,\n        _gmail_patch_skipped: true,\n        _gmail_patch_skip_reason: [\n          !sessionId ? 'missing session_id' : null,\n          !threadId ? 'missing gmail_thread_id' : null,\n          !msgId ? 'missing gmail message id' : null,\n        ]\n          .filter(Boolean)\n          .join('; '),\n        _gmail_patch_url: '',\n        _gmail_patch_body: {},\n      },\n    },\n  ];\n}\n\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\n\nreturn [\n  {\n    json: {\n      ...ctx,\n      gmail_message_id: msgId,\n      gmail_thread_id: threadId,\n      _gmail_patch_url: `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`,\n      _gmail_patch_body: {\n        gmail_message_id: msgId,\n        gmail_thread_id: threadId,\n        updated_at: new Date().toISOString(),\n      },\n    },\n  },\n];"
+      },
+      "id": "e7a1c8c9-9e25-4208-a28a-aad36e6c9227",
+      "name": "CODE - Merge Gmail reply response (confirmed)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7592,
+        1800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json._gmail_patch_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._gmail_patch_body }}",
+        "options": {}
+      },
+      "id": "4b54ba62-01cc-413e-a321-873bb8f799da",
+      "name": "HTTP - PATCH candidate gmail (confirmed)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7816,
+        1800
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Build interviewer confirmed mail (interviewer thread reply)\r\n// After CAL (or scheduling-confirmed webhook)\r\n\r\nfunction pickNodeJson(...names) {\r\n  for (const name of names) {\r\n    if (!name) continue;\r\n    try {\r\n      const raw = $(name).first().json;\r\n      if (raw && typeof raw === 'object') return raw;\r\n    } catch (_) {}\r\n  }\r\n  return null;\r\n}\r\n\r\nfunction pickSessionRow() {\r\n  const names = [\r\n    'CODE - Scheduling confirmed from session',\r\n    'HTTP - SB GET session (confirmed)',\r\n    'HTTP - SB GET session (slots)',\r\n    'HTTP - Fetch Session',\r\n    'HTTP - Fetch Session1',\r\n    'CODE - Parse candidate choice',\r\n    'CODE - Prep scheduling from PASS',\r\n  ];\r\n  for (const name of names) {\r\n    const raw = pickNodeJson(name);\r\n    if (!raw) continue;\r\n    const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);\r\n    if (row?.id) return row;\r\n  }\r\n  return {};\r\n}\r\n\r\nconst ctx = pickNodeJson('CODE - Scheduling confirmed from session') || {};\r\nconst base = { ...ctx, ...($input.first().json || {}) };\r\nconst session = pickSessionRow();\r\nconst cfg = {\r\n  ...(typeof session.config === 'object' ? session.config : {}),\r\n  ...(base.config || {}),\r\n};\r\n\r\nconst threadId = String(\r\n  session.interviewer_gmail_thread_id ||\r\n    base.interviewer_gmail_thread_id ||\r\n    ctx.interviewer_gmail_thread_id ||\r\n    ''\r\n).trim();\r\nconst msgId = String(\r\n  session.interviewer_gmail_message_id ||\r\n    base.interviewer_gmail_message_id ||\r\n    ctx.interviewer_gmail_message_id ||\r\n    ''\r\n).trim();\r\n\r\nif (!threadId) {\r\n  throw new Error(\r\n    'interviewer_gmail_thread_id missing — send interviewer pitch mail first (assessment PASS chain).'\r\n  );\r\n}\r\nif (!msgId) {\r\n  throw new Error(\r\n    'interviewer_gmail_message_id missing — PATCH after MAIL - Interviewer pitch mail.'\r\n  );\r\n}\r\n\r\nconst role = String(cfg.requisition_title || base.requisition_title || 'the role');\r\nconst candidateEmail = String(base.candidate_email || session.candidate_email || '');\r\nconst slotLabel = String(\r\n  base.selected_slot_label ||\r\n    base.slot_label ||\r\n    (typeof base.chosen_slot === 'object' ? base.chosen_slot?.label : base.chosen_slot) ||\r\n    base.start_iso ||\r\n    'scheduled time'\r\n);\r\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\r\n\r\nconst mailBodyHtml = `<!DOCTYPE html>\r\n<html><head><meta charset=\"UTF-8\"></head>\r\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\r\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\r\n    <tr><td align=\"center\">\r\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\r\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\r\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── Interview Confirmed ──</p>\r\n          <p>Hello,</p>\r\n          <p>Interview scheduled for <strong>${candidateEmail.replace(/</g, '&lt;')}</strong> — <strong>${role.replace(/</g, '&lt;')}</strong>.</p>\r\n          <p><strong>Time:</strong> ${slotLabel.replace(/</g, '&lt;')}</p>\r\n          <p>Calendar invite has been created. Candidate confirmation sent in their thread.</p>\r\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\r\n        </td></tr>\r\n      </table>\r\n    </td></tr>\r\n  </table>\r\n</body></html>`;\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...base,\r\n      session_id: session.id || base.session_id || ctx.session_id,\r\n      interviewer_email: base.interviewer_email || cfg.interviewer_email,\r\n      interviewer_gmail_thread_id: threadId,\r\n      interviewer_gmail_message_id: msgId,\r\n      mail_body_html: mailBodyHtml,\r\n      config: cfg,\r\n    },\r\n  },\r\n];"
+      },
+      "id": "c309e9fd-92b9-4cfb-8396-e423bcd68942",
+      "name": "CODE - Build interviewer confirmed mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7144,
+        2040
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "thread",
+        "operation": "reply",
+        "threadId": "={{ $json.interviewer_gmail_thread_id }}",
+        "messageId": "={{ $json.interviewer_gmail_message_id }}",
+        "emailType": "html",
+        "message": "={{ $json.mail_body_html }}",
+        "options": {}
+      },
+      "id": "0b01a73a-b75c-41a2-870a-fb79da637db9",
+      "name": "MAIL - Notify interviewer",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        7368,
+        2040
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "BA2SGIRvrMkcdHoQ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Merge Gmail interviewer mail response\n// After MAIL - Interviewer pitch (Send) OR MAIL - Reply interviewer thread\n// Saves interviewer_gmail_thread_id + interviewer_gmail_message_id on session\n\nfunction pickContext() {\n  const names = [\n    'CODE - Build interviewer mail context',\n    'CODE - Build interviewer confirmed mail',\n    'CODE - Prep scheduling from PASS',\n    'CODE - Parse Result',\n    'HTTP - Fetch Session',\n  ];\n  let merged = {};\n  for (const name of names) {\n    try {\n      merged = { ...merged, ...($input.first().json || {}), ...$(name).first().json };\n    } catch (_) {}\n  }\n  return merged;\n}\n\nfunction resolveGmailPayload(input, ...mailNodeNames) {\n  if (input && (input.id || input.messageId || input.threadId || input.thread_id)) {\n    return input;\n  }\n  for (const name of mailNodeNames) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && (raw.id || raw.messageId || raw.threadId || raw.thread_id)) return raw;\n    } catch (_) {}\n  }\n  return input || {};\n}\n\nconst gmail = resolveGmailPayload($input.first().json, 'MAIL - Interviewer pitch mail', 'MAIL - Interviewer pitch mail1', 'MAIL - Notify interviewer', 'MAIL - Notify interviewer1');\nconst ctx = pickContext();\nconst cfg = ctx.config || {};\n\nconst msgId = String(gmail.id || gmail.messageId || '').trim();\nconst threadId = String(gmail.threadId || gmail.thread_id || ctx.interviewer_gmail_thread_id || '').trim();\nconst sessionId = String(ctx.session_id || ctx.session_db_id || ctx.id || '').trim();\nconst mailSubject = String(ctx.mail_subject || ctx.interviewer_mail_subject || '').trim();\n\nconst patchReady = Boolean(sessionId && threadId && msgId);\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\n\nreturn [\n  {\n    json: {\n      ...ctx,\n      interviewer_gmail_thread_id: threadId || ctx.interviewer_gmail_thread_id || null,\n      interviewer_gmail_message_id: msgId || ctx.interviewer_gmail_message_id || null,\n      interviewer_mail_subject: mailSubject || ctx.interviewer_mail_subject || null,\n      _interviewer_patch_skipped: !patchReady,\n      _interviewer_patch_skip_reason: !patchReady\n        ? [\n            !sessionId ? 'missing session_id' : null,\n            !threadId ? 'missing gmail threadId' : null,\n            !msgId ? 'missing gmail message id' : null,\n          ]\n            .filter(Boolean)\n            .join('; ')\n        : '',\n      _interviewer_patch_url: patchReady\n        ? `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`\n        : '',\n      _interviewer_patch_body: patchReady\n        ? {\n            interviewer_gmail_thread_id: threadId,\n            interviewer_gmail_message_id: msgId,\n            interviewer_mail_subject: mailSubject || undefined,\n            updated_at: new Date().toISOString(),\n          }\n        : {},\n    },\n  },\n];"
+      },
+      "id": "4fc786c2-73aa-47e1-9673-1579e854795b",
+      "name": "CODE - Merge Gmail interviewer reply (confirmed)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7592,
+        2040
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json._interviewer_patch_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._interviewer_patch_body }}",
+        "options": {}
+      },
+      "id": "9af46d2f-0aca-426b-86fd-68da7a7c746d",
+      "name": "HTTP - PATCH interviewer thread (confirmed)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7816,
+        2040
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('CFG - Assessment Config').first().json.supabase_url.replace(/\\/$/, '') }}/rest/v1/assessment_sessions?id=eq.{{ $('CODE - Parse candidate choice').first().json.session_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { status: 'completed', updated_at: new Date().toISOString() } }}",
+        "options": {}
+      },
+      "id": "1bea7c25-05eb-497b-afa7-5f3c28bfb172",
+      "name": "HTTP - SB scheduling concluding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8032,
+        1920
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $('CFG - Assessment Config').first().json.supabase_url.replace(/\\/$/, '') }}/rest/v1/assessment_sessions?id=eq.{{ $('CODE - Prep scheduling from PASS').first().json.session_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { scheduling_status: 'pending', updated_at: new Date().toISOString() } }}",
+        "options": {}
+      },
+      "id": "9a044837-7422-4d24-95f5-53f060848ee8",
+      "name": "HTTP - PATCH scheduling pending",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4000,
+        2120
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "TRG - Assessment Answer": {
+      "main": [
+        [
+          {
+            "node": "CFG - Assessment Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CFG - Assessment Config": {
+      "main": [
+        [
+          {
+            "node": "CODE - Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Normalize Data": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Fetch Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Fetch Session": {
+      "main": [
+        [
+          {
+            "node": "IF - Speech mode?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Speech mode?": {
+      "main": [
+        [
+          {
+            "node": "CODE - Build Speech LLM context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CODE - Build LLM context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Build LLM context": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "CODE - Parse Technical Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Vertex Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Parse Technical Result": {
+      "main": [
+        [
+          {
+            "node": "CODE - Pick Parse Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Build Speech LLM context": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain Speech",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain Speech": {
+      "main": [
+        [
+          {
+            "node": "CODE - Parse Speech Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Vertex Chat Model Speech": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain Speech",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Parse Speech Result": {
+      "main": [
+        [
+          {
+            "node": "CODE - Pick Parse Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Pick Parse Result": {
+      "main": [
+        [
+          {
+            "node": "HTTP - SB PATCH session interview_history",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - SB PATCH session interview_history": {
+      "main": [
+        [
+          {
+            "node": "Respond to Portal",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF - Assessment finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Assessment finished?": {
+      "main": [
+        [
+          {
+            "node": "CODE - Build assessment result mail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "CODE - Build assessment result mail": {
+      "main": [
+        [
+          {
+            "node": "MAIL - Reply candidate (assessment result)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MAIL - Reply candidate (assessment result)": {
+      "main": [
+        [
+          {
+            "node": "CODE - Merge Gmail reply response (result)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Merge Gmail reply response (result)": {
+      "main": [
+        [
+          {
+            "node": "HTTP - PATCH candidate gmail (result)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - PATCH candidate gmail (result)": {
+      "main": [
+        [
+          {
+            "node": "IF - Result PASS?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Result PASS?": {
+      "main": [
+        [
+          {
+            "node": "CODE - Prep scheduling from PASS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "CODE - Prep scheduling from PASS": {
+      "main": [
+        [
+          {
+            "node": "CODE - Build interviewer mail context",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP - PATCH scheduling pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Build interviewer mail context": {
+      "main": [
+        [
+          {
+            "node": "MAIL - Interviewer pitch mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MAIL - Interviewer pitch mail": {
+      "main": [
+        [
+          {
+            "node": "WAIT - Interviewer availability",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WAIT - Interviewer availability": {
+      "main": [
+        [
+          {
+            "node": "CODE - Parse interviewer slot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Parse interviewer slot": {
+      "main": [
+        [
+          {
+            "node": "CODE - Merge Gmail interviewer send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Merge Gmail interviewer send": {
+      "main": [
+        [
+          {
+            "node": "HTTP - PATCH interviewer thread (pitch)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - PATCH interviewer thread (pitch)": {
+      "main": [
+        [
+          {
+            "node": "CODE - Build candidate slot mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Build candidate slot mail": {
+      "main": [
+        [
+          {
+            "node": "MAIL - Candidate pitch mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MAIL - Candidate pitch mail": {
+      "main": [
+        [
+          {
+            "node": "WAIT - Candidate slot choice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WAIT - Candidate slot choice": {
+      "main": [
+        [
+          {
+            "node": "CODE - Parse candidate choice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Parse candidate choice": {
+      "main": [
+        [
+          {
+            "node": "CODE - Merge Gmail reply response (scheduling)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Merge Gmail reply response (scheduling)": {
+      "main": [
+        [
+          {
+            "node": "HTTP - PATCH candidate gmail (scheduling)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - PATCH candidate gmail (scheduling)": {
+      "main": [
+        [
+          {
+            "node": "CAL - Create interview event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CAL - Create interview event": {
+      "main": [
+        [
+          {
+            "node": "CODE - Build interview confirmed mail",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "CODE - Build interviewer confirmed mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Build interview confirmed mail": {
+      "main": [
+        [
+          {
+            "node": "MAIL - Notify candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MAIL - Notify candidate": {
+      "main": [
+        [
+          {
+            "node": "CODE - Merge Gmail reply response (confirmed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Merge Gmail reply response (confirmed)": {
+      "main": [
+        [
+          {
+            "node": "HTTP - PATCH candidate gmail (confirmed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - PATCH candidate gmail (confirmed)": {
+      "main": [
+        [
+          {
+            "node": "HTTP - SB scheduling concluding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Build interviewer confirmed mail": {
+      "main": [
+        [
+          {
+            "node": "MAIL - Notify interviewer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MAIL - Notify interviewer": {
+      "main": [
+        [
+          {
+            "node": "CODE - Merge Gmail interviewer reply (confirmed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Merge Gmail interviewer reply (confirmed)": {
+      "main": [
+        [
+          {
+            "node": "HTTP - PATCH interviewer thread (confirmed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Technical phases 1–5 (text) then communication phases 6–8 (speech). Same assessment-answer webhook. Import, set credentials, run supabase_speech_assessment.sql, activate."
+  },
+  "tags": []
+}

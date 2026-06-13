@@ -14,6 +14,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="speech-assessment.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -907,6 +908,13 @@
             const [agreed, setAgreed] = React.useState(false);
             const rules = [
                 {
+                    title: 'Communication round (voice)',
+                    body: 'After the technical phases, you may pass into a short voice round (usually three questions). Use a quiet place, allow microphone access, listen to each question, then record your spoken answer. Your browser will transcribe what you say.',
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    ),
+                },
+                {
                     title: 'Timed Phases & Auto-Save',
                     body: 'Each phase has its own countdown timer (set by question difficulty). If the timer runs out, whatever you have typed will be automatically saved and submitted.',
                     icon: (
@@ -957,7 +965,7 @@
                                 <p className="badge badge-accent mb-3">Before you begin</p>
                                 <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Assessment guidelines</h1>
                                 <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                                    The assessment runs in timed phases (often five). Read the rules below, then confirm to begin.
+                                    Technical phases (typed answers), then a voice communication round if you pass. Read the rules below, then confirm to begin.
                                 </p>
                                 {sessionId ? (
                                     <p className="text-xs text-slate-500 mt-3 break-all">
@@ -967,7 +975,7 @@
                                 <div className="mt-5 flex flex-col sm:flex-row gap-3">
                                     <div className="flex-1 rounded-lg border border-surface-border bg-surface/50 px-4 py-3">
                                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Format</p>
-                                        <p className="text-sm text-slate-200 mt-0.5">Multi-phase technical prompts</p>
+                                        <p className="text-sm text-slate-200 mt-0.5">Technical + voice communication</p>
                                     </div>
                                     <div className="flex-1 rounded-lg border border-surface-border bg-surface/50 px-4 py-3">
                                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Help</p>
@@ -1259,6 +1267,135 @@
             );
         };
 
+        const SpeechAssessmentView = ({
+            speechIndex,
+            speechTotal,
+            absolutePhase,
+            timeLeft,
+            phaseTimeLimit,
+            question,
+            isLoading,
+            candidateEmail,
+            integrityViolationCount,
+            contentMasked,
+            onSubmitSpeech,
+        }) => {
+            const recorderRef = React.useRef(null);
+            const sttRef = React.useRef(null);
+            const [isRecording, setIsRecording] = React.useState(false);
+            const [transcript, setTranscript] = React.useState('');
+            const [recordError, setRecordError] = React.useState('');
+            const phases = Array.from({ length: speechTotal }, (_, i) => i + 1);
+            const pct = speechTotal > 0 ? Math.min(100, (speechIndex / speechTotal) * 100) : 0;
+
+            if (!recorderRef.current && window.TA_SPEECH) {
+                recorderRef.current = window.TA_SPEECH.createRecorder();
+            }
+
+            const handlePlay = () => {
+                if (window.TA_SPEECH) window.TA_SPEECH.speakQuestion(question);
+            };
+
+            React.useEffect(() => {
+                if (!question || contentMasked || isLoading) return;
+                const t = setTimeout(() => handlePlay(), 400);
+                return () => clearTimeout(t);
+            }, [question, speechIndex, contentMasked, isLoading]);
+
+            const toggleRecord = async () => {
+                setRecordError('');
+                if (!recorderRef.current) {
+                    setRecordError('Speech module not loaded.');
+                    return;
+                }
+                if (isRecording) {
+                    setIsRecording(false);
+                    try {
+                        const { blob, durationSeconds } = await recorderRef.current.stop();
+                        let text = transcript;
+                        if (sttRef.current) {
+                            const sttText = await sttRef.current.stop();
+                            if (sttText) text = sttText;
+                        }
+                        sttRef.current = null;
+                        setTranscript(text);
+                        await onSubmitSpeech({ transcript: text, blob, durationSeconds });
+                    } catch (e) {
+                        console.error(e);
+                        setRecordError('Could not process recording. Check microphone permissions.');
+                    }
+                } else {
+                    try {
+                        setTranscript('');
+                        if (window.TA_SPEECH?.createSpeechRecognizer) {
+                            sttRef.current = window.TA_SPEECH.createSpeechRecognizer();
+                            sttRef.current.start();
+                        }
+                        await recorderRef.current.start();
+                        setIsRecording(true);
+                    } catch (e) {
+                        sttRef.current = null;
+                        setRecordError('Microphone access required for communication assessment.');
+                    }
+                }
+            };
+
+            return (
+                <Shell subtitle={`Communication ${speechIndex} of ${speechTotal} · Voice assessment`} fullWidth>
+                    <div className="assessment-workspace fade-in assessment-lock">
+                        <AssessmentSidebar
+                            phases={phases}
+                            currentStep={speechIndex}
+                            totalSteps={speechTotal}
+                            candidateEmail={candidateEmail}
+                            integrityViolationCount={integrityViolationCount}
+                            pct={pct}
+                        />
+                        <div className="assessment-main">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-surface-border/60">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div>
+                                        <h1 className="text-xl sm:text-2xl font-bold text-white">Question {speechIndex}</h1>
+                                        <p className="text-sm text-slate-500 mt-1">Listen, then record your spoken answer</p>
+                                    </div>
+                                    {phaseTimeLimit != null && timeLeft != null ? (
+                                        <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} prominent />
+                                    ) : null}
+                                </div>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4">
+                                <div className="rounded-xl border border-surface-border bg-[#0f1419]/80 p-5 sm:p-6 relative">
+                                    {isLoading && (
+                                        <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
+                                            <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
+                                            <p className="text-sm text-slate-400">Processing your response…</p>
+                                        </div>
+                                    )}
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Question (phase {absolutePhase})</p>
+                                    <p className="text-base sm:text-lg text-slate-100 leading-relaxed mb-4">{question}</p>
+                                    <button type="button" onClick={handlePlay} disabled={contentMasked || isLoading}
+                                        className="btn-secondary px-4 py-2 rounded-lg text-sm mb-6">
+                                        Play question
+                                    </button>
+                                    <div className="border border-surface-border rounded-lg p-4 bg-[#0c121a]/60">
+                                        <p className="text-xs text-slate-500 mb-3">Tap record, speak your answer, tap again to submit.</p>
+                                        <button type="button" onClick={toggleRecord} disabled={contentMasked || isLoading}
+                                            className={`px-6 py-3 rounded-xl text-sm font-semibold w-full sm:w-auto ${isRecording ? 'bg-red-600 hover:bg-red-500' : 'btn-primary'}`}>
+                                            {isRecording ? 'Stop & submit' : 'Start recording'}
+                                        </button>
+                                        {transcript ? (
+                                            <p className="text-sm text-slate-400 mt-4 leading-relaxed">Preview: {transcript}</p>
+                                        ) : null}
+                                        {recordError ? <p className="text-sm text-red-400 mt-3">{recordError}</p> : null}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Shell>
+            );
+        };
+
         const cleanUrlParam = (value) => {
             if (!value) return '';
             return decodeURIComponent(String(value)).trim().split(/\n/)[0].split(/\s+regards/i)[0].trim();
@@ -1268,6 +1405,28 @@
             if (!raw) return {};
             if (typeof raw === 'object') return raw;
             try { return JSON.parse(raw); } catch (e) { return {}; }
+        };
+
+        const resolveAssessmentMode = (data, phaseNum, phaseRow) => {
+            const cfg = parseSessionConfig(data?.config);
+            const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || 5;
+            const speechPhases = Number(cfg?.speech_phases) || 3;
+            const stage = String(data?.assessment_stage || 'technical').toLowerCase();
+            const isSpeech =
+                stage === 'speech' ||
+                Number(phaseNum) > maxQ ||
+                String(phaseRow?.mode || '').toLowerCase() === 'speech';
+            return {
+                mode: isSpeech ? 'speech' : 'text',
+                techMaxSteps: maxQ,
+                speechTotalSteps: speechPhases,
+                totalSteps: isSpeech ? maxQ + speechPhases : maxQ,
+            };
+        };
+
+        const speechPhasesFromResponse = (data) => {
+            const cfg = parseSessionConfig(data?.config);
+            return Number(data?.speech_phases || cfg?.speech_phases) || 3;
         };
 
         const normalizeJobId = (value) => String(value || '').trim().toLowerCase();
@@ -1398,6 +1557,26 @@
             const [schedState, setSchedState] = useState('idle');
             const [slotCount, setSlotCount] = useState(0);
             const [schedWaitMode, setSchedWaitMode] = useState('choose');
+            const [scoreBreakdown, setScoreBreakdown] = useState({ technical: null, speech: null });
+
+            useEffect(() => {
+                if (!sessionId || !supabase) return undefined;
+                let cancelled = false;
+                supabase
+                    .from('assessment_sessions')
+                    .select('technical_score, speech_score')
+                    .eq('id', sessionId)
+                    .maybeSingle()
+                    .then(({ data }) => {
+                        if (cancelled || !data) return;
+                        setScoreBreakdown({
+                            technical: data.technical_score != null ? Number(data.technical_score) : null,
+                            speech: data.speech_score != null ? Number(data.speech_score) : null,
+                        });
+                    })
+                    .catch(() => {});
+                return () => { cancelled = true; };
+            }, [sessionId, supabase]);
 
             useEffect(() => {
                 if (!passed || !sessionId || !supabase) return undefined;
@@ -1458,6 +1637,13 @@
                         {showScore && (
                             <p className={`text-4xl font-bold tabular-nums mb-2 ${scoreTone(scoreNum)}`}>
                                 {Math.round(scoreNum)}<span className="text-lg text-slate-500 font-medium">/100</span>
+                            </p>
+                        )}
+                        {(Number.isFinite(scoreBreakdown.technical) || Number.isFinite(scoreBreakdown.speech)) && (
+                            <p className="text-xs text-slate-500 mb-4 tabular-nums">
+                                {Number.isFinite(scoreBreakdown.technical) ? `Technical ${Math.round(scoreBreakdown.technical)}` : ''}
+                                {Number.isFinite(scoreBreakdown.technical) && Number.isFinite(scoreBreakdown.speech) ? ' · ' : ''}
+                                {Number.isFinite(scoreBreakdown.speech) ? `Communication ${Math.round(scoreBreakdown.speech)}` : ''}
                             </p>
                         )}
                         <h1 className="text-2xl font-bold text-white mb-3 tracking-tight">
@@ -1645,6 +1831,9 @@
             const [isLoading, setIsLoading] = useState(false);
             const [currentStep, setCurrentStep] = useState(1);
             const [totalSteps, setTotalSteps] = useState(5);
+            const [assessmentMode, setAssessmentMode] = useState('text');
+            const [speechTotalSteps, setSpeechTotalSteps] = useState(3);
+            const [techMaxSteps, setTechMaxSteps] = useState(5);
             const [timeLeft, setTimeLeft] = useState(null);
             const [phaseTimeLimit, setPhaseTimeLimit] = useState(null);
             const deadlineAtRef = useRef(null);
@@ -2173,7 +2362,7 @@
                         ''
                     ).trim();
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeSessionId);
-                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, screening, config');
+                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, screening, config, assessment_stage, current_phase');
                     if (isUuid) {
                         query = query.eq('id', activeSessionId);
                                         } else {
@@ -2198,8 +2387,13 @@
                     }
 
                     setQuestion(questionText);
-                    setTotalSteps(data.max_phases || 5);
-                    setCurrentStep(phaseIndex + 1);
+                    const phaseNum = phaseIndex + 1;
+                    const modeInfo = resolveAssessmentMode(data, phaseNum, currentPhaseData);
+                    setAssessmentMode(modeInfo.mode);
+                    setTechMaxSteps(modeInfo.techMaxSteps);
+                    setSpeechTotalSteps(modeInfo.speechTotalSteps);
+                    setTotalSteps(modeInfo.totalSteps);
+                    setCurrentStep(phaseNum);
                     setIntegrityViolationCount(0);
                     integrityViolationCountRef.current = 0;
                     terminatingRef.current = false;
@@ -2439,7 +2633,26 @@
                         data = resolved.data;
                     }
 
-                    if (data.isFinal === true || currentStep >= totalSteps) {
+                    if (data.startSpeech || (data.assessment_mode === 'speech' && data.nextQuestion)) {
+                        const speechPhases = speechPhasesFromResponse(data);
+                        setAssessmentMode('speech');
+                        setTechMaxSteps(totalSteps);
+                        setSpeechTotalSteps(speechPhases);
+                        setTotalSteps(totalSteps + speechPhases);
+                        const nextQ = data.nextQuestion || extractNextQuestion(data);
+                        if (nextQ) {
+                            setQuestion(nextQ);
+                            setCurrentStep((prev) => prev + 1);
+                            setAnswer('');
+                            applyTimerFromPhase({
+                                time_limit_seconds: data.time_limit_seconds,
+                                deadline_at: data.deadline_at,
+                            });
+                        }
+                        return;
+                    }
+
+                    if (data.isFinal === true) {
                         setView('finished');
                         sessionStorage.removeItem('assessment_started');
                         setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));
@@ -2476,6 +2689,70 @@
                 }
             };
 
+            const handleSpeechSubmit = async ({ transcript, blob, durationSeconds }) => {
+                if (isLoading) return;
+                setIsLoading(true);
+                try {
+                    const TA = window.TA_SPEECH;
+                    const metrics = TA
+                        ? TA.computeMetrics(transcript, durationSeconds)
+                        : { duration_seconds: Math.round(durationSeconds || 0) };
+                    let audioUrl = '';
+                    if (TA && blob && supabase && sessionId) {
+                        audioUrl = await TA.uploadAudio(supabase, sessionId, currentStep, blob);
+                    }
+                    const payload = {
+                        sessionId,
+                        phase: currentStep,
+                        email: candidateEmail,
+                        answer: String(transcript || '').trim() || '[No speech detected]',
+                        assessment_mode: 'speech',
+                        audio_url: audioUrl,
+                        speech_metrics: metrics,
+                        tabSwitches: integrityViolationCount,
+                        integrityViolations: integrityViolationCount,
+                    };
+                    let data = await postAssessmentAnswer(payload);
+                    const nextPhaseNum = currentStep + 1;
+                    let resolved = await resolveNextQuestionPayload(data, sessionId, nextPhaseNum);
+                    data = resolved.data;
+
+                    if (!resolved.nextQ && data.isFinal !== true && currentStep < techMaxSteps + speechTotalSteps) {
+                        const fromDb = await pollNextQuestionFromSession(sessionId, nextPhaseNum);
+                        if (fromDb?.nextQuestion) {
+                            data = { ...data, ...fromDb };
+                            resolved = { data, nextQ: fromDb.nextQuestion };
+                        }
+                    }
+
+                    if (data.isFinal === true) {
+                        setView('finished');
+                        sessionStorage.removeItem('assessment_started');
+                        setResult(data.result || (data.score > 60 ? 'PASS' : 'FAIL'));
+                        if (data.score != null) setOverallScore(Number(data.score));
+                        setFeedback(data.feedback || 'Assessment completed.');
+                        sessionStorage.removeItem('time_left');
+                        sessionStorage.removeItem('deadline_at');
+                        deadlineAtRef.current = null;
+                    } else {
+                        const nextQ = resolved?.nextQ || extractNextQuestion(data);
+                        if (nextQ) {
+                            setQuestion(nextQ);
+                            setCurrentStep((prev) => prev + 1);
+                            applyTimerFromPhase({
+                                time_limit_seconds: data.time_limit_seconds,
+                                deadline_at: data.deadline_at,
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error('Speech submit error:', e);
+                    alert('Could not submit speech answer. Please try again.');
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
             useEffect(() => {
                 if (view !== 'assessment' || isLoading) return;
 
@@ -2500,9 +2777,17 @@
 
             useEffect(() => {
                 if (view === 'assessment' && timeLeft === 0 && !isLoading && deadlineAtRef.current) {
-                    handleAssessmentSubmit(true);
+                    if (assessmentMode === 'speech') {
+                        handleSpeechSubmit({
+                            transcript: '[Timeout - No response provided]',
+                            blob: null,
+                            durationSeconds: 0,
+                        });
+                    } else {
+                        handleAssessmentSubmit(true);
+                    }
                 }
-            }, [timeLeft, view, isLoading]);
+            }, [timeLeft, view, isLoading, assessmentMode]);
 
             const resolveSessionIdForReview = () => {
                 const params = new URLSearchParams(window.location.search);
@@ -2584,6 +2869,24 @@
                     case 'instructions':
                         return <InstructionsView onStart={handleStartAssessment} sessionId={sessionId} />;
                     case 'assessment':
+                        if (assessmentMode === 'speech') {
+                            const speechIndex = currentStep - techMaxSteps;
+                            return (
+                                <SpeechAssessmentView
+                                    speechIndex={speechIndex}
+                                    speechTotal={speechTotalSteps}
+                                    absolutePhase={currentStep}
+                                    timeLeft={timeLeft}
+                                    phaseTimeLimit={phaseTimeLimit}
+                                    question={question}
+                                    isLoading={isLoading}
+                                    candidateEmail={candidateEmail}
+                                    integrityViolationCount={integrityViolationCount}
+                                    contentMasked={devToolsDetected || fullscreenRequired}
+                                    onSubmitSpeech={handleSpeechSubmit}
+                                />
+                            );
+                        }
                         return (
                             <AssessmentView
                                 currentStep={currentStep}

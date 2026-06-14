@@ -1313,6 +1313,16 @@
             }, [question]);
 
             React.useEffect(() => {
+                setTranscript('');
+                setRecordError('');
+                setIsRecording(false);
+                if (sttRef.current) {
+                    sttRef.current.stop().catch(() => {});
+                    sttRef.current = null;
+                }
+            }, [absolutePhase, question]);
+
+            React.useEffect(() => {
                 if (!question || contentMasked || isLoading) return undefined;
                 const t = setTimeout(() => startQuestionPlayback(), 400);
                 return () => {

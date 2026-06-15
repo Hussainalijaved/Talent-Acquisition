@@ -1297,9 +1297,10 @@
             const pct = speechTotal > 0 ? Math.min(100, (speechIndex / speechTotal) * 100) : 0;
 
             const updateTranscript = React.useCallback((text) => {
-                const clean = window.TA_SPEECH?.sanitizeTranscript
-                    ? window.TA_SPEECH.sanitizeTranscript(text)
-                    : String(text || '');
+                const TA = window.TA_SPEECH;
+                const clean = isRecordingRef.current && TA?.liveSanitize
+                    ? TA.liveSanitize(text)
+                    : (TA?.sanitizeTranscript ? TA.sanitizeTranscript(text) : String(text || ''));
                 transcriptRef.current = clean;
                 setTranscript(clean);
             }, []);
@@ -1340,9 +1341,9 @@
                 if (!isRecording) return undefined;
                 const warnTimer = setTimeout(() => {
                     if (isRecordingRef.current && !String(transcriptRef.current || '').trim()) {
-                        setSttWarning('Recording your full answer — transcript is generated when you submit.');
+                        setSttWarning('Still listening — start speaking and your words will appear below.');
                     }
-                }, 4000);
+                }, 5000);
                 return () => clearTimeout(warnTimer);
             }, [isRecording, absolutePhase]);
 
@@ -1405,7 +1406,12 @@
                         }
                     } catch (e) {
                         console.error(e);
-                        setRecordError('Could not process recording. Check microphone permissions.');
+                        const hint = String(e?.message || e || '').trim();
+                        setRecordError(
+                            hint && hint !== 'text is not defined'
+                                ? `Could not process recording: ${hint}`
+                                : 'Could not process recording. Refresh the page and try again.'
+                        );
                     } finally {
                         stoppingRef.current = false;
                     }
@@ -1423,7 +1429,13 @@
                             onTranscript: updateTranscript,
                             onLevel: setMicLevel,
                             onStatus: (status) => {
-                                if (status === 'recording') setSttWarning('');
+                                if (status === 'recording' || status === 'listening') setSttWarning('');
+                                if (status === 'stt_handoff') {
+                                    setSttWarning('Live captions on — keep speaking. Your voice is still being saved.');
+                                }
+                                if (status === 'stt_unavailable') {
+                                    setSttWarning('Live captions need Chrome or Edge. Your voice is still being recorded.');
+                                }
                                 if (status === 'recorder_failed') {
                                     setRecordError('Could not start microphone recording. Allow mic access and retry.');
                                 }
@@ -1486,7 +1498,7 @@
                                     <div className="border border-surface-border rounded-lg p-4 bg-[#0c121a]/60">
                                         <p className="text-xs text-slate-500 mb-3">
                                             {isRecording
-                                                ? 'Speak now — your full answer is being recorded until you tap Stop & submit.'
+                                                ? 'Speak now — your words appear below as you talk.'
                                                 : 'Tap record, speak your answer, tap again to submit.'}
                                         </p>
                                         <button type="button" onClick={toggleRecord} disabled={contentMasked || isLoading}
@@ -1508,10 +1520,10 @@
                                         ) : null}
                                         <div className={`mt-4 rounded-lg border p-3 min-h-[4rem] ${isRecording ? 'border-accent/30 bg-accent/5' : 'border-surface-border/60 bg-[#0a0f16]/50'}`}>
                                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
-                                                {isRecording ? 'Recording' : 'Transcript preview'}
+                                                {isRecording ? 'Live transcript' : 'Transcript preview'}
                                             </p>
                                             <p className="text-sm text-slate-200 leading-relaxed">
-                                                {transcript || (isRecording ? '' : '—')}
+                                                {transcript || (isRecording ? 'Listening…' : '—')}
                                                 {isRecording ? (
                                                     <span className="inline-block w-0.5 h-[1em] bg-emerald-400 ml-0.5 align-middle animate-pulse" aria-hidden="true" />
                                                 ) : null}
@@ -2854,7 +2866,9 @@
                         sessionId,
                         phase: currentStep,
                         email: candidateEmail,
-                        answer: cleanTranscript || '[No speech detected]',
+                        answer: (!weakBrowser && cleanTranscript)
+                            ? cleanTranscript
+                            : (audioUrl ? '[Audio recorded]' : '[No speech detected]'),
                         assessment_mode: 'speech',
                         audio_url: audioUrl,
                         speech_metrics: metrics,

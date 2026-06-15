@@ -188,6 +188,146 @@
         };
     }
 
+    function liveSanitize(text) {
+        return String(text || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function createLiveSttController(SR, options) {
+        const { onText, onStatus, shouldContinue } = options || {};
+        let rec = null;
+        const pieces = [];
+        let lastInterim = '';
+        let stopping = false;
+        let gotResult = false;
+
+        const latestText = () => {
+            const base = pieces.join(' ').trim();
+            return (base && lastInterim) ? `${base} ${lastInterim}`.trim() : (base || lastInterim).trim();
+        };
+
+        const pushText = () => {
+            const t = latestText();
+            if (t) {
+                gotResult = true;
+                onText?.(t);
+            }
+            return t;
+        };
+
+        if (!SR) {
+            onStatus?.('stt_unavailable');
+            return {
+                getText() { return ''; },
+                hasResults() { return false; },
+                stop() { return ''; },
+                abort() {},
+                pause() {},
+                resume() {},
+            };
+        }
+
+        try {
+            rec = new SR();
+            rec.lang = 'en-US';
+            rec.continuous = true;
+            rec.interimResults = true;
+            rec.maxAlternatives = 1;
+            if ('processLocally' in rec) {
+                try {
+                    rec.processLocally = true;
+                } catch (_) {}
+            }
+
+            rec.onresult = (event) => {
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const r = event.results[i];
+                    const piece = String(r[0]?.transcript || '').trim();
+                    if (!piece) continue;
+                    if (r.isFinal) {
+                        pieces.push(piece);
+                        lastInterim = '';
+                    } else {
+                        interim = interim ? `${interim} ${piece}` : piece;
+                    }
+                }
+                if (interim) lastInterim = interim;
+                pushText();
+            };
+
+            rec.onerror = (ev) => {
+                const code = String(ev?.error || 'unknown');
+                console.warn('SpeechRecognition error:', code);
+                if (code === 'not-allowed' || code === 'service-not-allowed') onStatus?.('stt_denied');
+                else if (code === 'network') onStatus?.('stt_network');
+                else if (code === 'audio-capture') onStatus?.('stt_audio_capture');
+                if (code === 'no-speech' || code === 'aborted') return;
+                if (!stopping && shouldContinue?.()) {
+                    setTimeout(() => {
+                        try {
+                            rec.start();
+                        } catch (_) {}
+                    }, 280);
+                }
+            };
+
+            rec.onend = () => {
+                if (stopping || !shouldContinue?.()) return;
+                setTimeout(() => {
+                    if (stopping || !shouldContinue?.()) return;
+                    try {
+                        rec.start();
+                    } catch (_) {}
+                }, 180);
+            };
+
+            rec.start();
+            onStatus?.('listening');
+        } catch (err) {
+            console.warn('SpeechRecognition start failed:', err);
+            onStatus?.('stt_unavailable');
+            rec = null;
+        }
+
+        return {
+            getText() {
+                return latestText();
+            },
+            hasResults() {
+                return gotResult || pieces.length > 0 || !!lastInterim;
+            },
+            stop() {
+                stopping = true;
+                try {
+                    rec?.stop();
+                } catch (_) {}
+                rec = null;
+                return latestText();
+            },
+            abort() {
+                stopping = true;
+                try {
+                    rec?.abort();
+                } catch (_) {}
+                rec = null;
+            },
+            pause() {
+                stopping = true;
+                try {
+                    rec?.stop();
+                } catch (_) {}
+            },
+            resume() {
+                if (!rec || stopping) return;
+                stopping = false;
+                try {
+                    rec.start();
+                    onStatus?.('listening');
+                } catch (_) {}
+            },
+        };
+    }
+
     function runSttBurst(SR, durationMs, onInterim, onStatus) {
         return new Promise((resolve) => {
             if (!SR) {
@@ -308,8 +448,8 @@
     }
 
     /**
-     * Record one continuous audio take for the full session.
-     * Browser STT cannot share the mic with MediaRecorder in Chrome — Whisper on submit handles transcript.
+     * Record audio and show live captions while the candidate speaks.
+     * Chrome may block mic sharing — then we hand off to live STT with periodic audio snapshots.
      */
     function createSpeechSession(callbacks) {
         const { onTranscript, onStatus, onLevel } = callbacks || {};
@@ -323,44 +463,155 @@
         let currentMime = 'audio/webm';
         let startedAt = 0;
         let volumeMeter = null;
+        let liveText = '';
+        let sttController = null;
+        let handoffMode = false;
+        let handoffKickTimer = null;
+        let handoffSliceTimer = null;
 
-        const emit = (text) => {
-            if (onTranscript) onTranscript(sanitizeTranscript(String(text || '')));
+        const emitLive = (text) => {
+            liveText = liveSanitize(text);
+            if (onTranscript) onTranscript(liveText);
         };
+
+        async function releaseMediaCapture() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                await new Promise((resolve) => {
+                    const recRef = mediaRecorder;
+                    recRef.onstop = () => resolve();
+                    try {
+                        recRef.stop();
+                    } catch (_) {
+                        resolve();
+                    }
+                    setTimeout(resolve, 2000);
+                });
+            }
+            mediaRecorder = null;
+            volumeMeter?.stop();
+            volumeMeter = null;
+            if (stream) {
+                stream.getTracks().forEach((t) => t.stop());
+                stream = null;
+            }
+        }
+
+        async function startMediaCapture() {
+            stream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+            volumeMeter = createVolumeMeter(stream, onLevel);
+            currentMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : 'audio/webm';
+            mediaRecorder = new MediaRecorder(stream, { mimeType: currentMime });
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) audioChunks.push(e.data);
+            };
+            mediaRecorder.start(250);
+            onStatus?.('recording');
+        }
+
+        function startLiveStt() {
+            if (!SR || sttController) return;
+            sttController = createLiveSttController(SR, {
+                onText: emitLive,
+                onStatus: (status) => {
+                    onStatus?.(status);
+                    if (status === 'stt_audio_capture' && !handoffMode && active && !stopping) {
+                        void beginHandoffMode();
+                    }
+                },
+                shouldContinue: () => active && !stopping && !handoffMode,
+            });
+        }
+
+        async function captureAudioSlice(ms) {
+            if (!active || stopping) return;
+            sttController?.pause();
+            await wait(280);
+            try {
+                await startMediaCapture();
+                await wait(Math.max(900, Number(ms) || 1800));
+                await releaseMediaCapture();
+            } catch (err) {
+                console.warn('Speech audio slice failed:', err);
+            }
+            sttController?.abort();
+            sttController = null;
+            if (active && !stopping && handoffMode) startLiveStt();
+        }
+
+        async function beginHandoffMode() {
+            if (handoffMode || stopping || !active) return;
+            handoffMode = true;
+            onStatus?.('stt_handoff');
+            if (handoffKickTimer) clearTimeout(handoffKickTimer);
+            handoffKickTimer = null;
+            sttController?.abort();
+            sttController = null;
+            await releaseMediaCapture();
+            startLiveStt();
+
+            const scheduleSlice = () => {
+                if (!active || stopping || !handoffMode) return;
+                handoffSliceTimer = setTimeout(async () => {
+                    if (!active || stopping || !handoffMode) return;
+                    await captureAudioSlice(1800);
+                    scheduleSlice();
+                }, 7000);
+            };
+            scheduleSlice();
+        }
 
         return {
             async start() {
                 if (active) return;
                 active = true;
                 stopping = false;
+                handoffMode = false;
                 startedAt = Date.now();
                 audioChunks = [];
-                emit('');
+                liveText = '';
+                emitLive('');
                 onStatus?.('starting');
 
                 if (global.speechSynthesis) global.speechSynthesis.cancel();
                 await wait(200);
 
-                stream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
-                volumeMeter = createVolumeMeter(stream, onLevel);
-                currentMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                    ? 'audio/webm;codecs=opus'
-                    : 'audio/webm';
-                mediaRecorder = new MediaRecorder(stream, { mimeType: currentMime });
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
-                };
-                mediaRecorder.start(250);
-                onStatus?.('recording');
+                try {
+                    await startMediaCapture();
+                } catch (err) {
+                    onStatus?.('recorder_failed');
+                    throw err;
+                }
+
+                if (SR) {
+                    await wait(300);
+                    startLiveStt();
+                    handoffKickTimer = setTimeout(() => {
+                        if (!active || stopping || handoffMode || sttController?.hasResults?.()) return;
+                        void beginHandoffMode();
+                    }, 2800);
+                } else {
+                    onStatus?.('stt_unavailable');
+                }
             },
 
             getLatestText() {
-                return '';
+                return liveText || sttController?.getText?.() || '';
             },
 
             async stop() {
                 stopping = true;
                 active = false;
+                handoffMode = false;
+                if (handoffKickTimer) clearTimeout(handoffKickTimer);
+                if (handoffSliceTimer) clearTimeout(handoffSliceTimer);
+                handoffKickTimer = null;
+                handoffSliceTimer = null;
+
+                const finalText = sttController?.stop?.() || liveText || '';
+                liveText = finalText;
+                sttController = null;
 
                 let blob = null;
                 const durationSeconds = (Date.now() - startedAt) / 1000;
@@ -381,22 +632,26 @@
                         : null;
                 }
 
-                volumeMeter?.stop();
-                volumeMeter = null;
-                mediaRecorder = null;
-                audioChunks = [];
+                await releaseMediaCapture();
 
-                if (stream) {
-                    stream.getTracks().forEach((t) => t.stop());
-                    stream = null;
-                }
-
-                return { text, blob, durationSeconds };
+                return {
+                    text: sanitizeTranscript(finalText),
+                    blob,
+                    durationSeconds,
+                };
             },
 
             cancel() {
                 stopping = true;
                 active = false;
+                handoffMode = false;
+                if (handoffKickTimer) clearTimeout(handoffKickTimer);
+                if (handoffSliceTimer) clearTimeout(handoffSliceTimer);
+                handoffKickTimer = null;
+                handoffSliceTimer = null;
+                sttController?.abort?.();
+                sttController = null;
+                liveText = '';
                 volumeMeter?.stop();
                 volumeMeter = null;
                 try {
@@ -526,6 +781,7 @@
         speakQuestion,
         speakQuestionWithTypewriter,
         sanitizeTranscript,
+        liveSanitize,
         isWeakTranscript,
         wait,
         createSpeechSession,

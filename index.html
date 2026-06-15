@@ -1280,7 +1280,8 @@
             contentMasked,
             onSubmitSpeech,
         }) => {
-            const sessionRef = React.useRef(null);
+            const recorderRef = React.useRef(null);
+            const sttRef = React.useRef(null);
             const speakRef = React.useRef(null);
             const transcriptRef = React.useRef('');
             const isRecordingRef = React.useRef(false);
@@ -1291,16 +1292,17 @@
             const [transcript, setTranscript] = React.useState('');
             const [recordError, setRecordError] = React.useState('');
             const [audioHint, setAudioHint] = React.useState('');
-            const [sttWarning, setSttWarning] = React.useState('');
-            const [micLevel, setMicLevel] = React.useState(0);
             const phases = Array.from({ length: speechTotal }, (_, i) => i + 1);
             const pct = speechTotal > 0 ? Math.min(100, (speechIndex / speechTotal) * 100) : 0;
 
+            if (!recorderRef.current && window.TA_SPEECH) {
+                recorderRef.current = window.TA_SPEECH.createRecorder();
+            }
+
             const updateTranscript = React.useCallback((text) => {
-                const TA = window.TA_SPEECH;
-                const clean = isRecordingRef.current && TA?.liveSanitize
-                    ? TA.liveSanitize(text)
-                    : (TA?.sanitizeTranscript ? TA.sanitizeTranscript(text) : String(text || ''));
+                const clean = window.TA_SPEECH?.liveSanitize
+                    ? window.TA_SPEECH.liveSanitize(text)
+                    : String(text || '').replace(/\s+/g, ' ').trim();
                 transcriptRef.current = clean;
                 setTranscript(clean);
             }, []);
@@ -1327,25 +1329,14 @@
                 setTranscript('');
                 setRecordError('');
                 setAudioHint('');
-                setSttWarning('');
-                setMicLevel(0);
                 setIsRecording(false);
                 isRecordingRef.current = false;
-                if (sessionRef.current) {
-                    sessionRef.current.cancel();
-                    sessionRef.current = null;
+                if (sttRef.current) {
+                    sttRef.current.stop().catch(() => {});
+                    sttRef.current = null;
                 }
+                recorderRef.current?.release?.();
             }, [absolutePhase, question]);
-
-            React.useEffect(() => {
-                if (!isRecording) return undefined;
-                const warnTimer = setTimeout(() => {
-                    if (isRecordingRef.current && !String(transcriptRef.current || '').trim()) {
-                        setSttWarning('Still listening — start speaking and your words will appear below.');
-                    }
-                }, 5000);
-                return () => clearTimeout(warnTimer);
-            }, [isRecording, absolutePhase]);
 
             React.useEffect(() => {
                 if (!question || contentMasked || isLoading) return undefined;
@@ -1358,32 +1349,31 @@
 
             const toggleRecord = async () => {
                 setRecordError('');
-                setSttWarning('');
-                if (!window.TA_SPEECH?.createSpeechSession) {
+                setAudioHint('');
+                if (!recorderRef.current) {
                     setRecordError('Speech module not loaded. Refresh the page.');
                     return;
                 }
                 if (isRecording) {
                     if (stoppingRef.current) return;
                     stoppingRef.current = true;
+                    isRecordingRef.current = false;
+                    setIsRecording(false);
                     try {
-                        const session = sessionRef.current;
-                        let text = session?.getLatestText?.() || transcriptRef.current || '';
-                        let blob = null;
-                        let durationSeconds = 0;
-                        if (session) {
-                            const stopped = await session.stop();
-                            text = stopped.text || text;
-                            blob = stopped.blob;
-                            durationSeconds = stopped.durationSeconds;
+                        const { blob, durationSeconds } = await recorderRef.current.stop();
+                        let text = transcriptRef.current || transcript;
+                        if (sttRef.current) {
+                            const sttText = await sttRef.current.stop();
+                            if (sttText) text = sttText;
                         }
-                        sessionRef.current = null;
-                        isRecordingRef.current = false;
-                        setIsRecording(false);
+                        sttRef.current = null;
                         if (window.TA_SPEECH?.sanitizeTranscript) {
                             text = window.TA_SPEECH.sanitizeTranscript(text);
                         }
                         updateTranscript(text);
+                        transcriptRef.current = '';
+                        setTranscript('');
+
                         const minBytes = Math.max(800, Math.floor((durationSeconds || 0) * 350));
                         if (!blob || blob.size < minBytes) {
                             setRecordError(
@@ -1391,14 +1381,13 @@
                             );
                             return;
                         }
+
                         const submitResult = await onSubmitSpeech({ transcript: text, blob, durationSeconds });
-                        transcriptRef.current = '';
-                        setTranscript('');
                         if (submitResult?.audioSaved) {
                             const weak = window.TA_SPEECH?.isWeakTranscript?.(text);
                             setAudioHint(
                                 weak
-                                    ? 'Voice recording saved. Server will transcribe your audio if browser captions were empty.'
+                                    ? 'Voice saved. Server will transcribe if browser captions were empty.'
                                     : 'Voice recording saved.'
                             );
                         } else if (submitResult?.audioError) {
@@ -1406,12 +1395,7 @@
                         }
                     } catch (e) {
                         console.error(e);
-                        const hint = String(e?.message || e || '').trim();
-                        setRecordError(
-                            hint && hint !== 'text is not defined'
-                                ? `Could not process recording: ${hint}`
-                                : 'Could not process recording. Refresh the page and try again.'
-                        );
+                        setRecordError('Could not process recording. Check microphone permissions.');
                     } finally {
                         stoppingRef.current = false;
                     }
@@ -1420,37 +1404,20 @@
                         speakRef.current?.cancel?.();
                         setIsSpeaking(false);
                         setTypedQuestion(question);
-                        updateTranscript('');
-                        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-                        if (!SR) {
-                            setSttWarning('Live captions need Chrome or Edge. Your voice will still be recorded.');
+                        transcriptRef.current = '';
+                        setTranscript('');
+                        if (window.TA_SPEECH?.createSpeechRecognizer) {
+                            sttRef.current = window.TA_SPEECH.createSpeechRecognizer({
+                                onTranscript: updateTranscript,
+                            });
+                            sttRef.current.start();
                         }
-                        sessionRef.current = window.TA_SPEECH.createSpeechSession({
-                            onTranscript: updateTranscript,
-                            onLevel: setMicLevel,
-                            onStatus: (status) => {
-                                if (status === 'recording') setSttWarning('');
-                                if (status === 'listening') {
-                                    setSttWarning('');
-                                }
-                                if (status === 'caption_failed') {
-                                    setSttWarning('Caption paused briefly — keep speaking, recording continues.');
-                                }
-                                if (status === 'stt_unavailable') {
-                                    setSttWarning('Live captions need Chrome or Edge. Your voice is still being recorded.');
-                                }
-                                if (status === 'recorder_failed') {
-                                    setRecordError('Could not start microphone recording. Allow mic access and retry.');
-                                }
-                            },
-                        });
-                        await sessionRef.current.start();
+                        await recorderRef.current.start();
                         isRecordingRef.current = true;
                         setIsRecording(true);
                     } catch (e) {
-                        isRecordingRef.current = false;
-                        sessionRef.current?.cancel?.();
-                        sessionRef.current = null;
+                        sttRef.current = null;
+                        recorderRef.current?.release?.();
                         setRecordError('Microphone access required for communication assessment.');
                     }
                 }
@@ -1508,32 +1475,18 @@
                                             className={`px-6 py-3 rounded-xl text-sm font-semibold w-full sm:w-auto ${isRecording ? 'bg-red-600 hover:bg-red-500' : 'btn-primary'}`}>
                                             {isRecording ? 'Stop & submit' : 'Start recording'}
                                         </button>
-                                        {isRecording ? (
-                                            <div className="mt-3 flex items-center gap-3">
-                                                <div className="flex-1 h-2 rounded-full bg-surface-border overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-emerald-500 transition-all duration-75"
-                                                        style={{ width: `${Math.min(100, Math.round(micLevel * 100))}%` }}
-                                                    />
-                                                </div>
-                                                <span className="text-[10px] text-slate-500 uppercase tracking-wider shrink-0">
-                                                    {micLevel > 0.04 ? 'Mic active' : 'Speak louder'}
-                                                </span>
-                                            </div>
-                                        ) : null}
                                         <div className={`mt-4 rounded-lg border p-3 min-h-[4rem] ${isRecording ? 'border-accent/30 bg-accent/5' : 'border-surface-border/60 bg-[#0a0f16]/50'}`}>
                                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
-                                                {isRecording ? 'Live transcript' : 'Transcript preview'}
+                                                {isRecording ? 'Live transcript' : 'Your answer'}
                                             </p>
                                             <p className="text-sm text-slate-200 leading-relaxed">
-                                                {transcript || (isRecording ? 'Listening…' : '—')}
+                                                {transcript || (isRecording ? '' : '—')}
                                                 {isRecording ? (
                                                     <span className="inline-block w-0.5 h-[1em] bg-emerald-400 ml-0.5 align-middle animate-pulse" aria-hidden="true" />
                                                 ) : null}
                                             </p>
                                         </div>
                                         {recordError ? <p className="text-sm text-red-400 mt-3">{recordError}</p> : null}
-                                        {sttWarning ? <p className="text-sm text-amber-400/90 mt-3">{sttWarning}</p> : null}
                                         {audioHint ? <p className="text-xs text-slate-500 mt-3">{audioHint}</p> : null}
                                     </div>
                                 </div>

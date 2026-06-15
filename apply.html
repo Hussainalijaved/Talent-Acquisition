@@ -11,8 +11,69 @@
         /* Legacy class aliases — JS toggles these */
         .form-view { display: flex; flex-direction: column; }
         .form-view.hide { display: none !important; }
-        .result-view { display: none; flex-direction: column; align-items: center; text-align: center; }
+        .result-view { display: none; flex-direction: column; align-items: center; text-align: center; width: 100%; }
         .result-view.show { display: flex; }
+        .outcome-card {
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 44px 40px 40px;
+            background: var(--convo-surface);
+            border: 1px solid var(--convo-line);
+            border-radius: 20px;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.09);
+        }
+        .outcome-score-block {
+            margin: 0 auto 20px;
+            padding: 20px 28px 16px;
+            max-width: 280px;
+            border-radius: 16px;
+            background: linear-gradient(180deg, var(--convo-brand-light) 0%, #fff 100%);
+            border: 1px solid rgba(11, 92, 171, 0.12);
+        }
+        .outcome-score-label {
+            margin: 0 0 6px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--convo-muted);
+        }
+        .outcome-next-steps {
+            margin: 24px 0 0;
+            padding: 18px 20px;
+            border-radius: 14px;
+            background: var(--convo-line-soft);
+            border: 1px solid var(--convo-line);
+            text-align: left;
+        }
+        .outcome-next-steps h3 {
+            margin: 0 0 12px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--convo-muted);
+        }
+        .outcome-next-steps ul {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        .outcome-next-steps li {
+            position: relative;
+            padding: 8px 0 8px 28px;
+            font-size: 14px;
+            line-height: 1.55;
+            color: var(--convo-ink-soft);
+            border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+        }
+        .outcome-next-steps li:last-child { border-bottom: none; padding-bottom: 0; }
+        .outcome-card.has-score .result-icon { display: none; }
+        @media (max-width: 600px) {
+            .outcome-card { padding: 32px 22px 28px; border-radius: 16px; }
+            .outcome-score-block { max-width: 100%; }
+        }
         .status-box { display: none; padding: 14px 16px; border-radius: 10px; font-size: 14px; margin-bottom: 16px; }
         .status-box.show { display: block; }
         .status-box.err { background: var(--convo-danger-bg); color: #991b1b; border: 1px solid #fecaca; }
@@ -23,15 +84,17 @@
         .result-icon.err { background: var(--convo-danger-bg); color: var(--convo-danger); }
         .result-icon.wait { background: var(--convo-warn-bg); color: var(--convo-warn); }
         .result-icon.info { background: var(--convo-info-bg); color: var(--convo-info); }
-        .result-title { font-size: 26px; font-weight: 800; margin: 0 0 12px; letter-spacing: -0.03em; }
-        .result-msg { font-size: 15px; color: var(--convo-ink-soft); line-height: 1.65; margin: 0 0 16px; white-space: pre-line; max-width: 420px; }
-        .result-detail { font-size: 13px; color: var(--convo-muted); padding: 12px 16px; background: var(--convo-line-soft); border-radius: 10px; margin-bottom: 20px; word-break: break-word; }
-        .result-score { font-size: 42px; font-weight: 800; color: var(--convo-brand); margin-bottom: 8px; }
-        .outcome-actions { width: 100%; max-width: 400px; }
-        .btn, button.btn { display: inline-flex; align-items: center; justify-content: center; padding: 14px 24px; border: none; border-radius: 10px; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none; background: var(--convo-brand); color: #fff; width: 100%; }
+        .result-title { font-size: clamp(24px, 4vw, 30px); font-weight: 800; margin: 0 0 12px; letter-spacing: -0.03em; line-height: 1.25; }
+        .result-msg { font-size: 16px; color: var(--convo-ink-soft); line-height: 1.7; margin: 0 0 16px; white-space: pre-line; max-width: 520px; margin-left: auto; margin-right: auto; }
+        .result-detail { font-size: 13px; color: var(--convo-muted); padding: 12px 16px; background: var(--convo-line-soft); border-radius: 10px; margin: 0 auto 24px; word-break: break-word; max-width: 480px; }
+        .result-score { font-size: 52px; font-weight: 800; color: var(--convo-brand); margin: 0; line-height: 1; }
+        .outcome-actions { width: 100%; max-width: 480px; margin: 0 auto; }
+        .btn, button.btn { display: inline-flex; align-items: center; justify-content: center; padding: 16px 28px; border: none; border-radius: 12px; font-family: inherit; font-size: 16px; font-weight: 700; cursor: pointer; text-decoration: none; background: var(--convo-brand); color: #fff; width: 100%; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(11, 92, 171, 0.22); }
         .btn-secondary { background: var(--convo-surface); color: var(--convo-ink-soft); border: 1px solid var(--convo-line); box-shadow: none; }
-        .btn-row { display: flex; flex-direction: column; gap: 10px; }
-        @media (min-width: 520px) { .btn-row { flex-direction: row; } .btn-row .btn { flex: 1; } }
+        .btn-secondary:hover { box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06); transform: translateY(-1px); }
+        .btn-row { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+        @media (min-width: 560px) { .btn-row { flex-direction: row; } .btn-row .btn { flex: 1; } }
         .progress-steps { list-style: none; padding: 0; margin: 24px 0 0; text-align: left; width: 100%; max-width: 300px; }
         .progress-steps li { padding: 10px 0 10px 32px; font-size: 14px; color: var(--convo-muted); position: relative; border-bottom: 1px solid var(--convo-line-soft); }
         .progress-steps li::before { content: ''; position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; background: var(--convo-line); }
@@ -122,14 +185,14 @@
         body.convo-flow-active .page-split { grid-template-columns: 1fr; min-height: 68vh; }
         body.convo-flow-active .page-split-right {
             display: flex; align-items: center; justify-content: center;
-            padding: 48px 32px; background: var(--convo-surface);
+            padding: 56px 28px; background: var(--convo-line-soft);
+            min-height: 72vh;
         }
-        body.convo-flow-active .result-view.show { width: 100%; max-width: 520px; padding: 20px 0; }
+        body.convo-flow-active .result-view.show { width: 100%; max-width: 720px; padding: 0; }
         body.convo-flow-active .convo-hero { padding: 32px 24px 40px; }
         body.convo-flow-active .convo-hero-mega { font-size: clamp(40px, 8vw, 64px); }
         /* Keep apply results visible — convo-ui hides .convo-page-main only when .convo-flow-screen exists */
         body.convo-flow-active .convo-page-main { display: block; }
-        body.convo-flow-active .wrap { max-width: 720px; }
         .outcome-stage {
             display: inline-block;
             font-size: 11px;
@@ -608,15 +671,21 @@
                         </div>
 
                         <div id="successView" class="result-view">
-                            <span class="outcome-stage pass" id="outcomeStage" hidden></span>
-                            <div class="result-icon ok" id="outcomeIcon" aria-hidden="true">✓</div>
-                            <h2 class="result-title" id="outcomeTitle">CV sent successfully</h2>
-                            <div class="result-score" id="outcomeScore" style="display:none"></div>
-                            <p class="result-msg" id="outcomeMsg">
-                                Your application has been received and is being screened by AI.
-                            </p>
-                            <div class="result-detail" id="outcomeDetail"></div>
-                            <div class="outcome-actions" id="outcomeActions"></div>
+                            <div class="outcome-card" id="outcomeCard">
+                                <span class="outcome-stage pass" id="outcomeStage" hidden></span>
+                                <div class="outcome-score-block" id="outcomeScoreBlock" style="display:none">
+                                    <p class="outcome-score-label">CV screening score</p>
+                                    <div class="result-score" id="outcomeScore"></div>
+                                </div>
+                                <div class="result-icon ok" id="outcomeIcon" aria-hidden="true">✓</div>
+                                <h2 class="result-title" id="outcomeTitle">CV sent successfully</h2>
+                                <p class="result-msg" id="outcomeMsg">
+                                    Your application has been received and is being screened by AI.
+                                </p>
+                                <div class="result-detail" id="outcomeDetail"></div>
+                                <div class="outcome-next-steps" id="outcomeNextSteps" style="display:none"></div>
+                                <div class="outcome-actions" id="outcomeActions"></div>
+                            </div>
                         </div>
 
                         <div id="failureView" class="result-view">
@@ -772,7 +841,12 @@
             document.getElementById('outcomeTitle').textContent = 'CV sent successfully';
             document.getElementById('outcomeMsg').textContent = '';
             document.getElementById('outcomeDetail').textContent = '';
-            document.getElementById('outcomeScore').style.display = 'none';
+            const scoreBlock = document.getElementById('outcomeScoreBlock');
+            if (scoreBlock) scoreBlock.style.display = 'none';
+            document.getElementById('outcomeScore').textContent = '';
+            document.getElementById('outcomeCard')?.classList.remove('has-score');
+            const nextSteps = document.getElementById('outcomeNextSteps');
+            if (nextSteps) { nextSteps.style.display = 'none'; nextSteps.innerHTML = ''; }
             document.getElementById('outcomeActions').innerHTML = '';
             document.getElementById('outcomeIcon').className = 'result-icon ok';
             document.getElementById('outcomeIcon').textContent = '✓';
@@ -892,12 +966,21 @@
             document.getElementById('outcomeMsg').textContent = message || '';
             document.getElementById('outcomeDetail').textContent = detail || '';
 
+            const scoreBlock = document.getElementById('outcomeScoreBlock');
             const scoreEl = document.getElementById('outcomeScore');
+            const nextSteps = document.getElementById('outcomeNextSteps');
+            if (nextSteps) {
+                nextSteps.style.display = 'none';
+                nextSteps.innerHTML = '';
+            }
             if (score != null && Number.isFinite(Number(score))) {
                 scoreEl.textContent = Math.round(Number(score)) + ' / 100';
-                scoreEl.style.display = 'block';
+                scoreBlock.style.display = 'block';
+                document.getElementById('outcomeCard')?.classList.add('has-score');
             } else {
-                scoreEl.style.display = 'none';
+                scoreBlock.style.display = 'none';
+                scoreEl.textContent = '';
+                document.getElementById('outcomeCard')?.classList.remove('has-score');
             }
 
             document.getElementById('outcomeActions').innerHTML = actionsHtml || '';
@@ -1097,18 +1180,29 @@
                 icon: '✓',
                 title: 'Congratulations — you\'re shortlisted!',
                 message: (summary ? summary + '\n\n' : '') +
-                    'Your CV passed our AI screening. Continue below to read the assessment guidelines and start when you\'re ready.',
+                    'Your CV passed our AI screening. You\'re invited to the next step: a two-phase technical assessment (written questions, then a short voice interview).',
                 detail,
                 score,
                 actionsHtml:
                     (sessionId
-                        ? '<p class="form-hint" style="margin:0 0 12px;text-align:left">Your session ID: <strong style="word-break:break-all">' + sessionId + '</strong></p>'
+                        ? '<p class="form-hint" style="margin:0 0 16px;text-align:center;font-size:13px">Session ID: <strong style="word-break:break-all;color:var(--convo-ink-soft)">' + sessionId + '</strong></p>'
                         : '') +
                     '<div class="btn-row">' +
-                    '<button type="button" class="btn" id="startAssessmentBtn">Yes — continue to assessment</button>' +
-                    '<button type="button" class="btn btn-secondary" id="laterAssessmentBtn">Maybe later — email me the link</button>' +
+                    '<button type="button" class="btn" id="startAssessmentBtn">Start assessment now</button>' +
+                    '<button type="button" class="btn btn-secondary" id="laterAssessmentBtn">Email me the link</button>' +
                     '</div>',
             });
+            const nextSteps = document.getElementById('outcomeNextSteps');
+            if (nextSteps) {
+                nextSteps.style.display = 'block';
+                nextSteps.innerHTML =
+                    '<h3>What happens next</h3>' +
+                    '<ul>' +
+                    '<li><strong>Phase 1</strong> — Written technical questions (timed)</li>' +
+                    '<li><strong>Phase 2</strong> — Voice communication interview (if you pass Phase 1)</li>' +
+                    '<li>Allow ~45–60 minutes in a quiet place with a stable connection</li>' +
+                    '</ul>';
+            }
             bindPassActions(sessionId, email, detail, submitStartedAt);
         }
 

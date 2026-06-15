@@ -296,6 +296,36 @@ function questionRelevanceCap(answerText, questionText) {
   return null;
 }
 
+/** Cap scores when answer sounds generic or easily fabricated */
+function credibilityScoreCap(answerText) {
+  const answer = String(answerText || '').trim();
+  if (!answer || answer.length < 40) return null;
+
+  const lower = answer.toLowerCase();
+  const wordCount = lower.split(/\s+/).filter(Boolean).length;
+
+  const buzzwords =
+    /\b(scalable|robust|best practices?|microservices?|solid principles?|clean code|highly available|enterprise[- ]grade|cutting[- ]edge|seamless|optimized|efficient solution)\b/gi;
+  const buzzCount = (lower.match(buzzwords) || []).length;
+
+  const concrete =
+    /\b(\d+\s*(%|ms|sec|secs|seconds|minutes|hours|days|weeks|months|users|requests|qps|rps|rows|tables|endpoints|bugs?|incidents?|deployments?))|\b(v\d+|version\s+\d+)\b|\b(rollback|outage|latency|throughput|memory leak|null reference|exception|migration|index|query plan|unit test|integration test|load test)\b/i;
+  const hasConcrete = concrete.test(answer);
+
+  const hasTradeoff =
+    /\b(trade[- ]?off|instead|rather than|chose|chosen|decided|constraint|deadline|legacy|bottleneck|failed|broke|fixed|debugged|root cause)\b/i.test(
+      answer
+    );
+
+  const hasMetric = /\b\d+(\.\d+)?\s*%|\b\d+\s*(ms|sec|users|requests)\b/i.test(answer);
+
+  if (buzzCount >= 3 && !hasConcrete && !hasMetric) return 28;
+  if (wordCount >= 60 && !hasConcrete && !hasTradeoff && !hasMetric) return 32;
+  if (wordCount >= 40 && buzzCount >= 2 && !hasMetric) return 35;
+
+  return null;
+}
+
 /** Clamp LLM scores — off-topic and garbage answers must not get free points */
 function normalizePhaseScore(answerText, llmScore, questionText) {
   const answer = String(answerText || '').trim();
@@ -308,6 +338,9 @@ function normalizePhaseScore(answerText, llmScore, questionText) {
 
   const relevanceCap = questionRelevanceCap(answer, questionText);
   if (relevanceCap != null) score = Math.min(score, relevanceCap);
+
+  const credibilityCap = credibilityScoreCap(answer);
+  if (credibilityCap != null) score = Math.min(score, credibilityCap);
 
   const lower = answer.toLowerCase().replace(/\s+/g, ' ').trim();
   const compact = answer.replace(/\s+/g, '');

@@ -155,68 +155,62 @@
         return t.split(/\s+/).filter(Boolean).length < 4;
     }
 
-    /**
-     * Unified speech session — STT first (live captions), then audio recorder.
-     * Chrome blocks parallel mic capture; STT gets priority for live transcript.
-     */
-    function createSpeechSession(callbacks) {
-        const { onTranscript, onStatus } = callbacks || {};
-        const SR = global.SpeechRecognition || global.webkitSpeechRecognition;
-
-        let active = false;
-        let stopping = false;
-        let stream = null;
-        let mediaRecorder = null;
-        let audioChunks = [];
-        let startedAt = 0;
-        let rec = null;
-        const finalSegments = [];
-        let recorderStarted = false;
-
-        const buildText = (interim) => {
-            const base = finalSegments.join(' ').trim();
-            const combined = interim ? `${base} ${interim}`.trim() : base;
-            return sanitizeTranscript(combined);
+    function createVolumeMeter(stream, onLevel) {
+        if (!stream || !global.AudioContext) return { stop() {} };
+        let ctx = null;
+        let raf = 0;
+        try {
+            const Ctx = global.AudioContext || global.webkitAudioContext;
+            ctx = new Ctx();
+            const source = ctx.createMediaStreamSource(stream);
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            const tick = () => {
+                analyser.getByteFrequencyData(data);
+                let sum = 0;
+                for (let i = 0; i < data.length; i++) sum += data[i];
+                onLevel?.(sum / data.length / 255);
+                raf = global.requestAnimationFrame(tick);
+            };
+            tick();
+        } catch (err) {
+            console.warn('Volume meter unavailable:', err);
+        }
+        return {
+            stop() {
+                if (raf) global.cancelAnimationFrame(raf);
+                raf = 0;
+                if (ctx) ctx.close().catch(() => {});
+                ctx = null;
+            },
         };
+    }
 
-        const emit = (interim) => {
-            if (onTranscript) onTranscript(buildText(interim));
-        };
-
-        const startRecorder = async () => {
-            if (!active || stopping || recorderStarted) return;
-            try {
-                if (!stream) {
-                    stream = await navigator.mediaDevices.getUserMedia({
-                        audio: { echoCancellation: true, noiseSuppression: true },
-                    });
-                }
-                audioChunks = [];
-                const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                    ? 'audio/webm;codecs=opus'
-                    : 'audio/webm';
-                mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
-                };
-                mediaRecorder.start(250);
-                recorderStarted = true;
-                if (!startedAt) startedAt = Date.now();
-                onStatus?.('recording');
-            } catch (err) {
-                onStatus?.('recorder_failed');
-                console.warn('Speech recorder failed:', err);
+    function runSttBurst(SR, durationMs, onInterim) {
+        return new Promise((resolve) => {
+            if (!SR) {
+                resolve('');
+                return;
             }
-        };
+            let rec = null;
+            const pieces = [];
+            let settled = false;
 
-        const startListening = () => {
-            if (!SR || stopping || !active) return;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                resolve(pieces.join(' ').trim());
+            };
+
             try {
                 rec = new SR();
             } catch (_) {
-                rec = null;
+                finish();
                 return;
             }
+
             rec.lang = 'en-US';
             rec.continuous = true;
             rec.interimResults = true;
@@ -228,51 +222,169 @@
                     const r = event.results[i];
                     const piece = String(r[0]?.transcript || '').trim();
                     if (!piece) continue;
-                    if (r.isFinal) {
-                        finalSegments.push(piece);
-                    } else {
-                        interim = interim ? `${interim} ${piece}` : piece;
-                    }
+                    if (r.isFinal) pieces.push(piece);
+                    else interim = interim ? `${interim} ${piece}` : piece;
                 }
-                emit(interim);
+                const combined = [pieces.join(' '), interim].filter(Boolean).join(' ').trim();
+                if (combined && onInterim) onInterim(combined);
             };
 
-            rec.onerror = (ev) => {
-                const code = String(ev?.error || '');
-                if (code === 'no-speech' || code === 'aborted') return;
-                if (!stopping && active && code !== 'not-allowed' && code !== 'service-not-allowed') {
-                    setTimeout(() => startListening(), 400);
-                }
-            };
-
-            rec.onend = () => {
-                if (!stopping && active) {
-                    setTimeout(() => startListening(), 250);
-                }
-            };
+            rec.onerror = () => finish();
+            rec.onend = () => finish();
 
             try {
                 rec.start();
-                onStatus?.('listening');
             } catch (_) {
-                rec = null;
+                finish();
+                return;
             }
+
+            setTimeout(() => {
+                try {
+                    rec.stop();
+                } catch (_) {
+                    finish();
+                }
+            }, Math.max(800, Number(durationMs) || 2000));
+        });
+    }
+
+    function canPauseRecorder() {
+        try {
+            return typeof MediaRecorder !== 'undefined' && 'pause' in MediaRecorder.prototype;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /**
+     * Chrome cannot run SpeechRecognition and MediaRecorder on the mic at once.
+     * Strategy: grab mic once, record audio immediately, pause recorder for short STT windows.
+     */
+    function createSpeechSession(callbacks) {
+        const { onTranscript, onStatus, onLevel } = callbacks || {};
+        const SR = global.SpeechRecognition || global.webkitSpeechRecognition;
+        const pauseSupported = canPauseRecorder();
+
+        let active = false;
+        let stopping = false;
+        let stream = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let startedAt = 0;
+        const finalSegments = [];
+        let sttTimer = null;
+        let volumeMeter = null;
+        let sttBusy = false;
+
+        const buildText = (interim) => {
+            const base = finalSegments.join(' ').trim();
+            const combined = interim ? `${base} ${interim}`.trim() : base;
+            return sanitizeTranscript(combined);
+        };
+
+        const emit = (interim) => {
+            if (onTranscript) onTranscript(buildText(interim));
+        };
+
+        const appendStt = (text) => {
+            const piece = String(text || '').trim();
+            if (!piece) return;
+            finalSegments.push(piece);
+            emit('');
+        };
+
+        const startRecorderOnStream = () => {
+            if (!stream || mediaRecorder) return false;
+            try {
+                audioChunks = [];
+                const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : 'audio/webm';
+                mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
+                };
+                mediaRecorder.start(250);
+                onStatus?.('recording');
+                return true;
+            } catch (err) {
+                console.warn('MediaRecorder failed:', err);
+                onStatus?.('recorder_failed');
+                return false;
+            }
+        };
+
+        const runCaptionWindow = async () => {
+            if (!active || stopping || sttBusy || !SR) return;
+            sttBusy = true;
+            try {
+                if (pauseSupported && mediaRecorder?.state === 'recording') {
+                    mediaRecorder.pause();
+                    await wait(120);
+                }
+                onStatus?.('listening');
+                const burst = await runSttBurst(SR, 2200, (interim) => emit(interim));
+                if (burst) appendStt(burst);
+                if (pauseSupported && mediaRecorder?.state === 'paused') {
+                    mediaRecorder.resume();
+                    onStatus?.('recording');
+                }
+            } catch (err) {
+                console.warn('Caption window failed:', err);
+            } finally {
+                sttBusy = false;
+            }
+        };
+
+        const scheduleCaptionWindows = () => {
+            if (!SR || !pauseSupported) return;
+            sttTimer = setInterval(() => {
+                if (active && !stopping) runCaptionWindow();
+            }, 5000);
+            setTimeout(() => {
+                if (active && !stopping) runCaptionWindow();
+            }, 900);
         };
 
         return {
             async start() {
+                if (active) return;
                 active = true;
                 stopping = false;
-                recorderStarted = false;
                 startedAt = Date.now();
                 finalSegments.length = 0;
                 emit('');
                 onStatus?.('starting');
-                startListening();
-                // STT gets exclusive mic access first; recorder starts after captions establish
-                setTimeout(() => {
-                    if (active && !stopping) startRecorder();
-                }, 3500);
+
+                if (global.speechSynthesis) global.speechSynthesis.cancel();
+                await wait(150);
+
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    },
+                });
+
+                const recorderOk = startRecorderOnStream();
+                if (!recorderOk) {
+                    throw new Error('Could not start audio recorder');
+                }
+
+                volumeMeter = createVolumeMeter(stream, onLevel);
+
+                if (SR && pauseSupported) {
+                    scheduleCaptionWindows();
+                } else if (SR) {
+                    onStatus?.('listening');
+                    const burst = await runSttBurst(SR, 2500, (interim) => emit(interim));
+                    if (burst) appendStt(burst);
+                    onStatus?.('recording');
+                } else {
+                    onStatus?.('recording');
+                }
             },
 
             getLatestText() {
@@ -282,25 +394,23 @@
             async stop() {
                 stopping = true;
                 active = false;
-                const text = buildText('');
 
-                if (rec) {
-                    await new Promise((resolve) => {
-                        const done = () => resolve();
-                        try {
-                            rec.onend = done;
-                            rec.onerror = done;
-                            rec.stop();
-                        } catch (_) {
-                            done();
-                        }
-                        setTimeout(done, 1000);
-                    });
-                    rec = null;
+                if (sttTimer) {
+                    clearInterval(sttTimer);
+                    sttTimer = null;
                 }
 
+                if (SR && pauseSupported && !sttBusy) {
+                    if (mediaRecorder?.state === 'recording') mediaRecorder.pause();
+                    await wait(120);
+                    const burst = await runSttBurst(SR, 1800, (interim) => emit(interim));
+                    if (burst) appendStt(burst);
+                }
+
+                const text = buildText('');
                 let blob = null;
-                let durationSeconds = (Date.now() - startedAt) / 1000;
+                const durationSeconds = (Date.now() - startedAt) / 1000;
+
                 if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                     const recRef = mediaRecorder;
                     await new Promise((resolve) => {
@@ -310,11 +420,15 @@
                         } catch (_) {
                             resolve();
                         }
+                        setTimeout(resolve, 2000);
                     });
                     blob = audioChunks.length
                         ? new Blob(audioChunks, { type: recRef.mimeType || 'audio/webm' })
                         : null;
                 }
+
+                volumeMeter?.stop();
+                volumeMeter = null;
                 mediaRecorder = null;
                 audioChunks = [];
 
@@ -329,10 +443,12 @@
             cancel() {
                 stopping = true;
                 active = false;
-                try {
-                    rec?.stop();
-                } catch (_) {}
-                rec = null;
+                if (sttTimer) {
+                    clearInterval(sttTimer);
+                    sttTimer = null;
+                }
+                volumeMeter?.stop();
+                volumeMeter = null;
                 try {
                     if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
                 } catch (_) {}
@@ -346,7 +462,6 @@
         };
     }
 
-    // Legacy helpers kept for compatibility
     function createRecorder(sharedStream) {
         let mediaRecorder = null;
         let audioChunks = [];
@@ -419,7 +534,10 @@
     async function uploadAudio(supabaseClient, sessionId, phase, blob) {
         const empty = { url: '', path: '', saved: false, error: '' };
         if (!supabaseClient || !blob || !sessionId) {
-            return { ...empty, error: 'missing_client_or_blob' };
+            return { ...empty, error: blob ? 'missing_client' : 'missing_blob' };
+        }
+        if (blob.size < 200) {
+            return { ...empty, error: 'blob_too_small' };
         }
         const path = `${sessionId}/phase_${phase}.webm`;
         const { error } = await supabaseClient.storage.from('assessment-audio').upload(path, blob, {
@@ -446,7 +564,7 @@
     }
 
     async function uploadAudioWithTimeout(supabaseClient, sessionId, phase, blob, timeoutMs) {
-        const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000;
+        const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 20000;
         return Promise.race([
             uploadAudio(supabaseClient, sessionId, phase, blob),
             wait(timeout).then(() => ({ url: '', path: '', saved: false, error: 'upload_timeout' })),
@@ -465,5 +583,6 @@
         createSpeechRecognizer,
         uploadAudio,
         uploadAudioWithTimeout,
+        canPauseRecorder,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

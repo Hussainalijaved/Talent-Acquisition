@@ -40,3 +40,9 @@ DROP POLICY IF EXISTS "Staff read assessment audio" ON storage.objects;
 CREATE POLICY "Staff read assessment audio"
 ON storage.objects FOR SELECT TO authenticated
 USING (bucket_id = 'assessment-audio');
+
+-- Anon needs SELECT so createSignedUrl works after upload (Whisper fetch in n8n)
+DROP POLICY IF EXISTS "Anon read assessment audio signed" ON storage.objects;
+CREATE POLICY "Anon read assessment audio signed"
+ON storage.objects FOR SELECT TO anon
+USING (bucket_id = 'assessment-audio');

@@ -1292,6 +1292,7 @@
             const [recordError, setRecordError] = React.useState('');
             const [audioHint, setAudioHint] = React.useState('');
             const [sttWarning, setSttWarning] = React.useState('');
+            const [micLevel, setMicLevel] = React.useState(0);
             const phases = Array.from({ length: speechTotal }, (_, i) => i + 1);
             const pct = speechTotal > 0 ? Math.min(100, (speechIndex / speechTotal) * 100) : 0;
 
@@ -1326,6 +1327,7 @@
                 setRecordError('');
                 setAudioHint('');
                 setSttWarning('');
+                setMicLevel(0);
                 setIsRecording(false);
                 isRecordingRef.current = false;
                 if (sessionRef.current) {
@@ -1338,9 +1340,9 @@
                 if (!isRecording) return undefined;
                 const warnTimer = setTimeout(() => {
                     if (isRecordingRef.current && !String(transcriptRef.current || '').trim()) {
-                        setSttWarning('Live captions not appearing — keep speaking; your recording is still being saved and will be transcribed on submit.');
+                        setSttWarning('Captions update every few seconds — keep speaking. Audio is recording; server will transcribe if needed.');
                     }
-                }, 3500);
+                }, 7000);
                 return () => clearTimeout(warnTimer);
             }, [isRecording, absolutePhase]);
 
@@ -1381,6 +1383,10 @@
                             text = window.TA_SPEECH.sanitizeTranscript(text);
                         }
                         updateTranscript(text);
+                        if (!blob || blob.size < 200) {
+                            setRecordError('No audio captured. Check your microphone and try again.');
+                            return;
+                        }
                         const submitResult = await onSubmitSpeech({ transcript: text, blob, durationSeconds });
                         transcriptRef.current = '';
                         setTranscript('');
@@ -1412,10 +1418,14 @@
                         }
                         sessionRef.current = window.TA_SPEECH.createSpeechSession({
                             onTranscript: updateTranscript,
+                            onLevel: setMicLevel,
                             onStatus: (status) => {
                                 if (status === 'listening') setSttWarning('');
+                                if (status === 'recording' && !transcriptRef.current) {
+                                    setSttWarning('');
+                                }
                                 if (status === 'recorder_failed') {
-                                    setSttWarning('Audio backup failed — keep speaking; captions still work.');
+                                    setRecordError('Could not start microphone recording. Allow mic access and retry.');
                                 }
                             },
                         });
@@ -1483,6 +1493,19 @@
                                             className={`px-6 py-3 rounded-xl text-sm font-semibold w-full sm:w-auto ${isRecording ? 'bg-red-600 hover:bg-red-500' : 'btn-primary'}`}>
                                             {isRecording ? 'Stop & submit' : 'Start recording'}
                                         </button>
+                                        {isRecording ? (
+                                            <div className="mt-3 flex items-center gap-3">
+                                                <div className="flex-1 h-2 rounded-full bg-surface-border overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-emerald-500 transition-all duration-75"
+                                                        style={{ width: `${Math.min(100, Math.round(micLevel * 100))}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-[10px] text-slate-500 uppercase tracking-wider shrink-0">
+                                                    {micLevel > 0.04 ? 'Mic active' : 'Speak louder'}
+                                                </span>
+                                            </div>
+                                        ) : null}
                                         <div className={`mt-4 rounded-lg border p-3 min-h-[4rem] ${isRecording ? 'border-accent/30 bg-accent/5' : 'border-surface-border/60 bg-[#0a0f16]/50'}`}>
                                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
                                                 {isRecording ? 'Live transcript' : 'Your answer'}
@@ -2817,17 +2840,9 @@
                         : { duration_seconds: Math.round(durationSeconds || 0) };
                     let audioUrl = '';
                     if (TA && blob && supabase && sessionId) {
-                        const uploadPromise = TA.uploadAudioWithTimeout
-                            ? TA.uploadAudioWithTimeout(supabase, sessionId, currentStep, blob, 12000)
-                            : TA.uploadAudio(supabase, sessionId, currentStep, blob);
-                        const upload = await Promise.race([
-                            uploadPromise,
-                            (TA.wait ? TA.wait(3000) : new Promise((r) => setTimeout(r, 3000))).then(() => ({
-                                url: '',
-                                saved: false,
-                                error: 'upload_still_running',
-                            })),
-                        ]);
+                        const upload = TA.uploadAudioWithTimeout
+                            ? await TA.uploadAudioWithTimeout(supabase, sessionId, currentStep, blob, 20000)
+                            : await TA.uploadAudio(supabase, sessionId, currentStep, blob);
                         audioUrl = upload?.url || '';
                         audioSaved = !!upload?.saved;
                         audioError = upload?.error || '';

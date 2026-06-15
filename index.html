@@ -1288,6 +1288,7 @@
             const [typedQuestion, setTypedQuestion] = React.useState('');
             const [transcript, setTranscript] = React.useState('');
             const [recordError, setRecordError] = React.useState('');
+            const [audioHint, setAudioHint] = React.useState('');
             const phases = Array.from({ length: speechTotal }, (_, i) => i + 1);
             const pct = speechTotal > 0 ? Math.min(100, (speechIndex / speechTotal) * 100) : 0;
 
@@ -1315,6 +1316,7 @@
             React.useEffect(() => {
                 setTranscript('');
                 setRecordError('');
+                setAudioHint('');
                 setIsRecording(false);
                 if (sttRef.current) {
                     sttRef.current.stop().catch(() => {});
@@ -1346,9 +1348,18 @@
                             const sttText = await sttRef.current.stop();
                             if (sttText) text = sttText;
                         }
+                        if (window.TA_SPEECH?.sanitizeTranscript) {
+                            text = window.TA_SPEECH.sanitizeTranscript(text);
+                        }
                         sttRef.current = null;
                         setTranscript(text);
-                        await onSubmitSpeech({ transcript: text, blob, durationSeconds });
+                        const submitResult = await onSubmitSpeech({ transcript: text, blob, durationSeconds });
+                        setTranscript('');
+                        if (submitResult?.audioSaved) {
+                            setAudioHint('Voice recording saved.');
+                        } else if (submitResult?.audioError) {
+                            setAudioHint('Answer submitted. Audio not saved: ' + submitResult.audioError);
+                        }
                     } catch (e) {
                         console.error(e);
                         setRecordError('Could not process recording. Check microphone permissions.');
@@ -1361,7 +1372,12 @@
                         setTranscript('');
                         if (window.TA_SPEECH?.createSpeechRecognizer) {
                             sttRef.current = window.TA_SPEECH.createSpeechRecognizer({
-                                onTranscript: (text) => setTranscript(text),
+                                onTranscript: (text) => {
+                                    const clean = window.TA_SPEECH.sanitizeTranscript
+                                        ? window.TA_SPEECH.sanitizeTranscript(text)
+                                        : text;
+                                    setTranscript(clean);
+                                },
                             });
                             sttRef.current.start();
                         }
@@ -1438,6 +1454,7 @@
                                             </p>
                                         </div>
                                         {recordError ? <p className="text-sm text-red-400 mt-3">{recordError}</p> : null}
+                                        {audioHint ? <p className="text-xs text-slate-500 mt-3">{audioHint}</p> : null}
                                     </div>
                                 </div>
                             </div>
@@ -2741,22 +2758,32 @@
             };
 
             const handleSpeechSubmit = async ({ transcript, blob, durationSeconds }) => {
-                if (isLoading) return;
+                if (isLoading) return { audioSaved: false, audioError: 'busy' };
                 setIsLoading(true);
+                let audioSaved = false;
+                let audioError = '';
                 try {
                     const TA = window.TA_SPEECH;
+                    const cleanTranscript = TA?.sanitizeTranscript
+                        ? TA.sanitizeTranscript(transcript)
+                        : String(transcript || '').trim();
                     const metrics = TA
-                        ? TA.computeMetrics(transcript, durationSeconds)
+                        ? TA.computeMetrics(cleanTranscript, durationSeconds)
                         : { duration_seconds: Math.round(durationSeconds || 0) };
                     let audioUrl = '';
                     if (TA && blob && supabase && sessionId) {
-                        audioUrl = await TA.uploadAudio(supabase, sessionId, currentStep, blob);
+                        const upload = await TA.uploadAudio(supabase, sessionId, currentStep, blob);
+                        audioUrl = upload?.url || '';
+                        audioSaved = !!upload?.saved;
+                        audioError = upload?.error || '';
+                    } else if (blob && !supabase) {
+                        audioError = 'storage_not_configured';
                     }
                     const payload = {
                         sessionId,
                         phase: currentStep,
                         email: candidateEmail,
-                        answer: String(transcript || '').trim() || '[No speech detected]',
+                        answer: cleanTranscript || '[No speech detected]',
                         assessment_mode: 'speech',
                         audio_url: audioUrl,
                         speech_metrics: metrics,
@@ -2799,9 +2826,11 @@
                 } catch (e) {
                     console.error('Speech submit error:', e);
                     alert('Could not submit speech answer. Please try again.');
+                    return { audioSaved: false, audioError: e.message || 'submit_failed' };
                 } finally {
                     setIsLoading(false);
                 }
+                return { audioSaved, audioError };
             };
 
             useEffect(() => {

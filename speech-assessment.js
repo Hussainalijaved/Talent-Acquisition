@@ -152,6 +152,44 @@
         };
     }
 
+    /** Collapse STT loops where the same phrase repeats many times */
+    function sanitizeTranscript(raw) {
+        let text = String(raw || '').replace(/\s+/g, ' ').trim();
+        if (!text || text.length < 20) return text;
+
+        const words = text.split(' ');
+        for (let win = Math.min(14, Math.floor(words.length / 2)); win >= 4; win--) {
+            const tail = words.slice(-win).join(' ').toLowerCase();
+            let repeats = 0;
+            let pos = words.length - win;
+            while (pos >= win) {
+                const chunk = words.slice(pos - win, pos).join(' ').toLowerCase();
+                if (chunk === tail) {
+                    repeats++;
+                    pos -= win;
+                } else break;
+            }
+            if (repeats >= 2) {
+                words.splice(words.length - win * repeats, win * repeats);
+                text = words.join(' ');
+                break;
+            }
+        }
+
+        const maxLen = Math.min(100, Math.floor(text.length / 2));
+        for (let len = maxLen; len >= 20; len--) {
+            const sample = text.slice(0, len).trim();
+            if (sample.length < 20) continue;
+            const escaped = sample.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const re = new RegExp(`(?:${escaped}[\\s,]*){2,}`, 'gi');
+            if (re.test(text)) {
+                text = text.replace(re, sample + ' ');
+            }
+        }
+
+        return text.replace(/\s+/g, ' ').trim();
+    }
+
     /** Live browser STT — onTranscript(text) fires as candidate speaks */
     function createSpeechRecognizer(options) {
         const onTranscript = typeof options === 'function' ? options : options?.onTranscript;
@@ -164,34 +202,39 @@
         }
 
         let rec = null;
-        let finalized = '';
+        const finalSegments = [];
 
-        const emit = () => {
-            if (onTranscript) onTranscript(finalized.trim());
+        const buildText = (interim) => {
+            const base = finalSegments.join(' ').trim();
+            const combined = interim ? `${base} ${interim}`.trim() : base;
+            return sanitizeTranscript(combined);
         };
 
         return {
             start() {
-                finalized = '';
-                emit();
+                finalSegments.length = 0;
+                if (onTranscript) onTranscript('');
                 rec = new SR();
                 rec.lang = 'en-US';
                 rec.continuous = true;
                 rec.interimResults = true;
-                rec.onresult = (e) => {
+                rec.onresult = (event) => {
                     let interim = '';
-                    let finals = '';
-                    for (let i = 0; i < e.results.length; i++) {
-                        const r = e.results[i];
-                        const piece = r[0]?.transcript || '';
-                        if (r.isFinal) finals += piece;
-                        else interim += piece;
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const r = event.results[i];
+                        const piece = String(r[0]?.transcript || '').trim();
+                        if (!piece) continue;
+                        if (r.isFinal) {
+                            finalSegments.push(piece);
+                        } else {
+                            interim = interim ? `${interim} ${piece}` : piece;
+                        }
                     }
-                    if (finals) finalized += finals;
-                    const combined = (finalized + interim).replace(/\s+/g, ' ').trim();
-                    if (onTranscript) onTranscript(combined);
+                    if (onTranscript) onTranscript(buildText(interim));
                 };
-                rec.onerror = () => emit();
+                rec.onerror = () => {
+                    if (onTranscript) onTranscript(buildText(''));
+                };
                 try {
                     rec.start();
                 } catch (_) {
@@ -199,9 +242,10 @@
                 }
             },
             async stop() {
-                if (!rec) return finalized.trim();
+                const text = buildText('');
+                if (!rec) return text;
                 return new Promise((resolve) => {
-                    const done = () => resolve(finalized.trim());
+                    const done = () => resolve(buildText(''));
                     rec.onend = done;
                     rec.onerror = done;
                     try {
@@ -226,7 +270,10 @@
     }
 
     async function uploadAudio(supabaseClient, sessionId, phase, blob) {
-        if (!supabaseClient || !blob || !sessionId) return '';
+        const empty = { url: '', path: '', saved: false, error: '' };
+        if (!supabaseClient || !blob || !sessionId) {
+            return { ...empty, error: 'missing_client_or_blob' };
+        }
         const path = `${sessionId}/phase_${phase}.webm`;
         const { error } = await supabaseClient.storage.from('assessment-audio').upload(path, blob, {
             upsert: true,
@@ -234,16 +281,28 @@
         });
         if (error) {
             console.warn('Audio upload failed:', error.message);
-            return '';
+            return { ...empty, path, error: error.message };
         }
-        const { data } = supabaseClient.storage.from('assessment-audio').getPublicUrl(path);
-        return data?.publicUrl || '';
+        const { data: signed, error: signErr } = await supabaseClient.storage
+            .from('assessment-audio')
+            .createSignedUrl(path, 60 * 60 * 24 * 365);
+        const url = signed?.signedUrl || '';
+        if (!url && signErr) {
+            console.warn('Signed URL failed:', signErr.message);
+        }
+        return {
+            url: url || `storage://assessment-audio/${path}`,
+            path,
+            saved: true,
+            error: signErr?.message || '',
+        };
     }
 
     global.TA_SPEECH = {
         computeMetrics,
         speakQuestion,
         speakQuestionWithTypewriter,
+        sanitizeTranscript,
         createRecorder,
         createSpeechRecognizer,
         transcribeWithWebSpeech,

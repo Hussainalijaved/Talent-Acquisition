@@ -186,21 +186,41 @@ function extractCvAnchors(text) {
   ].filter(Boolean);
 }
 
-function buildFirstSpeechQuestion(cfg, session, speechIndex) {
+function buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
   const role = String(cfg.requisition_title || 'this role').trim();
   const org = String(cfg.organization_name || 'the company').trim();
-  const cvSnippet = String(session.cv_plaintext || '').slice(0, 400).trim();
-  const lanes = [
-    `Tell me about a time you had to explain a complex technical topic to a non-technical stakeholder at ${org}. How did you ensure they understood, and what was the outcome?`,
-    `Describe a situation where you faced pressure, a tight deadline, or conflict at work. How did you communicate with your team and stay composed?`,
-    `Why are you interested in the ${role} role, and based on your background, what would you focus on in your first 90 days?`,
+  const jdReq = String(cfg.requisition_requirements || '').trim();
+  const cv = String(session.cv_plaintext || '');
+  const idx = Math.max(0, Math.min(2, Number(speechIndex || 1) - 1));
+
+  const jdThemes = extractJdThemes(jdReq);
+  const cvAnchors = extractCvAnchors(cv);
+  const jdTheme = jdThemes[idx % jdThemes.length] || jdReq.slice(0, 180);
+  const cvAnchor = cvAnchors[idx % cvAnchors.length] || 'your listed project experience';
+
+  const speechHistory = (history || []).filter((h) => Number(h.phase) > Number(maxQ || 5));
+  const asked = speechHistory
+    .map((h) => String(h.question_text || '').toLowerCase())
+    .filter(Boolean);
+
+  const templates = [
+    (jd, cvA) =>
+      `For the ${role} role at ${org}, JD emphasizes: "${jd}". Using your experience with ${cvA}, describe a time you explained a complex technical topic to a non-technical stakeholder. How did you ensure they understood, and what was the outcome?`,
+    (jd, cvA) =>
+      `This position requires "${jd}". Drawing on ${cvA} from your CV, tell me about a situation involving pressure, a tight deadline, or conflict. How did you communicate with your team and stay composed?`,
+    (jd, cvA) =>
+      `JD focus: "${jd}". Given your background in ${cvA}, what specifically interests you about the ${role} role at ${org}, and how would you apply that experience in your first 90 days?`,
   ];
-  const idx = Math.max(0, Math.min(lanes.length - 1, Number(speechIndex || 1) - 1));
-  let q = lanes[idx];
-  if (cvSnippet.length > 40) {
-    q += ` (Your CV mentions relevant experience — use a concrete example if possible.)`;
+
+  for (let i = 0; i < templates.length; i++) {
+    const q = templates[(idx + i) % templates.length](jdTheme, cvAnchor);
+    if (!asked.some((a) => a.includes(jdTheme.slice(0, 24).toLowerCase()))) return q;
   }
-  return q;
+  return templates[idx](jdTheme, cvAnchor);
+}
+
+function buildFirstSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
+  return buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, maxQ);
 }
 
 function buildFallbackNextQuestion(ph, history, cfg, session) {
@@ -624,7 +644,8 @@ if (isActualFinalPhase && !integrityTerminated) {
   if (speechEnabled && techAvg != null && techAvg >= passThreshold) {
     isFinal = false;
     startSpeech = true;
-    nextQ = buildFirstSpeechQuestion(cfg, session, 1);
+    nextQ = String(content.first_speech_question || content.firstSpeechQuestion || '').trim()
+      || buildFirstSpeechQuestion(cfg, session, 1, history, maxQ);
     const speechStartPhase = maxQ + 1;
     const derived = deriveTimeLimitSeconds(180, 'B', nextQ, cfg, speechStartPhase);
     timeLimitSeconds = derived.seconds;

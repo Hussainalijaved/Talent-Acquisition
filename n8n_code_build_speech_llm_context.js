@@ -123,7 +123,12 @@ ${norm.answer}
 
 Audio delivery metrics: ${metricsText || 'not provided'}
 
-${!isFinal ? `Next speech phase ${speechIndex + 1} focus: ${nextLane}` : 'FINAL speech phase — no next_question.'}
+${!isFinal ? `Next speech phase ${speechIndex + 1} — write next_question that:
+- Names ONE JD requirement (rotate — not used in prior speech Q&A)
+- References ONE CV project/skill/employer from the CV excerpt
+- Matches focus: ${nextLane}
+- 2–4 sentences, speakable aloud, behavioral STAR style
+- NEVER generic textbook questions` : 'FINAL speech phase — no next_question.'}
 
 OUTPUT — JSON ONLY:
 ${!isFinal

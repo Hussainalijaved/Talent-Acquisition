@@ -46,6 +46,12 @@ const cfg = {
   ),
   timer_min_seconds: Number(sessionConfig.timer_min_seconds ?? norm.config?.timer_min_seconds ?? 60),
   timer_max_seconds: Number(sessionConfig.timer_max_seconds ?? norm.config?.timer_max_seconds ?? 600),
+  speech_enabled:
+    sessionConfig.speech_enabled === true ||
+    sessionConfig.speech_enabled === 'true' ||
+    norm.config?.speech_enabled === true ||
+    Number(sessionConfig.speech_phases ?? norm.config?.speech_phases ?? 0) > 0,
+  speech_phases: Number(sessionConfig.speech_phases ?? norm.config?.speech_phases ?? 3),
 };
 
 const ph = Number(norm.current_phase || 1);
@@ -227,8 +233,30 @@ ${cvTopicsUsed || '(none yet)'}
 
 Tab switches: ${norm.tab_switches || 0}`;
 
+const speechEnabled =
+  cfg.speech_enabled === true ||
+  cfg.speech_enabled === 'true' ||
+  Number(cfg.speech_phases || 0) > 0;
+const speechStartJd = jdThemes[0] || jdTitle;
+const speechStartCv = cvAnchors[0] || 'a project from your CV';
+
 let systemContent;
 if (isFinal) {
+  const speechHandoff = speechEnabled
+    ? `
+
+COMMUNICATION ROUND HANDOFF (only if technical session warrants PASS — average across phases ≥ ${cfg.pass_score_threshold ?? 60}):
+Also include first_speech_question — a behavioral SPOKEN question for the voice round (phase ${maxQ + 1}).
+- MUST name JD requirement: "${speechStartJd.slice(0, 160)}"
+- MUST reference CV anchor: ${speechStartCv}
+- 2–4 sentences, natural to speak aloud, STAR-friendly
+- Communication focus (clarity explaining to non-technical audience)`
+    : '';
+
+  const speechField = speechEnabled
+    ? ',"first_speech_question":string'
+    : '';
+
   systemContent = `${sharedRules}
 
 Current phase: ${ph} of ${maxQ} (FINAL).
@@ -237,13 +265,14 @@ ${currentQuestionText || '(see prior Q&A)'}
 
 Answer to grade:
 ${norm.answer}
+${speechHandoff}
 
 Tasks:
 1. Score 0–100 based on relevance to the question above + JD holistic fit.
 2. result = PASS only if candidate demonstrated breadth across JD topics in the session; else FAIL.
 3. feedback + suggested_answer (max 2 short paragraphs).
 
-Output: {"status":"finished","result":"PASS"|"FAIL","score":number,"feedback":string,"suggested_answer":string,"next_question":""}`;
+Output: {"status":"finished","result":"PASS"|"FAIL","score":number,"feedback":string,"suggested_answer":string,"next_question":""${speechField}}`;
 } else {
   systemContent = `${sharedRules}
 

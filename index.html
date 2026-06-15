@@ -1280,24 +1280,20 @@
             contentMasked,
             onSubmitSpeech,
         }) => {
-            const recorderRef = React.useRef(null);
-            const sttRef = React.useRef(null);
+            const transcriberRef = React.useRef(null);
             const speakRef = React.useRef(null);
             const transcriptRef = React.useRef('');
             const isRecordingRef = React.useRef(false);
             const stoppingRef = React.useRef(false);
             const [isRecording, setIsRecording] = React.useState(false);
             const [isSpeaking, setIsSpeaking] = React.useState(false);
+            const [isTranscribing, setIsTranscribing] = React.useState(false);
             const [typedQuestion, setTypedQuestion] = React.useState('');
             const [transcript, setTranscript] = React.useState('');
             const [recordError, setRecordError] = React.useState('');
             const [audioHint, setAudioHint] = React.useState('');
             const phases = Array.from({ length: speechTotal }, (_, i) => i + 1);
             const pct = speechTotal > 0 ? Math.min(100, (speechIndex / speechTotal) * 100) : 0;
-
-            if (!recorderRef.current && window.TA_SPEECH) {
-                recorderRef.current = window.TA_SPEECH.createRecorder();
-            }
 
             const updateTranscript = React.useCallback((text) => {
                 const clean = window.TA_SPEECH?.liveSanitize
@@ -1330,12 +1326,12 @@
                 setRecordError('');
                 setAudioHint('');
                 setIsRecording(false);
+                setIsTranscribing(false);
                 isRecordingRef.current = false;
-                if (sttRef.current) {
-                    sttRef.current.stop().catch(() => {});
-                    sttRef.current = null;
+                if (transcriberRef.current) {
+                    transcriberRef.current.cancel();
+                    transcriberRef.current = null;
                 }
-                recorderRef.current?.release?.();
             }, [absolutePhase, question]);
 
             React.useEffect(() => {
@@ -1350,7 +1346,7 @@
             const toggleRecord = async () => {
                 setRecordError('');
                 setAudioHint('');
-                if (!recorderRef.current) {
+                if (!window.TA_SPEECH?.createLiveTranscriber) {
                     setRecordError('Speech module not loaded. Refresh the page.');
                     return;
                 }
@@ -1359,23 +1355,27 @@
                     stoppingRef.current = true;
                     isRecordingRef.current = false;
                     setIsRecording(false);
+                    setIsTranscribing(true);
                     try {
-                        const { blob, durationSeconds } = await recorderRef.current.stop();
+                        const session = transcriberRef.current;
                         let text = transcriptRef.current || transcript;
-                        if (sttRef.current) {
-                            const sttText = await sttRef.current.stop();
-                            if (sttText) text = sttText;
+                        let blob = null;
+                        let durationSeconds = 0;
+                        if (session) {
+                            const stopped = await session.stop();
+                            text = stopped.text || text;
+                            blob = stopped.blob;
+                            durationSeconds = stopped.durationSeconds;
                         }
-                        sttRef.current = null;
+                        transcriberRef.current = null;
                         if (window.TA_SPEECH?.sanitizeTranscript) {
                             text = window.TA_SPEECH.sanitizeTranscript(text);
                         }
                         updateTranscript(text);
-                        transcriptRef.current = '';
-                        setTranscript('');
 
                         const minBytes = Math.max(800, Math.floor((durationSeconds || 0) * 350));
                         if (!blob || blob.size < minBytes) {
+                            setIsTranscribing(false);
                             setRecordError(
                                 `Audio too short (${blob ? Math.round(blob.size / 1024) + ' KB' : '0 KB'} for ${Math.round(durationSeconds || 0)}s). Keep recording longer and try again.`
                             );
@@ -1383,18 +1383,17 @@
                         }
 
                         const submitResult = await onSubmitSpeech({ transcript: text, blob, durationSeconds });
+                        transcriptRef.current = '';
+                        setTranscript('');
+                        setIsTranscribing(false);
                         if (submitResult?.audioSaved) {
-                            const weak = window.TA_SPEECH?.isWeakTranscript?.(text);
-                            setAudioHint(
-                                weak
-                                    ? 'Voice saved. Server will transcribe if browser captions were empty.'
-                                    : 'Voice recording saved.'
-                            );
+                            setAudioHint('Voice recording saved.');
                         } else if (submitResult?.audioError) {
                             setAudioHint('Answer submitted. Audio not saved: ' + submitResult.audioError);
                         }
                     } catch (e) {
                         console.error(e);
+                        setIsTranscribing(false);
                         setRecordError('Could not process recording. Check microphone permissions.');
                     } finally {
                         stoppingRef.current = false;
@@ -1406,18 +1405,18 @@
                         setTypedQuestion(question);
                         transcriptRef.current = '';
                         setTranscript('');
-                        if (window.TA_SPEECH?.createSpeechRecognizer) {
-                            sttRef.current = window.TA_SPEECH.createSpeechRecognizer({
-                                onTranscript: updateTranscript,
-                            });
-                            sttRef.current.start();
-                        }
-                        await recorderRef.current.start();
+                        transcriberRef.current = window.TA_SPEECH.createLiveTranscriber({
+                            onTranscript: updateTranscript,
+                            onStatus: (status) => {
+                                if (status === 'recording') setRecordError('');
+                            },
+                        });
+                        await transcriberRef.current.start();
                         isRecordingRef.current = true;
                         setIsRecording(true);
                     } catch (e) {
-                        sttRef.current = null;
-                        recorderRef.current?.release?.();
+                        transcriberRef.current?.cancel?.();
+                        transcriberRef.current = null;
                         setRecordError('Microphone access required for communication assessment.');
                     }
                 }
@@ -1468,10 +1467,12 @@
                                     <div className="border border-surface-border rounded-lg p-4 bg-[#0c121a]/60">
                                         <p className="text-xs text-slate-500 mb-3">
                                             {isRecording
-                                                ? 'Speak now — your words appear below as you talk (like the question above).'
-                                                : 'Tap record, speak your answer, tap again to submit.'}
+                                                ? 'Speak now — your words appear below as you talk.'
+                                                : isTranscribing
+                                                    ? 'Finalizing your transcript…'
+                                                    : 'Tap record, speak your answer, tap again to submit.'}
                                         </p>
-                                        <button type="button" onClick={toggleRecord} disabled={contentMasked || isLoading}
+                                        <button type="button" onClick={toggleRecord} disabled={contentMasked || isLoading || isTranscribing}
                                             className={`px-6 py-3 rounded-xl text-sm font-semibold w-full sm:w-auto ${isRecording ? 'bg-red-600 hover:bg-red-500' : 'btn-primary'}`}>
                                             {isRecording ? 'Stop & submit' : 'Start recording'}
                                         </button>
@@ -1480,7 +1481,7 @@
                                                 {isRecording ? 'Live transcript' : 'Your answer'}
                                             </p>
                                             <p className="text-sm text-slate-200 leading-relaxed">
-                                                {transcript || (isRecording ? '' : '—')}
+                                                {transcript || (isRecording ? 'Listening… your words will appear here.' : (isTranscribing ? 'Transcribing…' : '—'))}
                                                 {isRecording ? (
                                                     <span className="inline-block w-0.5 h-[1em] bg-emerald-400 ml-0.5 align-middle animate-pulse" aria-hidden="true" />
                                                 ) : null}

@@ -22,24 +22,31 @@ Run in order:
 
 Webhook path unchanged: `POST /webhook/assessment-answer`
 
-## 3. Groq API key (speech Whisper + same as CV screening)
+## 3. Live transcription (Groq Whisper via Vercel) — REQUIRED
 
-CV screening and JD Generate already use **`GROQ_API_KEY`** in n8n environment variables.
+Speech transcription now runs on the **frontend** through a Vercel serverless function
+(`api/transcribe.js`). This avoids the Chrome limitation where MediaRecorder and browser
+speech recognition cannot share the mic (which left the live captions empty).
 
-Speech Whisper uses the **same key** — wired in `CFG - Assessment Config`:
+How it works:
 
-```
-groq_api_key = {{ $env.GROQ_API_KEY }}
-```
+1. Candidate records one continuous audio take.
+2. Every ~4.5s the audio so far is sent to `/api/transcribe` → Groq Whisper → **live captions update**.
+3. On submit, the full audio is transcribed once more (most accurate) and that text is sent
+   to the n8n webhook as `answer`. **No n8n `$env` / CFG key needed** — the workflow just scores the text.
 
-**You do NOT set the key inside Code nodes.** Set it once:
+### Set the key in Vercel (one time)
 
-1. n8n → **Settings** → **Environment variables** (or `.env` on self-hosted)
-2. Add: `GROQ_API_KEY` = your Groq key (same value CV screening uses)
-3. In workflow **`CFG - Assessment Config`** confirm field `groq_api_key` exists
-4. Paste latest `n8n_code_build_speech_llm_context.js` into **`CODE - Build Speech LLM context`**
+1. Vercel dashboard → your project → **Settings → Environment Variables**
+2. Add `GROQ_API_KEY` = your Groq key (same value CV screening uses), scope: Production + Preview
+3. **Redeploy** so the function picks it up
 
-After speech submit, `interview_history` should show `stt_source: "whisper"` when audio was transcribed.
+The key stays server-side in the Vercel function and is never exposed to candidates.
+
+> The n8n `CFG - Assessment Config` `groq_api_key` field and the Whisper fallback in
+> `n8n_code_build_speech_llm_context.js` are now optional (backend fallback only).
+> Because the frontend already sends a real transcript, `stt_source` will read `browser`
+> with proper `answer_text` instead of `[Audio recorded]`.
 
 ## 4. Config (CFG node or session.config)
 

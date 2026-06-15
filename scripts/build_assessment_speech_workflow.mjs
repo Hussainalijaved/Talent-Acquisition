@@ -136,7 +136,8 @@ cfgNode.parameters.assignments.assignments.push(
   { id: 'sp-en', name: 'speech_enabled', value: true, type: 'boolean' },
   { id: 'sp-ph', name: 'speech_phases', value: 3, type: 'number' },
   { id: 'sp-tw', name: 'technical_weight', value: 0.7, type: 'number' },
-  { id: 'sp-sw', name: 'speech_weight', value: 0.3, type: 'number' }
+  { id: 'sp-sw', name: 'speech_weight', value: 0.3, type: 'number' },
+  { id: 'a_groq_key', name: 'groq_api_key', value: '={{ $env.GROQ_API_KEY }}', type: 'string' }
 );
 
 const KEY = "={{ $('CFG - Assessment Config').first().json.supabase_key }}";

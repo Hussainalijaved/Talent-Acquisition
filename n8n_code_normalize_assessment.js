@@ -35,6 +35,7 @@ const config = {
   supabase_key: nested.supabase_key || item.supabase_key || '',
   gemini_model: nested.gemini_model || nested.groq_model || item.gemini_model || item.groq_model || '',
   groq_model: nested.groq_model || item.groq_model || '',
+  groq_api_key: nested.groq_api_key || item.groq_api_key || '',
   max_questions: Number(nested.max_questions ?? item.max_questions ?? 5),
   speech_phases: Number(nested.speech_phases ?? item.speech_phases ?? 3),
   speech_enabled:

@@ -16,10 +16,20 @@ function safeEnvVar(name) {
   }
 }
 
+function pickCfgGroqKey() {
+  try {
+    return String($('CFG - Assessment Config').first().json.groq_api_key || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
 function resolveGroqKey(cfg) {
+  // Same key as CV screening / JD Generate HTTP nodes: CFG reads $env.GROQ_API_KEY
   return (
-    safeEnvVar('GROQ_API_KEY') ||
-    String(cfg?.groq_api_key || cfg?.GROQ_API_KEY || '').trim()
+    pickCfgGroqKey() ||
+    String(cfg?.groq_api_key || cfg?.GROQ_API_KEY || '').trim() ||
+    safeEnvVar('GROQ_API_KEY')
   );
 }
 

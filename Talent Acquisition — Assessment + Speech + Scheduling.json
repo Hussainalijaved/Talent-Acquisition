@@ -65,6 +65,12 @@
               "type": "string"
             },
             {
+              "id": "a_groq_key",
+              "name": "groq_api_key",
+              "value": "={{ $env.GROQ_API_KEY }}",
+              "type": "string"
+            },
+            {
               "id": "a_fail",
               "name": "fail_score_threshold",
               "value": 30,

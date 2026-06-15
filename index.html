@@ -1293,7 +1293,6 @@
             const [audioHint, setAudioHint] = React.useState('');
             const [sttWarning, setSttWarning] = React.useState('');
             const [micLevel, setMicLevel] = React.useState(0);
-            const [isCaptioning, setIsCaptioning] = React.useState(false);
             const phases = Array.from({ length: speechTotal }, (_, i) => i + 1);
             const pct = speechTotal > 0 ? Math.min(100, (speechIndex / speechTotal) * 100) : 0;
 
@@ -1329,7 +1328,6 @@
                 setAudioHint('');
                 setSttWarning('');
                 setMicLevel(0);
-                setIsCaptioning(false);
                 setIsRecording(false);
                 isRecordingRef.current = false;
                 if (sessionRef.current) {
@@ -1342,9 +1340,9 @@
                 if (!isRecording) return undefined;
                 const warnTimer = setTimeout(() => {
                     if (isRecordingRef.current && !String(transcriptRef.current || '').trim()) {
-                        setSttWarning('Captions update every few seconds — keep speaking. Audio is recording; server will transcribe if needed.');
+                        setSttWarning('Recording your full answer — transcript is generated when you submit.');
                     }
-                }, 7000);
+                }, 4000);
                 return () => clearTimeout(warnTimer);
             }, [isRecording, absolutePhase]);
 
@@ -1381,13 +1379,15 @@
                         sessionRef.current = null;
                         isRecordingRef.current = false;
                         setIsRecording(false);
-                        setIsCaptioning(false);
                         if (window.TA_SPEECH?.sanitizeTranscript) {
                             text = window.TA_SPEECH.sanitizeTranscript(text);
                         }
                         updateTranscript(text);
-                        if (!blob || blob.size < 200) {
-                            setRecordError('No audio captured. Check your microphone and try again.');
+                        const minBytes = Math.max(800, Math.floor((durationSeconds || 0) * 350));
+                        if (!blob || blob.size < minBytes) {
+                            setRecordError(
+                                `Audio too short (${blob ? Math.round(blob.size / 1024) + ' KB' : '0 KB'} for ${Math.round(durationSeconds || 0)}s). Keep recording longer and try again.`
+                            );
                             return;
                         }
                         const submitResult = await onSubmitSpeech({ transcript: text, blob, durationSeconds });
@@ -1423,21 +1423,7 @@
                             onTranscript: updateTranscript,
                             onLevel: setMicLevel,
                             onStatus: (status) => {
-                                if (status === 'listening') {
-                                    setIsCaptioning(true);
-                                    setSttWarning('Updating live captions… keep speaking.');
-                                    setMicLevel(0);
-                                }
-                                if (status === 'recording') {
-                                    setIsCaptioning(false);
-                                    setSttWarning('');
-                                }
-                                if (status === 'stt_denied') {
-                                    setSttWarning('Microphone blocked for captions. Audio still records; server will transcribe.');
-                                }
-                                if (status === 'stt_network') {
-                                    setSttWarning('Caption service unreachable. Keep speaking — audio is still recording.');
-                                }
+                                if (status === 'recording') setSttWarning('');
                                 if (status === 'recorder_failed') {
                                     setRecordError('Could not start microphone recording. Allow mic access and retry.');
                                 }
@@ -1500,7 +1486,7 @@
                                     <div className="border border-surface-border rounded-lg p-4 bg-[#0c121a]/60">
                                         <p className="text-xs text-slate-500 mb-3">
                                             {isRecording
-                                                ? 'Speak now — captions update every few seconds while audio records.'
+                                                ? 'Speak now — your full answer is being recorded until you tap Stop & submit.'
                                                 : 'Tap record, speak your answer, tap again to submit.'}
                                         </p>
                                         <button type="button" onClick={toggleRecord} disabled={contentMasked || isLoading}
@@ -1509,26 +1495,20 @@
                                         </button>
                                         {isRecording ? (
                                             <div className="mt-3 flex items-center gap-3">
-                                                {isCaptioning ? (
-                                                    <p className="text-xs text-emerald-400/90 animate-pulse">Updating live captions…</p>
-                                                ) : (
-                                                    <>
-                                                        <div className="flex-1 h-2 rounded-full bg-surface-border overflow-hidden">
-                                                            <div
-                                                                className="h-full bg-emerald-500 transition-all duration-75"
-                                                                style={{ width: `${Math.min(100, Math.round(micLevel * 100))}%` }}
-                                                            />
-                                                        </div>
-                                                        <span className="text-[10px] text-slate-500 uppercase tracking-wider shrink-0">
-                                                            {micLevel > 0.04 ? 'Mic active' : 'Speak louder'}
-                                                        </span>
-                                                    </>
-                                                )}
+                                                <div className="flex-1 h-2 rounded-full bg-surface-border overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-emerald-500 transition-all duration-75"
+                                                        style={{ width: `${Math.min(100, Math.round(micLevel * 100))}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-[10px] text-slate-500 uppercase tracking-wider shrink-0">
+                                                    {micLevel > 0.04 ? 'Mic active' : 'Speak louder'}
+                                                </span>
                                             </div>
                                         ) : null}
                                         <div className={`mt-4 rounded-lg border p-3 min-h-[4rem] ${isRecording ? 'border-accent/30 bg-accent/5' : 'border-surface-border/60 bg-[#0a0f16]/50'}`}>
                                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
-                                                {isRecording ? 'Live transcript' : 'Your answer'}
+                                                {isRecording ? 'Recording' : 'Transcript preview'}
                                             </p>
                                             <p className="text-sm text-slate-200 leading-relaxed">
                                                 {transcript || (isRecording ? '' : '—')}

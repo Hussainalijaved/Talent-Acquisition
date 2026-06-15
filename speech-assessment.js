@@ -308,8 +308,8 @@
     }
 
     /**
-     * Chrome cannot run SpeechRecognition and MediaRecorder on the mic at once.
-     * Strategy: fully release mic tracks before each STT burst, then re-acquire for recording.
+     * Record one continuous audio take for the full session.
+     * Browser STT cannot share the mic with MediaRecorder in Chrome — Whisper on submit handles transcript.
      */
     function createSpeechSession(callbacks) {
         const { onTranscript, onStatus, onLevel } = callbacks || {};
@@ -319,103 +319,13 @@
         let stopping = false;
         let stream = null;
         let mediaRecorder = null;
-        let allAudioChunks = [];
+        let audioChunks = [];
         let currentMime = 'audio/webm';
         let startedAt = 0;
-        const finalSegments = [];
-        let sttTimer = null;
         let volumeMeter = null;
-        let sttBusy = false;
 
-        const buildText = (interim) => {
-            const base = finalSegments.join(' ').trim();
-            const combined = interim ? `${base} ${interim}`.trim() : base;
-            return sanitizeTranscript(combined);
-        };
-
-        const emit = (interim) => {
-            if (onTranscript) onTranscript(buildText(interim));
-        };
-
-        const appendStt = (text) => {
-            const piece = String(text || '').trim();
-            if (!piece) return;
-            finalSegments.push(piece);
-            emit('');
-        };
-
-        const stopRecorder = async () => {
-            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-                mediaRecorder = null;
-                return;
-            }
-            const recRef = mediaRecorder;
-            await new Promise((resolve) => {
-                recRef.onstop = () => resolve();
-                try {
-                    recRef.stop();
-                } catch (_) {
-                    resolve();
-                }
-                setTimeout(resolve, 1500);
-            });
-            mediaRecorder = null;
-        };
-
-        const releaseMic = () => {
-            volumeMeter?.stop();
-            volumeMeter = null;
-            if (stream) {
-                stream.getTracks().forEach((t) => t.stop());
-                stream = null;
-            }
-        };
-
-        const acquireMicAndRecord = async () => {
-            stream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
-            volumeMeter = createVolumeMeter(stream, onLevel);
-            currentMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                ? 'audio/webm;codecs=opus'
-                : 'audio/webm';
-            mediaRecorder = new MediaRecorder(stream, { mimeType: currentMime });
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data && e.data.size > 0) allAudioChunks.push(e.data);
-            };
-            mediaRecorder.start(250);
-            onStatus?.('recording');
-        };
-
-        const runCaptionWindow = async () => {
-            if (!active || stopping || sttBusy || !SR) return;
-            sttBusy = true;
-            try {
-                await stopRecorder();
-                releaseMic();
-                await wait(350);
-                const burst = await runSttBurst(SR, 3200, (interim) => emit(interim), onStatus);
-                if (burst) appendStt(burst);
-                if (!active || stopping) return;
-                await acquireMicAndRecord();
-            } catch (err) {
-                console.warn('Caption window failed:', err);
-                onStatus?.('caption_failed');
-                if (!active || stopping) return;
-                try {
-                    await acquireMicAndRecord();
-                } catch (recErr) {
-                    console.warn('Recorder restart failed:', recErr);
-                    onStatus?.('recorder_failed');
-                }
-            } finally {
-                sttBusy = false;
-            }
-        };
-
-        const scheduleCaptionWindows = () => {
-            if (!SR) return;
-            sttTimer = setInterval(() => {
-                if (active && !stopping) runCaptionWindow();
-            }, 8000);
+        const emit = (text) => {
+            if (onTranscript) onTranscript(sanitizeTranscript(String(text || '')));
         };
 
         return {
@@ -424,72 +334,87 @@
                 active = true;
                 stopping = false;
                 startedAt = Date.now();
-                allAudioChunks = [];
-                finalSegments.length = 0;
+                audioChunks = [];
                 emit('');
                 onStatus?.('starting');
 
                 if (global.speechSynthesis) global.speechSynthesis.cancel();
                 await wait(200);
 
-                if (SR) {
-                    const opening = await runSttBurst(SR, 3200, (interim) => emit(interim), onStatus);
-                    if (opening) appendStt(opening);
-                }
-
-                if (!active || stopping) return;
-                await acquireMicAndRecord();
-                scheduleCaptionWindows();
-                setTimeout(() => {
-                    if (active && !stopping) runCaptionWindow();
-                }, 5000);
+                stream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+                volumeMeter = createVolumeMeter(stream, onLevel);
+                currentMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : 'audio/webm';
+                mediaRecorder = new MediaRecorder(stream, { mimeType: currentMime });
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
+                };
+                mediaRecorder.start(250);
+                onStatus?.('recording');
             },
 
             getLatestText() {
-                return buildText('');
+                return '';
             },
 
             async stop() {
                 stopping = true;
                 active = false;
 
-                if (sttTimer) {
-                    clearInterval(sttTimer);
-                    sttTimer = null;
-                }
-
-                await stopRecorder();
-                releaseMic();
-
-                if (SR && !sttBusy) {
-                    await wait(350);
-                    const burst = await runSttBurst(SR, 2800, (interim) => emit(interim), onStatus);
-                    if (burst) appendStt(burst);
-                }
-
-                const text = buildText('');
+                let blob = null;
                 const durationSeconds = (Date.now() - startedAt) / 1000;
-                const blob = allAudioChunks.length
-                    ? new Blob(allAudioChunks, { type: currentMime || 'audio/webm' })
-                    : null;
 
-                allAudioChunks = [];
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    const recRef = mediaRecorder;
+                    await new Promise((resolve) => {
+                        recRef.onstop = () => resolve();
+                        try {
+                            recRef.stop();
+                        } catch (_) {
+                            resolve();
+                        }
+                        setTimeout(resolve, 3000);
+                    });
+                    blob = audioChunks.length
+                        ? new Blob(audioChunks, { type: recRef.mimeType || currentMime || 'audio/webm' })
+                        : null;
+                }
+
+                volumeMeter?.stop();
+                volumeMeter = null;
+                mediaRecorder = null;
+                audioChunks = [];
+
+                if (stream) {
+                    stream.getTracks().forEach((t) => t.stop());
+                    stream = null;
+                }
+
+                let text = '';
+                if (SR && blob && blob.size > 200) {
+                    await wait(300);
+                    text = await runSttBurst(SR, 2000, (interim) => emit(interim), onStatus);
+                }
+                if (text) emit(text);
+
                 return { text, blob, durationSeconds };
             },
 
             cancel() {
                 stopping = true;
                 active = false;
-                if (sttTimer) {
-                    clearInterval(sttTimer);
-                    sttTimer = null;
-                }
+                volumeMeter?.stop();
+                volumeMeter = null;
                 try {
                     if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
                 } catch (_) {}
                 mediaRecorder = null;
-                allAudioChunks = [];
-                releaseMic();
+                audioChunks = [];
+                if (stream) {
+                    stream.getTracks().forEach((t) => t.stop());
+                    stream = null;
+                }
             },
         };
     }

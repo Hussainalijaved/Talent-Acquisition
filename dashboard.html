@@ -172,6 +172,7 @@
                         <tbody id="candBody"><tr><td class="loading-row" colspan="6">Loading candidates…</td></tr></tbody>
                     </table>
                 </div>
+                <div class="pagination-bar" id="candPagination" hidden></div>
             </section>
 
             <!-- ASSESSMENTS -->
@@ -212,6 +213,7 @@
                         <tbody id="assessBody"><tr><td class="loading-row" colspan="7">Loading assessments…</td></tr></tbody>
                     </table>
                 </div>
+                <div class="pagination-bar" id="assessPagination" hidden></div>
             </section>
 
             <!-- ASSESSMENT DETAIL (full page) -->
@@ -244,12 +246,13 @@
                     <p class="page-toolbar-hint">Manage published roles and apply links.</p>
                     <button type="button" class="btn-primary" data-go-view="jobs-create" data-requires-view="jobs-create">+ Create job</button>
                 </div>
-                <div class="table-card table-scroll">
+                <div class="table-card table-flat">
                     <table>
                         <thead><tr><th>Job</th><th>Location</th><th>Status</th><th>Updated</th><th>Live</th><th></th><th></th></tr></thead>
                         <tbody id="jobsBody"><tr><td class="loading-row" colspan="7">Loading jobs…</td></tr></tbody>
                     </table>
                 </div>
+                <div class="pagination-bar" id="jobsPagination" hidden></div>
             </section>
 
             <!-- CREATE / EDIT JOB -->
@@ -524,6 +527,7 @@
                             <tbody id="onsiteBody"><tr><td class="loading-row" colspan="6">Loading…</td></tr></tbody>
                         </table>
                     </div>
+                    <div class="pagination-bar" id="onsitePagination" hidden></div>
                 </div>
             </section>
 
@@ -539,6 +543,7 @@
                         <tbody id="usersBody"><tr><td class="loading-row" colspan="5">Loading users…</td></tr></tbody>
                     </table>
                 </div>
+                <div class="pagination-bar" id="usersPagination" hidden></div>
             </section>
 
             <!-- INVITE USER -->
@@ -597,6 +602,7 @@
                         <tbody id="auditBody"><tr><td class="loading-row" colspan="5">Loading audit log…</td></tr></tbody>
                     </table>
                 </div>
+                <div class="pagination-bar" id="auditPagination" hidden></div>
             </section>
 
             <!-- ROLE ACCESS (Platform Admin) -->
@@ -1262,9 +1268,16 @@
         function renderCandidates() {
             const tb = document.getElementById('candBody');
             const list = filteredCandidates();
+            const pag = window.TAPagination;
             document.getElementById('candCount').textContent = list.length + ' of ' + MERGED.length + ' candidates';
-            if (!list.length) { tb.innerHTML = '<tr><td class="empty" colspan="6">No candidates match these filters.</td></tr>'; return; }
-            tb.innerHTML = list.map(m => rowHtml(m, MERGED.indexOf(m), true)).join('');
+            if (!list.length) {
+                if (pag) pag.renderBar('candPagination', 'candidates', { total: 0 }, renderCandidates);
+                tb.innerHTML = '<tr><td class="empty" colspan="6">No candidates match these filters.</td></tr>';
+                return;
+            }
+            const pageMeta = pag ? pag.slice('candidates', list) : { items: list, from: 1, to: list.length, total: list.length, page: 1, totalPages: 1 };
+            if (pag) pag.renderBar('candPagination', 'candidates', pageMeta, renderCandidates);
+            tb.innerHTML = pageMeta.items.map(m => rowHtml(m, MERGED.indexOf(m), true)).join('');
             bindRows(tb);
         }
 
@@ -1386,13 +1399,17 @@
             if (!tb) return;
             renderAssessKpis();
             const list = filteredAssessments();
+            const pag = window.TAPagination;
             const countEl = document.getElementById('assessCount');
             if (countEl) countEl.textContent = list.length + ' of ' + (SESSION_LIST?.length || 0) + ' sessions';
             if (!list.length) {
+                if (pag) pag.renderBar('assessPagination', 'assessments', { total: 0 }, renderAssessments);
                 tb.innerHTML = '<tr><td class="empty" colspan="7">No assessment sessions match these filters.</td></tr>';
                 return;
             }
-            tb.innerHTML = list.map((s) => assessmentRowHtml(s)).join('');
+            const pageMeta = pag ? pag.slice('assessments', list) : { items: list, from: 1, to: list.length, total: list.length, page: 1, totalPages: 1 };
+            if (pag) pag.renderBar('assessPagination', 'assessments', pageMeta, renderAssessments);
+            tb.innerHTML = pageMeta.items.map((s) => assessmentRowHtml(s)).join('');
             bindAssessmentRows(tb);
         }
 
@@ -1872,16 +1889,25 @@
         ['globalSearch', 'fStage', 'fRole', 'fAssess', 'fSort'].forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
-            el.addEventListener('input', () => {
+            const handler = () => {
+                if (window.TAPagination) {
+                    TAPagination.reset('candidates');
+                    if (id === 'globalSearch') TAPagination.reset('assessments');
+                }
                 renderCandidates();
                 if (id === 'globalSearch') {
                     renderRecent();
                     renderAssessments();
                 }
-            });
+            };
+            el.addEventListener('input', handler);
+            el.addEventListener('change', handler);
         });
         ['fAssessStatus', 'fAssessRole', 'fAssessSort'].forEach(id => {
-            document.getElementById(id)?.addEventListener('change', renderAssessments);
+            document.getElementById(id)?.addEventListener('change', () => {
+                if (window.TAPagination) TAPagination.reset('assessments');
+                renderAssessments();
+            });
         });
         document.getElementById('assessmentDetailBack')?.addEventListener('click', backToAssessments);
         document.getElementById('assessmentDetailDelete')?.addEventListener('click', () => {

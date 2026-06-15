@@ -21,6 +21,75 @@
     const BLOCKED_LOCAL = /^(noreply|no-reply|donotreply|support|info|admin|contact|hr|careers|jobs|hello)$/i;
     const BLOCKED_DOMAIN = /@(example\.com|test\.com|domain\.com|email\.com)$/i;
 
+    const TAPagination = {
+        PAGE_SIZE: 12,
+        pages: {},
+        get(key) {
+            if (!this.pages[key]) this.pages[key] = 1;
+            return this.pages[key];
+        },
+        set(key, page) {
+            this.pages[key] = Math.max(1, Number(page) || 1);
+        },
+        reset(key) {
+            this.pages[key] = 1;
+        },
+        slice(key, items) {
+            const list = Array.isArray(items) ? items : [];
+            const total = list.length;
+            const totalPages = Math.max(1, Math.ceil(total / this.PAGE_SIZE));
+            let page = this.get(key);
+            if (page > totalPages) {
+                page = totalPages;
+                this.pages[key] = page;
+            }
+            const start = (page - 1) * this.PAGE_SIZE;
+            return {
+                items: list.slice(start, start + this.PAGE_SIZE),
+                page,
+                totalPages,
+                total,
+                from: total ? start + 1 : 0,
+                to: Math.min(start + this.PAGE_SIZE, total),
+            };
+        },
+        renderBar(containerId, key, meta, onChange) {
+            const el = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
+            if (!el) return;
+            if (!meta || !meta.total) {
+                el.hidden = true;
+                el.innerHTML = '';
+                return;
+            }
+            el.hidden = false;
+            const prevDisabled = meta.page <= 1;
+            const nextDisabled = meta.page >= meta.totalPages;
+            el.innerHTML =
+                '<p class="pagination-info">Showing ' + meta.from + '–' + meta.to + ' of ' + meta.total + '</p>' +
+                '<div class="pagination-actions">' +
+                '<button type="button" class="pagination-btn" data-page-action="first" ' + (prevDisabled ? 'disabled' : '') + '>First</button>' +
+                '<button type="button" class="pagination-btn" data-page-action="prev" ' + (prevDisabled ? 'disabled' : '') + '>Previous</button>' +
+                '<span class="pagination-page">' + meta.page + ' / ' + meta.totalPages + '</span>' +
+                '<button type="button" class="pagination-btn" data-page-action="next" ' + (nextDisabled ? 'disabled' : '') + '>Next</button>' +
+                '<button type="button" class="pagination-btn" data-page-action="last" ' + (nextDisabled ? 'disabled' : '') + '>Last</button>' +
+                '</div>';
+            el.querySelectorAll('[data-page-action]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const action = btn.getAttribute('data-page-action');
+                    let next = meta.page;
+                    if (action === 'first') next = 1;
+                    else if (action === 'prev') next = meta.page - 1;
+                    else if (action === 'next') next = meta.page + 1;
+                    else if (action === 'last') next = meta.totalPages;
+                    this.set(key, next);
+                    if (typeof onChange === 'function') onChange();
+                });
+            });
+        },
+    };
+
+    let AUDIT_LOGS = [];
+
     function initPdfJs() {
         if (window.pdfjsLib) {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -478,13 +547,16 @@
         const tb = document.getElementById('jobsBody');
         if (!tb) return;
         if (!JOBS.length) {
+            TAPagination.renderBar('jobsPagination', 'jobs', { total: 0 }, renderJobs);
             tb.innerHTML = '<tr><td class="empty" colspan="7">No jobs yet — <button type="button" class="btn-sm" data-go-view="jobs-create">Create your first job</button></td></tr>';
             tb.querySelector('[data-go-view]')?.addEventListener('click', () => deps.setView('jobs-create'));
             return;
         }
+        const pageMeta = TAPagination.slice('jobs', JOBS);
+        TAPagination.renderBar('jobsPagination', 'jobs', pageMeta, renderJobs);
         const canDel = !deps.auth || deps.auth.can('delete_job');
         const canEdit = !deps.auth || deps.auth.can('edit_jobs');
-        tb.innerHTML = JOBS.map((j) =>
+        tb.innerHTML = pageMeta.items.map((j) =>
             `<tr data-job="${j.id}">
                 <td><strong>${deps.esc(j.title)}</strong><div class="c-role">${deps.esc(j.job_id)}</div></td>
                 <td>${deps.esc(j.location || '—')}</td>
@@ -1663,10 +1735,13 @@
         const tb = document.getElementById('onsiteBody');
         if (!tb) return;
         if (!ONSITE.length) {
+            TAPagination.renderBar('onsitePagination', 'onsite', { total: 0 }, renderOnsite);
             tb.innerHTML = '<tr><td class="empty" colspan="6">No onsite interview records yet.</td></tr>';
             return;
         }
-        tb.innerHTML = ONSITE.map((r) =>
+        const pageMeta = TAPagination.slice('onsite', ONSITE);
+        TAPagination.renderBar('onsitePagination', 'onsite', pageMeta, renderOnsite);
+        tb.innerHTML = pageMeta.items.map((r) =>
             `<tr>
                 <td><strong>${deps.esc(r.candidate_email)}</strong>${r.candidate_name ? '<div class="c-role">' + deps.esc(r.candidate_name) + '</div>' : ''}</td>
                 <td class="c-role">${deps.esc(r.job_title || r.job_id || '—')}</td>
@@ -1797,12 +1872,21 @@
             return;
         }
         const rows = (data || []).filter((u) => deps.auth.canSeeUser(u));
+        renderUsersTable(rows);
+    }
+
+    function renderUsersTable(rows) {
+        const tb = document.getElementById('usersBody');
+        if (!tb) return;
         if (!rows.length) {
+            TAPagination.renderBar('usersPagination', 'users', { total: 0 }, () => loadUsers());
             tb.innerHTML = '<tr><td class="empty" colspan="5">No team members yet — use Invite user to add someone.</td></tr>';
             return;
         }
+        const pageMeta = TAPagination.slice('users', rows);
+        TAPagination.renderBar('usersPagination', 'users', pageMeta, () => renderUsersTable(rows));
         const me = deps.auth.profile()?.id;
-        tb.innerHTML = rows.map((u) => {
+        tb.innerHTML = pageMeta.items.map((u) => {
             const inactive = !u.is_active;
             const canEdit = deps.auth.canEditUserRole(u);
             const roleSelectHtml = canEdit
@@ -1918,6 +2002,7 @@
             .order('created_at', { ascending: false })
             .limit(250);
         if (error) {
+            TAPagination.renderBar('auditPagination', 'audit', { total: 0 }, renderAuditTable);
             tb.innerHTML = '<tr><td class="empty" colspan="5">' + deps.esc(error.message) + '</td></tr>';
             return;
         }
@@ -1927,14 +2012,24 @@
             const { data: profs } = await deps.sb.from('profiles').select('id, email, full_name').in('id', actorIds);
             (profs || []).forEach((p) => { actorMap[p.id] = p.full_name || p.email; });
         }
-        if (!logs?.length) {
+        AUDIT_LOGS = (logs || []).map((l) => ({ ...l, actorLabel: actorMap[l.actor_id] || '—' }));
+        renderAuditTable();
+    }
+
+    function renderAuditTable() {
+        const tb = document.getElementById('auditBody');
+        if (!tb) return;
+        if (!AUDIT_LOGS.length) {
+            TAPagination.renderBar('auditPagination', 'audit', { total: 0 }, renderAuditTable);
             tb.innerHTML = '<tr><td class="empty" colspan="5">No audit events yet.</td></tr>';
             return;
         }
-        tb.innerHTML = logs.map((l) =>
+        const pageMeta = TAPagination.slice('audit', AUDIT_LOGS);
+        TAPagination.renderBar('auditPagination', 'audit', pageMeta, renderAuditTable);
+        tb.innerHTML = pageMeta.items.map((l) =>
             `<tr>
                 <td class="c-role">${deps.fmtDateTime(l.created_at)}</td>
-                <td>${deps.esc(actorMap[l.actor_id] || '—')}</td>
+                <td>${deps.esc(l.actorLabel || '—')}</td>
                 <td><strong>${deps.esc(l.action)}</strong></td>
                 <td class="c-role">${deps.esc((l.entity_type || '') + (l.entity_id ? ' · ' + l.entity_id : ''))}</td>
                 <td class="c-role">${deps.esc(l.meta ? JSON.stringify(l.meta).slice(0, 120) : '—')}</td>
@@ -2420,5 +2515,7 @@
             });
             return html + '</div>';
         },
+        pagination: TAPagination,
     };
+    window.TAPagination = TAPagination;
 })();

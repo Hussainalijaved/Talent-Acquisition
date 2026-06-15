@@ -1429,9 +1429,12 @@
                             onTranscript: updateTranscript,
                             onLevel: setMicLevel,
                             onStatus: (status) => {
-                                if (status === 'recording' || status === 'listening') setSttWarning('');
-                                if (status === 'stt_handoff') {
-                                    setSttWarning('Live captions on — keep speaking. Your voice is still being saved.');
+                                if (status === 'recording') setSttWarning('');
+                                if (status === 'listening') {
+                                    setSttWarning('');
+                                }
+                                if (status === 'caption_failed') {
+                                    setSttWarning('Caption paused briefly — keep speaking, recording continues.');
                                 }
                                 if (status === 'stt_unavailable') {
                                     setSttWarning('Live captions need Chrome or Edge. Your voice is still being recorded.');
@@ -1498,7 +1501,7 @@
                                     <div className="border border-surface-border rounded-lg p-4 bg-[#0c121a]/60">
                                         <p className="text-xs text-slate-500 mb-3">
                                             {isRecording
-                                                ? 'Speak now — your words appear below as you talk.'
+                                                ? 'Speak now — your words appear below as you talk (like the question above).'
                                                 : 'Tap record, speak your answer, tap again to submit.'}
                                         </p>
                                         <button type="button" onClick={toggleRecord} disabled={contentMasked || isLoading}

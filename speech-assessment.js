@@ -192,142 +192,6 @@
         return String(text || '').replace(/\s+/g, ' ').trim();
     }
 
-    function createLiveSttController(SR, options) {
-        const { onText, onStatus, shouldContinue } = options || {};
-        let rec = null;
-        const pieces = [];
-        let lastInterim = '';
-        let stopping = false;
-        let gotResult = false;
-
-        const latestText = () => {
-            const base = pieces.join(' ').trim();
-            return (base && lastInterim) ? `${base} ${lastInterim}`.trim() : (base || lastInterim).trim();
-        };
-
-        const pushText = () => {
-            const t = latestText();
-            if (t) {
-                gotResult = true;
-                onText?.(t);
-            }
-            return t;
-        };
-
-        if (!SR) {
-            onStatus?.('stt_unavailable');
-            return {
-                getText() { return ''; },
-                hasResults() { return false; },
-                stop() { return ''; },
-                abort() {},
-                pause() {},
-                resume() {},
-            };
-        }
-
-        try {
-            rec = new SR();
-            rec.lang = 'en-US';
-            rec.continuous = true;
-            rec.interimResults = true;
-            rec.maxAlternatives = 1;
-            if ('processLocally' in rec) {
-                try {
-                    rec.processLocally = true;
-                } catch (_) {}
-            }
-
-            rec.onresult = (event) => {
-                let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const r = event.results[i];
-                    const piece = String(r[0]?.transcript || '').trim();
-                    if (!piece) continue;
-                    if (r.isFinal) {
-                        pieces.push(piece);
-                        lastInterim = '';
-                    } else {
-                        interim = interim ? `${interim} ${piece}` : piece;
-                    }
-                }
-                if (interim) lastInterim = interim;
-                pushText();
-            };
-
-            rec.onerror = (ev) => {
-                const code = String(ev?.error || 'unknown');
-                console.warn('SpeechRecognition error:', code);
-                if (code === 'not-allowed' || code === 'service-not-allowed') onStatus?.('stt_denied');
-                else if (code === 'network') onStatus?.('stt_network');
-                else if (code === 'audio-capture') onStatus?.('stt_audio_capture');
-                if (code === 'no-speech' || code === 'aborted') return;
-                if (!stopping && shouldContinue?.()) {
-                    setTimeout(() => {
-                        try {
-                            rec.start();
-                        } catch (_) {}
-                    }, 280);
-                }
-            };
-
-            rec.onend = () => {
-                if (stopping || !shouldContinue?.()) return;
-                setTimeout(() => {
-                    if (stopping || !shouldContinue?.()) return;
-                    try {
-                        rec.start();
-                    } catch (_) {}
-                }, 180);
-            };
-
-            rec.start();
-            onStatus?.('listening');
-        } catch (err) {
-            console.warn('SpeechRecognition start failed:', err);
-            onStatus?.('stt_unavailable');
-            rec = null;
-        }
-
-        return {
-            getText() {
-                return latestText();
-            },
-            hasResults() {
-                return gotResult || pieces.length > 0 || !!lastInterim;
-            },
-            stop() {
-                stopping = true;
-                try {
-                    rec?.stop();
-                } catch (_) {}
-                rec = null;
-                return latestText();
-            },
-            abort() {
-                stopping = true;
-                try {
-                    rec?.abort();
-                } catch (_) {}
-                rec = null;
-            },
-            pause() {
-                stopping = true;
-                try {
-                    rec?.stop();
-                } catch (_) {}
-            },
-            resume() {
-                if (!rec || stopping) return;
-                stopping = false;
-                try {
-                    rec.start();
-                    onStatus?.('listening');
-                } catch (_) {}
-            },
-        };
-    }
-
     function runSttBurst(SR, durationMs, onInterim, onStatus) {
         return new Promise((resolve) => {
             if (!SR) {
@@ -448,8 +312,8 @@
     }
 
     /**
-     * Record audio and show live captions while the candidate speaks.
-     * Chrome may block mic sharing — then we hand off to live STT with periodic audio snapshots.
+     * Chrome cannot run SpeechRecognition and MediaRecorder on the mic at once.
+     * Alternate STT caption windows (live text) with recording windows (audio chunks merged on stop).
      */
     function createSpeechSession(callbacks) {
         const { onTranscript, onStatus, onLevel } = callbacks || {};
@@ -459,44 +323,59 @@
         let stopping = false;
         let stream = null;
         let mediaRecorder = null;
-        let audioChunks = [];
+        let allAudioChunks = [];
         let currentMime = 'audio/webm';
         let startedAt = 0;
+        const finalSegments = [];
+        let sttTimer = null;
         let volumeMeter = null;
-        let liveText = '';
-        let sttController = null;
-        let handoffMode = false;
-        let handoffKickTimer = null;
-        let handoffSliceTimer = null;
+        let sttBusy = false;
 
-        const emitLive = (text) => {
-            liveText = liveSanitize(text);
-            if (onTranscript) onTranscript(liveText);
+        const buildText = (interim) => {
+            const base = finalSegments.join(' ').trim();
+            const combined = interim ? `${base} ${interim}`.trim() : base;
+            return interim ? liveSanitize(combined) : sanitizeTranscript(combined);
         };
 
-        async function releaseMediaCapture() {
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                await new Promise((resolve) => {
-                    const recRef = mediaRecorder;
-                    recRef.onstop = () => resolve();
-                    try {
-                        recRef.stop();
-                    } catch (_) {
-                        resolve();
-                    }
-                    setTimeout(resolve, 2000);
-                });
+        const emit = (interim) => {
+            if (onTranscript) onTranscript(buildText(interim));
+        };
+
+        const appendStt = (text) => {
+            const piece = String(text || '').trim();
+            if (!piece) return;
+            finalSegments.push(piece);
+            emit('');
+        };
+
+        const stopRecorder = async () => {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                mediaRecorder = null;
+                return;
             }
+            const recRef = mediaRecorder;
+            await new Promise((resolve) => {
+                recRef.onstop = () => resolve();
+                try {
+                    recRef.stop();
+                } catch (_) {
+                    resolve();
+                }
+                setTimeout(resolve, 1500);
+            });
             mediaRecorder = null;
+        };
+
+        const releaseMic = () => {
             volumeMeter?.stop();
             volumeMeter = null;
             if (stream) {
                 stream.getTracks().forEach((t) => t.stop());
                 stream = null;
             }
-        }
+        };
 
-        async function startMediaCapture() {
+        const acquireMicAndRecord = async () => {
             stream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
             volumeMeter = createVolumeMeter(stream, onLevel);
             currentMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -504,165 +383,120 @@
                 : 'audio/webm';
             mediaRecorder = new MediaRecorder(stream, { mimeType: currentMime });
             mediaRecorder.ondataavailable = (e) => {
-                if (e.data && e.data.size > 0) audioChunks.push(e.data);
+                if (e.data && e.data.size > 0) allAudioChunks.push(e.data);
             };
             mediaRecorder.start(250);
             onStatus?.('recording');
-        }
+        };
 
-        function startLiveStt() {
-            if (!SR || sttController) return;
-            sttController = createLiveSttController(SR, {
-                onText: emitLive,
-                onStatus: (status) => {
-                    onStatus?.(status);
-                    if (status === 'stt_audio_capture' && !handoffMode && active && !stopping) {
-                        void beginHandoffMode();
-                    }
-                },
-                shouldContinue: () => active && !stopping && !handoffMode,
-            });
-        }
-
-        async function captureAudioSlice(ms) {
-            if (!active || stopping) return;
-            sttController?.pause();
-            await wait(280);
+        const runCaptionWindow = async () => {
+            if (!active || stopping || sttBusy || !SR) return;
+            sttBusy = true;
+            onStatus?.('listening');
             try {
-                await startMediaCapture();
-                await wait(Math.max(900, Number(ms) || 1800));
-                await releaseMediaCapture();
+                await stopRecorder();
+                releaseMic();
+                await wait(350);
+                const burst = await runSttBurst(SR, 4000, (interim) => emit(interim), onStatus);
+                if (burst) appendStt(burst);
+                if (!active || stopping) return;
+                await acquireMicAndRecord();
             } catch (err) {
-                console.warn('Speech audio slice failed:', err);
+                console.warn('Caption window failed:', err);
+                onStatus?.('caption_failed');
+                if (!active || stopping) return;
+                try {
+                    await acquireMicAndRecord();
+                } catch (recErr) {
+                    console.warn('Recorder restart failed:', recErr);
+                    onStatus?.('recorder_failed');
+                }
+            } finally {
+                sttBusy = false;
             }
-            sttController?.abort();
-            sttController = null;
-            if (active && !stopping && handoffMode) startLiveStt();
-        }
+        };
 
-        async function beginHandoffMode() {
-            if (handoffMode || stopping || !active) return;
-            handoffMode = true;
-            onStatus?.('stt_handoff');
-            if (handoffKickTimer) clearTimeout(handoffKickTimer);
-            handoffKickTimer = null;
-            sttController?.abort();
-            sttController = null;
-            await releaseMediaCapture();
-            startLiveStt();
-
-            const scheduleSlice = () => {
-                if (!active || stopping || !handoffMode) return;
-                handoffSliceTimer = setTimeout(async () => {
-                    if (!active || stopping || !handoffMode) return;
-                    await captureAudioSlice(1800);
-                    scheduleSlice();
-                }, 7000);
-            };
-            scheduleSlice();
-        }
+        const scheduleCaptionWindows = () => {
+            if (!SR) return;
+            sttTimer = setInterval(() => {
+                if (active && !stopping) runCaptionWindow();
+            }, 6000);
+        };
 
         return {
             async start() {
                 if (active) return;
                 active = true;
                 stopping = false;
-                handoffMode = false;
                 startedAt = Date.now();
-                audioChunks = [];
-                liveText = '';
-                emitLive('');
+                allAudioChunks = [];
+                finalSegments.length = 0;
+                emit('');
                 onStatus?.('starting');
 
                 if (global.speechSynthesis) global.speechSynthesis.cancel();
                 await wait(200);
 
-                try {
-                    await startMediaCapture();
-                } catch (err) {
-                    onStatus?.('recorder_failed');
-                    throw err;
+                if (SR) {
+                    onStatus?.('listening');
+                    const opening = await runSttBurst(SR, 4000, (interim) => emit(interim), onStatus);
+                    if (opening) appendStt(opening);
                 }
 
-                if (SR) {
-                    await wait(300);
-                    startLiveStt();
-                    handoffKickTimer = setTimeout(() => {
-                        if (!active || stopping || handoffMode || sttController?.hasResults?.()) return;
-                        void beginHandoffMode();
-                    }, 2800);
-                } else {
-                    onStatus?.('stt_unavailable');
-                }
+                if (!active || stopping) return;
+                await acquireMicAndRecord();
+                scheduleCaptionWindows();
+                setTimeout(() => {
+                    if (active && !stopping) runCaptionWindow();
+                }, 4500);
             },
 
             getLatestText() {
-                return liveText || sttController?.getText?.() || '';
+                return buildText('');
             },
 
             async stop() {
                 stopping = true;
                 active = false;
-                handoffMode = false;
-                if (handoffKickTimer) clearTimeout(handoffKickTimer);
-                if (handoffSliceTimer) clearTimeout(handoffSliceTimer);
-                handoffKickTimer = null;
-                handoffSliceTimer = null;
 
-                const finalText = sttController?.stop?.() || liveText || '';
-                liveText = finalText;
-                sttController = null;
-
-                let blob = null;
-                const durationSeconds = (Date.now() - startedAt) / 1000;
-
-                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                    const recRef = mediaRecorder;
-                    await new Promise((resolve) => {
-                        recRef.onstop = () => resolve();
-                        try {
-                            recRef.stop();
-                        } catch (_) {
-                            resolve();
-                        }
-                        setTimeout(resolve, 3000);
-                    });
-                    blob = audioChunks.length
-                        ? new Blob(audioChunks, { type: recRef.mimeType || currentMime || 'audio/webm' })
-                        : null;
+                if (sttTimer) {
+                    clearInterval(sttTimer);
+                    sttTimer = null;
                 }
 
-                await releaseMediaCapture();
+                await stopRecorder();
+                releaseMic();
 
-                return {
-                    text: sanitizeTranscript(finalText),
-                    blob,
-                    durationSeconds,
-                };
+                if (SR && !sttBusy) {
+                    onStatus?.('listening');
+                    await wait(350);
+                    const burst = await runSttBurst(SR, 3000, (interim) => emit(interim), onStatus);
+                    if (burst) appendStt(burst);
+                }
+
+                const text = buildText('');
+                const durationSeconds = (Date.now() - startedAt) / 1000;
+                const blob = allAudioChunks.length
+                    ? new Blob(allAudioChunks, { type: currentMime || 'audio/webm' })
+                    : null;
+
+                allAudioChunks = [];
+                return { text, blob, durationSeconds };
             },
 
             cancel() {
                 stopping = true;
                 active = false;
-                handoffMode = false;
-                if (handoffKickTimer) clearTimeout(handoffKickTimer);
-                if (handoffSliceTimer) clearTimeout(handoffSliceTimer);
-                handoffKickTimer = null;
-                handoffSliceTimer = null;
-                sttController?.abort?.();
-                sttController = null;
-                liveText = '';
-                volumeMeter?.stop();
-                volumeMeter = null;
+                if (sttTimer) {
+                    clearInterval(sttTimer);
+                    sttTimer = null;
+                }
                 try {
                     if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
                 } catch (_) {}
                 mediaRecorder = null;
-                audioChunks = [];
-                if (stream) {
-                    stream.getTracks().forEach((t) => t.stop());
-                    stream = null;
-                }
+                allAudioChunks = [];
+                releaseMic();
             },
         };
     }

@@ -124,11 +124,12 @@ ${norm.answer}
 Audio delivery metrics: ${metricsText || 'not provided'}
 
 ${!isFinal ? `Next speech phase ${speechIndex + 1} — write next_question that:
-- Names ONE JD requirement (rotate — not used in prior speech Q&A)
-- References ONE CV project/skill/employer from the CV excerpt
-- Matches focus: ${nextLane}
-- 2–4 sentences, speakable aloud, behavioral STAR style
-- NEVER generic textbook questions` : 'FINAL speech phase — no next_question.'}
+- ONE behavioral topic only (STAR-friendly)
+- Focus: ${nextLane}
+- 1–2 sentences, natural spoken language
+- Must NOT mention CV, JD, job description, or "this role requires"
+- Must NOT repeat a topic from prior speech Q&A
+- Example style: "Tell me about a time you explained a complex technical idea to a non-technical person. How did you make sure they understood?"` : 'FINAL speech phase — no next_question.'}
 
 OUTPUT — JSON ONLY:
 ${!isFinal

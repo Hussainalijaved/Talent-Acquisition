@@ -78,11 +78,11 @@ function extractJdThemes(text) {
 
 const jdThemes = extractJdThemes(jdReq);
 const phaseFocusLanes = [
-  'JD core responsibilities and must-have skills for this role (breadth, not deep-dive on one tool)',
-  'JD system design / architecture / integration — how systems connect and scale for this role',
-  'JD hands-on implementation, APIs, data, delivery, or feature ownership',
-  'JD quality bar: security, performance, reliability, testing, monitoring, or DevOps',
-  'Holistic JD role fit — can this candidate perform the full job',
+  'Phase 1 — FUNDAMENTAL: one core concept from the role stack (e.g. REST/HTTP, OOP, language/runtime). Single topic only.',
+  'Phase 2 — FUNDAMENTAL: another distinct core concept (e.g. ORM/SQL, auth, async/concurrency). Single topic only.',
+  'Phase 3 — APPLIED: one practical scenario (API design, data modelling, integration). Single scenario only.',
+  'Phase 4 — APPLIED: quality/ops topic (performance, security, testing, debugging). Single topic only.',
+  'Phase 5 — BREADTH: one holistic trade-off or design judgment for this role. Single topic only.',
 ];
 
 const cvText = String(session.cv_plaintext || '').slice(0, 8000);
@@ -97,32 +97,6 @@ const themesAsked = history
   .filter((h) => h.question_text || h.question)
   .map((h) => `Phase ${h.phase}: ${String(h.question_text || h.question).slice(0, 140)}`)
   .join('\n');
-
-const cvTopicsUsed = history
-  .filter((h) => h.question_text || h.question)
-  .map((h) => String(h.question_text || h.question).slice(0, 100))
-  .join('\n');
-
-function extractCvAnchors(text) {
-  const cv = String(text || '');
-  const projects =
-    cv.match(/(?:project|built|developed|engineered|implemented|led)[^.]{10,120}/gi) || [];
-  const skills =
-    cv.match(
-      /\b(React|Angular|Vue|Node\.?js|Python|Django|Flask|SQL|PostgreSQL|MySQL|MongoDB|\.NET|ASP\.NET|C#|Java|Spring|AWS|Azure|GCP|Docker|Kubernetes|Redis|Kafka|REST|GraphQL|TypeScript|JavaScript|EF\s*Core|LINQ|JWT|OAuth|microservices?|APIM|CI\/CD|GitHub Actions)\b/gi
-    ) || [];
-  const employers = cv.match(/(?:at|@)\s+[A-Z][A-Za-z0-9&.\s]{2,40}(?:,|\.|\s{2})/g) || [];
-  const anchors = [
-    ...new Set([
-      ...projects.slice(0, 5).map((p) => p.trim().slice(0, 100)),
-      ...skills.slice(0, 8),
-      ...employers.slice(0, 3).map((e) => e.trim()),
-    ]),
-  ].filter(Boolean);
-  return anchors.length ? anchors : ['(parse named projects, tools, employers from CV excerpt)'];
-}
-
-const cvAnchors = extractCvAnchors(cvText);
 
 const currentQuestionRow = history.find((h) => Number(h.phase) === ph);
 const currentQuestionText = String(
@@ -139,108 +113,117 @@ const nextFocusLane = !isFinal
 const nextJdTheme = !isFinal
   ? jdThemes[(nextPhaseNum - 1) % jdThemes.length] || nextFocusLane
   : '';
-const nextCvAnchor = !isFinal
-  ? cvAnchors[(nextPhaseNum - 1) % cvAnchors.length] || cvAnchors[0]
-  : '';
 
-const sharedRules = `"""You are an elite technical interviewer running a structured ${maxQ}-phase screening for ${cfg.organization_name || 'the company'}.
+const sharedRules = `"""You are a technical interviewer running a structured ${maxQ}-phase screening for ${jdTitle} at ${cfg.organization_name || 'the company'}.
 
-PRIMARY GOAL: Each phase tests whether the candidate can DEMONSTRATE real experience — not merely claim it. Use JD + CV together as anchors; score DEPTH and SPECIFICITY, not confident storytelling alone. Candidates may exaggerate or invent — your job is to detect shallow/generic answers.
+PRIMARY GOAL: Cover BREADTH across the role in ${maxQ} phases — one focused topic per phase. Do NOT go deep on multiple sub-topics in a single question.
 
-═══════════════════════════════════════ CV + JD AS EXAMPLES (NOT BLIND TRUST) ═══════════════════════════════════════
-Treat CV entries as CLAIMS TO VERIFY, not facts. Treat JD bullets as CAPABILITIES TO PROBE.
+═══════════════════════════════════════ CV-ADAPTIVE DIFFICULTY (mandatory) ═══════════════════════════════════════
+Read Candidate CV below — estimate seniority INTERNALLY (never mention in questions):
+  JUNIOR  = 0–2 years, intern, graduate, entry-level, or thin CV with tutorials/bootcamp only
+  MID     = 3–5 years with solid project delivery
+  SENIOR  = 6+ years, lead, architect, principal, or evidence of large-scale / team ownership
 
-Every question MUST combine BOTH in one prompt:
-  (A) One specific JD requirement / outcome for ${jdTitle}, AND
-  (B) One specific CV anchor (named project, employer, tool, stack) from this candidate's CV.
+Topic selection:
+  - Pick the next topic from skills/stack that appear on BOTH the CV and the JD.
+  - If CV is thin, use the most foundational mandatory JD skill.
 
-Preferred question shapes (use these — avoid architecture tours):
-  • TRADE-OFF: "Your CV shows [CV anchor]. The role requires [JD]. What trade-off did you make between [option A] and [option B], and what broke when you chose wrong?"
-  • VALIDATION: "For [CV anchor], how did you prove [JD capability] worked — metrics, tests, or production signal?"
-  • FAILURE/DEBUG: "Describe one real bug, outage, or performance issue in [CV anchor] and the exact steps you took."
-  • CONSTRAINT: "Under what constraints (team size, deadline, legacy system) did you deliver [JD outcome] using [CV stack]?"
+Difficulty calibration (same topic, different depth — adjust every phase):
+  JUNIOR  → definitions, "what is / why" (complexity_tier A–B, 60–150s)
+  MID     → how-it-works + one trade-off (tier B–C, 150–270s)
+  SENIOR  → design-at-scale, failure modes, production judgment (tier C–D, 240–420s)
 
-FORBIDDEN question types:
-  - "Describe the full structure/architecture of your project" (too easy to fake — too broad)
-  - "How would you design X from scratch" without tying to their CV claim
-  - CV-only or JD-only questions
-  - Generic textbook questions any candidate could answer
-  - Reusing the same CV project or JD theme in more than one phase
+Also adapt to how the candidate answered prior phases:
+  - Strong answers (≥75) → slightly harder next question (bump tier up one step)
+  - Weak answers (≤45) → slightly easier next question (bump tier down one step)
+  - Question must remain answerable for someone with their CV background — calibrate silently.
 
-Phase lanes (pair each with a NEW JD theme + NEW CV anchor):
-  Phase 1: ${phaseFocusLanes[0]} — probe ONE concrete decision, not whole project overview
-  Phase 2: ${phaseFocusLanes[1]} — integration/trade-off or failure mode
-  Phase 3: ${phaseFocusLanes[2]} — hands-on implementation detail tied to CV claim
-  Phase 4: ${phaseFocusLanes[3]} — quality, security, performance with measurable signal
-  Phase 5: ${phaseFocusLanes[4]} — holistic fit; stress-test consistency with prior answers
+═══════════════════════════════════════ HYBRID QUESTION MODEL ═══════════════════════════════════════
+Use the Job Description (below) INTERNALLY to pick topics — but questions shown to the candidate must read like a normal technical interview.
 
-JD themes (rotate — one per phase):
+Phase plan (one topic each — never repeat):
+  ${phaseFocusLanes.join('\n  ')}
+
+Phases 1–2 = FUNDAMENTALS (standard industry concepts — scorable against known correct answers):
+  Examples: "Why are REST APIs typically stateless?", "What is the difference between SQL INNER and LEFT JOIN?",
+  "How does JWT authentication work at a high level?", "What is EF Core change tracking?"
+
+Phases 3–4 = APPLIED (one practical scenario for this role — still one topic):
+  Examples: "How would you design pagination for a public API?", "How would you debug a slow endpoint in production?"
+
+Phase 5 = BREADTH (one trade-off or design judgment):
+  Examples: "When would you choose a monolith over microservices?", "How do you balance caching vs data freshness?"
+
+QUESTION RULES (strict):
+  - ONE topic per question. At most ONE short follow-up clause (e.g. "Why X? What problem does it solve?").
+  - NEVER combine unrelated topics in one question.
+  - Pick the next topic from JD stack/themes that is NOT in "Topics already asked".
+  - Sound natural — like questions found in reputable interview guides.
+
+FORBIDDEN in next_question text (never write these phrases):
+  - "Your CV mentions/shows/lists..."
+  - "This role requires..."
+  - "The role requires..."
+  - "Job description..."
+  - "Based on your background..."
+  - "You mentioned..."
+  - Multi-part exams with 3+ separate asks
+
+JD themes to rotate internally (do not quote verbatim in the question):
 ${jdThemes.map((t, i) => `  ${i + 1}. ${t}`).join('\n')}
 
-CV anchors detected (rotate — different anchor each phase):
-${cvAnchors.map((a, i) => `  ${i + 1}. ${a}`).join('\n')}
+═══════════════════════════════════════ SCORING — RUBRIC-BASED (OBJECTIVE) ═══════════════════════════════════════
+Score the answer to "Question asked this phase" only.
 
-When writing next_question:
-  1. Pick JD theme NOT in "Themes already asked".
-  2. Pick CV anchor NOT in "CV anchors already used".
-  3. Ask ONE focused verification question (not multi-part essay).
-  4. If CV lacks JD skill, ask how they would bridge the gap using closest CV experience.
+For FUNDAMENTAL questions (phases 1–2):
+  50% ACCURACY — core facts correct?
+  30% COMPLETENESS — covers main points a strong candidate would mention?
+  20% CLARITY — explained clearly with at least one concrete example or trade-off?
 
-═══════════════════════════════════════ SCORING — CREDIBILITY & DEPTH (NOT JUST FLUENCY) ═══════════════════════════════════════
-You cannot know if the candidate is lying, but you CAN score whether the answer shows authentic hands-on experience.
+For APPLIED questions (phases 3–5):
+  40% CORRECT APPROACH — sensible steps/architecture?
+  30% TECHNICAL REASONING — trade-offs, constraints considered?
+  20% COMPLETENESS — addresses the scenario?
+  10% PRACTICAL AWARENESS — testing, monitoring, security, edge cases?
 
-Score the answer to "Question asked this phase" using:
+Penalties:
+  - Wrong or contradicts well-known facts → ≤ 20
+  - Vague buzzwords without explanation → ≤ 30
+  - Off-topic → ≤ 15
+  - Partially correct → 40–60
+  - Solid standard answer → 65–80
+  - Excellent with nuance + trade-offs → 81–100
 
-  40% RELEVANCE — addresses BOTH the JD part and the named CV anchor in the question
-  30% TECHNICAL DEPTH — concrete mechanisms (tools, patterns, APIs, schema, deployment), not buzzwords
-  20% SPECIFICITY — numbers, timelines, constraints, trade-offs, failures, or measurable outcomes
-  10% JD FIT — demonstrates they can do this role's work
+Score expectations must match question difficulty (complexity_tier):
+  - Tier A/B (junior-level): reward clear correct fundamentals; do not penalise for lacking architecture depth
+  - Tier C/D (senior-level): expect production awareness, trade-offs, and failure modes — shallow textbook answers ≤ 55
 
-Apply penalties FIRST (likely generic or fabricated — cap score even if answer sounds confident):
-  - Buzzwords only (scalable, robust, microservices, best practices) with no implementation detail → ≤ 28
-  - No numbers AND no constraints AND no failure/trade-off/example → ≤ 32
-  - Could be written by anyone without reading THIS CV → ≤ 25
-  - Textbook definition / tutorial answer, not personal experience → ≤ 22
-  - Off-topic or ignores JD or CV anchor in question → ≤ 15
-  - Vague "we did X" with no I/me ownership or role clarity → ≤ 35
-
-High scores (76–100) ONLY when answer includes MOST of:
-  - Names the CV anchor and JD requirement explicitly
-  - Specific technical steps (not just labels)
-  - At least one of: metric, timeline, team constraint, bug/incident, or rejected alternative
-  - Shows operational awareness (testing, monitoring, rollback, edge cases)
-
-feedback MUST note: "credible depth" OR "generic — may lack hands-on experience" when relevant.
-
-Do NOT reward impressive but irrelevant content. Do NOT assume CV claims in the answer are true — reward evidence of depth.
+feedback: note missing key points from a strong answer. suggested_answer: model a concise correct answer.
 
 ═══════════════════════════════════════ STRUCTURE ═══════════════════════════════════════
 - Exactly ${maxQ} phases. Phases 1–4: score + one next_question. Phase ${maxQ}: score + PASS/FAIL, next_question "".
-- Phase 1 question already exists in history — grade it with the same credibility rubric; write phase 2 when current phase is 1.
-- Empty/timeout/[SYSTEM TERMINATION] → score 0–15, next_question "" if integrity.
+- Phase 1 question already exists — grade it; write phase 2 when current phase is 1.
+- Empty/timeout/[SYSTEM TERMINATION] → score 0–15.
 
 ═══════════════════════════════════════ TIME LIMIT (phases 1–4) ═══════════════════════════════════════
-Set time_limit_seconds (60–600) and complexity_tier A|B|C|D from next_question depth.
+Fundamentals tier A/B (60–180s). Applied tier B/C (150–300s). Design tier C/D (240–420s).
 
 ═══════════════════════════════════════ OUTPUT — JSON ONLY ═══════════════════════════════════════
 Phases 1–4: {"score":number,"feedback":string,"suggested_answer":string,"next_question":string,"time_limit_seconds":number,"complexity_tier":"A"|"B"|"C"|"D"}
 Phase ${maxQ}: {"status":"finished","result":"PASS"|"FAIL","score":number,"feedback":string,"suggested_answer":string,"next_question":""}
 
 Job title: ${jdTitle}
-JD requirements:
+JD (use internally for topic selection only):
 ${jdReq}
 
-Candidate CV (excerpt) — treat as claims to verify:
+Candidate CV (read for seniority + stack — calibrate difficulty and topic; do NOT reference in questions):
 ${cvText}
 
-Prior Q&A (check consistency — flag contradictions in feedback):
+Prior Q&A:
 ${historyText || '(none yet)'}
 
-Themes already asked (next question MUST use a DIFFERENT JD topic):
+Topics already asked (next question MUST be a DIFFERENT topic):
 ${themesAsked || '(none yet)'}
-
-CV anchors already used (do NOT reuse same project/stack):
-${cvTopicsUsed || '(none yet)'}
 
 Tab switches: ${norm.tab_switches || 0}`;
 
@@ -248,20 +231,18 @@ const speechEnabled =
   cfg.speech_enabled === true ||
   cfg.speech_enabled === 'true' ||
   Number(cfg.speech_phases || 0) > 0;
-const speechStartJd = jdThemes[0] || jdTitle;
-const speechStartCv = cvAnchors[0] || 'a project from your CV';
+const speechStartTopic = jdThemes[0] || jdTitle;
 
 let systemContent;
 if (isFinal) {
   const speechHandoff = speechEnabled
     ? `
 
-COMMUNICATION ROUND HANDOFF (only if technical session warrants PASS — average across phases ≥ ${cfg.pass_score_threshold ?? 60}):
-Also include first_speech_question — a behavioral SPOKEN question for the voice round (phase ${maxQ + 1}).
-- MUST name JD requirement: "${speechStartJd.slice(0, 160)}"
-- MUST reference CV anchor: ${speechStartCv}
-- 2–4 sentences, natural to speak aloud, STAR-friendly
-- Communication focus (clarity explaining to non-technical audience)`
+COMMUNICATION ROUND HANDOFF (only if session average ≥ ${cfg.pass_score_threshold ?? 60}):
+Also include first_speech_question — ONE behavioral question for the voice round.
+- Natural spoken language, 1–2 sentences, STAR-friendly
+- Topic inspired by: ${speechStartTopic.slice(0, 120)} — but do NOT mention JD/CV/role in the question text
+- Example style: "Tell me about a time you explained a complex technical idea to a non-technical person. How did you make sure they understood?"`
     : '';
 
   const speechField = speechEnabled
@@ -296,15 +277,14 @@ ${norm.answer}
 ${prevTimeLimit != null ? `Previous phase time_limit_seconds: ${prevTimeLimit}` : ''}
 
 Next question target — phase ${nextPhaseNum}:
-  Focus lane: ${nextFocusLane}
-  JD theme to use: ${nextJdTheme}
-  CV anchor to use: ${nextCvAnchor}
+  Lane: ${nextFocusLane}
+  Internal JD theme hint: ${nextJdTheme}
 
 Tasks:
-1. Score current answer 0–100 using CREDIBILITY rubric (depth + specificity, not fluent claims alone).
-2. feedback — note credible depth OR generic/fabricated signals; flag if answer ignores JD or CV anchor.
-3. suggested_answer (max 2 short paragraphs) showing what a strong, specific answer looks like.
-4. next_question for phase ${nextPhaseNum} — ONE verification question naming JD theme "${nextJdTheme}" AND CV anchor "${nextCvAnchor}"; no architecture overview; no repeats.
+1. Score current answer 0–100 using rubric (fundamentals = accuracy; applied = reasoning).
+2. feedback — list missing key points from a strong answer.
+3. suggested_answer — concise model answer.
+4. next_question for phase ${nextPhaseNum} — ONE clean question; topic from CV+JD overlap; difficulty matched to candidate seniority + prior answer quality; ${nextFocusLane}
 5. time_limit_seconds + complexity_tier.
 
 Output: {"score":number,"feedback":string,"suggested_answer":string,"next_question":string,"time_limit_seconds":number,"complexity_tier":"A"|"B"|"C"|"D"}`;
@@ -331,7 +311,6 @@ return [
       failThreshold,
       current_question_text: currentQuestionText,
       next_jd_theme: nextJdTheme,
-      next_cv_anchor: nextCvAnchor,
       next_focus_lane: nextFocusLane,
     },
   },

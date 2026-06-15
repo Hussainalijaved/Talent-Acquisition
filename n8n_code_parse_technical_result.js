@@ -186,17 +186,25 @@ function extractCvAnchors(text) {
   ].filter(Boolean);
 }
 
-function buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
-  const role = String(cfg.requisition_title || 'this role').trim();
-  const org = String(cfg.organization_name || 'the company').trim();
-  const jdReq = String(cfg.requisition_requirements || '').trim();
-  const cv = String(session.cv_plaintext || '');
-  const idx = Math.max(0, Math.min(2, Number(speechIndex || 1) - 1));
+function inferExperienceTier(cvText) {
+  const cv = String(cvText || '');
+  const yearMatches = [...cv.matchAll(/(\d+)\+?\s*(?:years?|yrs?)(?:\s+of)?\s*(?:experience|exp)?/gi)];
+  let maxYears = 0;
+  for (const m of yearMatches) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > maxYears) maxYears = n;
+  }
+  if (/\b(senior|lead|principal|architect|staff|head of|engineering manager)\b/i.test(cv) || maxYears >= 6) {
+    return 'senior';
+  }
+  if (/\b(junior|intern|trainee|graduate|entry[- ]?level|fresher|bootcamp)\b/i.test(cv) || maxYears <= 2) {
+    return 'junior';
+  }
+  return 'mid';
+}
 
-  const jdThemes = extractJdThemes(jdReq);
-  const cvAnchors = extractCvAnchors(cv);
-  const jdTheme = jdThemes[idx % jdThemes.length] || jdReq.slice(0, 180);
-  const cvAnchor = cvAnchors[idx % cvAnchors.length] || 'your listed project experience';
+function buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
+  const idx = Math.max(0, Math.min(2, Number(speechIndex || 1) - 1));
 
   const speechHistory = (history || []).filter((h) => Number(h.phase) > Number(maxQ || 5));
   const asked = speechHistory
@@ -204,19 +212,17 @@ function buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, max
     .filter(Boolean);
 
   const templates = [
-    (jd, cvA) =>
-      `For the ${role} role at ${org}, JD emphasizes: "${jd}". Using your experience with ${cvA}, describe a time you explained a complex technical topic to a non-technical stakeholder. How did you ensure they understood, and what was the outcome?`,
-    (jd, cvA) =>
-      `This position requires "${jd}". Drawing on ${cvA} from your CV, tell me about a situation involving pressure, a tight deadline, or conflict. How did you communicate with your team and stay composed?`,
-    (jd, cvA) =>
-      `JD focus: "${jd}". Given your background in ${cvA}, what specifically interests you about the ${role} role at ${org}, and how would you apply that experience in your first 90 days?`,
+    'Tell me about a time you explained a complex technical idea to a non-technical person. How did you make sure they understood, and what was the outcome?',
+    'Describe a situation where you faced a tight deadline or disagreement with a teammate. How did you communicate and stay constructive?',
+    'Share an example of when you took ownership of a problem without being asked. What did you do and what was the result?',
   ];
 
   for (let i = 0; i < templates.length; i++) {
-    const q = templates[(idx + i) % templates.length](jdTheme, cvAnchor);
-    if (!asked.some((a) => a.includes(jdTheme.slice(0, 24).toLowerCase()))) return q;
+    const q = templates[(idx + i) % templates.length];
+    const key = q.slice(0, 35).toLowerCase();
+    if (!asked.some((a) => a.includes(key.slice(0, 20)))) return q;
   }
-  return templates[idx](jdTheme, cvAnchor);
+  return templates[idx];
 }
 
 function buildFirstSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
@@ -224,24 +230,124 @@ function buildFirstSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
 }
 
 function buildFallbackNextQuestion(ph, history, cfg, session) {
-  const role = String(cfg.requisition_title || 'this role').trim();
-  const jdReq = String(cfg.requisition_requirements || '').trim();
-  const cv = String(session.cv_plaintext || '');
   const nextPhase = ph + 1;
-  const jdThemes = extractJdThemes(jdReq);
-  const jdTheme = jdThemes[(nextPhase - 1) % jdThemes.length] || jdReq.slice(0, 200);
-  const cvAnchors = extractCvAnchors(cv);
-  const cvAnchor = cvAnchors[(nextPhase - 1) % cvAnchors.length] || 'your listed project experience';
+  const jdReq = String(cfg.requisition_requirements || '').trim().toLowerCase();
+  const isDotNet = /\.net|asp\.net|c#|ef core|entity framework/i.test(jdReq);
+  const tier = inferExperienceTier(session?.cv_plaintext || '');
 
-  const lanes = [
-    `This role requires: "${jdTheme}". Your CV mentions ${cvAnchor} — describe how you applied this to deliver that JD outcome. What did you build and what was the measurable result?`,
-    `JD expectation: "${jdTheme}". Drawing on ${cvAnchor} from your CV, explain the architecture and integration choices you would make for this ${role} role.`,
-    `For "${jdTheme}" (${role}): Using your experience with ${cvAnchor}, walk through implementation steps, tools, and how you would validate it in production.`,
-    `JD quality bar — "${jdTheme}": With ${cvAnchor} on your CV, what security, performance, or reliability risks would you address and how?`,
-    `Final phase (${role}): JD requires "${jdTheme}" and your CV shows ${cvAnchor}. Synthesise how your experience maps to this role and what you would deliver in the first 90 days.`,
-  ];
+  const pools = {
+    junior: {
+      dotnetFundamentals: [
+        'What is an API and what is the difference between REST and SOAP?',
+        'What is C# and what are the main benefits of the .NET platform?',
+        'What is Entity Framework and why do developers use an ORM?',
+        'What is the difference between GET and POST in HTTP?',
+        'What is dependency injection in simple terms?',
+      ],
+      dotnetApplied: [
+        'How would you add basic input validation to a simple API endpoint?',
+        'What steps would you take to fix a bug that only happens sometimes?',
+        'How would you test that an API endpoint returns the correct status code?',
+        'What is the difference between a 400 and a 500 HTTP error?',
+        'How would you store and retrieve data from a database in a simple CRUD API?',
+      ],
+      genericFundamentals: [
+        'What is the difference between a database table and a row?',
+        'What is version control and why do teams use Git?',
+        'What is the difference between frontend and backend?',
+        'What is an HTTP request and what does a response contain?',
+        'What is the difference between authentication and authorization?',
+      ],
+      genericApplied: [
+        'How would you approach fixing a bug reported by a user?',
+        'What would you check if a webpage fails to load data from an API?',
+        'How would you write a simple test for a function you just built?',
+        'What steps would you take before deploying code for the first time?',
+        'How would you explain your code to another developer on the team?',
+      ],
+    },
+    mid: {
+      dotnetFundamentals: [
+        'Why are REST APIs typically stateless? What problems does statelessness solve?',
+        'What is dependency injection and why is it useful in ASP.NET Core applications?',
+        'What is the difference between IEnumerable and IQueryable in LINQ? When would you use each?',
+        'How does JWT-based authentication work at a high level?',
+        'What is the purpose of middleware in the ASP.NET Core request pipeline?',
+      ],
+      dotnetApplied: [
+        'How would you implement pagination in a REST API without hurting performance?',
+        'How would you approach debugging a slow database query in a production API?',
+        'What strategies would you use to handle validation errors consistently across API endpoints?',
+        'How would you structure error handling so clients get useful responses without leaking internals?',
+        'What would you check first if an API endpoint suddenly started returning 500 errors under load?',
+      ],
+      genericFundamentals: [
+        'What is the difference between SQL INNER JOIN and LEFT JOIN? When would you use each?',
+        'Explain the difference between optimistic and pessimistic concurrency control.',
+        'What is idempotency in HTTP APIs and why does it matter for POST requests?',
+        'What is the difference between authentication and authorization?',
+        'Why is caching used in web applications, and what are common cache invalidation challenges?',
+      ],
+      genericApplied: [
+        'How would you design a simple rate-limiting approach for a public API?',
+        'What steps would you take to investigate a memory leak in a long-running service?',
+        'How would you decide between synchronous and asynchronous processing for a background job?',
+        'What would you include in a health-check endpoint for a production service?',
+        'When would you choose a monolith over microservices for a new product?',
+      ],
+    },
+    senior: {
+      dotnetFundamentals: [
+        'How would you design API versioning and backward compatibility for a public REST API serving multiple client versions?',
+        'What are the trade-offs between EF Core change tracking strategies in high-throughput write workloads?',
+        'How would you implement distributed caching and invalidation across multiple .NET API instances?',
+        'How do you approach securing a multi-tenant ASP.NET Core API with per-tenant configuration and isolation?',
+        'What failure modes would you plan for when using async/await across external HTTP and database calls at scale?',
+      ],
+      dotnetApplied: [
+        'How would you diagnose and fix connection pool exhaustion under sustained load in a production API?',
+        'How would you design idempotent payment processing in a distributed .NET service?',
+        'What observability signals would you add before launching a high-traffic API endpoint?',
+        'How would you migrate a monolithic .NET API to services without downtime for existing clients?',
+        'How would you handle a data consistency issue between a write API and an async event consumer?',
+      ],
+      genericFundamentals: [
+        'How would you design a distributed transaction strategy when strict ACID is not available across services?',
+        'What are the trade-offs between event-driven and request-response integration at enterprise scale?',
+        'How would you approach database sharding vs read replicas for a read-heavy workload?',
+        'How do you reason about CAP theorem trade-offs when designing a globally distributed system?',
+        'What security controls would you layer for a public API handling sensitive user data?',
+      ],
+      genericApplied: [
+        'How would you lead an incident response when a production API has 10x latency with no obvious deploy?',
+        'How would you design a zero-downtime schema migration for a table with billions of rows?',
+        'What architecture would you choose for a system that must process 50k events/sec with at-least-once delivery?',
+        'How would you evaluate build-vs-buy for a critical platform component under a 90-day deadline?',
+        'How would you establish engineering standards for a team inheriting a legacy codebase with no tests?',
+      ],
+    },
+  };
 
-  return lanes[Math.min(nextPhase - 1, lanes.length - 1)] || lanes[4];
+  const p = pools[tier] || pools.mid;
+  const fundamentals = isDotNet ? p.dotnetFundamentals : p.genericFundamentals;
+  const applied = isDotNet ? p.dotnetApplied : p.genericApplied;
+
+  const asked = (history || [])
+    .map((h) => String(h.question_text || '').toLowerCase())
+    .filter(Boolean);
+
+  const pool =
+    nextPhase <= 2
+      ? fundamentals
+      : nextPhase <= 4
+        ? applied
+        : [applied[applied.length - 1]];
+
+  for (const q of pool) {
+    const key = q.slice(0, 40).toLowerCase();
+    if (!asked.some((a) => a.includes(key.slice(0, 20)))) return q;
+  }
+  return pool[(nextPhase - 1) % pool.length] || pool[0];
 }
 
 function isIntegrityTermination(answerText) {
@@ -474,6 +580,29 @@ function resolveWorkflowConfig(current, session, built) {
     ...normCfg,
     supabase_url,
     supabase_key,
+    speech_enabled:
+      normCfg.speech_enabled === true ||
+      normCfg.speech_enabled === 'true' ||
+      sessionCfg.speech_enabled === true ||
+      sessionCfg.speech_enabled === 'true' ||
+      builtCfg.speech_enabled === true ||
+      builtCfg.speech_enabled === 'true' ||
+      cfgNode.speech_enabled === true ||
+      cfgNode.speech_enabled === 'true' ||
+      Number(normCfg.speech_phases ?? sessionCfg.speech_phases ?? builtCfg.speech_phases ?? cfgNode.speech_phases ?? 0) > 0,
+    speech_phases: Number(
+      normCfg.speech_phases ??
+        sessionCfg.speech_phases ??
+        builtCfg.speech_phases ??
+        cfgNode.speech_phases ??
+        3
+    ),
+    technical_weight: Number(
+      normCfg.technical_weight ?? sessionCfg.technical_weight ?? builtCfg.technical_weight ?? cfgNode.technical_weight ?? 0.7
+    ),
+    speech_weight: Number(
+      normCfg.speech_weight ?? sessionCfg.speech_weight ?? builtCfg.speech_weight ?? cfgNode.speech_weight ?? 0.3
+    ),
   };
 }
 
@@ -672,9 +801,10 @@ let technicalScore = null;
 
 if (isActualFinalPhase && !integrityTerminated) {
   const techAvg = computeAverageScore(history, maxQ);
-  technicalScore = techAvg;
+  technicalScore = techAvg ?? 0;
 
-  if (speechEnabled && techAvg != null && techAvg >= passThreshold) {
+  // Speech runs after all technical phases — combined score decides final PASS/FAIL (not tech avg alone).
+  if (speechEnabled) {
     isFinal = false;
     startSpeech = true;
     nextQ = String(content.first_speech_question || content.firstSpeechQuestion || '').trim()
@@ -703,12 +833,12 @@ if (isActualFinalPhase && !integrityTerminated) {
 
     content.feedback = [
       content.feedback || '',
-      `Technical assessment complete (${techAvg}/100). Communication round — answer the next question by voice.`,
+      `Technical assessment complete (${technicalScore}/100). Communication round — answer the next question by voice.`,
     ]
       .filter(Boolean)
       .join(' ');
   } else {
-    if (content.status === 'finished' || content.result) isFinal = true;
+    isFinal = true;
     if (!content.result) {
       const finalScore =
         techAvg ?? (Number.isFinite(phaseScore) && phaseScore != null ? phaseScore : 0);
@@ -789,7 +919,9 @@ if (!b || !/^https?:\/\//i.test(b)) {
   );
 }
 const patchUrl = `${b}/rest/v1/assessment_sessions?id=eq.${encodeURIComponent(String(session.id))}`;
-const nextRow = history.find((x) => Number(x.phase) === ph + 1);
+const nextRow = history.find((x) =>
+  startSpeech ? Number(x.phase) === maxQ + 1 : Number(x.phase) === ph + 1
+);
 
 return [
   {
@@ -814,7 +946,7 @@ return [
       integrity_terminated: integrityTerminated,
       candidate_email: current.candidate_email,
       session_id: current.session_id || session.id,
-      current_phase: ph,
+      current_phase: startSpeech ? maxQ + 1 : ph,
       config: cfg,
       gmail_thread_id: session.gmail_thread_id || null,
       gmail_message_id: session.gmail_message_id || null,

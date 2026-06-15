@@ -188,24 +188,58 @@ function extractCvAnchors(text) {
 }
 
 function buildFallbackNextQuestion(ph, history, cfg, session) {
-  const role = String(cfg.requisition_title || 'this role').trim();
-  const jdReq = String(cfg.requisition_requirements || '').trim();
-  const cv = String(session.cv_plaintext || '');
   const nextPhase = ph + 1;
-  const jdThemes = extractJdThemes(jdReq);
-  const jdTheme = jdThemes[(nextPhase - 1) % jdThemes.length] || jdReq.slice(0, 200);
-  const cvAnchors = extractCvAnchors(cv);
-  const cvAnchor = cvAnchors[(nextPhase - 1) % cvAnchors.length] || 'your listed project experience';
+  const jdReq = String(cfg.requisition_requirements || '').trim().toLowerCase();
+  const isDotNet = /\.net|asp\.net|c#|ef core|entity framework/i.test(jdReq);
 
-  const lanes = [
-    `This role requires: "${jdTheme}". Your CV mentions ${cvAnchor} — describe how you applied this to deliver that JD outcome. What did you build and what was the measurable result?`,
-    `JD expectation: "${jdTheme}". Drawing on ${cvAnchor} from your CV, explain the architecture and integration choices you would make for this ${role} role.`,
-    `For "${jdTheme}" (${role}): Using your experience with ${cvAnchor}, walk through implementation steps, tools, and how you would validate it in production.`,
-    `JD quality bar — "${jdTheme}": With ${cvAnchor} on your CV, what security, performance, or reliability risks would you address and how?`,
-    `Final phase (${role}): JD requires "${jdTheme}" and your CV shows ${cvAnchor}. Synthesise how your experience maps to this role and what you would deliver in the first 90 days.`,
+  const dotnetFundamentals = [
+    'Why are REST APIs typically stateless? What problems does statelessness solve?',
+    'What is dependency injection and why is it useful in ASP.NET Core applications?',
+    'What is the difference between IEnumerable and IQueryable in LINQ? When would you use each?',
+    'How does JWT-based authentication work at a high level?',
+    'What is the purpose of middleware in the ASP.NET Core request pipeline?',
+  ];
+  const dotnetApplied = [
+    'How would you implement pagination in a REST API without hurting performance?',
+    'How would you approach debugging a slow database query in a production API?',
+    'What strategies would you use to handle validation errors consistently across API endpoints?',
+    'How would you structure error handling so clients get useful responses without leaking internals?',
+    'What would you check first if an API endpoint suddenly started returning 500 errors under load?',
+  ];
+  const genericFundamentals = [
+    'What is the difference between SQL INNER JOIN and LEFT JOIN? When would you use each?',
+    'Explain the difference between optimistic and pessimistic concurrency control.',
+    'What is idempotency in HTTP APIs and why does it matter for POST requests?',
+    'What is the difference between authentication and authorization?',
+    'Why is caching used in web applications, and what are common cache invalidation challenges?',
+  ];
+  const genericApplied = [
+    'How would you design a simple rate-limiting approach for a public API?',
+    'What steps would you take to investigate a memory leak in a long-running service?',
+    'How would you decide between synchronous and asynchronous processing for a background job?',
+    'What would you include in a health-check endpoint for a production service?',
+    'When would you choose a monolith over microservices for a new product?',
   ];
 
-  return lanes[Math.min(nextPhase - 1, lanes.length - 1)] || lanes[4];
+  const fundamentals = isDotNet ? dotnetFundamentals : genericFundamentals;
+  const applied = isDotNet ? dotnetApplied : genericApplied;
+
+  const asked = (history || [])
+    .map((h) => String(h.question_text || '').toLowerCase())
+    .filter(Boolean);
+
+  const pool =
+    nextPhase <= 2
+      ? fundamentals
+      : nextPhase <= 4
+        ? applied
+        : [applied[applied.length - 1]];
+
+  for (const q of pool) {
+    const key = q.slice(0, 40).toLowerCase();
+    if (!asked.some((a) => a.includes(key.slice(0, 20)))) return q;
+  }
+  return pool[(nextPhase - 1) % pool.length] || pool[0];
 }
 
 function isIntegrityTermination(answerText) {

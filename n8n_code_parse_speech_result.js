@@ -105,16 +105,7 @@ function extractCvAnchors(text) {
 }
 
 function buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
-  const role = String(cfg.requisition_title || 'this role').trim();
-  const org = String(cfg.organization_name || 'the company').trim();
-  const jdReq = String(cfg.requisition_requirements || '').trim();
-  const cv = String(session.cv_plaintext || '');
   const idx = Math.max(0, Math.min(2, Number(speechIndex || 1) - 1));
-
-  const jdThemes = extractJdThemes(jdReq);
-  const cvAnchors = extractCvAnchors(cv);
-  const jdTheme = jdThemes[idx % jdThemes.length] || jdReq.slice(0, 180);
-  const cvAnchor = cvAnchors[idx % cvAnchors.length] || 'your listed project experience';
 
   const speechHistory = (history || []).filter((h) => Number(h.phase) > Number(maxQ || 5));
   const asked = speechHistory
@@ -122,19 +113,17 @@ function buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, max
     .filter(Boolean);
 
   const templates = [
-    (jd, cvA) =>
-      `For the ${role} role at ${org}, JD emphasizes: "${jd}". Using your experience with ${cvA}, describe a time you explained a complex technical topic to a non-technical stakeholder. How did you ensure they understood, and what was the outcome?`,
-    (jd, cvA) =>
-      `This position requires "${jd}". Drawing on ${cvA} from your CV, tell me about a situation involving pressure, a tight deadline, or conflict. How did you communicate with your team and stay composed?`,
-    (jd, cvA) =>
-      `JD focus: "${jd}". Given your background in ${cvA}, what specifically interests you about the ${role} role at ${org}, and how would you apply that experience in your first 90 days?`,
+    'Tell me about a time you explained a complex technical idea to a non-technical person. How did you make sure they understood, and what was the outcome?',
+    'Describe a situation where you faced a tight deadline or disagreement with a teammate. How did you communicate and stay constructive?',
+    'Share an example of when you took ownership of a problem without being asked. What did you do and what was the result?',
   ];
 
   for (let i = 0; i < templates.length; i++) {
-    const q = templates[(idx + i) % templates.length](jdTheme, cvAnchor);
-    if (!asked.some((a) => a.includes(jdTheme.slice(0, 24).toLowerCase()))) return q;
+    const q = templates[(idx + i) % templates.length];
+    const key = q.slice(0, 35).toLowerCase();
+    if (!asked.some((a) => a.includes(key.slice(0, 20)))) return q;
   }
-  return templates[idx](jdTheme, cvAnchor);
+  return templates[idx];
 }
 
 function buildNextSpeechQuestion(cfg, session, speechIndex, history, maxQ) {

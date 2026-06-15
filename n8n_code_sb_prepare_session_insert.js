@@ -140,11 +140,18 @@ const sessionBody = {
     supabase_url: cfg.supabase_url,
     supabase_key: cfg.supabase_key,
     table_assessment_sessions: cfg.table_assessment_sessions,
-    fail_score_threshold: cfg.fail_score_threshold ?? 30,
-    pass_score_threshold: cfg.pass_score_threshold ?? 60,
-    timer_min_seconds: cfg.timer_min_seconds ?? 60,
-    timer_max_seconds: cfg.timer_max_seconds ?? 600,
-  },
+      fail_score_threshold: cfg.fail_score_threshold ?? 30,
+      pass_score_threshold: cfg.pass_score_threshold ?? 60,
+      timer_min_seconds: cfg.timer_min_seconds ?? 60,
+      timer_max_seconds: cfg.timer_max_seconds ?? 600,
+      speech_enabled:
+        cfg.speech_enabled === true ||
+        cfg.speech_enabled === 'true' ||
+        Number(cfg.speech_phases ?? 3) > 0,
+      speech_phases: Number(cfg.speech_phases ?? 3),
+      technical_weight: Number(cfg.technical_weight ?? 0.7),
+      speech_weight: Number(cfg.speech_weight ?? 0.3),
+    },
   interview_history: [
     {
       phase: 1,

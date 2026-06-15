@@ -1280,21 +1280,28 @@
             contentMasked,
             onSubmitSpeech,
         }) => {
-            const recorderRef = React.useRef(null);
-            const sttRef = React.useRef(null);
+            const sessionRef = React.useRef(null);
             const speakRef = React.useRef(null);
+            const transcriptRef = React.useRef('');
+            const isRecordingRef = React.useRef(false);
+            const stoppingRef = React.useRef(false);
             const [isRecording, setIsRecording] = React.useState(false);
             const [isSpeaking, setIsSpeaking] = React.useState(false);
             const [typedQuestion, setTypedQuestion] = React.useState('');
             const [transcript, setTranscript] = React.useState('');
             const [recordError, setRecordError] = React.useState('');
             const [audioHint, setAudioHint] = React.useState('');
+            const [sttWarning, setSttWarning] = React.useState('');
             const phases = Array.from({ length: speechTotal }, (_, i) => i + 1);
             const pct = speechTotal > 0 ? Math.min(100, (speechIndex / speechTotal) * 100) : 0;
 
-            if (!recorderRef.current && window.TA_SPEECH) {
-                recorderRef.current = window.TA_SPEECH.createRecorder();
-            }
+            const updateTranscript = React.useCallback((text) => {
+                const clean = window.TA_SPEECH?.sanitizeTranscript
+                    ? window.TA_SPEECH.sanitizeTranscript(text)
+                    : String(text || '');
+                transcriptRef.current = clean;
+                setTranscript(clean);
+            }, []);
 
             const startQuestionPlayback = React.useCallback(() => {
                 if (!question || !window.TA_SPEECH) return;
@@ -1314,15 +1321,28 @@
             }, [question]);
 
             React.useEffect(() => {
+                transcriptRef.current = '';
                 setTranscript('');
                 setRecordError('');
                 setAudioHint('');
+                setSttWarning('');
                 setIsRecording(false);
-                if (sttRef.current) {
-                    sttRef.current.stop().catch(() => {});
-                    sttRef.current = null;
+                isRecordingRef.current = false;
+                if (sessionRef.current) {
+                    sessionRef.current.cancel();
+                    sessionRef.current = null;
                 }
             }, [absolutePhase, question]);
+
+            React.useEffect(() => {
+                if (!isRecording) return undefined;
+                const warnTimer = setTimeout(() => {
+                    if (isRecordingRef.current && !String(transcriptRef.current || '').trim()) {
+                        setSttWarning('Live captions not appearing — keep speaking; your recording is still being saved and will be transcribed on submit.');
+                    }
+                }, 3500);
+                return () => clearTimeout(warnTimer);
+            }, [isRecording, absolutePhase]);
 
             React.useEffect(() => {
                 if (!question || contentMasked || isLoading) return undefined;
@@ -1335,56 +1355,77 @@
 
             const toggleRecord = async () => {
                 setRecordError('');
-                if (!recorderRef.current) {
-                    setRecordError('Speech module not loaded.');
+                setSttWarning('');
+                if (!window.TA_SPEECH?.createSpeechSession) {
+                    setRecordError('Speech module not loaded. Refresh the page.');
                     return;
                 }
                 if (isRecording) {
-                    setIsRecording(false);
+                    if (stoppingRef.current) return;
+                    stoppingRef.current = true;
                     try {
-                        const { blob, durationSeconds } = await recorderRef.current.stop();
-                        let text = transcript;
-                        if (sttRef.current) {
-                            const sttText = await sttRef.current.stop();
-                            if (sttText) text = sttText;
+                        const session = sessionRef.current;
+                        let text = session?.getLatestText?.() || transcriptRef.current || '';
+                        let blob = null;
+                        let durationSeconds = 0;
+                        if (session) {
+                            const stopped = await session.stop();
+                            text = stopped.text || text;
+                            blob = stopped.blob;
+                            durationSeconds = stopped.durationSeconds;
                         }
+                        sessionRef.current = null;
+                        isRecordingRef.current = false;
+                        setIsRecording(false);
                         if (window.TA_SPEECH?.sanitizeTranscript) {
                             text = window.TA_SPEECH.sanitizeTranscript(text);
                         }
-                        sttRef.current = null;
-                        setTranscript(text);
+                        updateTranscript(text);
                         const submitResult = await onSubmitSpeech({ transcript: text, blob, durationSeconds });
+                        transcriptRef.current = '';
                         setTranscript('');
                         if (submitResult?.audioSaved) {
-                            setAudioHint('Voice recording saved.');
+                            const weak = window.TA_SPEECH?.isWeakTranscript?.(text);
+                            setAudioHint(
+                                weak
+                                    ? 'Voice recording saved. Server will transcribe your audio if browser captions were empty.'
+                                    : 'Voice recording saved.'
+                            );
                         } else if (submitResult?.audioError) {
                             setAudioHint('Answer submitted. Audio not saved: ' + submitResult.audioError);
                         }
                     } catch (e) {
                         console.error(e);
                         setRecordError('Could not process recording. Check microphone permissions.');
+                    } finally {
+                        stoppingRef.current = false;
                     }
                 } else {
                     try {
                         speakRef.current?.cancel?.();
                         setIsSpeaking(false);
                         setTypedQuestion(question);
-                        setTranscript('');
-                        if (window.TA_SPEECH?.createSpeechRecognizer) {
-                            sttRef.current = window.TA_SPEECH.createSpeechRecognizer({
-                                onTranscript: (text) => {
-                                    const clean = window.TA_SPEECH.sanitizeTranscript
-                                        ? window.TA_SPEECH.sanitizeTranscript(text)
-                                        : text;
-                                    setTranscript(clean);
-                                },
-                            });
-                            sttRef.current.start();
+                        updateTranscript('');
+                        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                        if (!SR) {
+                            setSttWarning('Live captions need Chrome or Edge. Your voice will still be recorded.');
                         }
-                        await recorderRef.current.start();
+                        sessionRef.current = window.TA_SPEECH.createSpeechSession({
+                            onTranscript: updateTranscript,
+                            onStatus: (status) => {
+                                if (status === 'listening') setSttWarning('');
+                                if (status === 'recorder_failed') {
+                                    setSttWarning('Audio backup failed — keep speaking; captions still work.');
+                                }
+                            },
+                        });
+                        await sessionRef.current.start();
+                        isRecordingRef.current = true;
                         setIsRecording(true);
                     } catch (e) {
-                        sttRef.current = null;
+                        isRecordingRef.current = false;
+                        sessionRef.current?.cancel?.();
+                        sessionRef.current = null;
                         setRecordError('Microphone access required for communication assessment.');
                     }
                 }
@@ -1454,6 +1495,7 @@
                                             </p>
                                         </div>
                                         {recordError ? <p className="text-sm text-red-400 mt-3">{recordError}</p> : null}
+                                        {sttWarning ? <p className="text-sm text-amber-400/90 mt-3">{sttWarning}</p> : null}
                                         {audioHint ? <p className="text-xs text-slate-500 mt-3">{audioHint}</p> : null}
                                     </div>
                                 </div>
@@ -2605,7 +2647,10 @@
                     headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
                     body: JSON.stringify(payload),
                 });
-                let textData = await response.text();
+                const textData = await response.text();
+                if (!response.ok) {
+                    throw new Error(`Workflow error (${response.status}): ${textData.slice(0, 200)}`);
+                }
                 let sanitizedText = textData.trim();
                 if (sanitizedText.startsWith('=')) sanitizedText = sanitizedText.substring(1).trim();
                 try {
@@ -2772,7 +2817,17 @@
                         : { duration_seconds: Math.round(durationSeconds || 0) };
                     let audioUrl = '';
                     if (TA && blob && supabase && sessionId) {
-                        const upload = await TA.uploadAudio(supabase, sessionId, currentStep, blob);
+                        const uploadPromise = TA.uploadAudioWithTimeout
+                            ? TA.uploadAudioWithTimeout(supabase, sessionId, currentStep, blob, 12000)
+                            : TA.uploadAudio(supabase, sessionId, currentStep, blob);
+                        const upload = await Promise.race([
+                            uploadPromise,
+                            (TA.wait ? TA.wait(3000) : new Promise((r) => setTimeout(r, 3000))).then(() => ({
+                                url: '',
+                                saved: false,
+                                error: 'upload_still_running',
+                            })),
+                        ]);
                         audioUrl = upload?.url || '';
                         audioSaved = !!upload?.saved;
                         audioError = upload?.error || '';

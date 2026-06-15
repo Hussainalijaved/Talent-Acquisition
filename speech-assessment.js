@@ -31,10 +31,6 @@
         return { cancel() { global.speechSynthesis.cancel(); } };
     }
 
-    /**
-     * TTS + typewriter — question text appears as AI speaks.
-     * callbacks: { onUpdate(text), onStart(), onEnd() }
-     */
     function speakQuestionWithTypewriter(text, callbacks) {
         const t = String(text || '').trim();
         const { onUpdate, onStart, onEnd } = callbacks || {};
@@ -111,48 +107,10 @@
         return { cancel };
     }
 
-    function createRecorder() {
-        let mediaRecorder = null;
-        let audioChunks = [];
-        let stream = null;
-        let startedAt = 0;
-
-        return {
-            async start() {
-                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                audioChunks = [];
-                const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                    ? 'audio/webm;codecs=opus'
-                    : 'audio/webm';
-                mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
-                };
-                mediaRecorder.start(250);
-                startedAt = Date.now();
-            },
-            async stop() {
-                if (!mediaRecorder) return { blob: null, durationSeconds: 0 };
-                const rec = mediaRecorder;
-                const done = new Promise((resolve) => {
-                    rec.onstop = () => resolve();
-                });
-                if (rec.state !== 'inactive') rec.stop();
-                await done;
-                if (stream) stream.getTracks().forEach((t) => t.stop());
-                const blob = audioChunks.length
-                    ? new Blob(audioChunks, { type: rec.mimeType || 'audio/webm' })
-                    : null;
-                const durationSeconds = (Date.now() - startedAt) / 1000;
-                mediaRecorder = null;
-                stream = null;
-                audioChunks = [];
-                return { blob, durationSeconds };
-            },
-        };
+    function wait(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
-    /** Collapse STT loops where the same phrase repeats many times */
     function sanitizeTranscript(raw) {
         let text = String(raw || '').replace(/\s+/g, ' ').trim();
         if (!text || text.length < 20) return text;
@@ -190,19 +148,30 @@
         return text.replace(/\s+/g, ' ').trim();
     }
 
-    /** Live browser STT — onTranscript(text) fires as candidate speaks */
-    function createSpeechRecognizer(options) {
-        const onTranscript = typeof options === 'function' ? options : options?.onTranscript;
-        const SR = global.SpeechRecognition || global.webkitSpeechRecognition;
-        if (!SR) {
-            return {
-                start() {},
-                async stop() { return ''; },
-            };
-        }
+    function isWeakTranscript(text) {
+        const t = String(text || '').trim();
+        if (!t) return true;
+        if (/^\[(no speech detected|timeout)/i.test(t)) return true;
+        return t.split(/\s+/).filter(Boolean).length < 4;
+    }
 
+    /**
+     * Unified speech session — STT first (live captions), then audio recorder.
+     * Chrome blocks parallel mic capture; STT gets priority for live transcript.
+     */
+    function createSpeechSession(callbacks) {
+        const { onTranscript, onStatus } = callbacks || {};
+        const SR = global.SpeechRecognition || global.webkitSpeechRecognition;
+
+        let active = false;
+        let stopping = false;
+        let stream = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let startedAt = 0;
         let rec = null;
         const finalSegments = [];
+        let recorderStarted = false;
 
         const buildText = (interim) => {
             const base = finalSegments.join(' ').trim();
@@ -210,63 +179,241 @@
             return sanitizeTranscript(combined);
         };
 
-        return {
-            start() {
-                finalSegments.length = 0;
-                if (onTranscript) onTranscript('');
+        const emit = (interim) => {
+            if (onTranscript) onTranscript(buildText(interim));
+        };
+
+        const startRecorder = async () => {
+            if (!active || stopping || recorderStarted) return;
+            try {
+                if (!stream) {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        audio: { echoCancellation: true, noiseSuppression: true },
+                    });
+                }
+                audioChunks = [];
+                const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : 'audio/webm';
+                mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
+                };
+                mediaRecorder.start(250);
+                recorderStarted = true;
+                if (!startedAt) startedAt = Date.now();
+                onStatus?.('recording');
+            } catch (err) {
+                onStatus?.('recorder_failed');
+                console.warn('Speech recorder failed:', err);
+            }
+        };
+
+        const startListening = () => {
+            if (!SR || stopping || !active) return;
+            try {
                 rec = new SR();
-                rec.lang = 'en-US';
-                rec.continuous = true;
-                rec.interimResults = true;
-                rec.onresult = (event) => {
-                    let interim = '';
-                    for (let i = event.resultIndex; i < event.results.length; i++) {
-                        const r = event.results[i];
-                        const piece = String(r[0]?.transcript || '').trim();
-                        if (!piece) continue;
-                        if (r.isFinal) {
-                            finalSegments.push(piece);
-                        } else {
-                            interim = interim ? `${interim} ${piece}` : piece;
-                        }
+            } catch (_) {
+                rec = null;
+                return;
+            }
+            rec.lang = 'en-US';
+            rec.continuous = true;
+            rec.interimResults = true;
+            rec.maxAlternatives = 1;
+
+            rec.onresult = (event) => {
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const r = event.results[i];
+                    const piece = String(r[0]?.transcript || '').trim();
+                    if (!piece) continue;
+                    if (r.isFinal) {
+                        finalSegments.push(piece);
+                    } else {
+                        interim = interim ? `${interim} ${piece}` : piece;
                     }
-                    if (onTranscript) onTranscript(buildText(interim));
-                };
-                rec.onerror = () => {
-                    if (onTranscript) onTranscript(buildText(''));
-                };
-                try {
-                    rec.start();
-                } catch (_) {
+                }
+                emit(interim);
+            };
+
+            rec.onerror = (ev) => {
+                const code = String(ev?.error || '');
+                if (code === 'no-speech' || code === 'aborted') return;
+                if (!stopping && active && code !== 'not-allowed' && code !== 'service-not-allowed') {
+                    setTimeout(() => startListening(), 400);
+                }
+            };
+
+            rec.onend = () => {
+                if (!stopping && active) {
+                    setTimeout(() => startListening(), 250);
+                }
+            };
+
+            try {
+                rec.start();
+                onStatus?.('listening');
+            } catch (_) {
+                rec = null;
+            }
+        };
+
+        return {
+            async start() {
+                active = true;
+                stopping = false;
+                recorderStarted = false;
+                startedAt = Date.now();
+                finalSegments.length = 0;
+                emit('');
+                onStatus?.('starting');
+                startListening();
+                // STT gets exclusive mic access first; recorder starts after captions establish
+                setTimeout(() => {
+                    if (active && !stopping) startRecorder();
+                }, 3500);
+            },
+
+            getLatestText() {
+                return buildText('');
+            },
+
+            async stop() {
+                stopping = true;
+                active = false;
+                const text = buildText('');
+
+                if (rec) {
+                    await new Promise((resolve) => {
+                        const done = () => resolve();
+                        try {
+                            rec.onend = done;
+                            rec.onerror = done;
+                            rec.stop();
+                        } catch (_) {
+                            done();
+                        }
+                        setTimeout(done, 1000);
+                    });
                     rec = null;
                 }
+
+                let blob = null;
+                let durationSeconds = (Date.now() - startedAt) / 1000;
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    const recRef = mediaRecorder;
+                    await new Promise((resolve) => {
+                        recRef.onstop = () => resolve();
+                        try {
+                            recRef.stop();
+                        } catch (_) {
+                            resolve();
+                        }
+                    });
+                    blob = audioChunks.length
+                        ? new Blob(audioChunks, { type: recRef.mimeType || 'audio/webm' })
+                        : null;
+                }
+                mediaRecorder = null;
+                audioChunks = [];
+
+                if (stream) {
+                    stream.getTracks().forEach((t) => t.stop());
+                    stream = null;
+                }
+
+                return { text, blob, durationSeconds };
             },
-            async stop() {
-                const text = buildText('');
-                if (!rec) return text;
-                return new Promise((resolve) => {
-                    const done = () => resolve(buildText(''));
-                    rec.onend = done;
-                    rec.onerror = done;
-                    try {
-                        rec.stop();
-                    } catch (_) {
-                        done();
-                    }
-                });
+
+            cancel() {
+                stopping = true;
+                active = false;
+                try {
+                    rec?.stop();
+                } catch (_) {}
+                rec = null;
+                try {
+                    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+                } catch (_) {}
+                mediaRecorder = null;
+                audioChunks = [];
+                if (stream) {
+                    stream.getTracks().forEach((t) => t.stop());
+                    stream = null;
+                }
             },
         };
     }
 
-    /** One-shot STT fallback */
-    function transcribeWithWebSpeech(durationMs) {
-        const recognizer = createSpeechRecognizer();
-        recognizer.start();
-        return new Promise((resolve) => {
-            setTimeout(async () => {
-                resolve(await recognizer.stop());
-            }, Math.max(5000, durationMs || 15000));
+    // Legacy helpers kept for compatibility
+    function createRecorder(sharedStream) {
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let stream = sharedStream || null;
+        let ownsStream = !sharedStream;
+        let startedAt = 0;
+
+        return {
+            async start() {
+                if (!stream) {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    ownsStream = true;
+                }
+                audioChunks = [];
+                const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : 'audio/webm';
+                mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
+                };
+                mediaRecorder.start(250);
+                startedAt = Date.now();
+            },
+            async stop() {
+                if (!mediaRecorder) return { blob: null, durationSeconds: 0 };
+                const rec = mediaRecorder;
+                const done = new Promise((resolve) => {
+                    rec.onstop = () => resolve();
+                });
+                if (rec.state !== 'inactive') rec.stop();
+                await done;
+                if (stream && ownsStream) stream.getTracks().forEach((t) => t.stop());
+                const blob = audioChunks.length
+                    ? new Blob(audioChunks, { type: rec.mimeType || 'audio/webm' })
+                    : null;
+                const durationSeconds = (Date.now() - startedAt) / 1000;
+                mediaRecorder = null;
+                if (ownsStream) stream = null;
+                audioChunks = [];
+                return { blob, durationSeconds };
+            },
+            release() {
+                if (stream && ownsStream) stream.getTracks().forEach((t) => t.stop());
+                stream = null;
+                mediaRecorder = null;
+                audioChunks = [];
+            },
+        };
+    }
+
+    function createSpeechRecognizer(options) {
+        const session = createSpeechSession({
+            onTranscript: typeof options === 'function' ? options : options?.onTranscript,
         });
+        return {
+            start() {
+                session.start();
+            },
+            getLatestText() {
+                return session.getLatestText();
+            },
+            async stop() {
+                const r = await session.stop();
+                return r.text;
+            },
+        };
     }
 
     async function uploadAudio(supabaseClient, sessionId, phase, blob) {
@@ -298,14 +445,25 @@
         };
     }
 
+    async function uploadAudioWithTimeout(supabaseClient, sessionId, phase, blob, timeoutMs) {
+        const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 12000;
+        return Promise.race([
+            uploadAudio(supabaseClient, sessionId, phase, blob),
+            wait(timeout).then(() => ({ url: '', path: '', saved: false, error: 'upload_timeout' })),
+        ]);
+    }
+
     global.TA_SPEECH = {
         computeMetrics,
         speakQuestion,
         speakQuestionWithTypewriter,
         sanitizeTranscript,
+        isWeakTranscript,
+        wait,
+        createSpeechSession,
         createRecorder,
         createSpeechRecognizer,
-        transcribeWithWebSpeech,
         uploadAudio,
+        uploadAudioWithTimeout,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

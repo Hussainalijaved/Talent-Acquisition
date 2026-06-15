@@ -1,6 +1,54 @@
 // n8n: CODE - Build Speech LLM context (communication phases)
 // Paste into: CODE - Build Speech LLM context (speech branch, before Basic LLM Chain Speech)
 
+function isWeakTranscript(text) {
+  const t = String(text || '').trim();
+  if (!t) return true;
+  if (/^\[(no speech detected|timeout)/i.test(t)) return true;
+  return t.split(/\s+/).filter(Boolean).length < 4;
+}
+
+function safeEnvVar(name) {
+  try {
+    return String($env[name] || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+function resolveGroqKey(cfg) {
+  return (
+    safeEnvVar('GROQ_API_KEY') ||
+    String(cfg?.groq_api_key || cfg?.GROQ_API_KEY || '').trim()
+  );
+}
+
+async function transcribeWithGroqWhisper(audioUrl, apiKey) {
+  const url = String(audioUrl || '').trim();
+  const key = String(apiKey || '').trim();
+  if (!url || !key || !/^https?:\/\//i.test(url)) return '';
+
+  const audioRes = await fetch(url);
+  if (!audioRes.ok) return '';
+
+  const buffer = await audioRes.arrayBuffer();
+  const form = new FormData();
+  form.append('file', new Blob([buffer], { type: 'audio/webm' }), 'answer.webm');
+  form.append('model', 'whisper-large-v3');
+  form.append('language', 'en');
+  form.append('response_format', 'json');
+
+  const whisperRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}` },
+    body: form,
+  });
+
+  if (!whisperRes.ok) return '';
+  const data = await whisperRes.json();
+  return String(data?.text || '').trim();
+}
+
 const norm = $('CODE - Normalize Data').first().json;
 const raw = $input.first().json;
 const session = Array.isArray(raw) ? raw[0] : raw;
@@ -69,67 +117,57 @@ const speechHistory = history
   )
   .join('\n');
 
+let answerText = String(norm.answer || '').trim();
+let sttSource = 'browser';
+const audioUrl = String(norm.audio_url || '').trim();
+const groqKey = resolveGroqKey(cfg);
+
+if (isWeakTranscript(answerText) && audioUrl && groqKey) {
+  const whisperText = await transcribeWithGroqWhisper(audioUrl, groqKey);
+  if (whisperText && !isWeakTranscript(whisperText)) {
+    answerText = whisperText;
+    sttSource = 'whisper';
+  }
+}
+
 const metrics = norm.speech_metrics || {};
 const metricsText = [
   metrics.duration_seconds != null ? `duration_seconds: ${metrics.duration_seconds}` : '',
   metrics.words_per_minute != null ? `words_per_minute: ${metrics.words_per_minute}` : '',
   metrics.filler_word_count != null ? `filler_word_count: ${metrics.filler_word_count}` : '',
   metrics.long_pause_count != null ? `long_pause_count: ${metrics.long_pause_count}` : '',
+  sttSource ? `stt_source: ${sttSource}` : '',
 ]
   .filter(Boolean)
   .join(', ');
 
-const speechLanes = [
-  'Communication — explain a technical concept to a non-technical audience (clarity, patience, structure)',
-  'Confidence & composure — pressure, deadline, conflict, or failure (tone, ownership, calm)',
-  'Professionalism & role fit — motivation for this role, collaboration, first 90 days (engagement, maturity)',
-];
+const systemContent = `You are a behavioral interviewer evaluating spoken communication for ${cfg.organization_name || 'the company'}.
 
-const nextLane = !isFinal ? speechLanes[Math.min(speechIndex, speechLanes.length - 1)] : '';
+Role: ${jdTitle} — communication round, phase ${speechIndex} of ${speechPhases}.
 
-const systemContent = `You are an expert behavioral interviewer evaluating SPOKEN communication for ${cfg.organization_name || 'the company'}.
+Read the JD, CV, prior speech answers, the question asked, and the candidate transcript below. Score and respond using your own professional judgment.
 
-ROLE: ${jdTitle}
-This is the COMMUNICATION round (speech phases ${speechIndex} of ${speechPhases}) after a technical assessment.
+Score 0-100 for this answer (you may also return clarity, confidence, professionalism, relevance sub-scores if helpful).
+Empty or very short answers: low score.
 
-═══════════════════════════════════════ SCORING DIMENSIONS (0–100 each) ═══════════════════════════════════════
-1. clarity — logical structure, easy to follow, complete thoughts
-2. confidence — steady pace, minimal hesitation, assured delivery (use audio metrics + transcript)
-3. professionalism — appropriate language, respectful tone, workplace-ready
-4. relevance — directly answers the question asked (STAR when behavioral)
-
-Phase score = weighted average:
-  clarity 30%, confidence 25%, professionalism 20%, relevance 25%
-
-Use delivery signals when provided (WPM, fillers, pauses):
-  - High fillers (>5/min) or very slow WPM (<90) → cap confidence ≤ 55
-  - Very fast WPM (>200) with thin content → cap clarity ≤ 50
-  - Empty or < 20 words → score ≤ 15
-
-JD context (role expectations):
+JD:
 ${jdReq.slice(0, 1500)}
 
-CV excerpt (for grounding examples — do not invent employers/projects):
+CV:
 ${cvText || '(none)'}
 
 Prior speech Q&A:
 ${speechHistory || '(none yet)'}
 
-Question asked this phase:
+Question this phase:
 ${currentQuestionText || '(see history)'}
 
-Candidate spoken answer (STT transcript):
-${norm.answer}
+Candidate answer (transcript):
+${answerText}
 
-Audio delivery metrics: ${metricsText || 'not provided'}
+Audio metrics: ${metricsText || 'not provided'}
 
-${!isFinal ? `Next speech phase ${speechIndex + 1} — write next_question that:
-- ONE behavioral topic only (STAR-friendly)
-- Focus: ${nextLane}
-- 1–2 sentences, natural spoken language
-- Must NOT mention CV, JD, job description, or "this role requires"
-- Must NOT repeat a topic from prior speech Q&A
-- Example style: "Tell me about a time you explained a complex technical idea to a non-technical person. How did you make sure they understood?"` : 'FINAL speech phase — no next_question.'}
+${!isFinal ? 'Also write next_question: the next behavioral question you would ask this candidate.' : 'Final speech phase — no next_question.'}
 
 OUTPUT — JSON ONLY:
 ${!isFinal
@@ -142,8 +180,15 @@ const body = {
     { role: 'system', content: systemContent },
     { role: 'user', content: 'Evaluate the spoken answer. Respond with JSON only.' },
   ],
-  temperature: 0.25,
+  temperature: 0.45,
   response_format: { type: 'json_object' },
+};
+
+const resolvedNorm = {
+  ...norm,
+  answer: answerText,
+  stt_source: sttSource,
+  config: cfg,
 };
 
 return [
@@ -152,12 +197,14 @@ return [
       groq_assessment_request: body,
       prompt: systemContent,
       session,
-      norm: { ...norm, config: cfg },
+      norm: resolvedNorm,
       isFinal,
       speech_index: speechIndex,
       speech_phases: speechPhases,
       max_questions: maxQ,
       current_question_text: currentQuestionText,
+      transcribed_answer: answerText,
+      stt_source: sttSource,
     },
   },
 ];

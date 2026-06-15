@@ -204,25 +204,7 @@ function inferExperienceTier(cvText) {
 }
 
 function buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
-  const idx = Math.max(0, Math.min(2, Number(speechIndex || 1) - 1));
-
-  const speechHistory = (history || []).filter((h) => Number(h.phase) > Number(maxQ || 5));
-  const asked = speechHistory
-    .map((h) => String(h.question_text || '').toLowerCase())
-    .filter(Boolean);
-
-  const templates = [
-    'Tell me about a time you explained a complex technical idea to a non-technical person. How did you make sure they understood, and what was the outcome?',
-    'Describe a situation where you faced a tight deadline or disagreement with a teammate. How did you communicate and stay constructive?',
-    'Share an example of when you took ownership of a problem without being asked. What did you do and what was the result?',
-  ];
-
-  for (let i = 0; i < templates.length; i++) {
-    const q = templates[(idx + i) % templates.length];
-    const key = q.slice(0, 35).toLowerCase();
-    if (!asked.some((a) => a.includes(key.slice(0, 20)))) return q;
-  }
-  return templates[idx];
+  return '';
 }
 
 function buildFirstSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
@@ -230,124 +212,7 @@ function buildFirstSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
 }
 
 function buildFallbackNextQuestion(ph, history, cfg, session) {
-  const nextPhase = ph + 1;
-  const jdReq = String(cfg.requisition_requirements || '').trim().toLowerCase();
-  const isDotNet = /\.net|asp\.net|c#|ef core|entity framework/i.test(jdReq);
-  const tier = inferExperienceTier(session?.cv_plaintext || '');
-
-  const pools = {
-    junior: {
-      dotnetFundamentals: [
-        'What is an API and what is the difference between REST and SOAP?',
-        'What is C# and what are the main benefits of the .NET platform?',
-        'What is Entity Framework and why do developers use an ORM?',
-        'What is the difference between GET and POST in HTTP?',
-        'What is dependency injection in simple terms?',
-      ],
-      dotnetApplied: [
-        'How would you add basic input validation to a simple API endpoint?',
-        'What steps would you take to fix a bug that only happens sometimes?',
-        'How would you test that an API endpoint returns the correct status code?',
-        'What is the difference between a 400 and a 500 HTTP error?',
-        'How would you store and retrieve data from a database in a simple CRUD API?',
-      ],
-      genericFundamentals: [
-        'What is the difference between a database table and a row?',
-        'What is version control and why do teams use Git?',
-        'What is the difference between frontend and backend?',
-        'What is an HTTP request and what does a response contain?',
-        'What is the difference between authentication and authorization?',
-      ],
-      genericApplied: [
-        'How would you approach fixing a bug reported by a user?',
-        'What would you check if a webpage fails to load data from an API?',
-        'How would you write a simple test for a function you just built?',
-        'What steps would you take before deploying code for the first time?',
-        'How would you explain your code to another developer on the team?',
-      ],
-    },
-    mid: {
-      dotnetFundamentals: [
-        'Why are REST APIs typically stateless? What problems does statelessness solve?',
-        'What is dependency injection and why is it useful in ASP.NET Core applications?',
-        'What is the difference between IEnumerable and IQueryable in LINQ? When would you use each?',
-        'How does JWT-based authentication work at a high level?',
-        'What is the purpose of middleware in the ASP.NET Core request pipeline?',
-      ],
-      dotnetApplied: [
-        'How would you implement pagination in a REST API without hurting performance?',
-        'How would you approach debugging a slow database query in a production API?',
-        'What strategies would you use to handle validation errors consistently across API endpoints?',
-        'How would you structure error handling so clients get useful responses without leaking internals?',
-        'What would you check first if an API endpoint suddenly started returning 500 errors under load?',
-      ],
-      genericFundamentals: [
-        'What is the difference between SQL INNER JOIN and LEFT JOIN? When would you use each?',
-        'Explain the difference between optimistic and pessimistic concurrency control.',
-        'What is idempotency in HTTP APIs and why does it matter for POST requests?',
-        'What is the difference between authentication and authorization?',
-        'Why is caching used in web applications, and what are common cache invalidation challenges?',
-      ],
-      genericApplied: [
-        'How would you design a simple rate-limiting approach for a public API?',
-        'What steps would you take to investigate a memory leak in a long-running service?',
-        'How would you decide between synchronous and asynchronous processing for a background job?',
-        'What would you include in a health-check endpoint for a production service?',
-        'When would you choose a monolith over microservices for a new product?',
-      ],
-    },
-    senior: {
-      dotnetFundamentals: [
-        'How would you design API versioning and backward compatibility for a public REST API serving multiple client versions?',
-        'What are the trade-offs between EF Core change tracking strategies in high-throughput write workloads?',
-        'How would you implement distributed caching and invalidation across multiple .NET API instances?',
-        'How do you approach securing a multi-tenant ASP.NET Core API with per-tenant configuration and isolation?',
-        'What failure modes would you plan for when using async/await across external HTTP and database calls at scale?',
-      ],
-      dotnetApplied: [
-        'How would you diagnose and fix connection pool exhaustion under sustained load in a production API?',
-        'How would you design idempotent payment processing in a distributed .NET service?',
-        'What observability signals would you add before launching a high-traffic API endpoint?',
-        'How would you migrate a monolithic .NET API to services without downtime for existing clients?',
-        'How would you handle a data consistency issue between a write API and an async event consumer?',
-      ],
-      genericFundamentals: [
-        'How would you design a distributed transaction strategy when strict ACID is not available across services?',
-        'What are the trade-offs between event-driven and request-response integration at enterprise scale?',
-        'How would you approach database sharding vs read replicas for a read-heavy workload?',
-        'How do you reason about CAP theorem trade-offs when designing a globally distributed system?',
-        'What security controls would you layer for a public API handling sensitive user data?',
-      ],
-      genericApplied: [
-        'How would you lead an incident response when a production API has 10x latency with no obvious deploy?',
-        'How would you design a zero-downtime schema migration for a table with billions of rows?',
-        'What architecture would you choose for a system that must process 50k events/sec with at-least-once delivery?',
-        'How would you evaluate build-vs-buy for a critical platform component under a 90-day deadline?',
-        'How would you establish engineering standards for a team inheriting a legacy codebase with no tests?',
-      ],
-    },
-  };
-
-  const p = pools[tier] || pools.mid;
-  const fundamentals = isDotNet ? p.dotnetFundamentals : p.genericFundamentals;
-  const applied = isDotNet ? p.dotnetApplied : p.genericApplied;
-
-  const asked = (history || [])
-    .map((h) => String(h.question_text || '').toLowerCase())
-    .filter(Boolean);
-
-  const pool =
-    nextPhase <= 2
-      ? fundamentals
-      : nextPhase <= 4
-        ? applied
-        : [applied[applied.length - 1]];
-
-  for (const q of pool) {
-    const key = q.slice(0, 40).toLowerCase();
-    if (!asked.some((a) => a.includes(key.slice(0, 20)))) return q;
-  }
-  return pool[(nextPhase - 1) % pool.length] || pool[0];
+  return '';
 }
 
 function isIntegrityTermination(answerText) {
@@ -432,7 +297,7 @@ function credibilityScoreCap(answerText) {
   return null;
 }
 
-/** Clamp LLM scores — off-topic and garbage answers must not get free points */
+/** Trust LLM score; only cap empty, integrity, keyboard mash, or trivial non-answers */
 function normalizePhaseScore(answerText, llmScore, questionText) {
   const answer = String(answerText || '').trim();
   let score = Number(llmScore);
@@ -442,17 +307,10 @@ function normalizePhaseScore(answerText, llmScore, questionText) {
   if (isIntegrityTermination(answer)) return null;
   if (/^\[timeout/i.test(answer)) return 0;
 
-  const relevanceCap = questionRelevanceCap(answer, questionText);
-  if (relevanceCap != null) score = Math.min(score, relevanceCap);
-
-  const credibilityCap = credibilityScoreCap(answer);
-  if (credibilityCap != null) score = Math.min(score, credibilityCap);
-
   const lower = answer.toLowerCase().replace(/\s+/g, ' ').trim();
   const compact = answer.replace(/\s+/g, '');
   const len = compact.length;
 
-  // Keyboard mash: mmmm, qqqqq, ooooo (same char repeated)
   if (len >= 4) {
     const chars = compact.toLowerCase().split('');
     const freq = {};
@@ -461,36 +319,11 @@ function normalizePhaseScore(answerText, llmScore, questionText) {
     if (Object.keys(freq).length === 1 || top / chars.length >= 0.8) return 0;
   }
 
-  // Trivial non-answers
   if (/^(ok|okay|yes|no|n\/a|na|idk|dunno|sure|fine|\.+|-+)$/i.test(lower)) {
-    return Math.min(score, 3);
+    return Math.min(score, 5);
   }
-  if (/^(ok\s+ok|yes\s+yes|no\s+no)$/i.test(lower)) {
-    return Math.min(score, 3);
-  }
-
-  const techMarkers =
-    /\b(api|sql|database|entity|framework|asp\.net|\.net|core|jwt|controller|service|schema|ef\s*core|linq|rest|dto|validation|fluentvalidation|dependency|injection|tenant|auth|middleware|repository|campaign|promotion|bcrypt|rbac|sso|endpoint|migration|index|query|table|class|interface|async|await)\b/i;
-
-  const wordCount = lower.split(/\s+/).filter(Boolean).length;
-
-  // One-liner generic with no technical terms (e.g. phase 1 "yes, system handles products...")
-  if (wordCount <= 25 && !techMarkers.test(answer)) {
-    return Math.min(score, 15);
-  }
-
-  // Very short, no technical signal
-  if (len < 30 && !techMarkers.test(answer)) {
-    return Math.min(score, 8);
-  }
-
-  // Short answer without technical depth — cap generous LLM scores
-  if (len < 120 && !techMarkers.test(answer)) {
-    return Math.min(score, 18);
-  }
-
-  if (len < 200 && score > 40 && !techMarkers.test(answer)) {
-    return Math.min(score, 25);
+  if (answer.length < 20 && score > 25) {
+    return Math.min(score, 20);
   }
 
   return Math.max(0, Math.min(100, Math.round(score)));
@@ -718,7 +551,7 @@ if (!nextQ && ph < maxQ && !integrityTerminated) {
     if (usedFallbackQuestion) {
       content.feedback = [
         content.feedback || '',
-        `[System: AI omitted phase ${ph + 1} question — auto-generated CV-grounded fallback.]`,
+        `[System: AI did not return phase ${ph + 1} question — submit again to retry.]`,
       ]
         .filter(Boolean)
         .join(' ');

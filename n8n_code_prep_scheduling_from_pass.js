@@ -14,7 +14,12 @@ function pickNodeJson(...names) {
 
 function pickSessionRow() {
   const built =
-    pickNodeJson('CODE - Build LLM context', 'CODE - Build LLM context1') || {};
+    pickNodeJson(
+      'CODE - Build Speech LLM context',
+      'CODE - Build Speech LLM context1',
+      'CODE - Build LLM context',
+      'CODE - Build LLM context1'
+    ) || {};
   if (built.session?.id) return built.session;
 
   const fetchRaw = pickNodeJson('HTTP - Fetch Session', 'HTTP - Fetch Session1');
@@ -27,11 +32,12 @@ function pickSessionRow() {
 const parse =
   pickNodeJson(
     'CODE - Pick Parse Result',
+    'CODE - Pick Parse Result1',
     'CODE - Parse Speech Result',
+    'CODE - Parse Speech Result1',
     'CODE - Parse Technical Result',
-    'CODE - Parse Result',
-    'CODE - Parse Result1'
-  ) || {};
+    'CODE - Parse Technical Result1'
+  ) || $input.first().json || {};
 const session = pickSessionRow();
 const cfg = { ...(session.config || {}), ...(parse.config || {}) };
 

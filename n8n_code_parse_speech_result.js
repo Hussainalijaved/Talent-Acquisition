@@ -105,25 +105,7 @@ function extractCvAnchors(text) {
 }
 
 function buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
-  const idx = Math.max(0, Math.min(2, Number(speechIndex || 1) - 1));
-
-  const speechHistory = (history || []).filter((h) => Number(h.phase) > Number(maxQ || 5));
-  const asked = speechHistory
-    .map((h) => String(h.question_text || '').toLowerCase())
-    .filter(Boolean);
-
-  const templates = [
-    'Tell me about a time you explained a complex technical idea to a non-technical person. How did you make sure they understood, and what was the outcome?',
-    'Describe a situation where you faced a tight deadline or disagreement with a teammate. How did you communicate and stay constructive?',
-    'Share an example of when you took ownership of a problem without being asked. What did you do and what was the result?',
-  ];
-
-  for (let i = 0; i < templates.length; i++) {
-    const q = templates[(idx + i) % templates.length];
-    const key = q.slice(0, 35).toLowerCase();
-    if (!asked.some((a) => a.includes(key.slice(0, 20)))) return q;
-  }
-  return templates[idx];
+  return '';
 }
 
 function buildNextSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
@@ -188,16 +170,21 @@ const softSkills = {
   relevance: Math.round(Number(content.relevance ?? phaseScore)),
 };
 
+const answerForPhase = String(
+  built.transcribed_answer || built.norm?.answer || current.answer || ''
+).trim();
+
 let idx = history.findIndex((x) => Number(x.phase) === ph);
 const patch = {
   mode: 'speech',
-  answer_text: current.answer,
+  answer_text: answerForPhase,
   received_at: iso,
   feedback: content.feedback || null,
   score: phaseScore,
   soft_skills: softSkills,
   speech_metrics: current.speech_metrics || {},
   answer_audio_url: current.audio_url || null,
+  stt_source: built.stt_source || built.norm?.stt_source || 'browser',
 };
 if (idx >= 0) history[idx] = { ...history[idx], ...patch };
 else history.push({ phase: ph, question_text: built.current_question_text || '', sent_at: iso, ...patch });

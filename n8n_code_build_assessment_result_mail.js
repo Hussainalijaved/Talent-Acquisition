@@ -1,6 +1,6 @@
 // n8n: CODE - Build assessment result mail (PASS/FAIL — thread reply)
-// Place AFTER: CODE - Parse Result (when isFinal = true)
-// Place BEFORE: Gmail Thread Reply node
+// Place AFTER: IF - Assessment finished? (true branch)
+// Place BEFORE: MAIL - Reply candidate (assessment result)
 //
 // Gmail node settings:
 //   Resource:   thread
@@ -23,10 +23,20 @@ function pickNodeJson(...names) {
 
 function pickSessionRow() {
   const built =
-    pickNodeJson('CODE - Build LLM context', 'CODE - Build LLM context1') || {};
+    pickNodeJson(
+      'CODE - Build Speech LLM context',
+      'CODE - Build Speech LLM context1',
+      'CODE - Build LLM context',
+      'CODE - Build LLM context1'
+    ) || {};
   if (built.session?.id) return built.session;
 
-  const fetchRaw = pickNodeJson('HTTP - Fetch Session', 'HTTP - Fetch Session1');
+  const fetchRaw = pickNodeJson(
+    'HTTP - Fetch Session',
+    'HTTP - Fetch Session1',
+    'HTTP - SB PATCH session interview_history',
+    'HTTP - SB PATCH session interview_history1'
+  );
   const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;
   if (row?.id) return row;
 
@@ -36,22 +46,25 @@ function pickSessionRow() {
 const parse =
   pickNodeJson(
     'CODE - Pick Parse Result',
+    'CODE - Pick Parse Result1',
     'CODE - Parse Speech Result',
+    'CODE - Parse Speech Result1',
     'CODE - Parse Technical Result',
-    'CODE - Parse Result'
+    'CODE - Parse Technical Result1'
   ) || $input.first().json || {};
+
 const session = pickSessionRow();
 const cfg = parse.config || session.config || {};
 
 const threadId = String(
-  session.gmail_thread_id || parse.gmail_thread_id || ''
+  parse.gmail_thread_id || session.gmail_thread_id || ''
 ).trim();
 const msgId = String(
-  session.gmail_message_id || parse.gmail_message_id || ''
+  parse.gmail_message_id || session.gmail_message_id || ''
 ).trim();
 
 if (!threadId || threadId.startsWith('draft-')) {
-  const sid = session.id || parse.session_id || 'unknown';
+  const sid = parse.session_id || session.id || 'unknown';
   throw new Error(
     'gmail_thread_id missing on session ' +
       sid +
@@ -72,11 +85,11 @@ const score = parse.score ?? parse.average_score ?? '—';
 const role = String(cfg.requisition_title || 'the role');
 const org = String(cfg.organization_name || 'Talent Acquisition Team');
 const feedback = String(parse.feedback || '').trim();
-const sessionId = String(session.id || parse.session_id || '');
+const sessionId = String(parse.session_id || session.id || '');
 
 const sectionTitle = passed ? 'Assessment Passed' : 'Assessment Result';
 const headline = passed
-  ? `Congratulations — you passed the technical assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`
+  ? `Congratulations — you passed the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`
   : `Thank you for completing the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`;
 
 const portalBase = String(

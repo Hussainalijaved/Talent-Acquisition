@@ -140,6 +140,24 @@ cfgNode.parameters.assignments.assignments.push(
   { id: 'a_groq_key', name: 'groq_api_key', value: '={{ $env.GROQ_API_KEY }}', type: 'string' }
 );
 
+const cfgNames = new Set(cfgNode.parameters.assignments.assignments.map((a) => a.name));
+if (!cfgNames.has('portal_base_url')) {
+  cfgNode.parameters.assignments.assignments.push({
+    id: 'cfg-portal',
+    name: 'portal_base_url',
+    value: 'https://talent-acquisition-six.vercel.app',
+    type: 'string',
+  });
+}
+if (!cfgNames.has('speech_score_url')) {
+  cfgNode.parameters.assignments.assignments.push({
+    id: 'cfg-speech-score',
+    name: 'speech_score_url',
+    value: 'https://talent-acquisition-six.vercel.app/api/score-speech',
+    type: 'string',
+  });
+}
+
 const KEY = "={{ $('CFG - Assessment Config').first().json.supabase_key }}";
 const PICK = '$("CODE - Pick Parse Result").first().json';
 
@@ -206,6 +224,28 @@ const nodes = [
   codeNode('CODE - Parse Technical Result', 'n8n_code_parse_technical_result.js', [1824, 1680]),
   // Speech branch (bottom)
   codeNode('CODE - Build Speech LLM context', 'n8n_code_build_speech_llm_context.js', [1376, 2080]),
+  {
+    parameters: {
+      conditions: {
+        options: { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 2 },
+        conditions: [
+          {
+            id: 'skip-llm',
+            leftValue: '={{ $json.skip_llm_chain === true }}',
+            rightValue: true,
+            operator: { type: 'boolean', operation: 'equals' },
+          },
+        ],
+        combinator: 'and',
+      },
+      options: {},
+    },
+    id: id(),
+    name: 'IF - Speech audio scored?',
+    type: 'n8n-nodes-base.if',
+    typeVersion: 2.2,
+    position: [1496, 2080],
+  },
   {
     parameters: {
       promptType: 'define',
@@ -446,7 +486,13 @@ const connections = {
     main: [[{ node: 'CODE - Pick Parse Result', type: 'main', index: 0 }]],
   },
   'CODE - Build Speech LLM context': {
-    main: [[{ node: 'Basic LLM Chain Speech', type: 'main', index: 0 }]],
+    main: [[{ node: 'IF - Speech audio scored?', type: 'main', index: 0 }]],
+  },
+  'IF - Speech audio scored?': {
+    main: [
+      [{ node: 'CODE - Parse Speech Result', type: 'main', index: 0 }],
+      [{ node: 'Basic LLM Chain Speech', type: 'main', index: 0 }],
+    ],
   },
   'Basic LLM Chain Speech': {
     main: [[{ node: 'CODE - Parse Speech Result', type: 'main', index: 0 }]],

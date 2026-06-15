@@ -659,6 +659,8 @@
             'Copy-paste, right-click, and developer tools are disabled.',
         ];
 
+        const ASSESSMENT_PHASE_DEFAULTS = { tech: 5, speech: 3 };
+
         const AssessmentSidebar = ({
             phases,
             currentStep,
@@ -666,6 +668,7 @@
             candidateEmail,
             integrityViolationCount,
             pct,
+            sessionLabel = 'Questions in this session',
         }) => (
             <aside className="assessment-sidebar" aria-label="Assessment sidebar">
                 <div className="sidebar-section">
@@ -674,7 +677,7 @@
                         {currentStep}
                         <span className="text-slate-500 text-xl font-semibold"> / {totalSteps}</span>
                     </p>
-                    <p className="text-sm text-slate-400 mt-2">Technical questions in this session</p>
+                    <p className="text-sm text-slate-400 mt-2">{sessionLabel}</p>
                     <div className="h-1.5 bg-surface-elevated rounded-full overflow-hidden mt-4">
                         <div
                             className="h-full bg-gradient-to-r from-accent to-indigo-400 rounded-full transition-all duration-500"
@@ -836,7 +839,7 @@
                                 <div>
                                     <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">Welcome</h1>
                                     <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                                        Enter the session ID from your invitation email. You will review guidelines, then begin a timed technical assessment in fullscreen.
+                                        Enter the session ID from your invitation email. You will review how the two-phase assessment works, then begin Phase 1 (written technical questions) in fullscreen.
                                     </p>
                                 </div>
                             </div>
@@ -906,10 +909,19 @@
 
         const InstructionsView = ({ onStart, sessionId }) => {
             const [agreed, setAgreed] = React.useState(false);
+            const techCount = ASSESSMENT_PHASE_DEFAULTS.tech;
+            const speechCount = ASSESSMENT_PHASE_DEFAULTS.speech;
             const rules = [
                 {
-                    title: 'Communication round (voice)',
-                    body: 'After the technical phases, you may pass into a short voice round (usually three questions). Use a quiet place, allow microphone access, listen to each question, then record your spoken answer. Your browser will transcribe what you say.',
+                    title: 'Phase 1 — Written technical assessment',
+                    body: `${techCount} timed questions. Read each prompt carefully and type your answer in the text box. Submit before the timer ends — partial answers are saved automatically on timeout.`,
+                    icon: (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    ),
+                },
+                {
+                    title: 'Phase 2 — Voice communication interview',
+                    body: `If you pass Phase 1, you will enter a short voice round (${speechCount} questions). Each question is read aloud. Find a quiet place, allow microphone access, listen fully, then record your spoken answer. Live captions show what the system hears.`,
                     icon: (
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                     ),
@@ -963,19 +975,35 @@
                         <div className="onboarding-hero max-w-2xl w-full rounded-2xl overflow-hidden">
                             <div className="p-8 sm:p-10 border-b border-surface-border bg-surface-elevated/40">
                                 <p className="badge badge-accent mb-3">Before you begin</p>
-                                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Assessment guidelines</h1>
+                                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Two-phase assessment</h1>
                                 <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                                    Technical phases (typed answers), then a voice communication round if you pass. Read the rules below, then confirm to begin.
+                                    Your evaluation has <strong className="text-slate-200 font-medium">two parts</strong>: a written technical assessment, then a professional voice interview. Read the overview and rules below, then confirm to start Phase 1.
                                 </p>
                                 {sessionId ? (
                                     <p className="text-xs text-slate-500 mt-3 break-all">
                                         Session ID: <span className="text-slate-300 font-mono">{sessionId}</span>
                                     </p>
                                 ) : null}
+                                <div className="mt-6 grid sm:grid-cols-2 gap-3 sm:gap-4">
+                                    <div className="rounded-xl border border-accent/25 bg-accent/5 px-4 py-4 sm:px-5 sm:py-5">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-2">Phase 1</p>
+                                        <h2 className="text-base sm:text-lg font-semibold text-white">Written technical assessment</h2>
+                                        <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                                            {techCount} questions · typed answers · timed per question
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 px-4 py-4 sm:px-5 sm:py-5">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">Phase 2</p>
+                                        <h2 className="text-base sm:text-lg font-semibold text-white">Voice communication interview</h2>
+                                        <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                                            {speechCount} questions · speech-to-speech · microphone required
+                                        </p>
+                                    </div>
+                                </div>
                                 <div className="mt-5 flex flex-col sm:flex-row gap-3">
                                     <div className="flex-1 rounded-lg border border-surface-border bg-surface/50 px-4 py-3">
-                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Format</p>
-                                        <p className="text-sm text-slate-200 mt-0.5">Technical + voice communication</p>
+                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">You start with</p>
+                                        <p className="text-sm text-slate-200 mt-0.5">Phase 1 — written assessment</p>
                                     </div>
                                     <div className="flex-1 rounded-lg border border-surface-border bg-surface/50 px-4 py-3">
                                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Help</p>
@@ -984,7 +1012,7 @@
                                 </div>
                             </div>
                             <div className="p-8 sm:p-10 space-y-3 bg-surface/30">
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Rules</p>
+                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Rules &amp; integrity</p>
                                 {rules.map((rule, i) => (
                                     <div
                                         key={i}
@@ -1023,7 +1051,7 @@
                                     disabled={!agreed}
                                     className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
                                 >
-                                    Start assessment
+                                    Start Phase 1 — written assessment
                                 </button>
                                 <p className="text-xs text-center text-slate-600 leading-relaxed">
                                     You may close this page before starting; your session ID will work when you return.
@@ -1034,6 +1062,79 @@
                 </Shell>
             );
         };
+
+        const SpeechIntroView = ({ onBegin, techSteps, speechSteps, isLoading }) => (
+            <Shell subtitle="Phase 2 · Voice communication interview" footerNote="Microphone access will be requested when you begin">
+                <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in portal-lock">
+                    <div className="onboarding-hero max-w-2xl w-full rounded-2xl overflow-hidden">
+                        <div className="p-8 sm:p-10 border-b border-surface-border bg-surface-elevated/40">
+                            <p className="badge badge-accent mb-3">Phase 1 complete</p>
+                            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                                Welcome to Phase 2
+                            </h1>
+                            <p className="text-sm text-slate-400 mt-3 leading-relaxed">
+                                Thank you for completing the written technical assessment ({techSteps} questions).
+                                You are now entering the <strong className="text-slate-200 font-medium">voice communication interview</strong> — a professional speech-to-speech round.
+                            </p>
+                        </div>
+                        <div className="p-8 sm:p-10 space-y-4 bg-surface/30">
+                            <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 px-5 py-5">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-3">How this phase works</p>
+                                <ul className="space-y-3 text-sm text-slate-300 leading-relaxed list-none p-0 m-0">
+                                    <li className="flex gap-3">
+                                        <span className="text-indigo-400 font-bold shrink-0">1.</span>
+                                        <span>Each question is read aloud — listen carefully before you respond.</span>
+                                    </li>
+                                    <li className="flex gap-3">
+                                        <span className="text-indigo-400 font-bold shrink-0">2.</span>
+                                        <span>Press record and answer in your own words, as you would in a real interview.</span>
+                                    </li>
+                                    <li className="flex gap-3">
+                                        <span className="text-indigo-400 font-bold shrink-0">3.</span>
+                                        <span>Live captions show what the system hears; submit when you finish speaking.</span>
+                                    </li>
+                                    <li className="flex gap-3">
+                                        <span className="text-indigo-400 font-bold shrink-0">4.</span>
+                                        <span>Use a quiet space and allow microphone access when prompted.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-3">
+                                <div className="rounded-lg border border-surface-border bg-surface-elevated/50 px-4 py-3">
+                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Phase 2 questions</p>
+                                    <p className="text-sm text-slate-200 mt-0.5">{speechSteps} voice questions · individually timed</p>
+                                </div>
+                                <div className="rounded-lg border border-surface-border bg-surface-elevated/50 px-4 py-3">
+                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Evaluated on</p>
+                                    <p className="text-sm text-slate-200 mt-0.5">Clarity, confidence, professionalism &amp; relevance</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={onBegin}
+                                disabled={isLoading}
+                                className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {isLoading ? (
+                                    <>
+                                        <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                        Loading…
+                                    </>
+                                ) : (
+                                    'Begin voice interview'
+                                )}
+                            </button>
+                            <p className="text-xs text-center text-slate-600 leading-relaxed">
+                                Phase 2 begins when you click above. Your Phase 1 responses are already saved.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </Shell>
+        );
 
         const AdminView = ({ setView }) => {
             const [jobTitle, setJobTitle] = useState('');
@@ -1165,7 +1266,7 @@
             const charCount = answer.trim().length;
             const canSubmit = charCount >= 5 && !contentMasked && !isLoading;
             return (
-                <Shell subtitle={`Phase ${currentStep} of ${totalSteps} · Technical assessment`} fullWidth>
+                <Shell subtitle={`Phase 1 · Written assessment · Question ${currentStep} of ${totalSteps}`} fullWidth>
                     <div className="assessment-workspace fade-in assessment-lock">
                         <AssessmentSidebar
                             phases={phases}
@@ -1174,16 +1275,18 @@
                             candidateEmail={candidateEmail}
                             integrityViolationCount={integrityViolationCount}
                             pct={pct}
+                            sessionLabel="Phase 1 — written technical questions"
                         />
 
                         <div className="assessment-main">
                             <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-surface-border/60">
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="min-w-0 flex-1">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">Phase 1 · Written</p>
                                         <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight">
                                             Question {currentStep}
                                         </h1>
-                                        <p className="text-sm text-slate-500 mt-1">Answer in your own words — reviewed after you submit</p>
+                                        <p className="text-sm text-slate-500 mt-1">Type your answer below — reviewed after you submit</p>
                                         </div>
                                     {phaseTimeLimit != null && timeLeft != null ? (
                                         <TimerRing
@@ -1361,11 +1464,13 @@
                         let text = transcriptRef.current || transcript;
                         let blob = null;
                         let durationSeconds = 0;
+                        let delivery = null;
                         if (session) {
                             const stopped = await session.stop();
                             text = stopped.text || text;
                             blob = stopped.blob;
                             durationSeconds = stopped.durationSeconds;
+                            delivery = stopped.delivery;
                         }
                         transcriberRef.current = null;
                         if (window.TA_SPEECH?.sanitizeTranscript) {
@@ -1382,7 +1487,12 @@
                             return;
                         }
 
-                        const submitResult = await onSubmitSpeech({ transcript: text, blob, durationSeconds });
+                        const submitResult = await onSubmitSpeech({
+                            transcript: text,
+                            blob,
+                            durationSeconds,
+                            delivery,
+                        });
                         transcriptRef.current = '';
                         setTranscript('');
                         setIsTranscribing(false);
@@ -1423,7 +1533,7 @@
             };
 
             return (
-                <Shell subtitle={`Communication ${speechIndex} of ${speechTotal} · Voice assessment`} fullWidth>
+                <Shell subtitle={`Phase 2 · Voice interview · Question ${speechIndex} of ${speechTotal}`} fullWidth>
                     <div className="assessment-workspace fade-in assessment-lock">
                         <AssessmentSidebar
                             phases={phases}
@@ -1432,13 +1542,15 @@
                             candidateEmail={candidateEmail}
                             integrityViolationCount={integrityViolationCount}
                             pct={pct}
+                            sessionLabel="Phase 2 — voice communication questions"
                         />
                         <div className="assessment-main">
                             <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-surface-border/60">
                                 <div className="flex items-center justify-between gap-4">
                                     <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-1">Phase 2 · Voice</p>
                                         <h1 className="text-xl sm:text-2xl font-bold text-white">Question {speechIndex}</h1>
-                                        <p className="text-sm text-slate-500 mt-1">Listen, then record your spoken answer</p>
+                                        <p className="text-sm text-slate-500 mt-1">Listen to the question, then record your spoken answer</p>
                                     </div>
                                     {phaseTimeLimit != null && timeLeft != null ? (
                                         <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} prominent />
@@ -1446,6 +1558,14 @@
                                 </div>
                             </div>
                             <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4">
+                                {speechIndex === 1 ? (
+                                    <div className="mb-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-4 py-3 sm:px-5 sm:py-4">
+                                        <p className="text-sm text-indigo-100 font-medium">You are now in Phase 2 — voice communication interview</p>
+                                        <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                                            This is a speech-to-speech round. Take a moment to settle in a quiet space before recording.
+                                        </p>
+                                    </div>
+                                ) : null}
                                 <div className="rounded-xl border border-surface-border bg-[#0f1419]/80 p-5 sm:p-6 relative">
                                     {isLoading && (
                                         <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
@@ -1936,6 +2056,7 @@
             const [assessmentMode, setAssessmentMode] = useState('text');
             const [speechTotalSteps, setSpeechTotalSteps] = useState(3);
             const [techMaxSteps, setTechMaxSteps] = useState(5);
+            const [pendingSpeechIntro, setPendingSpeechIntro] = useState(null);
             const [timeLeft, setTimeLeft] = useState(null);
             const [phaseTimeLimit, setPhaseTimeLimit] = useState(null);
             const deadlineAtRef = useRef(null);
@@ -2740,20 +2861,18 @@
 
                     if (data.startSpeech || (data.assessment_mode === 'speech' && data.nextQuestion)) {
                         const speechPhases = speechPhasesFromResponse(data);
+                        const nextQ = data.nextQuestion || extractNextQuestion(data);
                         setAssessmentMode('speech');
                         setTechMaxSteps(totalSteps);
                         setSpeechTotalSteps(speechPhases);
                         setTotalSteps(totalSteps + speechPhases);
-                        const nextQ = data.nextQuestion || extractNextQuestion(data);
-                        if (nextQ) {
-                            setQuestion(nextQ);
-                            setCurrentStep((prev) => prev + 1);
-                            setAnswer('');
-                            applyTimerFromPhase({
-                                time_limit_seconds: data.time_limit_seconds,
-                                deadline_at: data.deadline_at,
-                            });
-                        }
+                        setPendingSpeechIntro({
+                            nextQuestion: nextQ,
+                            speechPhases,
+                            time_limit_seconds: data.time_limit_seconds,
+                            deadline_at: data.deadline_at,
+                        });
+                        setView('speech-intro');
                         return;
                     }
 
@@ -2794,7 +2913,23 @@
                 }
             };
 
-            const handleSpeechSubmit = async ({ transcript, blob, durationSeconds }) => {
+            const handleBeginSpeechFromIntro = () => {
+                if (!pendingSpeechIntro?.nextQuestion) {
+                    alert('The first voice question is not ready yet. Please wait a moment and try again.');
+                    return;
+                }
+                setQuestion(pendingSpeechIntro.nextQuestion);
+                setCurrentStep((prev) => prev + 1);
+                setAnswer('');
+                applyTimerFromPhase({
+                    time_limit_seconds: pendingSpeechIntro.time_limit_seconds,
+                    deadline_at: pendingSpeechIntro.deadline_at,
+                });
+                setPendingSpeechIntro(null);
+                setView('assessment');
+            };
+
+            const handleSpeechSubmit = async ({ transcript, blob, durationSeconds, delivery }) => {
                 if (isLoading) return { audioSaved: false, audioError: 'busy' };
                 setIsLoading(true);
                 let audioSaved = false;
@@ -2805,7 +2940,7 @@
                         ? TA.sanitizeTranscript(transcript)
                         : String(transcript || '').trim();
                     const metrics = TA
-                        ? TA.computeMetrics(cleanTranscript, durationSeconds)
+                        ? TA.computeMetrics(cleanTranscript, durationSeconds, delivery)
                         : { duration_seconds: Math.round(durationSeconds || 0) };
                     const weakBrowser = TA?.isWeakTranscript?.(cleanTranscript) ?? !cleanTranscript;
                     let audioUrl = '';
@@ -2990,6 +3125,15 @@
                         return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} linkSessionReady={linkSessionReady} />;
                     case 'instructions':
                         return <InstructionsView onStart={handleStartAssessment} sessionId={sessionId} />;
+                    case 'speech-intro':
+                        return (
+                            <SpeechIntroView
+                                onBegin={handleBeginSpeechFromIntro}
+                                techSteps={techMaxSteps}
+                                speechSteps={speechTotalSteps}
+                                isLoading={isLoading}
+                            />
+                        );
                     case 'assessment':
                         if (assessmentMode === 'speech') {
                             const speechIndex = currentStep - techMaxSteps;

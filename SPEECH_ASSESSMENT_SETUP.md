@@ -22,33 +22,61 @@ Run in order:
 
 Webhook path unchanged: `POST /webhook/assessment-answer`
 
+### Speech branch wiring (after import)
+
+The build script adds **`IF - Speech audio scored?`** between `CODE - Build Speech LLM context` and the LLM chain:
+
+- **True** (`skip_llm_chain === true`) → `CODE - Parse Speech Result` (audio already scored via Vercel)
+- **False** → `Basic LLM Chain Speech` → `CODE - Parse Speech Result` (existing text-only Vertex fallback)
+
+Paste latest code into these nodes if you edit `.js` files locally:
+
+- `CODE - Build Speech LLM context` ← `n8n_code_build_speech_llm_context.js`
+- `CODE - Parse Speech Result` ← `n8n_code_parse_speech_result.js`
+
 ## 3. Live transcription (Groq Whisper via Vercel) — REQUIRED
 
-Speech transcription now runs on the **frontend** through a Vercel serverless function
-(`api/transcribe.js`). This avoids the Chrome limitation where MediaRecorder and browser
-speech recognition cannot share the mic (which left the live captions empty).
-
-How it works:
+Speech transcription runs on the **frontend** through `api/transcribe.js` (Groq Whisper).
 
 1. Candidate records one continuous audio take.
-2. Every ~4.5s the audio so far is sent to `/api/transcribe` → Groq Whisper → **live captions update**.
-3. On submit, the full audio is transcribed once more (most accurate) and that text is sent
-   to the n8n webhook as `answer`. **No n8n `$env` / CFG key needed** — the workflow just scores the text.
+2. Every ~4.5s audio is sent to `/api/transcribe` → **live captions update**.
+3. On submit, full audio is transcribed again and sent to n8n as `answer`.
 
-### Set the key in Vercel (one time)
+### Vercel env: `GROQ_API_KEY`
 
-1. Vercel dashboard → your project → **Settings → Environment Variables**
-2. Add `GROQ_API_KEY` = your Groq key (same value CV screening uses), scope: Production + Preview
-3. **Redeploy** so the function picks it up
+1. Vercel → project → **Settings → Environment Variables**
+2. Add `GROQ_API_KEY` (same key as CV screening), scope: Production + Preview
+3. **Redeploy**
 
-The key stays server-side in the Vercel function and is never exposed to candidates.
+## 4. Audio-based scoring (Gemini multimodal via Vercel) — REQUIRED for real voice judging
 
-> The n8n `CFG - Assessment Config` `groq_api_key` field and the Whisper fallback in
-> `n8n_code_build_speech_llm_context.js` are now optional (backend fallback only).
-> Because the frontend already sends a real transcript, `stt_source` will read `browser`
-> with proper `answer_text` instead of `[Audio recorded]`.
+Communication scores (clarity, confidence, professionalism, relevance) are judged from **audio + transcript**, not text alone.
 
-## 4. Config (CFG node or session.config)
+Flow:
+
+1. Frontend uploads audio → `audio_url` in webhook payload
+2. `CODE - Build Speech LLM context` calls **`/api/score-speech`** with the rubric prompt + signed audio URL
+3. Gemini listens to the recording and returns JSON scores
+4. On success: `skip_llm_chain: true` — Vertex text chain is **skipped**
+5. On failure: falls back to **Basic LLM Chain Speech** (text-only Vertex — same as before)
+
+### Vercel env: `GEMINI_API_KEY`
+
+1. Add `GEMINI_API_KEY` in Vercel (Google AI Studio / Gemini API key)
+2. Scope: Production + Preview
+3. **Redeploy** after adding
+
+The key stays server-side; candidates never see it.
+
+### CFG keys (optional overrides)
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `portal_base_url` | `https://talent-acquisition-six.vercel.app` | Used to derive `/api/score-speech` if `speech_score_url` empty |
+| `speech_score_url` | `{portal}/api/score-speech` | Full URL for audio scoring API |
+| `groq_api_key` | `$env.GROQ_API_KEY` | n8n Whisper backup when frontend transcript is weak |
+
+## 5. Config (CFG node or session.config)
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -57,18 +85,24 @@ The key stays server-side in the Vercel function and is never exposed to candida
 | `technical_weight` | `0.7` | Combined score weight |
 | `speech_weight` | `0.3` | Combined score weight |
 
-## 5. Frontend
+## 6. Frontend
 
-- `index.html` + `speech-assessment.js` — mic record, TTS play question, browser STT preview
-- Payload adds: `assessment_mode: "speech"`, `audio_url`, `speech_metrics`
+- `index.html` + `speech-assessment.js` — mic record, TTS question, live Whisper captions
+- Payload: `assessment_mode: "speech"`, `audio_url`, `speech_metrics` (WPM, fillers, pauses, time-to-first-word)
 
-## 6. Flow
+## 7. Flow
 
 ```
 Phase 1–5 text → technical PASS → Phase 6–8 speech
+→ audio scoring (Gemini) or text fallback (Vertex)
 → combined score → result email → scheduling (if PASS)
 ```
 
-## 7. Production STT
+## 8. Verify in Supabase
 
-Browser STT is a fallback. For better accuracy, add OpenAI Whisper API on frontend or a small API route and send `answer` as Whisper transcript.
+After a speech submit, `interview_history` for that phase should show:
+
+- `answer_audio_url` — signed URL
+- `stt_source` — `browser` or `whisper`
+- `scoring_source` — `audio+transcript` (success) or `text-only` (fallback)
+- `soft_skills` — clarity, confidence, professionalism, relevance

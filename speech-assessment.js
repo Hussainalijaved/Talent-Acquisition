@@ -7,16 +7,104 @@
 
     const FILLER_RE = /\b(um|uh|er|ah|like|you know|basically|actually)\b/gi;
 
-    function computeMetrics(transcript, durationSeconds) {
+    function computeMetrics(transcript, durationSeconds, delivery) {
         const text = String(transcript || '').trim();
         const words = text ? text.split(/\s+/).filter(Boolean) : [];
         const duration = Math.max(1, Number(durationSeconds) || 1);
         const fillers = (text.match(FILLER_RE) || []).length;
+        const d = delivery && typeof delivery === 'object' ? delivery : {};
         return {
             duration_seconds: Math.round(duration),
             words_per_minute: Math.round((words.length / duration) * 60),
             filler_word_count: fillers,
             word_count: words.length,
+            long_pause_count: Number(d.long_pause_count) || 0,
+            time_to_first_word_ms: Number(d.time_to_first_word_ms) || 0,
+            avg_pause_ms: Number(d.avg_pause_ms) || 0,
+        };
+    }
+
+    function createDeliveryAnalyzer(stream) {
+        if (!stream || !global.AudioContext) {
+            return { stop() { return {}; } };
+        }
+        let ctx = null;
+        let analyser = null;
+        let raf = 0;
+        let startedAt = 0;
+        let firstSpeechAt = 0;
+        let inPause = false;
+        let pauseStart = 0;
+        let longPauseCount = 0;
+        const pauseDurations = [];
+        const SILENCE = 0.028;
+        const SPEECH = 0.05;
+        const LONG_PAUSE_MS = 1200;
+
+        const tick = () => {
+            if (!analyser) return;
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) sum += data[i];
+            const level = sum / data.length / 255;
+            const now = Date.now();
+
+            if (level >= SPEECH) {
+                if (!firstSpeechAt) firstSpeechAt = now;
+                if (inPause && pauseStart) {
+                    const pauseMs = now - pauseStart;
+                    if (pauseMs >= LONG_PAUSE_MS) {
+                        longPauseCount += 1;
+                        pauseDurations.push(pauseMs);
+                    }
+                    inPause = false;
+                    pauseStart = 0;
+                }
+            } else if (level <= SILENCE) {
+                if (!inPause) {
+                    inPause = true;
+                    pauseStart = now;
+                }
+            }
+
+            raf = global.requestAnimationFrame(tick);
+        };
+
+        try {
+            const Ctx = global.AudioContext || global.webkitAudioContext;
+            ctx = new Ctx();
+            const source = ctx.createMediaStreamSource(stream);
+            analyser = ctx.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            startedAt = Date.now();
+            tick();
+        } catch (err) {
+            console.warn('Delivery analyzer unavailable:', err);
+        }
+
+        return {
+            stop() {
+                if (raf) global.cancelAnimationFrame(raf);
+                raf = 0;
+                if (ctx) ctx.close().catch(() => {});
+                ctx = null;
+                analyser = null;
+                const end = Date.now();
+                if (inPause && pauseStart && end - pauseStart >= LONG_PAUSE_MS) {
+                    longPauseCount += 1;
+                    pauseDurations.push(end - pauseStart);
+                }
+                const avgPause = pauseDurations.length
+                    ? Math.round(pauseDurations.reduce((a, b) => a + b, 0) / pauseDurations.length)
+                    : 0;
+                return {
+                    long_pause_count: longPauseCount,
+                    time_to_first_word_ms: firstSpeechAt ? Math.max(0, firstSpeechAt - startedAt) : 0,
+                    avg_pause_ms: avgPause,
+                };
+            },
         };
     }
 
@@ -196,6 +284,7 @@
 
         let stream = null;
         let mediaRecorder = null;
+        let deliveryAnalyzer = null;
         let chunks = [];
         let mime = 'audio/webm';
         let startedAt = 0;
@@ -246,6 +335,7 @@
                         autoGainControl: true,
                     },
                 });
+                deliveryAnalyzer = createDeliveryAnalyzer(stream);
                 mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
                     ? 'audio/webm;codecs=opus'
                     : 'audio/webm';
@@ -270,6 +360,8 @@
                     timer = null;
                 }
                 const durationSeconds = (Date.now() - startedAt) / 1000;
+                const delivery = deliveryAnalyzer?.stop?.() || {};
+                deliveryAnalyzer = null;
 
                 if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                     const recRef = mediaRecorder;
@@ -296,7 +388,7 @@
                 if (finalText) text = finalText;
 
                 mediaRecorder = null;
-                return { text: sanitizeTranscript(text), blob, durationSeconds };
+                return { text: sanitizeTranscript(text), blob, durationSeconds, delivery };
             },
 
             cancel() {
@@ -304,6 +396,10 @@
                 if (timer) {
                     clearInterval(timer);
                     timer = null;
+                }
+                if (deliveryAnalyzer) {
+                    deliveryAnalyzer.stop();
+                    deliveryAnalyzer = null;
                 }
                 try {
                     if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();

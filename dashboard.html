@@ -979,13 +979,10 @@
 
             const allSessions = sessRes.data || [];
             const merged = [];
-            const seen = new Set();
             for (const c of (candRes.data || [])) {
                 const em = String(c.candidate_email || '').toLowerCase();
                 const notes = parseJson(c.notes);
                 const jobIds = candidateJobIds(c, notes);
-                const matchKey = em + '|' + [...jobIds].sort().join(',');
-                seen.add(matchKey);
                 merged.push({
                     email: c.candidate_email || '—',
                     candidateId: c.id,
@@ -997,29 +994,6 @@
                     created_at: c.created_at,
                     session: findSessionForCandidate(allSessions, em, jobIds, c.stage),
                 });
-            }
-            // sessions without a candidate row (direct applies)
-            for (const s of allSessions) {
-                const em = String(s.candidate_email || '').toLowerCase();
-                const cfg = parseJson(s.config);
-                const pseudo = { requisition_id: s.requisition_id };
-                const notes = { requisition_title: cfg.requisition_title };
-                const jobIds = candidateJobIds(pseudo, notes);
-                const matchKey = em + '|' + [...jobIds].sort().join(',');
-                if (em && !seen.has(matchKey)) {
-                    seen.add(matchKey);
-                    merged.push({
-                        email: s.candidate_email,
-                        candidateId: null,
-                        stage: 'Shortlisted',
-                        cvScore: s.score != null ? Number(s.score) : null,
-                        role: cfg.requisition_title || s.requisition_id || '',
-                        notes: parseJson(s.screening),
-                        rawNotes: null,
-                        created_at: sessionTimestamp(s, 'start'),
-                        session: s,
-                    });
-                }
             }
             MERGED = merged;
             if (window.TAAdmin) {

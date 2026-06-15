@@ -104,12 +104,15 @@ function extractCvAnchors(text) {
   ].filter(Boolean);
 }
 
-function buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
-  return '';
-}
-
-function buildNextSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
-  return buildPersonalizedSpeechQuestion(cfg, session, speechIndex, history, maxQ);
+function buildNextSpeechQuestion(cfg, speechIndex) {
+  const role = String(cfg?.requisition_title || 'this role').trim();
+  const lanes = [
+    `Describe a situation where you had to explain a complex technical topic to a non-technical stakeholder. How did you ensure they understood?`,
+    `Tell me about a time you faced pressure, a tight deadline, or conflict at work. How did you communicate and stay composed?`,
+    `Why are you interested in the ${role} role, and what would you focus on in your first 90 days?`,
+  ];
+  const idx = Math.max(0, Math.min(lanes.length - 1, Number(speechIndex || 1) - 1));
+  return lanes[idx];
 }
 
 function computeSpeechAverage(rows, maxQ, speechPhases) {
@@ -174,6 +177,8 @@ const answerForPhase = String(
   built.transcribed_answer || built.norm?.answer || current.answer || ''
 ).trim();
 
+const scoringSource = String(built.scoring_source || 'text-only');
+
 let idx = history.findIndex((x) => Number(x.phase) === ph);
 const patch = {
   mode: 'speech',
@@ -185,6 +190,7 @@ const patch = {
   speech_metrics: current.speech_metrics || {},
   answer_audio_url: current.audio_url || null,
   stt_source: built.stt_source || built.norm?.stt_source || 'browser',
+  scoring_source: scoringSource,
 };
 if (idx >= 0) history[idx] = { ...history[idx], ...patch };
 else history.push({ phase: ph, question_text: built.current_question_text || '', sent_at: iso, ...patch });
@@ -196,7 +202,7 @@ const isSpeechFinal = speechIndex >= speechPhases;
 let isFinal = isSpeechFinal;
 
 if (!isSpeechFinal && !nextQ) {
-  nextQ = buildNextSpeechQuestion(cfg, session, speechIndex + 1, history, maxQ);
+  nextQ = built.fallback_next_question || buildNextSpeechQuestion(cfg, speechIndex + 1);
 }
 
 if (nextQ && !isFinal) {

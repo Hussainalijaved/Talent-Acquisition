@@ -188,7 +188,7 @@
         };
     }
 
-    function runSttBurst(SR, durationMs, onInterim) {
+    function runSttBurst(SR, durationMs, onInterim, onStatus) {
         return new Promise((resolve) => {
             if (!SR) {
                 resolve('');
@@ -196,17 +196,77 @@
             }
             let rec = null;
             const pieces = [];
+            let lastInterim = '';
             let settled = false;
+            let stoppingBurst = false;
+
+            const latestText = () => {
+                const base = pieces.join(' ').trim();
+                return (base && lastInterim) ? `${base} ${lastInterim}`.trim() : (base || lastInterim).trim();
+            };
 
             const finish = () => {
                 if (settled) return;
                 settled = true;
-                resolve(pieces.join(' ').trim());
+                resolve(latestText());
+            };
+
+            const attachHandlers = () => {
+                if (!rec) return;
+                rec.onresult = (event) => {
+                    let interim = '';
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const r = event.results[i];
+                        const piece = String(r[0]?.transcript || '').trim();
+                        if (!piece) continue;
+                        if (r.isFinal) pieces.push(piece);
+                        else interim = interim ? `${interim} ${piece}` : piece;
+                    }
+                    if (interim) lastInterim = interim;
+                    const combined = latestText();
+                    if (combined && onInterim) onInterim(combined);
+                };
+
+                rec.onerror = (ev) => {
+                    const code = String(ev?.error || 'unknown');
+                    console.warn('SpeechRecognition error:', code);
+                    if (code === 'not-allowed' || code === 'service-not-allowed') {
+                        onStatus?.('stt_denied');
+                    } else if (code === 'network') {
+                        onStatus?.('stt_network');
+                    } else if (code === 'audio-capture') {
+                        onStatus?.('stt_audio_capture');
+                    }
+                    if (code === 'no-speech' || code === 'aborted') return;
+                    if (!stoppingBurst) {
+                        setTimeout(() => {
+                            try {
+                                rec.start();
+                            } catch (_) {}
+                        }, 300);
+                    }
+                };
+
+                rec.onend = () => {
+                    if (stoppingBurst) {
+                        finish();
+                        return;
+                    }
+                    setTimeout(() => {
+                        if (stoppingBurst || settled) return;
+                        try {
+                            rec.start();
+                        } catch (_) {
+                            finish();
+                        }
+                    }, 200);
+                };
             };
 
             try {
                 rec = new SR();
-            } catch (_) {
+            } catch (err) {
+                console.warn('SpeechRecognition unavailable:', err);
                 finish();
                 return;
             }
@@ -215,62 +275,52 @@
             rec.continuous = true;
             rec.interimResults = true;
             rec.maxAlternatives = 1;
-
-            rec.onresult = (event) => {
-                let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const r = event.results[i];
-                    const piece = String(r[0]?.transcript || '').trim();
-                    if (!piece) continue;
-                    if (r.isFinal) pieces.push(piece);
-                    else interim = interim ? `${interim} ${piece}` : piece;
-                }
-                const combined = [pieces.join(' '), interim].filter(Boolean).join(' ').trim();
-                if (combined && onInterim) onInterim(combined);
-            };
-
-            rec.onerror = () => finish();
-            rec.onend = () => finish();
+            attachHandlers();
 
             try {
                 rec.start();
-            } catch (_) {
+                onStatus?.('listening');
+            } catch (err) {
+                console.warn('SpeechRecognition start failed:', err);
                 finish();
                 return;
             }
 
             setTimeout(() => {
+                stoppingBurst = true;
                 try {
                     rec.stop();
                 } catch (_) {
                     finish();
                 }
-            }, Math.max(800, Number(durationMs) || 2000));
+            }, Math.max(1200, Number(durationMs) || 3000));
         });
     }
 
-    function canPauseRecorder() {
-        try {
-            return typeof MediaRecorder !== 'undefined' && 'pause' in MediaRecorder.prototype;
-        } catch (_) {
-            return false;
-        }
+    function getAudioConstraints() {
+        return {
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            },
+        };
     }
 
     /**
      * Chrome cannot run SpeechRecognition and MediaRecorder on the mic at once.
-     * Strategy: grab mic once, record audio immediately, pause recorder for short STT windows.
+     * Strategy: fully release mic tracks before each STT burst, then re-acquire for recording.
      */
     function createSpeechSession(callbacks) {
         const { onTranscript, onStatus, onLevel } = callbacks || {};
         const SR = global.SpeechRecognition || global.webkitSpeechRecognition;
-        const pauseSupported = canPauseRecorder();
 
         let active = false;
         let stopping = false;
         let stream = null;
         let mediaRecorder = null;
-        let audioChunks = [];
+        let allAudioChunks = [];
+        let currentMime = 'audio/webm';
         let startedAt = 0;
         const finalSegments = [];
         let sttTimer = null;
@@ -294,57 +344,78 @@
             emit('');
         };
 
-        const startRecorderOnStream = () => {
-            if (!stream || mediaRecorder) return false;
-            try {
-                audioChunks = [];
-                const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                    ? 'audio/webm;codecs=opus'
-                    : 'audio/webm';
-                mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data && e.data.size > 0) audioChunks.push(e.data);
-                };
-                mediaRecorder.start(250);
-                onStatus?.('recording');
-                return true;
-            } catch (err) {
-                console.warn('MediaRecorder failed:', err);
-                onStatus?.('recorder_failed');
-                return false;
+        const stopRecorder = async () => {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                mediaRecorder = null;
+                return;
             }
+            const recRef = mediaRecorder;
+            await new Promise((resolve) => {
+                recRef.onstop = () => resolve();
+                try {
+                    recRef.stop();
+                } catch (_) {
+                    resolve();
+                }
+                setTimeout(resolve, 1500);
+            });
+            mediaRecorder = null;
+        };
+
+        const releaseMic = () => {
+            volumeMeter?.stop();
+            volumeMeter = null;
+            if (stream) {
+                stream.getTracks().forEach((t) => t.stop());
+                stream = null;
+            }
+        };
+
+        const acquireMicAndRecord = async () => {
+            stream = await navigator.mediaDevices.getUserMedia(getAudioConstraints());
+            volumeMeter = createVolumeMeter(stream, onLevel);
+            currentMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : 'audio/webm';
+            mediaRecorder = new MediaRecorder(stream, { mimeType: currentMime });
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) allAudioChunks.push(e.data);
+            };
+            mediaRecorder.start(250);
+            onStatus?.('recording');
         };
 
         const runCaptionWindow = async () => {
             if (!active || stopping || sttBusy || !SR) return;
             sttBusy = true;
             try {
-                if (pauseSupported && mediaRecorder?.state === 'recording') {
-                    mediaRecorder.pause();
-                    await wait(120);
-                }
-                onStatus?.('listening');
-                const burst = await runSttBurst(SR, 2200, (interim) => emit(interim));
+                await stopRecorder();
+                releaseMic();
+                await wait(350);
+                const burst = await runSttBurst(SR, 3200, (interim) => emit(interim), onStatus);
                 if (burst) appendStt(burst);
-                if (pauseSupported && mediaRecorder?.state === 'paused') {
-                    mediaRecorder.resume();
-                    onStatus?.('recording');
-                }
+                if (!active || stopping) return;
+                await acquireMicAndRecord();
             } catch (err) {
                 console.warn('Caption window failed:', err);
+                onStatus?.('caption_failed');
+                if (!active || stopping) return;
+                try {
+                    await acquireMicAndRecord();
+                } catch (recErr) {
+                    console.warn('Recorder restart failed:', recErr);
+                    onStatus?.('recorder_failed');
+                }
             } finally {
                 sttBusy = false;
             }
         };
 
         const scheduleCaptionWindows = () => {
-            if (!SR || !pauseSupported) return;
+            if (!SR) return;
             sttTimer = setInterval(() => {
                 if (active && !stopping) runCaptionWindow();
-            }, 5000);
-            setTimeout(() => {
-                if (active && !stopping) runCaptionWindow();
-            }, 900);
+            }, 8000);
         };
 
         return {
@@ -353,38 +424,25 @@
                 active = true;
                 stopping = false;
                 startedAt = Date.now();
+                allAudioChunks = [];
                 finalSegments.length = 0;
                 emit('');
                 onStatus?.('starting');
 
                 if (global.speechSynthesis) global.speechSynthesis.cancel();
-                await wait(150);
+                await wait(200);
 
-                stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    },
-                });
-
-                const recorderOk = startRecorderOnStream();
-                if (!recorderOk) {
-                    throw new Error('Could not start audio recorder');
+                if (SR) {
+                    const opening = await runSttBurst(SR, 3200, (interim) => emit(interim), onStatus);
+                    if (opening) appendStt(opening);
                 }
 
-                volumeMeter = createVolumeMeter(stream, onLevel);
-
-                if (SR && pauseSupported) {
-                    scheduleCaptionWindows();
-                } else if (SR) {
-                    onStatus?.('listening');
-                    const burst = await runSttBurst(SR, 2500, (interim) => emit(interim));
-                    if (burst) appendStt(burst);
-                    onStatus?.('recording');
-                } else {
-                    onStatus?.('recording');
-                }
+                if (!active || stopping) return;
+                await acquireMicAndRecord();
+                scheduleCaptionWindows();
+                setTimeout(() => {
+                    if (active && !stopping) runCaptionWindow();
+                }, 5000);
             },
 
             getLatestText() {
@@ -400,43 +458,22 @@
                     sttTimer = null;
                 }
 
-                if (SR && pauseSupported && !sttBusy) {
-                    if (mediaRecorder?.state === 'recording') mediaRecorder.pause();
-                    await wait(120);
-                    const burst = await runSttBurst(SR, 1800, (interim) => emit(interim));
+                await stopRecorder();
+                releaseMic();
+
+                if (SR && !sttBusy) {
+                    await wait(350);
+                    const burst = await runSttBurst(SR, 2800, (interim) => emit(interim), onStatus);
                     if (burst) appendStt(burst);
                 }
 
                 const text = buildText('');
-                let blob = null;
                 const durationSeconds = (Date.now() - startedAt) / 1000;
+                const blob = allAudioChunks.length
+                    ? new Blob(allAudioChunks, { type: currentMime || 'audio/webm' })
+                    : null;
 
-                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                    const recRef = mediaRecorder;
-                    await new Promise((resolve) => {
-                        recRef.onstop = () => resolve();
-                        try {
-                            recRef.stop();
-                        } catch (_) {
-                            resolve();
-                        }
-                        setTimeout(resolve, 2000);
-                    });
-                    blob = audioChunks.length
-                        ? new Blob(audioChunks, { type: recRef.mimeType || 'audio/webm' })
-                        : null;
-                }
-
-                volumeMeter?.stop();
-                volumeMeter = null;
-                mediaRecorder = null;
-                audioChunks = [];
-
-                if (stream) {
-                    stream.getTracks().forEach((t) => t.stop());
-                    stream = null;
-                }
-
+                allAudioChunks = [];
                 return { text, blob, durationSeconds };
             },
 
@@ -447,17 +484,12 @@
                     clearInterval(sttTimer);
                     sttTimer = null;
                 }
-                volumeMeter?.stop();
-                volumeMeter = null;
                 try {
                     if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
                 } catch (_) {}
                 mediaRecorder = null;
-                audioChunks = [];
-                if (stream) {
-                    stream.getTracks().forEach((t) => t.stop());
-                    stream = null;
-                }
+                allAudioChunks = [];
+                releaseMic();
             },
         };
     }
@@ -583,6 +615,5 @@
         createSpeechRecognizer,
         uploadAudio,
         uploadAudioWithTimeout,
-        canPauseRecorder,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

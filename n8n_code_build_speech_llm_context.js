@@ -121,13 +121,20 @@ let answerText = String(norm.answer || '').trim();
 let sttSource = 'browser';
 const audioUrl = String(norm.audio_url || '').trim();
 const groqKey = resolveGroqKey(cfg);
+const browserWeak = isWeakTranscript(answerText);
 
-if (isWeakTranscript(answerText) && audioUrl && groqKey) {
+// Always prefer server transcription when we have audio — browser STT is unreliable during recording.
+if (audioUrl && groqKey && (browserWeak || !answerText)) {
   const whisperText = await transcribeWithGroqWhisper(audioUrl, groqKey);
   if (whisperText && !isWeakTranscript(whisperText)) {
     answerText = whisperText;
     sttSource = 'whisper';
+  } else if (whisperText) {
+    answerText = whisperText;
+    sttSource = 'whisper_partial';
   }
+} else if (audioUrl && browserWeak && !groqKey) {
+  sttSource = 'browser_no_whisper_key';
 }
 
 const metrics = norm.speech_metrics || {};

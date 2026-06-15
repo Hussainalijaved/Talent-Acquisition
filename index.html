@@ -2838,6 +2838,7 @@
                     const metrics = TA
                         ? TA.computeMetrics(cleanTranscript, durationSeconds)
                         : { duration_seconds: Math.round(durationSeconds || 0) };
+                    const weakBrowser = TA?.isWeakTranscript?.(cleanTranscript) ?? !cleanTranscript;
                     let audioUrl = '';
                     if (TA && blob && supabase && sessionId) {
                         const upload = TA.uploadAudioWithTimeout

@@ -391,13 +391,6 @@
                     stream = null;
                 }
 
-                let text = '';
-                if (SR && blob && blob.size > 200) {
-                    await wait(300);
-                    text = await runSttBurst(SR, 2000, (interim) => emit(interim), onStatus);
-                }
-                if (text) emit(text);
-
                 return { text, blob, durationSeconds };
             },
 

@@ -428,7 +428,7 @@ function resolveWorkflowConfig(current, session, built) {
         sessionCfg.speech_phases ??
         builtCfg.speech_phases ??
         cfgNode.speech_phases ??
-        3
+        5
     ),
     technical_weight: Number(
       normCfg.technical_weight ?? sessionCfg.technical_weight ?? builtCfg.technical_weight ?? cfgNode.technical_weight ?? 0.7
@@ -628,7 +628,7 @@ const speechEnabled =
   cfg.speech_enabled === true ||
   cfg.speech_enabled === 'true' ||
   Number(cfg.speech_phases || 0) > 0;
-const speechPhases = Number(cfg.speech_phases || 3);
+const speechPhases = Number(cfg.speech_phases || 5);
 let startSpeech = false;
 let technicalScore = null;
 

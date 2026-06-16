@@ -121,7 +121,7 @@
             {
               "id": "sp-ph",
               "name": "speech_phases",
-              "value": 3,
+              "value": 5,
               "type": "number"
             },
             {
@@ -460,7 +460,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ {\n  score: $(\"CODE - Pick Parse Result\").first().json.score,\n  feedback: $(\"CODE - Pick Parse Result\").first().json.feedback,\n  nextQuestion: $(\"CODE - Pick Parse Result\").first().json.nextQuestion,\n  time_limit_seconds: $(\"CODE - Pick Parse Result\").first().json.time_limit_seconds,\n  deadline_at: $(\"CODE - Pick Parse Result\").first().json.deadline_at,\n  complexity_tier: $(\"CODE - Pick Parse Result\").first().json.complexity_tier,\n  isFinal: $(\"CODE - Pick Parse Result\").first().json.isFinal,\n  result: $(\"CODE - Pick Parse Result\").first().json.result || '',\n  assessment_mode: $(\"CODE - Pick Parse Result\").first().json.assessment_mode || 'text',\n  startSpeech: $(\"CODE - Pick Parse Result\").first().json.startSpeech || false,\n  speech_phases: $(\"CODE - Pick Parse Result\").first().json.speech_phases || 3,\n  soft_skills: $(\"CODE - Pick Parse Result\").first().json.soft_skills || null\n} }}",
+        "responseBody": "={{ {\n  score: $(\"CODE - Pick Parse Result\").first().json.score,\n  feedback: $(\"CODE - Pick Parse Result\").first().json.feedback,\n  nextQuestion: $(\"CODE - Pick Parse Result\").first().json.nextQuestion,\n  time_limit_seconds: $(\"CODE - Pick Parse Result\").first().json.time_limit_seconds,\n  deadline_at: $(\"CODE - Pick Parse Result\").first().json.deadline_at,\n  complexity_tier: $(\"CODE - Pick Parse Result\").first().json.complexity_tier,\n  isFinal: $(\"CODE - Pick Parse Result\").first().json.isFinal,\n  result: $(\"CODE - Pick Parse Result\").first().json.result || '',\n  assessment_mode: $(\"CODE - Pick Parse Result\").first().json.assessment_mode || 'text',\n  startSpeech: $(\"CODE - Pick Parse Result\").first().json.startSpeech || false,\n  speech_phases: $(\"CODE - Pick Parse Result\").first().json.speech_phases || 5,\n  soft_skills: $(\"CODE - Pick Parse Result\").first().json.soft_skills || null\n} }}",
         "options": {
           "responseCode": 200
         }

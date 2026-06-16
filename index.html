@@ -659,7 +659,7 @@
             'Copy-paste, right-click, and developer tools are disabled.',
         ];
 
-        const ASSESSMENT_PHASE_DEFAULTS = { tech: 5, speech: 3 };
+        const ASSESSMENT_PHASE_DEFAULTS = { tech: 5, speech: 5 };
 
         const AssessmentSidebar = ({
             phases,
@@ -977,7 +977,7 @@
                                 <p className="badge badge-accent mb-3">Before you begin</p>
                                 <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Two-phase assessment</h1>
                                 <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                                    Your evaluation has <strong className="text-slate-200 font-medium">two parts</strong>: a written technical assessment, then a professional voice interview. Read the overview and rules below, then confirm to start Phase 1.
+                                    Your evaluation has <strong className="text-slate-200 font-medium">two parts</strong> ({techCount + speechCount} questions total): a written technical assessment, then a professional voice interview. Read the overview and rules below, then confirm to start Phase 1.
                                 </p>
                                 {sessionId ? (
                                     <p className="text-xs text-slate-500 mt-3 break-all">
@@ -1632,7 +1632,7 @@
         const resolveAssessmentMode = (data, phaseNum, phaseRow) => {
             const cfg = parseSessionConfig(data?.config);
             const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || 5;
-            const speechPhases = Number(cfg?.speech_phases) || 3;
+            const speechPhases = Number(cfg?.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
             const stage = String(data?.assessment_stage || 'technical').toLowerCase();
             const isSpeech =
                 stage === 'speech' ||
@@ -1648,7 +1648,7 @@
 
         const speechPhasesFromResponse = (data) => {
             const cfg = parseSessionConfig(data?.config);
-            return Number(data?.speech_phases || cfg?.speech_phases) || 3;
+            return Number(data?.speech_phases || cfg?.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
         };
 
         const normalizeJobId = (value) => String(value || '').trim().toLowerCase();
@@ -2052,10 +2052,10 @@
             const [candidateEmail, setCandidateEmail] = useState('');
             const [isLoading, setIsLoading] = useState(false);
             const [currentStep, setCurrentStep] = useState(1);
-            const [totalSteps, setTotalSteps] = useState(5);
+            const [totalSteps, setTotalSteps] = useState(ASSESSMENT_PHASE_DEFAULTS.tech);
             const [assessmentMode, setAssessmentMode] = useState('text');
-            const [speechTotalSteps, setSpeechTotalSteps] = useState(3);
-            const [techMaxSteps, setTechMaxSteps] = useState(5);
+            const [speechTotalSteps, setSpeechTotalSteps] = useState(ASSESSMENT_PHASE_DEFAULTS.speech);
+            const [techMaxSteps, setTechMaxSteps] = useState(ASSESSMENT_PHASE_DEFAULTS.tech);
             const [pendingSpeechIntro, setPendingSpeechIntro] = useState(null);
             const [timeLeft, setTimeLeft] = useState(null);
             const [phaseTimeLimit, setPhaseTimeLimit] = useState(null);

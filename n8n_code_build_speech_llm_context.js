@@ -163,6 +163,8 @@ function buildSpeechLanes() {
     'Communication — explain a technical concept to a non-technical audience (clarity, patience, structure)',
     'Confidence & composure — pressure, deadline, conflict, or failure (tone, ownership, calm delivery)',
     'Professionalism & role fit — motivation for this role, collaboration, first 90 days (maturity, engagement)',
+    'Collaboration & feedback — working with cross-functional teams, handling disagreement constructively',
+    'Growth & reflection — learning from mistakes, adapting to change, continuous improvement',
   ];
 }
 
@@ -171,6 +173,8 @@ function buildFallbackQuestion(role, speechIndex) {
     `Describe a situation where you had to explain a complex technical topic to a non-technical stakeholder. How did you ensure they understood?`,
     `Tell me about a time you faced pressure, a tight deadline, or conflict at work. How did you communicate and stay composed?`,
     `Why are you interested in the ${role} role, and what would you focus on in your first 90 days?`,
+    `Describe a time you had to collaborate with another team or stakeholder who disagreed with your approach. How did you handle it?`,
+    `Tell me about a mistake or setback you learned from. What did you change in how you communicate or work afterward?`,
   ];
   const idx = Math.max(0, Math.min(lanes.length - 1, Number(speechIndex || 1) - 1));
   return lanes[idx];
@@ -278,7 +282,7 @@ const cfg = {
   portal_base_url: sessionConfig.portal_base_url || norm.config?.portal_base_url || pickCfgValue('portal_base_url') || '',
   groq_model: sessionConfig.groq_model || norm.config?.groq_model || 'llama-3.3-70b-versatile',
   max_questions: Number(sessionConfig.max_questions || norm.config?.max_questions || 5),
-  speech_phases: Number(sessionConfig.speech_phases || norm.config?.speech_phases || 3),
+  speech_phases: Number(sessionConfig.speech_phases || norm.config?.speech_phases || 5),
   pass_score_threshold: Number(sessionConfig.pass_score_threshold ?? norm.config?.pass_score_threshold ?? 60),
   timer_min_seconds: Number(sessionConfig.timer_min_seconds ?? norm.config?.timer_min_seconds ?? 60),
   timer_max_seconds: Number(sessionConfig.timer_max_seconds ?? norm.config?.timer_max_seconds ?? 600),
@@ -287,7 +291,7 @@ const cfg = {
 };
 
 const maxQ = Number(cfg.max_questions || 5);
-const speechPhases = Number(cfg.speech_phases || 3);
+const speechPhases = Number(cfg.speech_phases || 5);
 const ph = Number(norm.current_phase || maxQ + 1);
 const speechIndex = ph - maxQ;
 const isFinal = speechIndex >= speechPhases;

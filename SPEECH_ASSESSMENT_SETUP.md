@@ -1,6 +1,6 @@
 # Speech Assessment — setup
 
-Technical phases **1–5** (typed) then communication phases **6–8** (voice) on the same `assessment-answer` webhook.
+Technical phases **1–5** (typed) then communication phases **6–10** (voice) on the same `assessment-answer` webhook.
 
 ## 1. Supabase SQL
 
@@ -81,7 +81,7 @@ The key stays server-side; candidates never see it.
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `speech_enabled` | `true` | After tech PASS, start speech round |
-| `speech_phases` | `3` | Voice questions (phases 6–8) |
+| `speech_phases` | `5` | Voice questions (phases 6–10) |
 | `technical_weight` | `0.7` | Combined score weight |
 | `speech_weight` | `0.3` | Combined score weight |
 
@@ -93,7 +93,7 @@ The key stays server-side; candidates never see it.
 ## 7. Flow
 
 ```
-Phase 1–5 text → technical PASS → Phase 6–8 speech
+Phase 1–5 text → technical PASS → Phase 6–10 speech
 → audio scoring (Gemini) or text fallback (Vertex)
 → combined score → result email → scheduling (if PASS)
 ```

@@ -37,13 +37,13 @@ const config = {
   groq_model: nested.groq_model || item.groq_model || '',
   groq_api_key: nested.groq_api_key || item.groq_api_key || '',
   max_questions: Number(nested.max_questions ?? item.max_questions ?? 5),
-  speech_phases: Number(nested.speech_phases ?? item.speech_phases ?? 3),
+  speech_phases: Number(nested.speech_phases ?? item.speech_phases ?? 5),
   speech_enabled:
     nested.speech_enabled === true ||
     nested.speech_enabled === 'true' ||
     item.speech_enabled === true ||
     item.speech_enabled === 'true' ||
-    Number(nested.speech_phases ?? item.speech_phases ?? 3) > 0,
+    Number(nested.speech_phases ?? item.speech_phases ?? 5) > 0,
   technical_weight: Number(nested.technical_weight ?? item.technical_weight ?? 0.7),
   speech_weight: Number(nested.speech_weight ?? item.speech_weight ?? 0.3),
   interviewer_email: nested.interviewer_email || item.interviewer_email || '',

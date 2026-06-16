@@ -51,7 +51,7 @@ const cfg = {
     sessionConfig.speech_enabled === 'true' ||
     norm.config?.speech_enabled === true ||
     Number(sessionConfig.speech_phases ?? norm.config?.speech_phases ?? 0) > 0,
-  speech_phases: Number(sessionConfig.speech_phases ?? norm.config?.speech_phases ?? 3),
+  speech_phases: Number(sessionConfig.speech_phases ?? norm.config?.speech_phases ?? 5),
 };
 
 const ph = Number(norm.current_phase || 1);
@@ -141,7 +141,7 @@ if (isFinal) {
   const speechHandoff = speechEnabled
     ? `
 
-If speech round is enabled for this workflow, also include first_speech_question — a behavioral question you choose for the voice round (natural spoken language).`
+If speech round is enabled for this workflow (${cfg.speech_phases} voice questions after technical), also include first_speech_question — a behavioral question you choose for the voice round (natural spoken language).`
     : '';
 
   const speechField = speechEnabled

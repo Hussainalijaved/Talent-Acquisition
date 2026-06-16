@@ -110,6 +110,8 @@ function buildNextSpeechQuestion(cfg, speechIndex) {
     `Describe a situation where you had to explain a complex technical topic to a non-technical stakeholder. How did you ensure they understood?`,
     `Tell me about a time you faced pressure, a tight deadline, or conflict at work. How did you communicate and stay composed?`,
     `Why are you interested in the ${role} role, and what would you focus on in your first 90 days?`,
+    `Describe a time you had to collaborate with another team or stakeholder who disagreed with your approach. How did you handle it?`,
+    `Tell me about a mistake or setback you learned from. What did you change in how you communicate or work afterward?`,
   ];
   const idx = Math.max(0, Math.min(lanes.length - 1, Number(speechIndex || 1) - 1));
   return lanes[idx];
@@ -157,7 +159,7 @@ if (typeof history === 'string') {
 if (!Array.isArray(history)) history = [];
 
 const maxQ = Number(cfg.max_questions || built.max_questions || 5);
-const speechPhases = Number(cfg.speech_phases || built.speech_phases || 3);
+const speechPhases = Number(cfg.speech_phases || built.speech_phases || 5);
 const ph = Number(current.current_phase || maxQ + 1);
 const speechIndex = ph - maxQ;
 const passThreshold = Number(cfg.pass_score_threshold ?? 60);

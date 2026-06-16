@@ -147,8 +147,8 @@ const sessionBody = {
       speech_enabled:
         cfg.speech_enabled === true ||
         cfg.speech_enabled === 'true' ||
-        Number(cfg.speech_phases ?? 3) > 0,
-      speech_phases: Number(cfg.speech_phases ?? 3),
+        Number(cfg.speech_phases ?? 5) > 0,
+      speech_phases: Number(cfg.speech_phases ?? 5),
       technical_weight: Number(cfg.technical_weight ?? 0.7),
       speech_weight: Number(cfg.speech_weight ?? 0.3),
     },

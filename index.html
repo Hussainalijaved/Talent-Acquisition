@@ -2861,7 +2861,28 @@
 
                     if (data.startSpeech || (data.assessment_mode === 'speech' && data.nextQuestion)) {
                         const speechPhases = speechPhasesFromResponse(data);
-                        const nextQ = data.nextQuestion || extractNextQuestion(data);
+                        let nextQ = data.nextQuestion || extractNextQuestion(data);
+                        let speechTimer = {
+                            time_limit_seconds: data.time_limit_seconds,
+                            deadline_at: data.deadline_at,
+                        };
+                        const speechPhaseNum = totalSteps + 1;
+                        if (!nextQ && sessionId) {
+                            const fromDb = await pollNextQuestionFromSession(sessionId, speechPhaseNum, 6, 1000);
+                            if (fromDb?.nextQuestion) {
+                                nextQ = fromDb.nextQuestion;
+                                speechTimer = {
+                                    time_limit_seconds: fromDb.time_limit_seconds,
+                                    deadline_at: fromDb.deadline_at,
+                                };
+                            }
+                        }
+                        if (!nextQ) {
+                            alert(
+                                'The first voice question is still being prepared. Please wait a few seconds and submit your last answer once more.'
+                            );
+                            return;
+                        }
                         setAssessmentMode('speech');
                         setTechMaxSteps(totalSteps);
                         setSpeechTotalSteps(speechPhases);
@@ -2869,8 +2890,7 @@
                         setPendingSpeechIntro({
                             nextQuestion: nextQ,
                             speechPhases,
-                            time_limit_seconds: data.time_limit_seconds,
-                            deadline_at: data.deadline_at,
+                            ...speechTimer,
                         });
                         setView('speech-intro');
                         return;
@@ -2913,20 +2933,40 @@
                 }
             };
 
-            const handleBeginSpeechFromIntro = () => {
-                if (!pendingSpeechIntro?.nextQuestion) {
-                    alert('The first voice question is not ready yet. Please wait a moment and try again.');
-                    return;
+            const handleBeginSpeechFromIntro = async () => {
+                if (isLoading) return;
+                setIsLoading(true);
+                try {
+                    let intro = pendingSpeechIntro;
+                    if (!intro?.nextQuestion && sessionId) {
+                        const speechPhaseNum = techMaxSteps + 1;
+                        const fromDb = await pollNextQuestionFromSession(sessionId, speechPhaseNum, 5, 800);
+                        if (fromDb?.nextQuestion) {
+                            intro = {
+                                ...(intro || {}),
+                                nextQuestion: fromDb.nextQuestion,
+                                time_limit_seconds: fromDb.time_limit_seconds ?? intro?.time_limit_seconds,
+                                deadline_at: fromDb.deadline_at ?? intro?.deadline_at,
+                            };
+                            setPendingSpeechIntro(intro);
+                        }
+                    }
+                    if (!intro?.nextQuestion) {
+                        alert('The first voice question is not ready yet. Please wait a moment and try again.');
+                        return;
+                    }
+                    setQuestion(intro.nextQuestion);
+                    setCurrentStep((prev) => prev + 1);
+                    setAnswer('');
+                    applyTimerFromPhase({
+                        time_limit_seconds: intro.time_limit_seconds,
+                        deadline_at: intro.deadline_at,
+                    });
+                    setPendingSpeechIntro(null);
+                    setView('assessment');
+                } finally {
+                    setIsLoading(false);
                 }
-                setQuestion(pendingSpeechIntro.nextQuestion);
-                setCurrentStep((prev) => prev + 1);
-                setAnswer('');
-                applyTimerFromPhase({
-                    time_limit_seconds: pendingSpeechIntro.time_limit_seconds,
-                    deadline_at: pendingSpeechIntro.deadline_at,
-                });
-                setPendingSpeechIntro(null);
-                setView('assessment');
             };
 
             const handleSpeechSubmit = async ({ transcript, blob, durationSeconds, delivery }) => {

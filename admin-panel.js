@@ -570,6 +570,30 @@
         return url;
     }
 
+    async function triggerManualShortlistMailWebhook(payload) {
+        const webhook = await loadManualShortlistWebhookConfig();
+        if (!webhook) return { ok: false, error: 'Manual shortlist webhook URL not set — add it in Settings.' };
+        if (/\/webhook-test\//i.test(webhook)) {
+            return { ok: false, error: 'Use n8n Production URL (/webhook/), not Test URL (/webhook-test/).' };
+        }
+
+        try {
+            const res = await fetch(webhook, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': '1',
+                },
+                body: JSON.stringify(payload),
+            });
+            if (res.ok) return { ok: true };
+            const errText = String(await res.text()).slice(0, 200);
+            return { ok: false, error: errText || 'HTTP ' + res.status };
+        } catch (err) {
+            return { ok: false, error: String(err?.message || err).slice(0, 200) };
+        }
+    }
+
     async function saveWebhookConfig() {
         if (deps.auth && !deps.auth.can('save_webhooks')) {
             deps.banner('Only super admins can change integration settings.', 'err');
@@ -2432,19 +2456,44 @@
                 await navigator.clipboard.writeText(data.assessment_link);
             }
 
-            if (data.email_sent) {
+            let emailSent = !!data.email_sent;
+            let emailError = data.email_error || '';
+
+            if (!emailSent) {
+                if (btn) btn.textContent = 'Sending invite email…';
+                const mailResult = await triggerManualShortlistMailWebhook({
+                    candidate_email: data.candidate_email || m.email,
+                    session_id: data.session_id,
+                    requisition_id: data.requisition_id,
+                    requisition_title: m.role,
+                    score: m.cvScore,
+                    max_questions: 5,
+                    organization_name: 'CONVO',
+                    portal_base_url: 'https://talent-acquisition-six.vercel.app',
+                    assessment_link: data.assessment_link,
+                    manual_shortlist: true,
+                    approved_by: deps.auth?.profile?.email || '',
+                });
+                if (mailResult.ok) {
+                    emailSent = true;
+                } else if (!emailError) {
+                    emailError = mailResult.error || 'Browser webhook call failed';
+                }
+            }
+
+            if (emailSent) {
                 deps.banner(
                     'Shortlisted — assessment session created and invite email sent to ' + m.email + '.',
                     'ok'
                 );
-            } else if (!data.webhook_configured) {
+            } else if (!data.webhook_configured && !emailError) {
                 deps.banner(
                     'Shortlisted — session created. Email not sent: set manual shortlist webhook in Settings (use ngrok /webhook/ URL, not localhost).',
                     'err'
                 );
-            } else if (data.email_error) {
+            } else if (emailError) {
                 deps.banner(
-                    'Shortlisted — session created but email failed: ' + data.email_error + '. Check n8n workflow is Active and URL uses /webhook/ not /webhook-test/.',
+                    'Shortlisted — session created but email failed: ' + emailError + '. Check n8n workflow is Active and URL uses /webhook/ not /webhook-test/.',
                     'err'
                 );
             } else if (data.assessment_link && navigator.clipboard?.writeText) {
@@ -2453,8 +2502,8 @@
                 deps.banner('Shortlisted — session ' + (data.session_id || 'created'), 'ok');
             }
 
-            if (data.email_error) {
-                console.warn('Manual shortlist mail error:', data.email_error);
+            if (emailError) {
+                console.warn('Manual shortlist mail error:', emailError);
             }
 
             if (deps.auth) {

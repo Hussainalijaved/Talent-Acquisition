@@ -249,6 +249,173 @@
 
     const DEFAULT_TRANSCRIBE_URL = '/api/transcribe';
 
+    function createSmoothTranscriptEmitter(onTranscript, wordDelayMs) {
+        const delay = Number(wordDelayMs) > 0 ? Number(wordDelayMs) : 65;
+        let targetText = '';
+        let displayedText = '';
+        let timer = null;
+
+        const wordsOf = (text) => (String(text || '').trim() ? String(text).trim().split(/\s+/) : []);
+
+        const commonWordPrefixLen = (a, b) => {
+            const aw = wordsOf(a);
+            const bw = wordsOf(b);
+            let n = 0;
+            while (n < aw.length && n < bw.length && aw[n].toLowerCase() === bw[n].toLowerCase()) n += 1;
+            return n;
+        };
+
+        const publish = (text) => {
+            displayedText = text;
+            if (onTranscript) onTranscript(displayedText);
+        };
+
+        const tick = () => {
+            timer = null;
+            const target = liveSanitize(targetText);
+            const displayed = liveSanitize(displayedText);
+            if (!target) {
+                publish('');
+                return;
+            }
+            if (target === displayed) return;
+
+            const shared = commonWordPrefixLen(displayed, target);
+            const targetWords = wordsOf(target);
+            const displayedWords = wordsOf(displayed);
+
+            if (shared < displayedWords.length) {
+                publish(targetWords.slice(0, shared).join(' '));
+                timer = setTimeout(tick, Math.max(24, delay - 20));
+                return;
+            }
+            if (shared < targetWords.length) {
+                publish(targetWords.slice(0, shared + 1).join(' '));
+                timer = setTimeout(tick, delay);
+                return;
+            }
+            publish(target);
+        };
+
+        return {
+            setTarget(text) {
+                targetText = liveSanitize(text);
+                if (!timer) tick();
+            },
+            flush() {
+                if (timer) clearTimeout(timer);
+                timer = null;
+                targetText = liveSanitize(targetText);
+                publish(targetText);
+            },
+            reset() {
+                if (timer) clearTimeout(timer);
+                timer = null;
+                targetText = '';
+                displayedText = '';
+            },
+        };
+    }
+
+    /** Browser STT with interim results — smooth live captions while MediaRecorder captures audio. */
+    function createSpeechRecognizer(options) {
+        const onTranscript = typeof options === 'function' ? options : options?.onTranscript;
+        const SR = global.SpeechRecognition || global.webkitSpeechRecognition;
+        if (!SR) {
+            return {
+                isSupported: false,
+                start() {},
+                async stop() {
+                    return '';
+                },
+                cancel() {},
+            };
+        }
+
+        let rec = null;
+        let listening = false;
+        let finalized = '';
+
+        const emit = (interim) => {
+            const base = finalized.trim();
+            const combined = interim ? `${base} ${interim}`.trim() : base;
+            if (onTranscript) onTranscript(liveSanitize(combined));
+        };
+
+        const attach = () => {
+            if (!rec) return;
+            rec.onresult = (e) => {
+                let interim = '';
+                for (let i = e.resultIndex; i < e.results.length; i++) {
+                    const r = e.results[i];
+                    const piece = String(r[0]?.transcript || '').trim();
+                    if (!piece) continue;
+                    if (r.isFinal) {
+                        finalized = `${finalized} ${piece}`.replace(/\s+/g, ' ').trim();
+                        interim = '';
+                    } else {
+                        interim = interim ? `${interim} ${piece}` : piece;
+                    }
+                }
+                emit(interim);
+            };
+            rec.onerror = () => {};
+            rec.onend = () => {
+                if (!listening) return;
+                setTimeout(() => {
+                    if (!listening || !rec) return;
+                    try {
+                        rec.start();
+                    } catch (_) {}
+                }, 180);
+            };
+        };
+
+        return {
+            isSupported: true,
+            start() {
+                listening = true;
+                finalized = '';
+                emit('');
+                rec = new SR();
+                rec.lang = 'en-US';
+                rec.continuous = true;
+                rec.interimResults = true;
+                attach();
+                try {
+                    rec.start();
+                } catch (_) {
+                    rec = null;
+                    listening = false;
+                }
+            },
+            async stop() {
+                listening = false;
+                if (!rec) return finalized.trim();
+                return new Promise((resolve) => {
+                    const done = () => resolve(finalized.trim());
+                    rec.onend = done;
+                    rec.onerror = done;
+                    try {
+                        rec.stop();
+                    } catch (_) {
+                        done();
+                    }
+                });
+            },
+            cancel() {
+                listening = false;
+                if (!rec) return;
+                try {
+                    rec.onend = null;
+                    rec.stop();
+                } catch (_) {}
+                rec = null;
+                finalized = '';
+            },
+        };
+    }
+
     /** Send an audio Blob to the server Whisper proxy and return its transcript. */
     async function transcribeBlob(blob, transcribeUrl) {
         if (!blob || blob.size < 1200) return '';
@@ -271,20 +438,24 @@
     }
 
     /**
-     * Records one continuous audio take and transcribes it live via the server Whisper proxy.
-     * Avoids the Chrome mic conflict (browser STT + MediaRecorder) entirely:
-     * audio is recorded reliably, and accurate captions stream in every few seconds.
+     * Records one continuous audio take with smooth live captions.
+     * Chrome/Edge: browser SpeechRecognition interim results (word-by-word feel).
+     * Fallback: server Whisper windows with gradual word reveal.
+     * Submit always uses Whisper on the full recording for accuracy.
      */
     function createLiveTranscriber(options) {
         const opts = options || {};
         const onTranscript = opts.onTranscript;
         const onStatus = opts.onStatus;
         const transcribeUrl = opts.transcribeUrl || DEFAULT_TRANSCRIBE_URL;
-        const windowMs = Number(opts.windowMs) > 0 ? Number(opts.windowMs) : 4500;
+        const windowMs = Number(opts.windowMs) > 0 ? Number(opts.windowMs) : 2600;
+        const preferBrowserLive = opts.preferBrowserLive !== false;
 
         let stream = null;
         let mediaRecorder = null;
         let deliveryAnalyzer = null;
+        let speechRecognizer = null;
+        let smoothEmitter = null;
         let chunks = [];
         let mime = 'audio/webm';
         let startedAt = 0;
@@ -293,27 +464,47 @@
         let active = false;
         let lastText = '';
         let lastChunkCount = 0;
+        let liveMode = 'whisper';
 
-        const emit = (text) => {
+        const emitDirect = (text) => {
             lastText = liveSanitize(text);
             if (onTranscript) onTranscript(lastText);
         };
 
+        const emitTarget = (text) => {
+            lastText = liveSanitize(text);
+            if (liveMode === 'browser') {
+                emitDirect(lastText);
+                return;
+            }
+            if (smoothEmitter) smoothEmitter.setTarget(lastText);
+            else emitDirect(lastText);
+        };
+
         const runWindow = async () => {
-            if (!active || busy || chunks.length === 0) return;
+            if (!active || busy || liveMode === 'browser' || chunks.length === 0) return;
             if (chunks.length === lastChunkCount) return;
             lastChunkCount = chunks.length;
             busy = true;
             try {
                 const blob = new Blob(chunks, { type: mime });
                 const text = await transcribeBlob(blob, transcribeUrl);
-                if (text && active && !sanitizeIsWeak(text)) emit(text);
+                if (text && active && !isWeakTranscript(text)) emitTarget(text);
             } finally {
                 busy = false;
             }
         };
 
-        const sanitizeIsWeak = (t) => isWeakTranscript(t);
+        const teardownLive = () => {
+            if (timer) {
+                clearInterval(timer);
+                timer = null;
+            }
+            speechRecognizer?.cancel?.();
+            speechRecognizer = null;
+            smoothEmitter?.reset?.();
+            smoothEmitter = null;
+        };
 
         return {
             async start() {
@@ -322,7 +513,7 @@
                 chunks = [];
                 lastText = '';
                 lastChunkCount = 0;
-                emit('');
+                emitDirect('');
                 onStatus?.('starting');
 
                 if (global.speechSynthesis) global.speechSynthesis.cancel();
@@ -343,10 +534,33 @@
                 mediaRecorder.ondataavailable = (e) => {
                     if (e.data && e.data.size > 0) chunks.push(e.data);
                 };
-                mediaRecorder.start(1000);
+                mediaRecorder.start(500);
                 startedAt = Date.now();
+
+                if (preferBrowserLive) {
+                    speechRecognizer = createSpeechRecognizer({
+                        onTranscript: (text) => {
+                            if (!active || liveMode !== 'browser') return;
+                            lastText = liveSanitize(text);
+                            emitDirect(lastText);
+                        },
+                    });
+                    if (speechRecognizer.isSupported) {
+                        liveMode = 'browser';
+                        speechRecognizer.start();
+                    }
+                }
+
+                if (liveMode !== 'browser') {
+                    smoothEmitter = createSmoothTranscriptEmitter((text) => {
+                        lastText = liveSanitize(text);
+                        if (onTranscript) onTranscript(lastText);
+                    });
+                    timer = setInterval(runWindow, windowMs);
+                    setTimeout(runWindow, 1400);
+                }
+
                 onStatus?.('recording');
-                timer = setInterval(runWindow, windowMs);
             },
 
             getLatestText() {
@@ -355,13 +569,15 @@
 
             async stop() {
                 active = false;
-                if (timer) {
-                    clearInterval(timer);
-                    timer = null;
-                }
                 const durationSeconds = (Date.now() - startedAt) / 1000;
                 const delivery = deliveryAnalyzer?.stop?.() || {};
                 deliveryAnalyzer = null;
+
+                let browserText = '';
+                if (speechRecognizer) {
+                    browserText = await speechRecognizer.stop();
+                }
+                teardownLive();
 
                 if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                     const recRef = mediaRecorder;
@@ -383,9 +599,10 @@
                 const blob = chunks.length ? new Blob(chunks, { type: mime }) : null;
                 onStatus?.('transcribing');
 
-                let text = lastText;
+                let text = lastText || browserText;
                 const finalText = await transcribeBlob(blob, transcribeUrl);
                 if (finalText) text = finalText;
+                else if (browserText) text = browserText;
 
                 mediaRecorder = null;
                 return { text: sanitizeTranscript(text), blob, durationSeconds, delivery };
@@ -393,10 +610,7 @@
 
             cancel() {
                 active = false;
-                if (timer) {
-                    clearInterval(timer);
-                    timer = null;
-                }
+                teardownLive();
                 if (deliveryAnalyzer) {
                     deliveryAnalyzer.stop();
                     deliveryAnalyzer = null;
@@ -464,6 +678,8 @@
         isWeakTranscript,
         wait,
         transcribeBlob,
+        createSpeechRecognizer,
+        createSmoothTranscriptEmitter,
         createLiveTranscriber,
         uploadAudio,
         uploadAudioWithTimeout,

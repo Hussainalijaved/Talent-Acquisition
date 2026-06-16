@@ -180,6 +180,23 @@ function buildFallbackQuestion(role, speechIndex) {
   return lanes[idx];
 }
 
+function inferExperienceTier(cvText) {
+  const cv = String(cvText || '');
+  const yearMatches = [...cv.matchAll(/(\d+)\+?\s*(?:years?|yrs?)(?:\s+of)?\s*(?:experience|exp)?/gi)];
+  let maxYears = 0;
+  for (const m of yearMatches) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > maxYears) maxYears = n;
+  }
+  if (/\b(senior|lead|principal|architect|staff|head of|engineering manager)\b/i.test(cv) || maxYears >= 6) {
+    return 'senior';
+  }
+  if (/\b(junior|intern|trainee|graduate|entry[- ]?level|fresher|bootcamp)\b/i.test(cv) || maxYears <= 2) {
+    return 'junior';
+  }
+  return 'mid';
+}
+
 function buildScoringPrompt(cfg, ctx) {
   const {
     jdTitle,
@@ -193,9 +210,21 @@ function buildScoringPrompt(cfg, ctx) {
     speechPhases,
     isFinal,
     nextLane,
+    experienceTier,
   } = ctx;
 
-  return `You are an expert behavioral interviewer evaluating SPOKEN communication for ${cfg.organization_name || 'the company'}.
+  const speechQuestionRules = !isFinal
+    ? `
+SPEECH next_question RULES (phase ${speechIndex + 1}):
+- Natural spoken behavioral question — STAR-friendly ("Tell me about…", "Describe a time…", "Walk me through…")
+- Focus: ${nextLane}
+- Calibrate depth to ${experienceTier} level and ${jdTitle}; use CV silently — never quote employers, projects, or "on your CV"
+- One clear question only; 15-45 seconds to answer aloud
+- FORBIDDEN: company names, project titles, "you mentioned", "your resume", "at [Company]"
+`
+    : '';
+
+  return `You are an expert behavioral interviewer evaluating SPOKEN communication.
 
 ROLE: ${jdTitle}
 COMMUNICATION round — speech phase ${speechIndex} of ${speechPhases} (after technical assessment).
@@ -222,8 +251,9 @@ Delivery calibration (use audio + metrics):
 JD context:
 ${jdReq.slice(0, 1500)}
 
-CV excerpt (ground examples — do not invent employers/projects):
+Candidate CV (silent calibration only — never quote in next_question):
 ${cvText || '(none)'}
+${speechQuestionRules}
 
 Prior speech Q&A:
 ${speechHistory || '(none yet)'}
@@ -236,7 +266,7 @@ ${answerText}
 
 Delivery metrics from recording: ${metricsText || 'not provided'}
 
-${!isFinal ? `Next speech phase ${speechIndex + 1} focus: ${nextLane}` : 'FINAL speech phase — no next_question.'}
+${!isFinal ? `Next speech phase ${speechIndex + 1}: write next_question following SPEECH next_question RULES above.` : 'FINAL speech phase — no next_question.'}
 
 In feedback, cite BOTH content and delivery (e.g. "clear STAR structure" + "steady confident tone").
 If audio is silent/unintelligible, say so and score ≤ 15.
@@ -299,6 +329,7 @@ const isFinal = speechIndex >= speechPhases;
 const jdTitle = String(cfg.requisition_title || '').trim();
 const jdReq = String(cfg.requisition_requirements || '').trim();
 const cvText = String(session.cv_plaintext || '').slice(0, 4000);
+const experienceTier = inferExperienceTier(cvText);
 
 const currentRow = history.find((h) => Number(h.phase) === ph);
 const currentQuestionText = String(currentRow?.question_text || currentRow?.question || '').trim();
@@ -358,6 +389,7 @@ const systemContent = buildScoringPrompt(cfg, {
   speechPhases,
   isFinal,
   nextLane,
+  experienceTier,
 });
 
 let skipLlmChain = false;

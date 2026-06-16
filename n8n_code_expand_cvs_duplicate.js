@@ -88,17 +88,13 @@ if (!email) {
   );
 }
 
-const BLOCK_STAGES = new Set(['Shortlisted', 'ReviewQueue', 'DuplicateSkipped']);
-
+// Duplicate only when the exact same application is resubmitted: same email + same job + same CV.
+// Any one different → allow screening and a new assessment session.
 const is_duplicate = rows.some((r) => {
   const rEmail = String(r.candidate_email || '').trim().toLowerCase();
   const rReq = String(r.requisition_id || '').trim().toLowerCase();
   if (rEmail !== email || rReq !== requisition_id) return false;
-
-  const stage = String(r.stage || '');
-  if (r.fingerprint && r.fingerprint === fingerprint) return true;
-  if (BLOCK_STAGES.has(stage)) return true;
-  return false;
+  return Boolean(r.fingerprint && r.fingerprint === fingerprint);
 });
 
 const config = {

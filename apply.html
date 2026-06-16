@@ -1072,14 +1072,34 @@
             return String(value || '').trim().toLowerCase();
         }
 
+        function sessionIsActive(status) {
+            const s = String(status || '').toLowerCase();
+            return !s.includes('completed') && !s.includes('terminated') && !s.includes('abandoned');
+        }
+
+        function sessionMatchesJob(row, jobId) {
+            if (!row || !jobId) return true;
+            const jid = normalizeJobId(jobId);
+            const rowRid = normalizeJobId(row.requisition_id);
+            const cfg = parseNotes(row.config);
+            const cfgRid = normalizeJobId(cfg.requisition_id);
+            const cfgSlug = normalizeJobId(
+                String(cfg.requisition_title || '')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-|-$/g, '')
+            );
+            return rowRid === jid || cfgRid === jid || cfgSlug === jid;
+        }
+
         async function fetchAssessmentSessionId(email, jobId, submitStartedAt) {
             if (!sbClient) return null;
             const { data, error } = await sbClient
                 .from('assessment_sessions')
-                .select('id, updated_at, config, requisition_id')
+                .select('id, updated_at, config, requisition_id, status')
                 .eq('candidate_email', email.toLowerCase())
                 .order('updated_at', { ascending: false })
-                .limit(12);
+                .limit(20);
             if (error) {
                 console.warn('Session fetch:', error.message);
                 return null;
@@ -1087,25 +1107,16 @@
             if (!data?.length) return null;
 
             const jid = normalizeJobId(jobId);
-            const since = (submitStartedAt || Date.now()) - 20000;
+            const activeForJob = data.filter(
+                (s) => sessionIsActive(s.status) && sessionMatchesJob(s, jid)
+            );
+            if (!activeForJob.length) return null;
 
-            const recent = data.filter((s) => new Date(s.updated_at || 0).getTime() >= since);
-            const pool = recent.length ? recent : data;
-
-            const match = pool.find((s) => {
-                const rowRid = normalizeJobId(s.requisition_id);
-                const cfg = parseNotes(s.config);
-                const cfgRid = normalizeJobId(cfg.requisition_id);
-                const cfgSlug = normalizeJobId(
-                    String(cfg.requisition_title || '')
-                        .toLowerCase()
-                        .replace(/[^a-z0-9]+/g, '-')
-                        .replace(/^-|-$/g, '')
-                );
-                if (!jid) return true;
-                return rowRid === jid || cfgRid === jid || cfgSlug === jid;
-            });
-            return (match || pool[0]).id;
+            const since = (submitStartedAt || Date.now()) - 120000;
+            const fresh = activeForJob.filter(
+                (s) => new Date(s.updated_at || 0).getTime() >= since
+            );
+            return (fresh[0] || activeForJob[0]).id;
         }
 
         async function pollForSessionId(email, jobId, submitStartedAt, maxMs) {
@@ -1125,7 +1136,7 @@
                 .select('stage')
                 .eq('candidate_email', email)
                 .eq('requisition_id', jobId)
-                .in('stage', ['Shortlisted', 'ReviewQueue', 'DuplicateSkipped'])
+                .eq('stage', 'DuplicateSkipped')
                 .limit(1);
             if (error) return false;
             return (data || []).length > 0;
@@ -2042,7 +2053,7 @@
                     iconClass: 'info',
                     icon: '↺',
                     title: 'Already applied',
-                    message: 'You already have an active application for this role. Check your email for the assessment link or contact the hiring team.',
+                    message: 'You already submitted this exact application (same email, role, and CV). Check your email for the assessment link or contact the hiring team.',
                     detail: email + ' · ' + currentJob.title,
                     actionsHtml: '<a href="careers.html" class="btn btn-secondary" style="text-decoration:none;display:inline-block;text-align:center">Browse other roles</a>',
                 });

@@ -76,7 +76,54 @@ function extractJdThemes(text) {
   return lines.length ? [...new Set(lines)].slice(0, 10) : [String(text).slice(0, 500)];
 }
 
+function inferExperienceTier(cvText) {
+  const cv = String(cvText || '');
+  const yearMatches = [...cv.matchAll(/(\d+)\+?\s*(?:years?|yrs?)(?:\s+of)?\s*(?:experience|exp)?/gi)];
+  let maxYears = 0;
+  for (const m of yearMatches) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > maxYears) maxYears = n;
+  }
+  if (/\b(senior|lead|principal|architect|staff|head of|engineering manager)\b/i.test(cv) || maxYears >= 6) {
+    return 'senior';
+  }
+  if (/\b(junior|intern|trainee|graduate|entry[- ]?level|fresher|bootcamp)\b/i.test(cv) || maxYears <= 2) {
+    return 'junior';
+  }
+  return 'mid';
+}
+
+function phaseBlueprint(phaseNum, tier) {
+  const blueprints = {
+    2: {
+      junior: 'Hands-on implementation — a practical scenario using a core stack skill from the JD (build, validate, handle errors).',
+      mid: 'Real-world implementation — extend or harden something similar to what this role ships (API, service, data flow, or UI layer).',
+      senior: 'Production implementation — design and defend how you would build or refactor a non-trivial feature with quality and operability in mind.',
+    },
+    3: {
+      junior: 'Debugging basics — trace a concrete bug or failure (logs, exceptions, wrong output) and explain your fix.',
+      mid: 'Troubleshooting under load — diagnose slow, flaky, or intermittent production issues and prioritize fixes.',
+      senior: 'Incident response — root-cause a complex outage or regression; discuss mitigation, rollback, and prevention.',
+    },
+    4: {
+      junior: 'Structured thinking — break a small feature into components, data flow, and testing approach.',
+      mid: 'Design trade-offs — compare two reasonable approaches for a feature this role owns (scalability, maintainability, cost).',
+      senior: 'Architecture — multi-service or multi-tenant design, boundaries, auth, versioning, or cross-team contracts.',
+    },
+    5: {
+      junior: 'Ownership and learning — how you verify your work, handle feedback, and grow into the role.',
+      mid: 'Production readiness — deployment, monitoring, tech debt, and balancing speed vs quality on real delivery.',
+      senior: 'Strategic depth — long-term maintainability, team standards, risk, and mentoring others on technical decisions.',
+    },
+  };
+  const row = blueprints[phaseNum];
+  if (!row) return 'Follow-up depth probe aligned to the role and prior answers.';
+  return row[tier] || row.mid;
+}
+
 const cvText = String(session.cv_plaintext || '').slice(0, 8000);
+const experienceTier = inferExperienceTier(cvText);
+const jdThemes = extractJdThemes(jdReq).join('\n- ');
 const historyText = history
   .map(
     (h) =>
@@ -99,29 +146,57 @@ const prevTimeLimit = prevPhaseRow?.time_limit_seconds ?? null;
 
 const nextPhaseNum = ph + 1;
 
-const sharedRules = `"""You are an experienced technical interviewer for ${jdTitle} at ${cfg.organization_name || 'the company'}.
+const questionRules = `ASSESSMENT QUESTION RULES (next_question and first_speech_question):
+You are conducting a real company software assessment — questions must sound like a live interviewer, not an AI reading a CV.
 
-You have the job description, the candidate CV, and the full Q&A history below. Interview like a real hiring manager — use your own judgment for what to ask next and how to score.
+Silent personalization (use CV + JD internally only):
+- Inferred experience level: ${experienceTier}
+- Pick topics/skills that appear in BOTH the JD and CV (or a critical JD gap worth probing)
+- Raise or lower depth based on how they answered prior phases — do not repeat topics already asked
+
+Phase focus for next_question:
+- ${phaseBlueprint(nextPhaseNum, experienceTier)}
+
+Question style:
+- Scenario-based, practical wording: "Walk me through…", "How would you…", "Describe how you would…", "A production system is…"
+- One clear question only — no multi-part laundry lists
+- Match complexity_tier A-D to the inferred level and phase depth
+- Do NOT ask generic textbook definitions ("What is OOP?", "Explain REST in general")
+
+FORBIDDEN in next_question / first_speech_question text (never include):
+- "on your CV", "your CV", "you listed", "you mentioned", "according to your resume"
+- Company names, employer names, university names, or project titles copied from the CV
+- "In your role at…", "At [Company]…", "On the [Project]…"
+The candidate must not feel the question was generated from a document.
+
+GOOD: "A production API is returning slow responses under load. How would you diagnose the issue and what would you change first?"
+BAD: "On your CV you built REST APIs at Acme Corp — tell me about that."`;
+
+const sharedRules = `"""You are an experienced technical interviewer for ${jdTitle}.
+
+You have the job description, the candidate CV (for silent calibration only), and the full Q&A history below. Interview like a real hiring manager.
 
 Each phase (except the last):
 - Score the answer to the question asked this phase: 0-100
 - Give honest feedback and a concise suggested_answer
-- Write next_question: the single best follow-up question you would ask this candidate for this role
+- Write next_question: the single best follow-up for phase ${nextPhaseNum}
 
 Final phase:
 - Score the answer, then decide PASS or FAIL for the technical round overall
 
-Light guidance only (you decide the rest):
+Scoring guidance:
 - Do not repeat topics you already covered
-- Calibrate difficulty to the CV and how they have answered so far
+- Calibrate difficulty to experience level (${experienceTier}) and prior answers
 - Empty, timeout, or [SYSTEM TERMINATION] answers: score 0-15
 
-Job title: ${jdTitle}
-Job description:
-${jdReq}
+${questionRules}
 
-Candidate CV:
-${cvText}
+Job title: ${jdTitle}
+Key JD themes:
+- ${jdThemes || jdReq.slice(0, 500)}
+
+Candidate CV (silent calibration — never quote in questions):
+${cvText || '(none)'}
 
 Prior Q&A:
 ${historyText || '(none yet)'}
@@ -141,7 +216,7 @@ if (isFinal) {
   const speechHandoff = speechEnabled
     ? `
 
-If speech round is enabled for this workflow (${cfg.speech_phases} voice questions after technical), also include first_speech_question — a behavioral question you choose for the voice round (natural spoken language).`
+If speech round is enabled (${cfg.speech_phases} voice questions after technical), also include first_speech_question — a natural spoken behavioral opener for the communication round. Apply the same FORBIDDEN rules (no CV/company names in the question text).`
     : '';
 
   const speechField = speechEnabled
@@ -178,8 +253,8 @@ ${prevTimeLimit != null ? `Previous phase time_limit_seconds: ${prevTimeLimit}` 
 Tasks:
 1. Score the answer 0-100.
 2. feedback + suggested_answer.
-3. next_question for phase ${nextPhaseNum} — your choice as the interviewer.
-4. time_limit_seconds + complexity_tier (A-D).
+3. next_question for phase ${nextPhaseNum} — follow ASSESSMENT QUESTION RULES above.
+4. time_limit_seconds (90-600) + complexity_tier (A-D).
 
 Output: {"score":number,"feedback":string,"suggested_answer":string,"next_question":string,"time_limit_seconds":number,"complexity_tier":"A"|"B"|"C"|"D"}`;
 }

@@ -1,5 +1,5 @@
 // n8n: CODE - SB prepare session insert
-// Flow: GATE Shortlist → this node → HTTP upsert/insert → map session id → MAIL → PATCH thread
+// Flow: GATE Shortlist → this node → HTTP insert (always new row) → map session id → MAIL → PATCH thread
 //
 // HTTP - SB insert assessment session:
 //   URL:     {{ $json._sb_insert_sessions }}
@@ -41,25 +41,21 @@ function buildDeadline(isoStart, seconds) {
   return new Date(start.getTime() + seconds * 1000).toISOString();
 }
 
-function isRealGmailThreadId(id) {
-  const s = String(id || '').trim();
-  return (
-    s.length > 0 &&
-    !/^pending$/i.test(s) &&
-    !s.startsWith('pending-') &&
-    !s.startsWith('draft-')
-  );
-}
-
-function pickGmailThreadId(...candidates) {
-  for (const id of candidates) {
-    if (isRealGmailThreadId(id)) return String(id).trim();
-  }
-  return '';
+function slugFromTitle(title) {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 64);
 }
 
 const parse =
   pickNodeJson('CODE - Parse CV screening outcome', 'CODE - Parse CV screening outcome1') || {};
+const expand =
+  pickNodeJson(
+    'CODE - Expand CVs and duplicate flag',
+    'CODE - Expand CVs and duplicate flag1'
+  ) || {};
 const inp = $input.first().json || {};
 const httpOut =
   inp.candidate_email || inp.stage || inp.notes || inp.gmail_thread_id ? inp : {};
@@ -71,7 +67,7 @@ const cfgRow =
   pickNodeJson('CFG - Workflow configuration', 'CFG - Workflow configuration1') || {};
 const cfg = parse.config || cfgRow.config || cfgRow || {};
 
-const jdTitle = String(cfg.requisition_title || '').trim();
+const jdTitle = String(cfg.requisition_title || expand.requisition_title || '').trim();
 const jdReq = String(cfg.requisition_requirements || '').trim();
 if (!jdTitle || !jdReq) {
   throw new Error(
@@ -81,12 +77,19 @@ if (!jdTitle || !jdReq) {
 
 const nowIso = new Date().toISOString();
 const candidate_email = String(
-  httpOut.candidate_email || parse.candidate_email || inp.candidate_email || ''
+  httpOut.candidate_email ||
+    parse.candidate_email ||
+    expand.candidate_email ||
+    inp.candidate_email ||
+    ''
 )
   .trim()
   .toLowerCase();
 
 const qText = String(parse.phase_1_question || notes.phase_1_question || '').trim();
+if (!qText) {
+  throw new Error('Phase 1 question missing — cannot create assessment session without phase_1_question.');
+}
 
 const aiSeconds =
   parse.phase_1_time_limit_seconds ??
@@ -98,23 +101,25 @@ const deadline_at = buildDeadline(nowIso, time_limit_seconds);
 const complexity_tier =
   parse.phase_1_complexity_tier || notes.complexity_tier || notes.complexityTier || null;
 
-const cv = String(parse.cv_plaintext || parse.cv_text || '').slice(0, 12000);
+const cv = String(
+  parse.cv_plaintext || parse.cv_text || expand.cv_text || expand.cv_plaintext || ''
+).slice(0, 12000);
 
-const realThread = pickGmailThreadId(
-  parse.gmail_thread_id,
-  httpOut.gmail_thread_id,
-  inp.gmail_thread_id
-);
-// null until MAIL+PATCH — avoids unique constraint collisions on placeholder values
-const gmail_thread_id = realThread || null;
+const fingerprint = String(
+  httpOut.fingerprint || parse.fingerprint || expand.fingerprint || inp.fingerprint || ''
+).trim();
 
 const requisition_id =
-  String(parse.requisition_id || httpOut.requisition_id || inp.requisition_id || '').trim() ||
-  jdTitle
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 64);
+  String(
+    parse.requisition_id ||
+      expand.requisition_id ||
+      httpOut.requisition_id ||
+      inp.requisition_id ||
+      ''
+  ).trim() || slugFromTitle(jdTitle);
+
+// Always null on insert — MAIL+PATCH sets the real Gmail thread on this new row only.
+const gmail_thread_id = null;
 
 const sessionBody = {
   gmail_thread_id,
@@ -125,11 +130,12 @@ const sessionBody = {
   screening: parse.screening || notes,
   score: httpOut.score ?? parse.score ?? null,
   requisition_id,
-  fingerprint: httpOut.fingerprint || parse.fingerprint || inp.fingerprint || '',
+  fingerprint,
   cv_plaintext: cv,
   last_question_sent_at: nowIso,
   updated_at: nowIso,
   config: {
+    requisition_id,
     requisition_title: jdTitle,
     requisition_requirements: jdReq,
     organization_name: cfg.organization_name,
@@ -140,18 +146,18 @@ const sessionBody = {
     supabase_url: cfg.supabase_url,
     supabase_key: cfg.supabase_key,
     table_assessment_sessions: cfg.table_assessment_sessions,
-      fail_score_threshold: cfg.fail_score_threshold ?? 30,
-      pass_score_threshold: cfg.pass_score_threshold ?? 60,
-      timer_min_seconds: cfg.timer_min_seconds ?? 60,
-      timer_max_seconds: cfg.timer_max_seconds ?? 600,
-      speech_enabled:
-        cfg.speech_enabled === true ||
-        cfg.speech_enabled === 'true' ||
-        Number(cfg.speech_phases ?? 5) > 0,
-      speech_phases: Number(cfg.speech_phases ?? 5),
-      technical_weight: Number(cfg.technical_weight ?? 0.7),
-      speech_weight: Number(cfg.speech_weight ?? 0.3),
-    },
+    fail_score_threshold: cfg.fail_score_threshold ?? 30,
+    pass_score_threshold: cfg.pass_score_threshold ?? 60,
+    timer_min_seconds: cfg.timer_min_seconds ?? 60,
+    timer_max_seconds: cfg.timer_max_seconds ?? 600,
+    speech_enabled:
+      cfg.speech_enabled === true ||
+      cfg.speech_enabled === 'true' ||
+      Number(cfg.speech_phases ?? 5) > 0,
+    speech_phases: Number(cfg.speech_phases ?? 5),
+    technical_weight: Number(cfg.technical_weight ?? 0.7),
+    speech_weight: Number(cfg.speech_weight ?? 0.3),
+  },
   interview_history: [
     {
       phase: 1,
@@ -172,23 +178,22 @@ const b = String(cfg.supabase_url || '').replace(/\/+$/, '');
 const tb = cfg.table_assessment_sessions || 'assessment_sessions';
 const baseUrl = `${b}/rest/v1/${tb}`;
 
-// Re-apply / same Gmail thread → update existing row instead of duplicate-key error
-const _sb_insert_sessions = realThread
-  ? `${baseUrl}?on_conflict=gmail_thread_id`
-  : baseUrl;
-const _session_prefer = realThread
-  ? 'resolution=merge-duplicates,return=representation'
-  : 'return=representation';
+// Always INSERT a new row — one session per distinct application (email + job + CV).
+// Never upsert on gmail_thread_id (that overwrote completed sessions for returning candidates).
+const _sb_insert_sessions = baseUrl;
+const _session_prefer = 'return=representation';
 
 return [
   {
     json: {
       ...parse,
+      ...expand,
       ...httpOut,
       config: cfg,
       candidate_email,
+      fingerprint,
       gmail_thread_id,
-      gmail_thread_is_pending: !realThread,
+      gmail_thread_is_pending: true,
       phase_1_question: qText,
       phase_1_time_limit_seconds: time_limit_seconds,
       requisition_id,

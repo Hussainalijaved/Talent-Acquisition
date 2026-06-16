@@ -661,6 +661,89 @@
 
         const ASSESSMENT_PHASE_DEFAULTS = { tech: 5, speech: 5 };
 
+        const normalizeJobIdPortal = (value) => String(value || '').trim().toLowerCase();
+
+        const parseInterviewHistoryLite = (raw) => {
+            let history = raw || [];
+            if (typeof history === 'string') {
+                try { history = JSON.parse(history); } catch (e) { history = []; }
+            }
+            return Array.isArray(history) ? history : [];
+        };
+
+        const isPhaseAnsweredPortal = (h) => {
+            if (!h) return false;
+            const a = h.answer_text;
+            return a != null && String(a).trim() !== '';
+        };
+
+        const isSessionStartedPortal = (history) =>
+            parseInterviewHistoryLite(history).some(isPhaseAnsweredPortal);
+
+        const sessionStatusIsClosed = (status) => {
+            const s = String(status || '').toLowerCase();
+            return s.includes('completed') || s.includes('terminated') || s.includes('abandoned');
+        };
+
+        const sessionJobMatchesPortal = (session, jobId) => {
+            if (!session || !jobId) return true;
+            const jid = normalizeJobIdPortal(jobId);
+            const rid = normalizeJobIdPortal(session.requisition_id);
+            let cfg = session.config || {};
+            if (typeof cfg === 'string') {
+                try { cfg = JSON.parse(cfg); } catch (e) { cfg = {}; }
+            }
+            const cfgRid = normalizeJobIdPortal(cfg.requisition_id);
+            const cfgSlug = normalizeJobIdPortal(
+                String(cfg.requisition_title || '')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '-')
+                    .replace(/^-|-$/g, '')
+            );
+            return rid === jid || cfgRid === jid || cfgSlug === jid;
+        };
+
+        const getPortalSessionBlockReason = (session) => {
+            if (!session) {
+                return { blocked: true, message: 'Could not verify your assessment session.' };
+            }
+            const status = String(session.status || '').toLowerCase();
+            if (status.includes('completed') || status.includes('terminated')) {
+                return {
+                    blocked: true,
+                    message: 'This assessment session has already been completed.',
+                };
+            }
+            if (status.includes('abandoned') || isSessionStartedPortal(session.interview_history)) {
+                return {
+                    blocked: true,
+                    message:
+                        'You left this assessment before finishing. Resuming is not allowed for this session. Please contact your recruiter if you need help.',
+                };
+            }
+            return { blocked: false, message: '' };
+        };
+
+        const pickActiveSessionForJob = (rows, jobId) => {
+            if (!rows?.length) return null;
+            return (
+                rows.find((s) => !sessionStatusIsClosed(s.status) && sessionJobMatchesPortal(s, jobId)) ||
+                null
+            );
+        };
+
+        const markSessionAbandoned = async (supabaseClient, sessionId) => {
+            if (!supabaseClient || !sessionId) return;
+            try {
+                await supabaseClient
+                    .from('assessment_sessions')
+                    .update({ status: 'abandoned', updated_at: new Date().toISOString() })
+                    .eq('id', sessionId);
+            } catch (e) {
+                console.warn('Could not mark session abandoned:', e);
+            }
+        };
+
         const AssessmentSidebar = ({
             phases,
             currentStep,
@@ -787,7 +870,7 @@
                 setLocalLoading(true);
                 try {
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sId);
-                    let query = supabase.from('assessment_sessions').select('id, status');
+                    let query = supabase.from('assessment_sessions').select('id, status, interview_history');
                     if (isUuid) {
                         query = query.eq('id', sId);
                     } else {
@@ -800,9 +883,12 @@
                         return;
                     }
 
-                    const statusStr = (data.status || '').toLowerCase();
-                    if (statusStr.includes('completed') || statusStr.includes('terminated')) {
-                        setErrorMsg('This assessment session has already been completed or terminated.');
+                    const block = getPortalSessionBlockReason(data);
+                    if (block.blocked) {
+                        if (isSessionStartedPortal(data.interview_history)) {
+                            await markSessionAbandoned(supabase, data.id);
+                        }
+                        setErrorMsg(block.message);
                         return;
                     }
 
@@ -911,10 +997,11 @@
             const [agreed, setAgreed] = React.useState(false);
             const [progress, setProgress] = React.useState(null);
             const [progressLoading, setProgressLoading] = React.useState(!!sessionId);
+            const [sessionBlockMsg, setSessionBlockMsg] = React.useState('');
             const techCount = progress?.techTotal ?? ASSESSMENT_PHASE_DEFAULTS.tech;
             const speechCount = progress?.speechTotal ?? ASSESSMENT_PHASE_DEFAULTS.speech;
-            const isSpeechResume = progress?.kind === 'speech_intro' || progress?.kind === 'speech';
-            const isTechResume = progress?.kind === 'technical' && Number(progress?.nextPhaseNum) > 1;
+            const isSpeechResume = false;
+            const isTechResume = false;
 
             React.useEffect(() => {
                 if (!sessionId || !supabase) {
@@ -930,7 +1017,16 @@
                             .select('interview_history, max_phases, screening, config, assessment_stage, current_phase, status');
                         query = isUuid ? query.eq('id', sessionId) : query.eq('gmail_thread_id', sessionId);
                         const { data, error } = await query.maybeSingle();
-                        if (!cancelled && !error && data && !sessionStatusBlocked(data.status)) {
+                        if (!cancelled && !error && data) {
+                            const block = getPortalSessionBlockReason(data);
+                            if (block.blocked) {
+                                if (isSessionStartedPortal(data.interview_history)) {
+                                    await markSessionAbandoned(supabase, data.id || sessionId);
+                                }
+                                setSessionBlockMsg(block.message);
+                                return;
+                            }
+                            setSessionBlockMsg('');
                             setProgress(inspectSessionProgress(data));
                         }
                     } catch (e) {
@@ -942,31 +1038,17 @@
                 return () => { cancelled = true; };
             }, [sessionId, supabase]);
 
-            const startButtonLabel = (() => {
-                if (progressLoading) return 'Checking your progress…';
-                if (isSpeechResume) {
-                    if (progress.kind === 'speech' && Number(progress.speechIndex) > 1) {
-                        return `Continue Phase 2 — voice question ${progress.speechIndex} of ${speechCount}`;
-                    }
-                    return 'Continue to Phase 2 — voice interview';
-                }
-                if (isTechResume) {
-                    return `Continue Phase 1 — question ${progress.nextPhaseNum} of ${techCount}`;
-                }
-                return 'Start Phase 1 — written assessment';
-            })();
+            const startButtonLabel = progressLoading
+                ? 'Checking your progress…'
+                : sessionBlockMsg
+                    ? 'Assessment unavailable'
+                    : 'Start Phase 1 — written assessment';
 
-            const introLead = isSpeechResume
-                ? 'Your written technical assessment (Phase 1) is already complete. Review the rules below, then continue to the voice interview.'
-                : isTechResume
-                    ? `You have an assessment in progress. You will resume Phase 1 from question ${progress.nextPhaseNum} of ${techCount}.`
-                    : `Your evaluation has two parts (${techCount + speechCount} questions total): a written technical assessment, then a professional voice interview. Read the overview and rules below, then confirm to begin.`;
+            const introLead = sessionBlockMsg
+                ? sessionBlockMsg
+                : `Your evaluation has two parts (${techCount + speechCount} questions total): a written technical assessment, then a professional voice interview. Read the overview and rules below, then confirm to begin.`;
 
-            const youStartWith = isSpeechResume
-                ? 'Phase 2 — voice interview (Phase 1 complete)'
-                : isTechResume
-                    ? `Phase 1 — question ${progress.nextPhaseNum} of ${techCount}`
-                    : 'Phase 1 — written assessment';
+            const youStartWith = 'Phase 1 — written assessment';
             const rules = [
                 {
                     title: 'Phase 1 — Written technical assessment',
@@ -1097,11 +1179,17 @@
                                 ))}
                             </div>
                             <div className="px-8 sm:px-10 pb-8 sm:pb-10 pt-2 space-y-5">
-                                <label className="flex items-start gap-3 cursor-pointer group rounded-lg p-2 -m-2 hover:bg-surface-elevated/30 transition-colors">
+                                {sessionBlockMsg ? (
+                                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 leading-relaxed">
+                                        {sessionBlockMsg}
+                                    </div>
+                                ) : null}
+                                <label className={`flex items-start gap-3 group rounded-lg p-2 -m-2 transition-colors ${sessionBlockMsg ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-surface-elevated/30'}`}>
                                     <input
                                         type="checkbox"
                                         className="mt-0.5 w-4 h-4 rounded border-surface-border bg-surface-elevated text-accent focus:ring-accent focus:ring-offset-0 focus:ring-2 shrink-0"
                                         checked={agreed}
+                                        disabled={!!sessionBlockMsg}
                                         onChange={(e) => setAgreed(e.target.checked)}
                                     />
                                     <span className="text-sm text-slate-400 group-hover:text-slate-300 leading-relaxed">
@@ -1111,13 +1199,15 @@
                                 <button
                                     type="button"
                                     onClick={() => onStart()}
-                                    disabled={!agreed || progressLoading}
+                                    disabled={!agreed || progressLoading || !!sessionBlockMsg}
                                     className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
                                 >
                                     {startButtonLabel}
                                 </button>
                                 <p className="text-xs text-center text-slate-600 leading-relaxed">
-                                    You may close this page before starting; your session ID will work when you return.
+                                    {sessionBlockMsg
+                                        ? 'Each assessment must be completed in one sitting. Contact your recruiter for assistance.'
+                                        : 'Complete the assessment in one sitting — resuming later is not supported.'}
                                 </p>
                             </div>
                         </div>
@@ -1938,29 +2028,9 @@
 
         const normalizeJobId = (value) => String(value || '').trim().toLowerCase();
 
-        const sessionStatusBlocked = (status) => {
-            const s = String(status || '').toLowerCase();
-            return s.includes('completed') || s.includes('terminated');
-        };
+        const sessionStatusBlocked = (status) => sessionStatusIsClosed(status);
 
-        const pickSessionForJob = (rows, jobId) => {
-            if (!rows?.length) return null;
-            const jid = normalizeJobId(jobId);
-            const match = rows.find((s) => {
-                const rid = normalizeJobId(s.requisition_id);
-                const cfg = parseSessionConfig(s.config);
-                const cfgRid = normalizeJobId(cfg.requisition_id);
-                const cfgSlug = normalizeJobId(
-                    String(cfg.requisition_title || '')
-                        .toLowerCase()
-                        .replace(/[^a-z0-9]+/g, '-')
-                        .replace(/^-|-$/g, '')
-                );
-                if (!jid) return true;
-                return rid === jid || cfgRid === jid || cfgSlug === jid;
-            });
-            return match || rows[0];
-        };
+        const pickSessionForJob = (rows, jobId) => pickActiveSessionForJob(rows, jobId);
 
         const isPhaseUnanswered = (h) => {
             if (!h) return false;
@@ -3034,6 +3104,17 @@
                         return;
                     }
 
+                    const block = getPortalSessionBlockReason(data);
+                    if (block.blocked) {
+                        sessionStorage.removeItem('assessment_started');
+                        if (isSessionStartedPortal(data.interview_history)) {
+                            await markSessionAbandoned(supabase, data.id);
+                        }
+                        setUrlEntryError(block.message);
+                        setView('login');
+                        return;
+                    }
+
                     if (!resumeOnly) return;
 
                     sessionStorage.setItem('current_session_id', data.id);
@@ -3099,7 +3180,7 @@
                 if (email) setCandidateEmail(email);
                 const started = sessionStorage.getItem('assessment_started') === 'true';
                 if (started && sId) {
-                    restoreSession(sId, email, { resumeOnly: true });
+                    sessionStorage.removeItem('assessment_started');
                 }
             }, []);
 
@@ -3127,7 +3208,7 @@
                         ''
                     ).trim();
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeSessionId);
-                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, screening, config, assessment_stage, current_phase');
+                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, screening, config, assessment_stage, current_phase, status');
                     if (isUuid) {
                         query = query.eq('id', activeSessionId);
                                         } else {
@@ -3138,9 +3219,23 @@
                     if (error) throw error;
                     if (!data) throw new Error('Session not found');
 
+                    const block = getPortalSessionBlockReason(data);
+                    if (block.blocked) {
+                        if (isSessionStartedPortal(data.interview_history)) {
+                            await markSessionAbandoned(supabase, data.id);
+                        }
+                        throw new Error(block.message);
+                    }
+
                     const history = buildHistoryFromSession(data);
 
                     let resume = resolveResumeTarget(history, data);
+                    if (resume && Number(resume.phaseNum) > 1) {
+                        throw new Error(
+                            'You left this assessment before finishing. Resuming is not allowed for this session. Please contact your recruiter if you need help.'
+                        );
+                    }
+
                     const resolvedId = data.id || activeSessionId;
 
                     if (!resume?.questionText) {
@@ -3224,7 +3319,7 @@
                     setView('assessment');
                                 } catch (e) {
                     console.error('Start Assessment Error:', e);
-                    alert('Failed to load the first question. Please refresh or re-open the link from your email.');
+                    alert(e?.message || 'Failed to load the first question. Please refresh or re-open the link from your email.');
                 } finally {
                     setIsLoading(false);
                 }
@@ -3255,12 +3350,12 @@
                             .select('id, updated_at, config, requisition_id, status')
                             .eq('candidate_email', email.toLowerCase())
                             .order('updated_at', { ascending: false })
-                            .limit(12);
+                            .limit(20);
                         if (error) {
                             console.warn('Session poll error:', error.message);
                         } else if (data?.length) {
                             const row = pickSessionForJob(data, jobId);
-                            if (row?.id && !sessionStatusBlocked(row.status)) return row.id;
+                            if (row?.id) return row.id;
                         }
                         const waitEl = document.querySelector('[data-bootstrap-wait]');
                         if (waitEl) {
@@ -3285,7 +3380,7 @@
                         }
 
                         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeId);
-                        let query = supabase.from('assessment_sessions').select('id, status');
+                        let query = supabase.from('assessment_sessions').select('id, status, interview_history, requisition_id, config');
                         query = isUuid ? query.eq('id', activeId) : query.eq('gmail_thread_id', activeId);
                         const { data, error } = await query.maybeSingle();
                         if (cancelled) return;
@@ -3293,8 +3388,12 @@
                             setUrlEntryError('Could not verify your assessment session. Check the link or contact your recruiter.');
                             return;
                         }
-                        if (sessionStatusBlocked(data.status)) {
-                            setUrlEntryError('This assessment session has already been completed.');
+                        const block = getPortalSessionBlockReason(data);
+                        if (block.blocked) {
+                            if (isSessionStartedPortal(data.interview_history)) {
+                                await markSessionAbandoned(supabase, data.id);
+                            }
+                            setUrlEntryError(block.message);
                             return;
                         }
 

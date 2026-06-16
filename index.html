@@ -1651,6 +1651,46 @@
             return Number(data?.speech_phases || cfg?.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
         };
 
+        const buildClientSpeechFallback = (cfg, speechIndex) => {
+            const role = String(cfg?.requisition_title || 'this role').trim();
+            const lanes = [
+                'Describe a situation where you had to explain a complex technical topic to a non-technical stakeholder. How did you ensure they understood?',
+                'Tell me about a time you faced pressure, a tight deadline, or conflict at work. How did you communicate and stay composed?',
+                `Why are you interested in the ${role} role, and what would you focus on in your first 90 days?`,
+                'Describe a time you had to collaborate with another team or stakeholder who disagreed with your approach. How did you handle it?',
+                'Tell me about a mistake or setback you learned from. What did you change in how you communicate or work afterward?',
+            ];
+            const idx = Math.max(0, Math.min(lanes.length - 1, Number(speechIndex || 1) - 1));
+            return lanes[idx];
+        };
+
+        const resolveQuestionForPhase = (row, phaseNum, data) => {
+            const cfg = parseSessionConfig(data?.config);
+            const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
+            let q = String(row?.question_text || row?.question || '').trim();
+            if (!q && Number(phaseNum) > maxQ) {
+                q = buildClientSpeechFallback(cfg, Number(phaseNum) - maxQ);
+            }
+            if (!q && Number(phaseNum) === 1) {
+                let screening = data?.screening;
+                if (typeof screening === 'string') {
+                    try { screening = JSON.parse(screening); } catch (e) { screening = {}; }
+                }
+                q = String(screening?.phase_1_question || cfg?.phase_1_question || '').trim();
+            }
+            return q;
+        };
+
+        const resolveResumeTarget = (history, data) => {
+            if (!history?.length) return null;
+            const idx = history.findIndex(isPhaseUnanswered);
+            if (idx < 0) return null;
+            const row = history[idx];
+            const phaseNum = Number(row?.phase) || idx + 1;
+            const questionText = resolveQuestionForPhase(row, phaseNum, data);
+            return { phaseIndex: idx, phaseNum, row, questionText };
+        };
+
         const normalizeJobId = (value) => String(value || '').trim().toLowerCase();
 
         const sessionStatusBlocked = (status) => {
@@ -2598,19 +2638,48 @@
 
                     const history = buildHistoryFromSession(data);
 
-                    const firstUnanswered = history.findIndex(isPhaseUnanswered);
-                    const phaseIndex = firstUnanswered >= 0 ? firstUnanswered : 0;
-                    const currentPhaseData = history[phaseIndex];
-                    const questionText = String(
-                        currentPhaseData?.question_text || currentPhaseData?.question || ''
-                    ).trim();
+                    let resume = resolveResumeTarget(history, data);
+                    const resolvedId = data.id || activeSessionId;
 
-                    if (!questionText) {
+                    if (!resume?.questionText) {
+                        const dbPhase = Number(data.current_phase) || 1;
+                        const fromDb = await pollNextQuestionFromSession(resolvedId, dbPhase, 4, 500);
+                        if (fromDb?.nextQuestion) {
+                            const phaseIndex = history.findIndex((h) => Number(h.phase) === dbPhase);
+                            resume = {
+                                phaseIndex: phaseIndex >= 0 ? phaseIndex : Math.max(0, history.length - 1),
+                                phaseNum: dbPhase,
+                                row: phaseIndex >= 0 ? history[phaseIndex] : {},
+                                questionText: fromDb.nextQuestion,
+                                time_limit_seconds: fromDb.time_limit_seconds,
+                                deadline_at: fromDb.deadline_at,
+                            };
+                        }
+                    }
+
+                    if (!resume?.questionText) {
+                        const cfg = parseSessionConfig(data?.config);
+                        const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
+                        const stage = String(data?.assessment_stage || '').toLowerCase();
+                        const speechPhase = Number(data.current_phase) || maxQ + 1;
+                        if (stage === 'speech' || speechPhase > maxQ) {
+                            const phaseIndex = history.findIndex((h) => Number(h.phase) === speechPhase);
+                            resume = {
+                                phaseIndex: phaseIndex >= 0 ? phaseIndex : history.length - 1,
+                                phaseNum: speechPhase,
+                                row: phaseIndex >= 0 ? history[phaseIndex] : {},
+                                questionText: buildClientSpeechFallback(cfg, speechPhase - maxQ),
+                            };
+                        }
+                    }
+
+                    if (!resume?.questionText) {
                         throw new Error('No initial question found in session history.');
                     }
 
+                    const { phaseIndex, phaseNum, row: currentPhaseData, questionText } = resume;
+
                     setQuestion(questionText);
-                    const phaseNum = phaseIndex + 1;
                     const modeInfo = resolveAssessmentMode(data, phaseNum, currentPhaseData);
                     setAssessmentMode(modeInfo.mode);
                     setTechMaxSteps(modeInfo.techMaxSteps);
@@ -2623,7 +2692,6 @@
                     lastViolationAtRef.current = 0;
                     devToolsOpenRef.current = false;
 
-                    const resolvedId = data.id || activeSessionId;
                     setSessionId(resolvedId);
                     sessionStorage.setItem('current_session_id', resolvedId);
                     sessionStorage.setItem('candidate_email', candidateEmailRef.current || candidateEmail || '');
@@ -2635,9 +2703,22 @@
                         console.warn('Timer sync failed — using local timer', timerErr);
                         applyTimerFromPhase({
                             ...currentPhaseData,
-                            time_limit_seconds: getAiTimeLimitSeconds(currentPhaseData) ?? 240,
+                            time_limit_seconds: resume.time_limit_seconds ?? getAiTimeLimitSeconds(currentPhaseData) ?? 240,
+                            deadline_at: resume.deadline_at ?? currentPhaseData?.deadline_at,
                         });
                     }
+
+                    if (modeInfo.mode === 'speech' && phaseNum === modeInfo.techMaxSteps + 1) {
+                        setPendingSpeechIntro({
+                            nextQuestion: questionText,
+                            speechPhases: modeInfo.speechTotalSteps,
+                            time_limit_seconds: resume.time_limit_seconds ?? currentPhaseData?.time_limit_seconds,
+                            deadline_at: resume.deadline_at ?? currentPhaseData?.deadline_at,
+                        });
+                        setView('speech-intro');
+                        return;
+                    }
+
                     setView('assessment');
                                 } catch (e) {
                     console.error('Start Assessment Error:', e);

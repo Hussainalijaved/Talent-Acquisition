@@ -1694,7 +1694,7 @@
 
         const resolveAssessmentMode = (data, phaseNum, phaseRow) => {
             const cfg = parseSessionConfig(data?.config);
-            const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || 5;
+            const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
             const speechPhases = Number(cfg?.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
             const stage = String(data?.assessment_stage || 'technical').toLowerCase();
             const isSpeech =
@@ -1921,6 +1921,12 @@
             return ASSESSMENT_PHASE_DEFAULTS.tech;
         };
 
+        const inferTotalPhaseCount = (history, cfg) => {
+            const techMax = inferTechPhaseCount(history);
+            const speechMax = Number(cfg?.speech_phases ?? ASSESSMENT_PHASE_DEFAULTS.speech);
+            return techMax + (speechMax > 0 ? speechMax : 0);
+        };
+
         const avgSpeechSkill = (rows, key) => {
             const vals = (rows || [])
                 .map((r) => Number(r.soft_skills?.[key]))
@@ -2044,11 +2050,9 @@
             );
         };
 
-        const PhaseReviewCard = ({ item, techMax, speechIndex }) => {
+        const PhaseReviewCard = ({ item, techMax, speechIndex, totalPhases }) => {
             const isSpeech = isSpeechHistoryItem(item, techMax);
-            const phaseLabel = isSpeech
-                ? `Voice Q${speechIndex}`
-                : `Phase ${item.phase}`;
+            const phaseLabel = `Phase ${item.phase} of ${totalPhases}`;
             return (
                 <article className={`panel rounded-2xl p-6 sm:p-8 ${isSpeech ? 'border border-indigo-500/15' : ''}`}>
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-surface-border">
@@ -2058,7 +2062,7 @@
                             </span>
                             {isSpeech ? (
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                    Phase {item.phase}
+                                    Voice Q{speechIndex}
                                 </span>
                             ) : null}
                         </div>
@@ -2311,8 +2315,9 @@
         );
         };
 
-        const ReviewView = ({ history, onBack, overallFeedback }) => {
+        const ReviewView = ({ history, onBack, overallFeedback, sessionConfig }) => {
             const techMax = inferTechPhaseCount(history);
+            const totalPhases = inferTotalPhaseCount(history, sessionConfig);
             const technicalRows = history.filter((item) => !isSpeechHistoryItem(item, techMax));
             const speechRows = history.filter((item) => isSpeechHistoryItem(item, techMax));
 
@@ -2334,6 +2339,7 @@
                                     item={item}
                                     techMax={techMax}
                                     speechIndex={isSpeechSection ? index + 1 : 0}
+                                    totalPhases={totalPhases}
                                 />
                             ))}
                         </div>
@@ -2416,6 +2422,7 @@
             const [feedback, setFeedback] = useState('');
             const [integrityViolationCount, setIntegrityViolationCount] = useState(0);
             const [assessmentHistory, setAssessmentHistory] = useState([]);
+            const [sessionConfig, setSessionConfig] = useState({});
             const [urlEntryError, setUrlEntryError] = useState('');
             const [linkSessionReady, setLinkSessionReady] = useState(false);
 
@@ -2830,7 +2837,7 @@
                 setIsLoading(true);
                 try {
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sId);
-                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, status, result, score');
+                    let query = supabase.from('assessment_sessions').select('id, interview_history, max_phases, status, result, score, config, assessment_stage');
                     if (isUuid) {
                         query = query.eq('id', sId);
                     } else {
@@ -2850,6 +2857,7 @@
                         if (data.score != null) setOverallScore(Number(data.score));
                         setFeedback('Assessment completed.');
                         const restoredHistory = normalizeInterviewHistory(data.interview_history);
+                        setSessionConfig(parseSessionConfig(data.config));
                         setAssessmentHistory(restoredHistory);
                         setFeedback(pickLatestFeedback(restoredHistory, ''));
                         setView('finished');
@@ -2863,21 +2871,32 @@
 
                     sessionStorage.setItem('current_session_id', data.id);
                     sessionStorage.setItem('candidate_email', email || '');
+                    setSessionConfig(parseSessionConfig(data.config));
 
                     const history = parseInterviewHistory(data.interview_history);
                     if (history.length === 0) return;
 
-                    let currentStepIndex = history.findIndex(h => h.answer_text === null || h.answer_text === undefined);
-                    if (currentStepIndex === -1) {
-                        return;
-                    }
+                    const resume = resolveResumeTarget(history, data);
+                    if (!resume) return;
 
-                    const currentPhaseData = history[currentStepIndex];
-                    if (currentPhaseData) {
-                        setQuestion(currentPhaseData.question_text || currentPhaseData.question);
-                        setTotalSteps(data.max_phases || 5);
-                        setCurrentStep(currentStepIndex + 1);
-                        applyTimerFromPhase(currentPhaseData);
+                    const { phaseNum, row, questionText } = resume;
+                    const cfg = parseSessionConfig(data.config);
+                    const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
+                    const speechPhases = Number(cfg?.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
+                    const modeInfo = resolveAssessmentMode(data, phaseNum, row);
+
+                    setQuestion(questionText || row?.question_text || row?.question || '');
+                    setTechMaxSteps(maxQ);
+                    setSpeechTotalSteps(speechPhases);
+                    setTotalSteps(maxQ + speechPhases);
+                    setCurrentStep(phaseNum);
+                    applyTimerFromPhase(row);
+
+                    if (modeInfo.mode === 'speech') {
+                        setAssessmentMode('speech');
+                        setView('assessment');
+                    } else {
+                        setAssessmentMode('text');
                         setView('assessment');
                     }
                 } catch (e) {
@@ -3514,7 +3533,7 @@
                     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid);
                     let query = supabase
                         .from('assessment_sessions')
-                        .select('id, interview_history, result, status, score');
+                        .select('id, interview_history, result, status, score, config');
                     if (isUuid) {
                         query = query.eq('id', sid);
                     } else {
@@ -3536,6 +3555,7 @@
 
                     setSessionId(data.id || sid);
                     sessionStorage.setItem('current_session_id', data.id || sid);
+                    setSessionConfig(parseSessionConfig(data.config));
                     setAssessmentHistory(rows);
                     setFeedback(pickLatestFeedback(rows, feedback));
                     if (data.score != null) setOverallScore(Number(data.score));
@@ -3606,6 +3626,7 @@
                             <ReviewView
                                 history={assessmentHistory}
                                 overallFeedback={pickLatestFeedback(assessmentHistory, feedback)}
+                                sessionConfig={sessionConfig}
                                 onBack={() => setView('finished')}
                             />
                         );

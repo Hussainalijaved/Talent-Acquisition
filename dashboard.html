@@ -825,9 +825,24 @@
             return null;
         }
 
+        function inferTechMax(hist, cfg, sess) {
+            const speech = (hist || []).filter((h) => String(h.mode || '').toLowerCase() === 'speech');
+            if (speech.length) return Math.min(...speech.map((h) => Number(h.phase))) - 1;
+            return Number(sess?.max_phases || cfg?.max_questions || 5);
+        }
+
+        function inferTotalPhases(sess, hist, cfg) {
+            hist = hist || parseHistory(sess);
+            cfg = cfg || parseJson(sess?.config);
+            const techMax = inferTechMax(hist, cfg, sess);
+            const speechMax = Number(cfg.speech_phases ?? 5);
+            return techMax + (speechMax > 0 ? speechMax : 0);
+        }
+
         function historyStats(sess) {
             const hist = parseHistory(sess);
-            const maxPh = Number(sess?.max_phases || 5);
+            const cfg = parseJson(sess?.config);
+            const maxPh = inferTotalPhases(sess, hist, cfg);
             const withQ = hist.filter((h) => h && (h.question_text || h.question)).length;
             const answered = hist.filter((h) => h && h.answer_text != null && String(h.answer_text).trim() !== '').length;
             return { hist, maxPh, withQ, answered };
@@ -1484,12 +1499,6 @@
             if (!h) return false;
             if (String(h.mode || '').toLowerCase() === 'speech') return true;
             return Number(h.phase) > techMax;
-        }
-
-        function inferTechMax(hist, cfg, sess) {
-            const speech = (hist || []).filter((h) => String(h.mode || '').toLowerCase() === 'speech');
-            if (speech.length) return Math.min(...speech.map((h) => Number(h.phase))) - 1;
-            return Number(sess?.max_phases || cfg?.max_questions || 5);
         }
 
         function renderSpeechSkillBars(skills) {

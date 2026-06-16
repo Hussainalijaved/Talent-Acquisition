@@ -24,7 +24,8 @@
         };
     }
 
-    function createDeliveryAnalyzer(stream) {
+    function createDeliveryAnalyzer(stream, options) {
+        const onLevel = typeof options === 'function' ? options : options?.onLevel;
         if (!stream || !global.AudioContext) {
             return { stop() { return {}; } };
         }
@@ -48,6 +49,7 @@
             let sum = 0;
             for (let i = 0; i < data.length; i++) sum += data[i];
             const level = sum / data.length / 255;
+            if (onLevel) onLevel(level);
             const now = Date.now();
 
             if (level >= SPEECH) {
@@ -447,6 +449,7 @@
         const opts = options || {};
         const onTranscript = opts.onTranscript;
         const onStatus = opts.onStatus;
+        const onMicLevel = opts.onMicLevel;
         const transcribeUrl = opts.transcribeUrl || DEFAULT_TRANSCRIBE_URL;
         const windowMs = Number(opts.windowMs) > 0 ? Number(opts.windowMs) : 2600;
         const preferBrowserLive = opts.preferBrowserLive !== false;
@@ -526,7 +529,11 @@
                         autoGainControl: true,
                     },
                 });
-                deliveryAnalyzer = createDeliveryAnalyzer(stream);
+                deliveryAnalyzer = createDeliveryAnalyzer(stream, {
+                    onLevel: (level) => {
+                        if (active && onMicLevel) onMicLevel(level);
+                    },
+                });
                 mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
                     ? 'audio/webm;codecs=opus'
                     : 'audio/webm';

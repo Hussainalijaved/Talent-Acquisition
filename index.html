@@ -1154,7 +1154,7 @@
                                     </li>
                                     <li className="flex gap-3">
                                         <span className="text-indigo-400 font-bold shrink-0">3.</span>
-                                        <span>Live captions show what the system hears; submit when you finish speaking.</span>
+                                        <span>Live captions show what the system hears; stop recording, then submit from the bottom bar.</span>
                                     </li>
                                     <li className="flex gap-3">
                                         <span className="text-indigo-400 font-bold shrink-0">4.</span>
@@ -1445,11 +1445,14 @@
             integrityViolationCount,
             contentMasked,
             onSubmitSpeech,
+            onQuestionPlaybackComplete,
+            timerReady,
         }) => {
             const transcriberRef = React.useRef(null);
             const speakRef = React.useRef(null);
             const transcriptRef = React.useRef('');
-            const isRecordingRef = React.useRef(false);
+            const recordingPayloadRef = React.useRef(null);
+            const timerStartedRef = React.useRef(false);
             const stoppingRef = React.useRef(false);
             const [isRecording, setIsRecording] = React.useState(false);
             const [isSpeaking, setIsSpeaking] = React.useState(false);
@@ -1458,8 +1461,13 @@
             const [transcript, setTranscript] = React.useState('');
             const [recordError, setRecordError] = React.useState('');
             const [audioHint, setAudioHint] = React.useState('');
+            const [micLevel, setMicLevel] = React.useState(0);
+            const [recordingReady, setRecordingReady] = React.useState(false);
             const phases = Array.from({ length: speechTotal }, (_, i) => i + 1);
             const pct = speechTotal > 0 ? Math.min(100, (speechIndex / speechTotal) * 100) : 0;
+            const wordCount = transcript.trim() ? transcript.trim().split(/\s+/).length : 0;
+            const canSubmit = !contentMasked && !isLoading && !isRecording && !isTranscribing
+                && wordCount >= 4 && recordingReady;
 
             const updateTranscript = React.useCallback((text) => {
                 const clean = window.TA_SPEECH?.liveSanitize
@@ -1469,6 +1477,12 @@
                 setTranscript(clean);
             }, []);
 
+            const notifyPlaybackComplete = React.useCallback(() => {
+                if (timerStartedRef.current) return;
+                timerStartedRef.current = true;
+                onQuestionPlaybackComplete?.();
+            }, [onQuestionPlaybackComplete]);
+
             const startQuestionPlayback = React.useCallback(() => {
                 if (!question || !window.TA_SPEECH) return;
                 speakRef.current?.cancel?.();
@@ -1477,23 +1491,30 @@
                 if (window.TA_SPEECH.speakQuestionWithTypewriter) {
                     speakRef.current = window.TA_SPEECH.speakQuestionWithTypewriter(question, {
                         onUpdate: setTypedQuestion,
-                        onEnd: () => setIsSpeaking(false),
+                        onEnd: () => {
+                            setIsSpeaking(false);
+                            notifyPlaybackComplete();
+                        },
                     });
                 } else {
                     window.TA_SPEECH.speakQuestion(question);
                     setTypedQuestion(question);
                     setIsSpeaking(false);
+                    notifyPlaybackComplete();
                 }
-            }, [question]);
+            }, [question, notifyPlaybackComplete]);
 
             React.useEffect(() => {
                 transcriptRef.current = '';
                 setTranscript('');
                 setRecordError('');
                 setAudioHint('');
+                setMicLevel(0);
                 setIsRecording(false);
                 setIsTranscribing(false);
-                isRecordingRef.current = false;
+                recordingPayloadRef.current = null;
+                setRecordingReady(false);
+                timerStartedRef.current = false;
                 if (transcriberRef.current) {
                     transcriberRef.current.cancel();
                     transcriberRef.current = null;
@@ -1509,91 +1530,115 @@
                 };
             }, [question, speechIndex, contentMasked, isLoading, startQuestionPlayback]);
 
-            const toggleRecord = async () => {
+            const startRecording = async () => {
                 setRecordError('');
                 setAudioHint('');
                 if (!window.TA_SPEECH?.createLiveTranscriber) {
                     setRecordError('Speech module not loaded. Refresh the page.');
                     return;
                 }
-                if (isRecording) {
-                    if (stoppingRef.current) return;
-                    stoppingRef.current = true;
-                    isRecordingRef.current = false;
-                    setIsRecording(false);
-                    setIsTranscribing(true);
-                    try {
-                        const session = transcriberRef.current;
-                        let text = transcriptRef.current || transcript;
-                        let blob = null;
-                        let durationSeconds = 0;
-                        let delivery = null;
-                        if (session) {
-                            const stopped = await session.stop();
-                            text = stopped.text || text;
-                            blob = stopped.blob;
-                            durationSeconds = stopped.durationSeconds;
-                            delivery = stopped.delivery;
-                        }
-                        transcriberRef.current = null;
-                        if (window.TA_SPEECH?.sanitizeTranscript) {
-                            text = window.TA_SPEECH.sanitizeTranscript(text);
-                        }
-                        updateTranscript(text);
-
-                        const minBytes = Math.max(800, Math.floor((durationSeconds || 0) * 350));
-                        if (!blob || blob.size < minBytes) {
-                            setIsTranscribing(false);
-                            setRecordError(
-                                `Audio too short (${blob ? Math.round(blob.size / 1024) + ' KB' : '0 KB'} for ${Math.round(durationSeconds || 0)}s). Keep recording longer and try again.`
-                            );
-                            return;
-                        }
-
-                        const submitResult = await onSubmitSpeech({
-                            transcript: text,
-                            blob,
-                            durationSeconds,
-                            delivery,
-                        });
-                        transcriptRef.current = '';
-                        setTranscript('');
-                        setIsTranscribing(false);
-                        if (submitResult?.audioSaved) {
-                            setAudioHint('Voice recording saved.');
-                        } else if (submitResult?.audioError) {
-                            setAudioHint('Answer submitted. Audio not saved: ' + submitResult.audioError);
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        setIsTranscribing(false);
-                        setRecordError('Could not process recording. Check microphone permissions.');
-                    } finally {
-                        stoppingRef.current = false;
-                    }
-                } else {
-                    try {
-                        speakRef.current?.cancel?.();
-                        setIsSpeaking(false);
-                        setTypedQuestion(question);
-                        transcriptRef.current = '';
-                        setTranscript('');
-                        transcriberRef.current = window.TA_SPEECH.createLiveTranscriber({
-                            onTranscript: updateTranscript,
-                            onStatus: (status) => {
-                                if (status === 'recording') setRecordError('');
-                            },
-                        });
-                        await transcriberRef.current.start();
-                        isRecordingRef.current = true;
-                        setIsRecording(true);
-                    } catch (e) {
-                        transcriberRef.current?.cancel?.();
-                        transcriberRef.current = null;
-                        setRecordError('Microphone access required for communication assessment.');
-                    }
+                try {
+                    speakRef.current?.cancel?.();
+                    setIsSpeaking(false);
+                    setTypedQuestion(question);
+                    transcriptRef.current = '';
+                    setTranscript('');
+                    recordingPayloadRef.current = null;
+                    setRecordingReady(false);
+                    transcriberRef.current?.cancel?.();
+                    transcriberRef.current = window.TA_SPEECH.createLiveTranscriber({
+                        onTranscript: updateTranscript,
+                        onMicLevel: (level) => setMicLevel(Math.max(0, Math.min(1, Number(level) || 0))),
+                        onStatus: (status) => {
+                            if (status === 'recording') setRecordError('');
+                        },
+                    });
+                    await transcriberRef.current.start();
+                    setIsRecording(true);
+                } catch (e) {
+                    transcriberRef.current?.cancel?.();
+                    transcriberRef.current = null;
+                    setRecordError('Microphone access required for communication assessment.');
                 }
             };
+
+            const stopRecording = async () => {
+                if (!isRecording || stoppingRef.current) return;
+                stoppingRef.current = true;
+                setIsRecording(false);
+                setMicLevel(0);
+                setIsTranscribing(true);
+                try {
+                    const session = transcriberRef.current;
+                    let text = transcriptRef.current || transcript;
+                    let blob = null;
+                    let durationSeconds = 0;
+                    let delivery = null;
+                    if (session) {
+                        const stopped = await session.stop();
+                        text = stopped.text || text;
+                        blob = stopped.blob;
+                        durationSeconds = stopped.durationSeconds;
+                        delivery = stopped.delivery;
+                    }
+                    transcriberRef.current = null;
+                    if (window.TA_SPEECH?.sanitizeTranscript) {
+                        text = window.TA_SPEECH.sanitizeTranscript(text);
+                    }
+                    updateTranscript(text);
+
+                    const minBytes = Math.max(800, Math.floor((durationSeconds || 0) * 350));
+                    if (!blob || blob.size < minBytes) {
+                        setRecordError(
+                            `Audio too short (${blob ? Math.round(blob.size / 1024) + ' KB' : '0 KB'} for ${Math.round(durationSeconds || 0)}s). Record a longer answer and try again.`
+                        );
+                        recordingPayloadRef.current = null;
+                        setRecordingReady(false);
+                        return;
+                    }
+                    recordingPayloadRef.current = { text, blob, durationSeconds, delivery };
+                    setRecordingReady(true);
+                    setRecordError('');
+                } catch (e) {
+                    console.error(e);
+                    setRecordError('Could not process recording. Check microphone permissions.');
+                    recordingPayloadRef.current = null;
+                    setRecordingReady(false);
+                } finally {
+                    setIsTranscribing(false);
+                    stoppingRef.current = false;
+                }
+            };
+
+            const handleSubmit = async () => {
+                const payload = recordingPayloadRef.current;
+                if (!payload?.blob) {
+                    setRecordError('Record your answer first, then submit.');
+                    return;
+                }
+                try {
+                    const submitResult = await onSubmitSpeech({
+                        transcript: payload.text || transcript,
+                        blob: payload.blob,
+                        durationSeconds: payload.durationSeconds,
+                        delivery: payload.delivery,
+                    });
+                    transcriptRef.current = '';
+                    setTranscript('');
+                    recordingPayloadRef.current = null;
+                    setRecordingReady(false);
+                    if (submitResult?.audioSaved) {
+                        setAudioHint('Voice recording saved.');
+                    } else if (submitResult?.audioError) {
+                        setAudioHint('Answer submitted. Audio not saved: ' + submitResult.audioError);
+                    }
+                } catch (e) {
+                    console.error(e);
+                    setRecordError('Could not submit your answer. Please try again.');
+                }
+            };
+
+            const showTimer = timerReady && phaseTimeLimit != null && timeLeft != null;
 
             return (
                 <Shell subtitle={`Phase 2 · Voice interview · Question ${speechIndex} of ${speechTotal}`} fullWidth>
@@ -1610,68 +1655,166 @@
                         <div className="assessment-main">
                             <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-surface-border/60">
                                 <div className="flex items-center justify-between gap-4">
-                                    <div>
+                                    <div className="min-w-0 flex-1">
                                         <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-1">Phase 2 · Voice</p>
-                                        <h1 className="text-xl sm:text-2xl font-bold text-white">Question {speechIndex}</h1>
-                                        <p className="text-sm text-slate-500 mt-1">Listen to the question, then record your spoken answer</p>
+                                        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight">
+                                            Question {speechIndex}
+                                        </h1>
+                                        <p className="text-sm text-slate-500 mt-1">
+                                            {isSpeaking
+                                                ? 'Listen to the question — timer starts when playback finishes'
+                                                : 'Record your spoken answer below, then submit'}
+                                        </p>
                                     </div>
-                                    {phaseTimeLimit != null && timeLeft != null ? (
+                                    {showTimer ? (
                                         <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} prominent />
+                                    ) : isSpeaking ? (
+                                        <div className="shrink-0 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-center">
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Playing question</p>
+                                            <p className="text-xs text-slate-400 mt-1">Timer not started yet</p>
+                                        </div>
                                     ) : null}
                                 </div>
                             </div>
-                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4">
+
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
                                 {speechIndex === 1 ? (
-                                    <div className="mb-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-4 py-3 sm:px-5 sm:py-4">
+                                    <div className="mb-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-4 py-3 sm:px-5 sm:py-4 shrink-0">
                                         <p className="text-sm text-indigo-100 font-medium">You are now in Phase 2 — voice communication interview</p>
                                         <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                                             This is a speech-to-speech round. Take a moment to settle in a quiet space before recording.
                                         </p>
                                     </div>
                                 ) : null}
-                                <div className="rounded-xl border border-surface-border bg-[#0f1419]/80 p-5 sm:p-6 relative">
+
+                                <div className="flex-1 min-h-[280px] flex flex-col rounded-xl border border-surface-border bg-[#0f1419]/80 relative">
                                     {isLoading && (
                                         <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
                                             <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
                                             <p className="text-sm text-slate-400">Processing your response…</p>
                                         </div>
                                     )}
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Question (phase {absolutePhase})</p>
-                                    <p className="text-base sm:text-lg text-slate-100 leading-relaxed mb-4 min-h-[3.5rem]">
-                                        {typedQuestion || (isSpeaking ? '' : question)}
-                                        {(isSpeaking || (isRecording && !transcript)) ? (
-                                            <span className="inline-block w-0.5 h-[1.1em] bg-accent ml-0.5 align-middle animate-pulse" aria-hidden="true" />
-                                        ) : null}
-                                    </p>
-                                    <button type="button" onClick={startQuestionPlayback} disabled={contentMasked || isLoading || isRecording}
-                                        className="btn-secondary px-4 py-2 rounded-lg text-sm mb-6">
-                                        {isSpeaking ? 'Playing…' : 'Replay question'}
-                                    </button>
-                                    <div className="border border-surface-border rounded-lg p-4 bg-[#0c121a]/60">
-                                        <p className="text-xs text-slate-500 mb-3">
-                                            {isRecording
-                                                ? 'Speak now — your words appear below as you talk.'
-                                                : isTranscribing
-                                                    ? 'Finalizing your transcript…'
-                                                    : 'Tap record, speak your answer, tap again to submit.'}
-                                        </p>
-                                        <button type="button" onClick={toggleRecord} disabled={contentMasked || isLoading || isTranscribing}
-                                            className={`px-6 py-3 rounded-xl text-sm font-semibold w-full sm:w-auto ${isRecording ? 'bg-red-600 hover:bg-red-500' : 'btn-primary'}`}>
-                                            {isRecording ? 'Stop & submit' : 'Start recording'}
-                                        </button>
-                                        <div className={`mt-4 rounded-lg border p-3 min-h-[4rem] ${isRecording ? 'border-accent/30 bg-accent/5' : 'border-surface-border/60 bg-[#0a0f16]/50'}`}>
-                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
-                                                {isRecording ? 'Live transcript' : 'Your answer'}
-                                            </p>
-                                            <p className="text-sm text-slate-200 leading-relaxed">
-                                                {transcript || (isRecording ? 'Listening… your words will appear here.' : (isTranscribing ? 'Transcribing…' : '—'))}
+
+                                    <div className="shrink-0 px-5 sm:px-6 pt-5 pb-4 border-b border-surface-border/80">
+                                        <div className="flex items-start justify-between gap-3 mb-3">
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Question</p>
+                                            <button
+                                                type="button"
+                                                onClick={startQuestionPlayback}
+                                                disabled={contentMasked || isLoading || isRecording}
+                                                className="btn-secondary px-3 py-1.5 rounded-lg text-xs shrink-0"
+                                            >
+                                                {isSpeaking ? 'Playing…' : 'Replay question'}
+                                            </button>
+                                        </div>
+                                        {contentMasked ? (
+                                            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-5 py-8 text-center">
+                                                <p className="text-base font-semibold text-amber-100 mb-2">Content protected</p>
+                                                <p className="text-sm text-slate-400 leading-relaxed">
+                                                    Return to fullscreen and close developer tools to continue.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div className="question-protected text-base sm:text-lg text-slate-100 leading-relaxed min-h-[3.5rem]">
+                                                {typedQuestion || (isSpeaking ? '' : question)}
+                                                {isSpeaking ? (
+                                                    <span className="inline-block w-0.5 h-[1.1em] bg-accent ml-0.5 align-middle animate-pulse" aria-hidden="true" />
+                                                ) : null}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1 flex flex-col min-h-0 px-5 sm:px-6 py-4">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">
+                                            Your spoken answer
+                                        </label>
+                                        <div
+                                            className={`input-field w-full flex-1 min-h-[180px] px-4 py-4 rounded-lg text-sm sm:text-base leading-relaxed overflow-y-auto ${
+                                                isRecording ? 'border-accent/40 bg-accent/5' : ''
+                                            }`}
+                                        >
+                                            <p className="text-slate-200 whitespace-pre-wrap">
+                                                {transcript || (isRecording
+                                                    ? 'Listening… your words will appear here as you speak.'
+                                                    : isTranscribing
+                                                        ? 'Finalizing transcript…'
+                                                        : 'Press Record, speak your answer, press Stop, then submit below.')}
                                                 {isRecording ? (
                                                     <span className="inline-block w-0.5 h-[1em] bg-emerald-400 ml-0.5 align-middle animate-pulse" aria-hidden="true" />
                                                 ) : null}
                                             </p>
                                         </div>
+
+                                        {isRecording ? (
+                                            <div className="mt-4 shrink-0">
+                                                <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+                                                    <span className="font-medium uppercase tracking-wide">Microphone level</span>
+                                                    <span className={micLevel > 0.05 ? 'text-emerald-400' : 'text-amber-400'}>
+                                                        {micLevel > 0.05 ? 'Receiving audio' : 'Speak now — waiting for voice'}
+                                                    </span>
+                                                </div>
+                                                <div className="h-2.5 rounded-full bg-surface-border overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-[width] duration-75 ease-out"
+                                                        style={{ width: `${Math.round(micLevel * 100)}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ) : null}
+
+                                        <div className="mt-4 flex flex-wrap items-center gap-3 shrink-0">
+                                            {!isRecording ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={startRecording}
+                                                    disabled={contentMasked || isLoading || isTranscribing || isSpeaking}
+                                                    className="btn-primary px-6 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-40"
+                                                >
+                                                    {isTranscribing ? 'Processing…' : 'Start recording'}
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={stopRecording}
+                                                    disabled={isTranscribing}
+                                                    className="px-6 py-2.5 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-500 text-white"
+                                                >
+                                                    Stop recording
+                                                </button>
+                                            )}
+                                            {isRecording ? (
+                                                <span className="inline-flex items-center gap-2 text-xs text-red-300">
+                                                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" aria-hidden="true" />
+                                                    Recording in progress
+                                                </span>
+                                            ) : null}
+                                        </div>
+
                                         {recordError ? <p className="text-sm text-red-400 mt-3">{recordError}</p> : null}
-                                        {audioHint ? <p className="text-xs text-slate-500 mt-3">{audioHint}</p> : null}
+                                        {audioHint ? <p className="text-xs text-slate-500 mt-2">{audioHint}</p> : null}
+                                    </div>
+
+                                    <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-surface-border bg-[#0c121a]/50 rounded-b-xl">
+                                        <div>
+                                            <p className="text-xs text-slate-500">
+                                                {canSubmit
+                                                    ? 'Ready to submit'
+                                                    : isRecording
+                                                        ? 'Stop recording when you finish speaking'
+                                                        : isTranscribing
+                                                            ? 'Finalizing your transcript…'
+                                                            : 'Record at least a few words before submitting'}
+                                            </p>
+                                            <p className="text-xs text-slate-600 mt-0.5 tabular-nums">{wordCount} words</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleSubmit}
+                                            disabled={!canSubmit}
+                                            className="btn-primary px-10 py-3.5 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed w-full sm:w-auto"
+                                        >
+                                            Submit answer
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -2415,6 +2558,8 @@
             const [timeLeft, setTimeLeft] = useState(null);
             const [phaseTimeLimit, setPhaseTimeLimit] = useState(null);
             const deadlineAtRef = useRef(null);
+            const pendingSpeechTimerRef = useRef(null);
+            const [speechTimerReady, setSpeechTimerReady] = useState(false);
             const [question, setQuestion] = useState('Loading question…');
             const [answer, setAnswer] = useState('');
             const [result, setResult] = useState(null);
@@ -2512,6 +2657,28 @@
                 sessionStorage.setItem('time_left', String(remaining));
                 return remaining;
             }, []);
+
+            const armSpeechPhaseTimer = useCallback((phaseRow) => {
+                pendingSpeechTimerRef.current = phaseRow || null;
+                setSpeechTimerReady(false);
+                deadlineAtRef.current = null;
+                sessionStorage.removeItem('deadline_at');
+                sessionStorage.removeItem('time_left');
+                setTimeLeft(null);
+                const limit = getAiTimeLimitSeconds(phaseRow);
+                setPhaseTimeLimit(limit);
+            }, []);
+
+            const startSpeechPhaseTimer = useCallback(() => {
+                const row = pendingSpeechTimerRef.current;
+                const seconds = getAiTimeLimitSeconds(row) ?? 240;
+                applyTimerFromPhase({
+                    time_limit_seconds: seconds,
+                    deadline_at: new Date(Date.now() + seconds * 1000).toISOString(),
+                });
+                pendingSpeechTimerRef.current = null;
+                setSpeechTimerReady(true);
+            }, [applyTimerFromPhase]);
 
             const startPhaseTimerInDatabase = useCallback(async (sessionDbId, history, phaseIndex) => {
                 const row = { ...(history[phaseIndex] || {}) };
@@ -2890,7 +3057,14 @@
                     setSpeechTotalSteps(speechPhases);
                     setTotalSteps(maxQ + speechPhases);
                     setCurrentStep(phaseNum);
-                    applyTimerFromPhase(row);
+                    if (modeInfo.mode === 'speech') {
+                        armSpeechPhaseTimer({
+                            time_limit_seconds: row?.time_limit_seconds,
+                            deadline_at: row?.deadline_at,
+                        });
+                    } else {
+                        applyTimerFromPhase(row);
+                    }
 
                     if (modeInfo.mode === 'speech') {
                         setAssessmentMode('speech');
@@ -3367,7 +3541,8 @@
                     setQuestion(intro.nextQuestion);
                     setCurrentStep((prev) => prev + 1);
                     setAnswer('');
-                    applyTimerFromPhase({
+                    setAssessmentMode('speech');
+                    armSpeechPhaseTimer({
                         time_limit_seconds: intro.time_limit_seconds,
                         deadline_at: intro.deadline_at,
                     });
@@ -3443,7 +3618,7 @@
                         if (nextQ) {
                             setQuestion(nextQ);
                             setCurrentStep((prev) => prev + 1);
-                            applyTimerFromPhase({
+                            armSpeechPhaseTimer({
                                 time_limit_seconds: data.time_limit_seconds,
                                 deadline_at: data.deadline_at,
                             });
@@ -3600,6 +3775,8 @@
                                     integrityViolationCount={integrityViolationCount}
                                     contentMasked={devToolsDetected || fullscreenRequired}
                                     onSubmitSpeech={handleSpeechSubmit}
+                                    onQuestionPlaybackComplete={startSpeechPhaseTimer}
+                                    timerReady={speechTimerReady}
                                 />
                             );
                         }

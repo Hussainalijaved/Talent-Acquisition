@@ -182,12 +182,40 @@
         body.convo-flow-active .convo-page-main .back-link { display: none; }
         body.convo-flow-active .page-split-left { display: none; }
         body.convo-flow-active .page-split { grid-template-columns: 1fr; min-height: 68vh; }
+        body.convo-flow-active .apply-layout.form-open {
+            display: block !important;
+            grid-template-columns: 1fr !important;
+        }
         body.convo-flow-active .page-split-right {
             display: flex; align-items: center; justify-content: center;
             padding: 56px 28px; background: var(--convo-line-soft);
             min-height: 72vh;
         }
         body.convo-flow-active .result-view.show { width: 100%; max-width: 720px; padding: 0; }
+        body.convo-flow-active .col-heading { display: none; }
+        body.convo-flow-active .apply-form-panel.is-open {
+            display: flex !important;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            border: none;
+            background: transparent;
+        }
+        body.convo-flow-active #submittingView.show,
+        body.convo-flow-active #failureView.show {
+            width: 100%;
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 44px 40px 40px;
+            background: var(--convo-surface);
+            border: 1px solid var(--convo-line);
+            border-radius: 20px;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.09);
+        }
+        body.convo-flow-active .progress-steps {
+            margin-left: auto;
+            margin-right: auto;
+        }
         body.convo-flow-active .convo-hero { padding: 32px 24px 40px; }
         body.convo-flow-active .convo-hero-mega { font-size: clamp(40px, 8vw, 64px); }
         /* Keep apply results visible — convo-ui hides .convo-page-main only when .convo-flow-screen exists */
@@ -794,6 +822,18 @@
             try { return JSON.parse(raw); } catch { return {}; }
         }
 
+        function resolveCandidateScore(candidate) {
+            if (!candidate) return null;
+            if (candidate.score != null && Number.isFinite(Number(candidate.score))) {
+                return Number(candidate.score);
+            }
+            const notes = parseNotes(candidate.notes);
+            if (notes.score != null && Number.isFinite(Number(notes.score))) {
+                return Number(notes.score);
+            }
+            return null;
+        }
+
         function screeningSummary(notes, stage) {
             const n = parseNotes(notes);
             if (n.summary) return String(n.summary);
@@ -1150,15 +1190,26 @@
                 if (sessionId) {
                     document.getElementById('submittingMsg').textContent =
                         'Shortlisted — loading your assessment details…';
-                    const row = data && TERMINAL_STAGES.has(data.stage)
-                        ? data
-                        : {
+                    let row = data && TERMINAL_STAGES.has(data.stage) ? data : null;
+                    if (!row || row.stage !== 'Shortlisted' || resolveCandidateScore(row) == null) {
+                        for (let i = 0; i < 4; i++) {
+                            await sleep(500);
+                            const refreshed = await fetchLatestCandidateRow(email, jobId);
+                            if (refreshed && TERMINAL_STAGES.has(refreshed.stage)) {
+                                row = refreshed;
+                                if (row.stage === 'Shortlisted' && resolveCandidateScore(row) != null) break;
+                            }
+                        }
+                    }
+                    if (!row || row.stage !== 'Shortlisted') {
+                        row = {
                             stage: 'Shortlisted',
-                            score: null,
-                            notes: {},
-                            created_at: new Date().toISOString(),
+                            score: resolveCandidateScore(row),
+                            notes: row?.notes || {},
+                            created_at: row?.created_at || new Date().toISOString(),
                             requisition_id: jobId,
                         };
+                    }
                     return { candidate: row, sessionId };
                 }
 
@@ -1245,7 +1296,7 @@
         async function handleScreeningOutcome(result, email, fileNameText, submitStartedAt, sessionId) {
             const detail = fileNameText + ' · ' + email + ' · ' + (currentJob?.title || '');
             const stage = result?.stage || '';
-            const score = result?.score != null ? Number(result.score) : null;
+            const score = resolveCandidateScore(result);
             const summary = screeningSummary(result?.notes, stage);
 
             if (stage === 'Shortlisted') {

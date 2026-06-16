@@ -1,12 +1,26 @@
 // Vercel — manual shortlist from Review queue (creates assessment session + updates candidate).
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, GROQ_API_KEY
 // Optional: PORTAL_BASE_URL (default talent-acquisition-six.vercel.app)
+// Optional: MANUAL_SHORTLIST_WEBHOOK_URL — or app_config key manual_shortlist_webhook
 
 const DEFAULT_PORTAL = 'https://talent-acquisition-six.vercel.app';
 const APPROVE_ROLES = new Set(['super_admin', 'hr_head', 'recruiter']);
 
 function env(name, fallback = '') {
     return String(process.env[name] || fallback).trim();
+}
+
+async function resolveMailWebhook(supabaseUrl, serviceKey) {
+    const fromEnv = env('MANUAL_SHORTLIST_WEBHOOK_URL');
+    if (fromEnv) return fromEnv;
+
+    const cfgRes = await sbFetch(
+        supabaseUrl,
+        serviceKey,
+        '/rest/v1/app_config?key=eq.manual_shortlist_webhook&select=value&limit=1'
+    );
+    const row = Array.isArray(cfgRes.data) ? cfgRes.data[0] : null;
+    return String(row?.value || '').trim();
 }
 
 async function sbFetch(base, key, path, options = {}) {
@@ -309,13 +323,17 @@ export default async function handler(req, res) {
                 headers: { Prefer: 'return=minimal' },
                 body: JSON.stringify({
                     stage: 'Shortlisted',
+                    updated_at: nowIso,
                     notes: {
                         ...notes,
+                        requisition_id: requisitionId,
+                        requisition_title: jdTitle,
                         recommendation: 'SHORTLIST',
                         decision: 'SHORTLIST',
                         manual_shortlist: true,
                         approved_at: nowIso,
-                        session_id: sessionId,
+                        approved_by: auth.profile.email,
+                        assessment_session_id: sessionId,
                     },
                 }),
             }
@@ -327,12 +345,49 @@ export default async function handler(req, res) {
         const assessmentLink =
             `${portalBase}/?session=${encodeURIComponent(sessionId)}&email=${encodeURIComponent(email)}`;
 
+        let emailSent = false;
+        let emailError = '';
+        const mailWebhook = await resolveMailWebhook(supabaseUrl, serviceKey);
+        if (mailWebhook) {
+            try {
+                const mailRes = await fetch(mailWebhook, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': '1',
+                    },
+                    body: JSON.stringify({
+                        candidate_email: email,
+                        session_id: sessionId,
+                        requisition_id: requisitionId,
+                        requisition_title: jdTitle,
+                        score: candidate.score,
+                        max_questions: 5,
+                        organization_name: 'CONVO',
+                        portal_base_url: portalBase,
+                        assessment_link: assessmentLink,
+                        manual_shortlist: true,
+                        approved_by: auth.profile.email,
+                    }),
+                });
+                emailSent = mailRes.ok;
+                if (!mailRes.ok) {
+                    emailError = String(await mailRes.text()).slice(0, 200);
+                }
+            } catch (mailErr) {
+                emailError = String(mailErr?.message || mailErr).slice(0, 200);
+            }
+        }
+
         res.status(200).json({
             ok: true,
             session_id: sessionId,
             assessment_link: assessmentLink,
             candidate_email: email,
             requisition_id: requisitionId,
+            email_sent: emailSent,
+            email_error: emailError || undefined,
+            webhook_configured: !!mailWebhook,
         });
     } catch (err) {
         res.status(500).json({

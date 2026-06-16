@@ -646,6 +646,11 @@
                             <input id="admJdWebhook" type="url" placeholder="https://randy-gaunt-bradley.ngrok-free.dev/webhook/talent/jd-generate" />
                             <div class="form-hint">Groq AI job description — Jobs → Generate with AI</div>
                         </div>
+                        <div class="form-group">
+                            <label for="admManualShortlistWebhook">n8n manual shortlist mail webhook URL</label>
+                            <input id="admManualShortlistWebhook" type="url" placeholder="https://randy-gaunt-bradley.ngrok-free.dev/webhook/talent/manual-shortlist-mail" />
+                            <div class="form-hint">Review queue → Shortlist &amp; send assessment. Use <strong>Production URL</strong> (<code>/webhook/</code>), not Test URL. Workflow must be <strong>Active</strong>.</div>
+                        </div>
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn-primary" id="saveWebhookBtn" data-requires-perm="save_webhooks">Save webhook</button>
@@ -811,19 +816,45 @@
             return stage === 'Shortlisted';
         }
 
-        function findSessionForCandidate(sessions, email, jobIds, stage) {
+        function findSessionForCandidate(sessions, email, jobIds, stage, notes) {
             if (!canHaveAssessment(stage)) return null;
             const em = String(email || '').toLowerCase();
             const pool = (sessions || []).filter((s) => String(s.candidate_email || '').toLowerCase() === em);
             if (!pool.length) return null;
+
+            const linkedId = String(notes?.assessment_session_id || notes?.session_id || '').trim();
+            if (linkedId) {
+                const linked = pool.find((s) => String(s.id) === linkedId);
+                if (linked) return linked;
+            }
+
             if (!jobIds || !jobIds.size) return pool.length === 1 ? pool[0] : null;
+
+            const matches = [];
             for (const s of pool) {
                 const sids = sessionJobIds(s);
                 for (const jid of jobIds) {
-                    if (sids.has(jid)) return s;
+                    if (sids.has(jid)) {
+                        matches.push(s);
+                        break;
+                    }
                 }
             }
-            return null;
+            if (!matches.length) return null;
+
+            const exactReq = [...jobIds].find((jid) =>
+                matches.some((s) => normalizeJobId(s.requisition_id) === jid)
+            );
+            if (exactReq) {
+                const exact = matches.filter((s) => normalizeJobId(s.requisition_id) === exactReq);
+                if (exact.length) {
+                    exact.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+                    return exact[0];
+                }
+            }
+
+            matches.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+            return matches[0];
         }
 
         function inferTechMax(hist, cfg, sess) {
@@ -1038,7 +1069,7 @@
                     notes,
                     rawNotes: c.notes,
                     created_at: c.created_at,
-                    session: findSessionForCandidate(allSessions, em, jobIds, c.stage),
+                    session: findSessionForCandidate(allSessions, em, jobIds, c.stage, notes),
                 });
             }
             MERGED = merged;

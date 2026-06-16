@@ -7,6 +7,7 @@
 
     const WEBHOOK_STORAGE = 'ta_cv_ingest_webhook';
     const JD_WEBHOOK_STORAGE = 'ta_jd_generate_webhook';
+    const MANUAL_SHORTLIST_WEBHOOK_STORAGE = 'ta_manual_shortlist_webhook';
     // Update when ngrok restarts (free tier gets a new subdomain each time).
     const N8N_WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
     const DEFAULT_JD_WEBHOOK_LOCAL = 'http://localhost:5678/webhook/talent/jd-generate';
@@ -213,6 +214,16 @@
         if (/\/talent\/cv-ingest$/i.test(u)) return u.replace(/\/talent\/cv-ingest$/i, '/talent/jd-generate');
         if (/\/webhook\//i.test(u)) return u.replace(/\/[^/]+$/, '/talent/jd-generate');
         return u + '/webhook/talent/jd-generate';
+    }
+
+    function deriveManualShortlistWebhookFromCv(cvUrl) {
+        const u = normalizeWebhookUrl(cvUrl);
+        if (!u) return '';
+        if (/\/talent\/cv-ingest$/i.test(u)) {
+            return u.replace(/\/talent\/cv-ingest$/i, '/talent/manual-shortlist-mail');
+        }
+        if (/\/webhook\//i.test(u)) return u.replace(/\/[^/]+$/, '/talent/manual-shortlist-mail');
+        return u + '/webhook/talent/manual-shortlist-mail';
     }
 
     async function resolveJdWebhookUrl() {
@@ -517,6 +528,48 @@
         return url;
     }
 
+    async function loadManualShortlistWebhookConfig() {
+        const fromInput = normalizeWebhookUrl(document.getElementById('admManualShortlistWebhook')?.value || '');
+        if (fromInput) return fromInput;
+
+        const fromStorage = normalizeWebhookUrl(localStorage.getItem(MANUAL_SHORTLIST_WEBHOOK_STORAGE) || '');
+        if (fromStorage) return fromStorage;
+
+        if (deps?.sb) {
+            const { data } = await deps.sb
+                .from('app_config')
+                .select('value')
+                .eq('key', 'manual_shortlist_webhook')
+                .maybeSingle();
+            const fromDb = normalizeWebhookUrl(data?.value || '');
+            if (fromDb) return fromDb;
+        }
+
+        const cvUrl = normalizeWebhookUrl(
+            document.getElementById('admWebhook')?.value ||
+            localStorage.getItem(WEBHOOK_STORAGE) ||
+            ''
+        );
+        if (!cvUrl && deps?.sb) {
+            const { data } = await deps.sb.from('app_config').select('value').eq('key', 'cv_ingest_webhook').maybeSingle();
+            const derived = deriveManualShortlistWebhookFromCv(data?.value || '');
+            if (derived) return derived;
+        }
+        if (cvUrl) {
+            const derived = deriveManualShortlistWebhookFromCv(cvUrl);
+            if (derived) return derived;
+        }
+
+        return isLocalHost() ? 'http://localhost:5678/webhook/talent/manual-shortlist-mail' : N8N_WEBHOOK_BASE + '/talent/manual-shortlist-mail';
+    }
+
+    async function populateManualShortlistWebhookConfig() {
+        const url = await loadManualShortlistWebhookConfig();
+        const inp = document.getElementById('admManualShortlistWebhook');
+        if (inp && url && !inp.value.trim()) inp.value = url;
+        return url;
+    }
+
     async function saveWebhookConfig() {
         if (deps.auth && !deps.auth.can('save_webhooks')) {
             deps.banner('Only super admins can change integration settings.', 'err');
@@ -524,12 +577,17 @@
         }
         const cvUrl = normalizeWebhookUrl(document.getElementById('admWebhook')?.value || '');
         const jdUrl = normalizeWebhookUrl(document.getElementById('admJdWebhook')?.value || '');
+        const manualShortlistUrl = normalizeWebhookUrl(
+            document.getElementById('admManualShortlistWebhook')?.value ||
+            deriveManualShortlistWebhookFromCv(cvUrl)
+        );
         if (!cvUrl) {
             deps.banner('Enter a valid n8n CV ingest webhook URL.', 'err');
             return;
         }
         localStorage.setItem(WEBHOOK_STORAGE, cvUrl);
         if (jdUrl) localStorage.setItem(JD_WEBHOOK_STORAGE, jdUrl);
+        if (manualShortlistUrl) localStorage.setItem(MANUAL_SHORTLIST_WEBHOOK_STORAGE, manualShortlistUrl);
         if (deps.sb) {
             const rows = [
                 { key: 'cv_ingest_webhook', value: cvUrl, updated_at: new Date().toISOString() },
@@ -537,9 +595,22 @@
             if (jdUrl) {
                 rows.push({ key: 'jd_generate_webhook', value: jdUrl, updated_at: new Date().toISOString() });
             }
+            if (manualShortlistUrl) {
+                rows.push({
+                    key: 'manual_shortlist_webhook',
+                    value: manualShortlistUrl,
+                    updated_at: new Date().toISOString(),
+                });
+            }
             await deps.sb.from('app_config').upsert(rows, { onConflict: 'key' });
         }
-        if (deps.auth) await deps.auth.logAudit('save_webhooks', 'app_config', 'webhooks', { cv: !!cvUrl, jd: !!jdUrl });
+        if (deps.auth) {
+            await deps.auth.logAudit('save_webhooks', 'app_config', 'webhooks', {
+                cv: !!cvUrl,
+                jd: !!jdUrl,
+                manual_shortlist: !!manualShortlistUrl,
+            });
+        }
         deps.banner('Webhook URLs saved.', 'ok');
     }
 
@@ -2359,12 +2430,31 @@
 
             if (data.assessment_link && navigator.clipboard?.writeText) {
                 await navigator.clipboard.writeText(data.assessment_link);
+            }
+
+            if (data.email_sent) {
                 deps.banner(
-                    'Shortlisted — assessment session created. Link copied to clipboard — send it to the candidate.',
+                    'Shortlisted — assessment session created and invite email sent to ' + m.email + '.',
                     'ok'
                 );
+            } else if (!data.webhook_configured) {
+                deps.banner(
+                    'Shortlisted — session created. Email not sent: set manual shortlist webhook in Settings (use ngrok /webhook/ URL, not localhost).',
+                    'err'
+                );
+            } else if (data.email_error) {
+                deps.banner(
+                    'Shortlisted — session created but email failed: ' + data.email_error + '. Check n8n workflow is Active and URL uses /webhook/ not /webhook-test/.',
+                    'err'
+                );
+            } else if (data.assessment_link && navigator.clipboard?.writeText) {
+                deps.banner('Shortlisted — session created. Link copied to clipboard.', 'ok');
             } else {
                 deps.banner('Shortlisted — session ' + (data.session_id || 'created'), 'ok');
+            }
+
+            if (data.email_error) {
+                console.warn('Manual shortlist mail error:', data.email_error);
             }
 
             if (deps.auth) {
@@ -2585,6 +2675,7 @@
             setScreenMode('single');
             loadWebhookConfig();
             loadJdWebhookConfig();
+            populateManualShortlistWebhookConfig();
             loadJobs();
             loadOnsite();
             const wh = new URLSearchParams(location.search).get('webhook');
@@ -2607,6 +2698,7 @@
             if (view === 'settings') {
                 loadWebhookConfig();
                 loadJdWebhookConfig();
+                populateManualShortlistWebhookConfig();
             }
             if (view === 'users' || view === 'users-invite') {
                 if (!deps.auth?.canManageUsers()) {

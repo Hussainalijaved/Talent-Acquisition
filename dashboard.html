@@ -1560,7 +1560,7 @@
             return html;
         }
 
-        function renderPhaseCard(h, maxPhases, techMax) {
+        function renderPhaseCard(h, totalPh, techMax) {
             const phase = Number(h.phase || 0);
             const isSpeech = isSpeechPhaseRow(h, techMax);
             const q = h.question_text || h.question || '';
@@ -1573,6 +1573,9 @@
             if (h.received_at) meta.push('Answered ' + fmtDateTime(h.received_at));
 
             let body = '';
+            if (meta.length) {
+                body += '<div class="phase-detail-meta">' + meta.map((m) => '<span class="meta-chip">' + esc(m) + '</span>').join('') + '</div>';
+            }
             if (q) body += renderQaBlock('Question', q, '');
             else body += '<div class="phase-empty">No question text recorded for this phase.</div>';
 
@@ -1594,16 +1597,22 @@
                 ? '<span class="integrity">Not scored</span>'
                 : (h.score != null ? scoreBadge(h.score) : '<span class="c-role">—</span>');
 
-            const phaseTitle = isSpeech
-                ? 'Voice Q' + (phase - techMax) + ' (Phase ' + phase + ')'
-                : 'Phase ' + esc(phase || '?') + ' of ' + maxPhases;
+            const phaseTitle = 'Phase ' + (phase || '?') + ' of ' + totalPh;
 
-            return '<div class="phase-card' + (isSpeech ? ' phase-card-speech' : '') + '">' +
-                '<div class="phase-card-head">' +
-                '<div><div class="phase-title">' + phaseTitle + '</div>' +
-                '<div class="phase-meta">' + esc(status) + (meta.length ? ' · ' + esc(meta.join(' · ')) : '') + '</div></div>' +
-                scoreHtml +
-                '</div><div class="phase-card-body">' + body + '</div></div>';
+            const speechClass = isSpeech ? ' phase-card-speech' : '';
+
+            return '<details class="phase-accordion' + speechClass + '">' +
+                '<summary class="phase-accordion-summary">' +
+                '<div class="phase-accordion-leading">' +
+                '<span class="phase-accordion-chevron" aria-hidden="true"></span>' +
+                '<div class="phase-accordion-titles">' +
+                '<div class="phase-title">' + esc(phaseTitle) + '</div>' +
+                '<div class="phase-meta">' + esc(status) + (isSpeech ? ' · Voice round' : '') + '</div>' +
+                '</div></div>' +
+                '<div class="phase-accordion-score">' + scoreHtml + '</div>' +
+                '</summary>' +
+                '<div class="phase-accordion-body">' + body + '</div>' +
+                '</details>';
         }
 
         function renderAssessmentReport(sess) {
@@ -1658,11 +1667,11 @@
             hist.forEach((h) => {
                 if (!h) return;
                 phasesSeen.add(Number(h.phase));
-                html += renderPhaseCard(h, techMax, techMax);
+                html += renderPhaseCard(h, totalPh, techMax);
             });
             for (let p = 1; p <= totalPh; p++) {
                 if (!phasesSeen.has(p)) {
-                    html += renderPhaseCard({ phase: p }, techMax, techMax);
+                    html += renderPhaseCard({ phase: p }, totalPh, techMax);
                 }
             }
             if (!hist.length) {

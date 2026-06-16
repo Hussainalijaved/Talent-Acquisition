@@ -582,8 +582,68 @@ tbody tr:last-child td { border-bottom: none; }
 .phase-card { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 12px; overflow: hidden; background: var(--surface); }
 .phase-card-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border); gap: 12px; }
 .phase-card-body { padding: 14px; }
+
+.phase-accordion {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 10px;
+    overflow: hidden;
+    background: var(--surface);
+}
+.phase-accordion-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+.phase-accordion-summary::-webkit-details-marker { display: none; }
+.phase-accordion-summary::marker { content: ''; }
+.phase-accordion-leading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+.phase-accordion-chevron {
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--text-soft);
+    border-bottom: 2px solid var(--text-soft);
+    transform: rotate(-45deg);
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    margin-top: -2px;
+}
+.phase-accordion[open] .phase-accordion-chevron { transform: rotate(45deg); margin-top: -4px; }
+.phase-accordion-titles { min-width: 0; }
+.phase-accordion-score { flex-shrink: 0; }
+.phase-accordion-body {
+    padding: 14px 16px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+}
+.phase-detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+.phase-accordion:hover .phase-accordion-summary { background: #f8fafc; }
+.phase-accordion[open] .phase-accordion-summary {
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(11, 92, 171, 0.05) 0%, var(--surface-2) 100%);
+}
 .phase-card-speech { border-color: rgba(99, 102, 241, 0.28); }
-.phase-card-speech .phase-card-head { background: linear-gradient(180deg, rgba(99, 102, 241, 0.06) 0%, var(--surface-2) 100%); }
+.phase-card-speech .phase-accordion-summary { background: linear-gradient(180deg, rgba(99, 102, 241, 0.06) 0%, var(--surface-2) 100%); }
+.phase-card-speech[open] .phase-accordion-summary {
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.1) 0%, var(--surface-2) 100%);
+}
 
 .speech-insights { margin: 12px 0 14px; padding: 14px; border-radius: var(--radius-sm); border: 1px solid rgba(99, 102, 241, 0.18); background: rgba(99, 102, 241, 0.04); }
 .speech-skills-grid { display: grid; gap: 10px; margin-bottom: 12px; }
@@ -689,10 +749,10 @@ tbody tr:last-child td { border-bottom: none; }
 .assessment-detail-body .assess-summary {
     grid-template-columns: repeat(4, minmax(120px, 1fr));
 }
-.assessment-detail-body .phase-card {
+.assessment-detail-body .phase-accordion {
     margin-bottom: 16px;
 }
-.assessment-detail-body .phase-card-body {
+.assessment-detail-body .phase-accordion-body {
     padding: 18px 20px;
 }
 .assessment-detail-body .qa-block .qa-body {

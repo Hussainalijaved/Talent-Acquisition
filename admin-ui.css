@@ -892,21 +892,20 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .job-create-right {
     position: sticky;
-    top: 88px;
+    top: 72px;
     align-self: start;
-    height: calc(100vh - 108px);
-    max-height: calc(100vh - 108px);
+    width: 100%;
 }
 .job-jd-panel {
     background: var(--surface-2);
     border: 2px solid var(--border);
     border-radius: var(--radius);
-    padding: 18px;
+    padding: 14px 16px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    height: 100%;
-    min-height: calc(100vh - 108px);
+    gap: 10px;
+    overflow: hidden;
+    min-height: 480px;
 }
 .job-jd-panel-title {
     font-size: var(--text-sm);
@@ -917,8 +916,9 @@ tbody tr:last-child td { border-bottom: none; }
     margin: 0;
 }
 .job-jd-panel-head {
-    padding-bottom: 10px;
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
 }
 .job-jd-panel-sub {
     margin: 6px 0 0;
@@ -931,8 +931,9 @@ tbody tr:last-child td { border-bottom: none; }
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px 16px;
-    padding: 14px 16px;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    flex-shrink: 0;
     border-radius: var(--radius-sm);
     border: 1px solid rgba(11, 92, 171, 0.22);
     background: linear-gradient(135deg, rgba(11, 92, 171, 0.08) 0%, rgba(11, 92, 171, 0.03) 100%);
@@ -962,7 +963,7 @@ tbody tr:last-child td { border-bottom: none; }
     font-weight: 700;
     color: var(--text-soft);
 }
-.job-jd-toolbar { margin-bottom: 0; }
+.job-jd-toolbar { margin-bottom: 0; flex-shrink: 0; }
 .job-jd-toolbar-label {
     font-size: var(--text-sm);
     font-weight: 700;
@@ -1003,23 +1004,31 @@ tbody tr:last-child td { border-bottom: none; }
     flex-direction: column;
     min-height: 0;
     margin-bottom: 0;
+    overflow: hidden;
 }
 .job-jd-main .textarea-jd {
     flex: 1 1 auto;
-    min-height: clamp(420px, 48vh, 720px);
-    height: 100%;
+    min-height: 100px;
+    max-height: 100%;
+    width: 100%;
+    overflow-y: auto;
+    resize: none;
+}
+.job-jd-main .form-hint {
+    flex-shrink: 0;
+    margin-top: 4px;
 }
 .job-display-style-group { margin-bottom: 0; flex-shrink: 0; }
 .textarea-jd {
-    resize: vertical;
     line-height: 1.55;
     font-size: var(--text-md);
 }
 .job-jd-actions {
     margin-top: auto;
-    padding-top: 4px;
+    padding-top: 6px;
     flex-wrap: wrap;
     flex-shrink: 0;
+    gap: 8px;
 }
 
 /* LinkedIn / social post modal */
@@ -1333,10 +1342,9 @@ body.sidebar-open { overflow: hidden; }
     .grid-2 { grid-template-columns: 1fr; }
     .screen-split { grid-template-columns: 1fr; }
     .job-create-split { grid-template-columns: 1fr; }
-    .job-create-right { position: static; height: auto; max-height: none; }
-    .job-jd-panel { min-height: 0; height: auto; }
-    .textarea-jd { min-height: 360px; }
-    .job-jd-main .textarea-jd { min-height: 360px; }
+    .job-create-right { position: static; }
+    .job-jd-panel { height: auto !important; max-height: none !important; overflow: visible; }
+    .job-jd-main .textarea-jd { min-height: 280px; resize: vertical; }
     .job-form-row.cols-3 { grid-template-columns: 1fr 1fr; }
 }
 

@@ -125,6 +125,42 @@
         });
     }
 
+    let jobCreatePanelRo = null;
+
+    function syncJobCreatePanelHeight() {
+        const view = document.getElementById('view-jobs-create');
+        const left = view?.querySelector('.job-create-left');
+        const panel = view?.querySelector('.job-jd-panel');
+        if (!view?.classList.contains('active') || !left || !panel) return;
+
+        if (window.innerWidth <= 1100) {
+            panel.style.height = '';
+            panel.style.maxHeight = '';
+            return;
+        }
+
+        const h = left.offsetHeight;
+        if (h > 0) {
+            panel.style.height = h + 'px';
+            panel.style.maxHeight = h + 'px';
+        }
+    }
+
+    function bindJobCreatePanelSync() {
+        const left = document.querySelector('#view-jobs-create .job-create-left');
+        if (!left) return;
+
+        if (jobCreatePanelRo) jobCreatePanelRo.disconnect();
+        if (typeof ResizeObserver !== 'undefined') {
+            jobCreatePanelRo = new ResizeObserver(() => {
+                requestAnimationFrame(syncJobCreatePanelHeight);
+            });
+            jobCreatePanelRo.observe(left);
+        }
+
+        window.addEventListener('resize', syncJobCreatePanelHeight);
+    }
+
     function setJobFieldError(fieldId, message) {
         const el = document.getElementById(fieldId);
         if (!el) return false;
@@ -2423,6 +2459,7 @@
         });
         bindJobTemplateUpload();
         bindJobFieldValidation();
+        bindJobCreatePanelSync();
         bindSocialPostEvents();
         populateJobDisplayStyleSelect();
         document.getElementById('jobDisplayStyleIn')?.addEventListener('change', updateJobDisplayStyleHint);
@@ -2467,6 +2504,12 @@
         },
         onViewChange(view) {
             if (view === 'jobs' || view === 'jobs-create') loadJobs();
+            if (view === 'jobs-create') {
+                requestAnimationFrame(() => {
+                    syncJobCreatePanelHeight();
+                    setTimeout(syncJobCreatePanelHeight, 50);
+                });
+            }
             if (view === 'onsite') loadOnsite();
             if (view === 'settings') {
                 loadWebhookConfig();

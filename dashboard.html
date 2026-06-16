@@ -668,7 +668,8 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
-        <div style="padding:0 24px 12px;background:var(--surface);border-bottom:1px solid var(--border)">
+        <div class="drawer-actions" style="padding:0 24px 12px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px">
+            <button type="button" class="btn-success btn-sm" id="drawerApproveBtn" style="display:none">Shortlist &amp; send assessment</button>
             <button type="button" class="btn-danger btn-sm" id="drawerDeleteBtn" style="display:none">Delete candidate &amp; all records</button>
         </div>
         <div class="drawer-body" id="drawerBody"></div>
@@ -1863,6 +1864,10 @@
             // Interview history (assessment_sessions.interview_history)
             if (sess) {
                 html += renderAssessmentReport(sess);
+            } else if (m.stage === 'ReviewQueue') {
+                html += '<div class="section"><div class="section-h">' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Assessment</div>' +
+                    '<div class="qtext ans">Under human review — no assessment yet. Use <strong>Shortlist &amp; send assessment</strong> above to approve and create a session.</div></div>';
             } else if (m.stage === 'Shortlisted') {
                 html += '<div class="section"><div class="section-h">' +
                     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Assessment</div>' +
@@ -1903,6 +1908,7 @@
             document.getElementById('overlay').classList.add('show');
             document.getElementById('drawer').classList.add('show');
             if (window.TAAdmin) TAAdmin.bindDrawerNotes(m);
+            if (window.TAAdmin) TAAdmin.syncDrawerActionButtons(m);
         }
         function kv(k, v) { return '<div class="kv"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>'; }
         function closeDrawer() {

@@ -2310,6 +2310,96 @@
         await renderAssignmentList();
     }
 
+    async function approveReviewCandidate(m) {
+        if (deps.auth && !deps.auth.can('approve_review')) {
+            deps.banner('You do not have permission to shortlist review candidates.', 'err');
+            return;
+        }
+        if (!m?.candidateId) {
+            deps.banner('Missing candidate record id.', 'err');
+            return;
+        }
+        if (m.stage !== 'ReviewQueue') {
+            deps.banner('Only Review queue candidates can be manually shortlisted.', 'err');
+            return;
+        }
+        if (m.session?.id) {
+            deps.banner('This candidate already has an assessment session.', 'err');
+            return;
+        }
+        if (!confirm('Shortlist ' + m.email + ' for ' + (m.role || 'this role') + ' and create an assessment session?')) {
+            return;
+        }
+
+        const btn = document.getElementById('drawerApproveBtn');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Creating session…';
+        }
+
+        try {
+            const session = await deps.auth?.getSession?.();
+            if (!session?.access_token) {
+                throw new Error('Not signed in — refresh and try again.');
+            }
+
+            const res = await fetch('/api/manual-shortlist', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + session.access_token,
+                },
+                body: JSON.stringify({ candidate_id: m.candidateId }),
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) {
+                throw new Error(data.message || data.error || 'Shortlist request failed');
+            }
+
+            if (data.assessment_link && navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(data.assessment_link);
+                deps.banner(
+                    'Shortlisted — assessment session created. Link copied to clipboard — send it to the candidate.',
+                    'ok'
+                );
+            } else {
+                deps.banner('Shortlisted — session ' + (data.session_id || 'created'), 'ok');
+            }
+
+            if (deps.auth) {
+                await deps.auth.logAudit('approve_review', 'candidate', m.email, {
+                    session_id: data.session_id,
+                    requisition_id: data.requisition_id,
+                });
+            }
+
+            deps.closeDrawer();
+            await deps.loadData();
+        } catch (err) {
+            deps.banner('Shortlist failed: ' + (err.message || err), 'err');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Shortlist & send assessment';
+            }
+        }
+    }
+
+    function syncDrawerActionButtons(m) {
+        const approveBtn = document.getElementById('drawerApproveBtn');
+        const deleteBtn = document.getElementById('drawerDeleteBtn');
+        const canApprove =
+            m &&
+            m.stage === 'ReviewQueue' &&
+            !m.session?.id &&
+            (!deps.auth || deps.auth.can('approve_review'));
+        if (approveBtn) approveBtn.style.display = canApprove ? 'inline-flex' : 'none';
+        if (deleteBtn) {
+            deleteBtn.style.display = m && deps.auth?.can('delete_candidate') ? 'inline-flex' : 'none';
+        }
+    }
+
     async function deleteCandidateRecord(m) {
         if (deps.auth && !deps.auth.can('delete_candidate')) {
             deps.banner('Only super admins can delete candidates.', 'err');
@@ -2475,6 +2565,9 @@
         document.getElementById('drawerDeleteBtn')?.addEventListener('click', () => {
             if (deps.activeCandidate) deleteCandidateRecord(deps.activeCandidate);
         });
+        document.getElementById('drawerApproveBtn')?.addEventListener('click', () => {
+            if (deps.activeCandidate) approveReviewCandidate(deps.activeCandidate);
+        });
         document.getElementById('inviteUserForm')?.addEventListener('submit', inviteUser);
         document.getElementById('invRole')?.addEventListener('change', (e) => {
             updateInviteRoleHint(e.target.value);
@@ -2528,8 +2621,10 @@
         },
         setActiveCandidate(m) {
             deps.activeCandidate = m;
-            const btn = document.getElementById('drawerDeleteBtn');
-            if (btn) btn.style.display = (m && deps.auth?.can('delete_candidate')) ? 'inline-flex' : 'none';
+            syncDrawerActionButtons(m);
+        },
+        syncDrawerActionButtons(m) {
+            syncDrawerActionButtons(m);
         },
         async loadJobScope() {
             await loadJobScope();

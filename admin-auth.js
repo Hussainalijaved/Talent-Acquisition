@@ -57,6 +57,7 @@
         edit_jobs: 'Create & edit jobs',
         delete_job: 'Delete jobs',
         screen_cv: 'Run CV screening',
+        approve_review: 'Shortlist review-queue candidates',
         delete_candidate: 'Delete candidates',
         onsite_write: 'Record onsite interviews',
         add_candidate_notes: 'Add candidate notes',
@@ -75,7 +76,7 @@
         super_admin: { views: ALL_VIEWS, perms: ALL_PERMS },
         hr_head: {
             views: ['overview', 'candidates', 'pipeline', 'assessments', 'jobs', 'jobs-create', 'screen', 'users', 'users-invite'],
-            perms: ['edit_jobs', 'screen_cv', 'manage_users', 'add_candidate_notes'],
+            perms: ['edit_jobs', 'screen_cv', 'approve_review', 'manage_users', 'add_candidate_notes'],
         },
         hiring_manager_head: {
             views: ['overview', 'candidates', 'pipeline', 'assessments', 'jobs', 'onsite', 'users', 'users-invite'],
@@ -83,7 +84,7 @@
         },
         recruiter: {
             views: ['overview', 'candidates', 'pipeline', 'assessments', 'jobs', 'jobs-create', 'screen'],
-            perms: ['edit_jobs', 'screen_cv', 'add_candidate_notes'],
+            perms: ['edit_jobs', 'screen_cv', 'approve_review', 'add_candidate_notes'],
         },
         hiring_manager: {
             views: ['overview', 'candidates', 'pipeline', 'assessments', 'onsite'],

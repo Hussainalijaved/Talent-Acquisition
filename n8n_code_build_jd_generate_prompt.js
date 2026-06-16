@@ -40,6 +40,9 @@ const location = pick(body, 'location') || 'Remote';
 const employment_type = pick(body, 'employment_type', 'employmentType', 'job_type') || 'Full-time';
 const criteria = bulletLines(pick(body, 'criteria', 'must_have', 'requirements'));
 const nice = bulletLines(pick(body, 'nice', 'nice_to_have', 'niceToHave'));
+const experience = pick(body, 'experience', 'years_experience', 'yearsExperience');
+const tech_stack = pick(body, 'tech_stack', 'techStack', 'stack');
+const salary_range = pick(body, 'salary_range', 'salary', 'compensation');
 const seniority = detectSeniority(title);
 
 // Code nodes cannot read $env — model default matches CV screening; override via request body groq_model.
@@ -70,6 +73,8 @@ const systemPrompt = [
   '',
   'QUALITY RULES:',
   '- Weave ALL provided must-have and nice-to-have skills into the right sections — never ignore recruiter input.',
+  '- If experience years or tech stack are provided, reflect them explicitly in Requirements (do not invent conflicting years).',
+  '- If salary/compensation range is provided, you may reference it naturally in the closing paragraph only — never add a separate salary section.',
   '- Infer realistic enterprise context from the job title (Flutter → mobile architecture; .NET → web APIs; etc.).',
   '- Senior roles: leadership, architecture ownership, mentoring; include realistic experience years (e.g. 3+ in stack, 5+ overall for senior).',
   '- Junior roles: mentorship, learning, foundational delivery; lower experience thresholds.',
@@ -86,6 +91,9 @@ const userPrompt = [
   `Department: ${department}`,
   `Location: ${location}`,
   `Employment type: ${employment_type}`,
+  experience ? `Required experience: ${experience}` : '',
+  tech_stack ? `Primary tech stack (weave into Requirements and Responsibilities): ${tech_stack}` : '',
+  salary_range ? `Compensation range (optional mention in closing only): ${salary_range}` : '',
   ``,
   criteria.length
     ? `Must-have criteria from recruiter (expand every item into Responsibilities and/or Requirements):\n${criteria.map((c) => `- ${c}`).join('\n')}`
@@ -143,6 +151,9 @@ return [
       seniority,
       criteria,
       nice,
+      experience,
+      tech_stack,
+      salary_range,
       groq_jd_request,
     },
   },

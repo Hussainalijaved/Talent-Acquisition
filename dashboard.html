@@ -16,8 +16,11 @@
     <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
     <aside class="sidebar" id="sidebar">
         <div class="brand">
-            <div class="brand-name">CONVO</div>
-            <div class="brand-sub">Talent Admin</div>
+            <div class="brand-mark" aria-hidden="true">CO</div>
+            <div class="brand-text">
+                <div class="brand-name">CONVO</div>
+                <div class="brand-sub">Talent Admin</div>
+            </div>
         </div>
         <a href="careers.html" target="_blank" rel="noopener" class="nav-portal-link">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -329,6 +332,7 @@
 
                                     <section class="job-form-section">
                                         <div class="job-form-section-title">Compensation &amp; requirements</div>
+                                        <p class="job-form-section-hint">Experience, tech stack, and salary are sent to AI when you generate the JD.</p>
                                         <div class="job-form-row cols-3">
                                             <div class="form-group">
                                                 <label for="jobExpIn">Experience</label>
@@ -345,18 +349,17 @@
                                         </div>
                                     </section>
 
-                                    <section class="job-form-section">
+                                    <section class="job-form-section job-form-section-ai">
                                         <div class="job-form-section-title">Screening criteria</div>
+                                        <p class="job-form-section-hint">Must-have and nice-to-have lines are expanded into Responsibilities and Requirements.</p>
                                         <div class="job-form-row cols-2">
                                             <div class="form-group">
                                                 <label for="jobCriteriaIn">Must-have (one per line)</label>
                                                 <textarea id="jobCriteriaIn" class="textarea-compact" placeholder="C# and .NET Core&#10;ASP.NET Core / Web API&#10;SQL Server &amp; Entity Framework"></textarea>
-                                                <div class="form-hint">Used by AI generation</div>
                                             </div>
                                             <div class="form-group">
                                                 <label for="jobNiceIn">Nice to have</label>
                                                 <textarea id="jobNiceIn" class="textarea-compact" placeholder="AWS / Kubernetes&#10;Open-source contributions"></textarea>
-                                                <div class="form-hint">Optional extras</div>
                                             </div>
                                         </div>
                                     </section>
@@ -364,9 +367,19 @@
                             </div>
                             <div class="job-create-right">
                                 <div class="job-jd-panel">
-                                    <div class="job-jd-panel-title">Job description</div>
+                                    <div class="job-jd-panel-head">
+                                        <div class="job-jd-panel-title">Job description</div>
+                                        <p class="job-jd-panel-sub">Generate from the fields on the left, upload a template, or write manually.</p>
+                                    </div>
+                                    <div class="job-ai-callout">
+                                        <div class="job-ai-callout-text">
+                                            <strong>Generate with AI</strong>
+                                            <span>Uses title, experience, stack, salary, and screening criteria.</span>
+                                        </div>
+                                        <button type="button" class="btn-primary job-gen-primary" id="jobGenBtn">Generate with AI</button>
+                                    </div>
                                     <div class="form-group job-jd-toolbar">
-                                        <label class="job-jd-toolbar-label">JD source</label>
+                                        <label class="job-jd-toolbar-label">Or upload a template</label>
                                         <div class="job-template-upload" id="jobTemplateZone">
                                             <input type="file" id="jobTemplateFile" class="job-template-file-input" accept=".pdf,.doc,.docx,.txt,.md,.html,.htm,.rtf,.odt" />
                                             <button type="button" class="btn-secondary btn-sm" id="jobTemplateBtn">Upload template</button>
@@ -376,7 +389,7 @@
                                     </div>
                                     <div class="form-group job-jd-main">
                                         <label for="jobJdIn">Full job description *</label>
-                                        <textarea id="jobJdIn" class="textarea-jd" placeholder="Upload a template or click Generate with AI…" required></textarea>
+                                        <textarea id="jobJdIn" class="textarea-jd" placeholder="Click Generate with AI, upload a template, or paste your JD here…" required></textarea>
                                         <div class="form-hint" id="jobTemplateHint">Used for careers page, CV screening, and assessment.</div>
                                     </div>
                                     <div class="form-group job-display-style-group">
@@ -385,7 +398,6 @@
                                         <div class="form-hint" id="jobDisplayStyleHint">How this role appears on the public apply page.</div>
                                     </div>
                                     <div class="form-actions job-jd-actions">
-                                        <button type="button" class="btn-secondary" id="jobGenBtn">Generate with AI</button>
                                         <button type="button" class="btn-secondary" id="jobSocialBtn">LinkedIn post</button>
                                         <button type="button" class="btn-primary" data-requires-perm="edit_jobs" onclick="document.getElementById('jobForm').dispatchEvent(new Event('submit'))">Save job</button>
                                         <button type="button" class="btn-secondary" id="jobResetBtn">Clear form</button>
@@ -1095,7 +1107,7 @@
                   svg: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>' },
             ];
             document.getElementById('kpiGrid').innerHTML = cards.map(c =>
-                '<div class="kpi"><div class="kpi-top"><span class="kpi-label">' + c.label + '</span>' +
+                '<div class="kpi kpi-tone-' + c.ic + '"><div class="kpi-top"><span class="kpi-label">' + c.label + '</span>' +
                 '<span class="kpi-ic ic-' + c.ic + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + c.svg + '</svg></span></div>' +
                 '<div class="kpi-val">' + c.val + '</div><div class="kpi-foot">' + c.foot + '</div></div>'
             ).join('');

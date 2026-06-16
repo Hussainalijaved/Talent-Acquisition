@@ -336,8 +336,6 @@ a { color: var(--convo-brand); }
     line-height: 1.75;
     color: var(--convo-ink-soft);
     white-space: pre-wrap;
-    max-height: 560px;
-    overflow-y: auto;
 }
 .convo-job-title {
     font-size: 28px;

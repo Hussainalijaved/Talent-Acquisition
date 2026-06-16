@@ -890,7 +890,13 @@ tbody tr:last-child td { border-bottom: none; }
     max-height: 140px;
     resize: vertical;
 }
-.job-create-right { position: sticky; top: 88px; }
+.job-create-right {
+    position: sticky;
+    top: 88px;
+    align-self: start;
+    height: calc(100vh - 108px);
+    max-height: calc(100vh - 108px);
+}
 .job-jd-panel {
     background: var(--surface-2);
     border: 2px solid var(--border);
@@ -899,7 +905,8 @@ tbody tr:last-child td { border-bottom: none; }
     display: flex;
     flex-direction: column;
     gap: 12px;
-    min-height: 640px;
+    height: 100%;
+    min-height: calc(100vh - 108px);
 }
 .job-jd-panel-title {
     font-size: var(--text-sm);
@@ -991,16 +998,19 @@ tbody tr:last-child td { border-bottom: none; }
     background: var(--success-bg);
 }
 .job-jd-main {
-    flex: 1;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     min-height: 0;
     margin-bottom: 0;
 }
-.job-jd-main .textarea-jd { flex: 1; }
-.job-display-style-group { margin-bottom: 0; }
+.job-jd-main .textarea-jd {
+    flex: 1 1 auto;
+    min-height: clamp(420px, 48vh, 720px);
+    height: 100%;
+}
+.job-display-style-group { margin-bottom: 0; flex-shrink: 0; }
 .textarea-jd {
-    min-height: 400px;
     resize: vertical;
     line-height: 1.55;
     font-size: var(--text-md);
@@ -1009,6 +1019,7 @@ tbody tr:last-child td { border-bottom: none; }
     margin-top: auto;
     padding-top: 4px;
     flex-wrap: wrap;
+    flex-shrink: 0;
 }
 
 /* LinkedIn / social post modal */
@@ -1322,8 +1333,10 @@ body.sidebar-open { overflow: hidden; }
     .grid-2 { grid-template-columns: 1fr; }
     .screen-split { grid-template-columns: 1fr; }
     .job-create-split { grid-template-columns: 1fr; }
-    .job-create-right { position: static; }
-    .job-jd-panel { min-height: 0; }
+    .job-create-right { position: static; height: auto; max-height: none; }
+    .job-jd-panel { min-height: 0; height: auto; }
+    .textarea-jd { min-height: 360px; }
+    .job-jd-main .textarea-jd { min-height: 360px; }
     .job-form-row.cols-3 { grid-template-columns: 1fr 1fr; }
 }
 

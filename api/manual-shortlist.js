@@ -23,6 +23,16 @@ async function resolveMailWebhook(supabaseUrl, serviceKey) {
     return String(row?.value || '').trim();
 }
 
+function formatSbError(result) {
+    const data = result?.data;
+    if (typeof data === 'object' && data) {
+        const msg = data.message || data.error || data.hint || data.details;
+        if (msg) return String(msg).slice(0, 300);
+        return JSON.stringify(data).slice(0, 300);
+    }
+    return String(data || result?.status || 'unknown error').slice(0, 300);
+}
+
 async function sbFetch(base, key, path, options = {}) {
     const res = await fetch(`${base.replace(/\/+$/, '')}${path}`, {
         ...options,
@@ -256,6 +266,40 @@ export default async function handler(req, res) {
 
         const nowIso = new Date().toISOString();
         const timeLimit = phase1.time_limit_seconds;
+
+        const shortlistedNotes = {
+            ...notes,
+            requisition_id: requisitionId,
+            requisition_title: jdTitle,
+            recommendation: 'SHORTLIST',
+            decision: 'SHORTLIST',
+            manual_shortlist: true,
+            approved_at: nowIso,
+            approved_by: auth.profile.email,
+        };
+
+        const stagePatchRes = await sbFetch(
+            supabaseUrl,
+            serviceKey,
+            `/rest/v1/candidates?id=eq.${encodeURIComponent(candidateId)}`,
+            {
+                method: 'PATCH',
+                headers: { Prefer: 'return=minimal' },
+                body: JSON.stringify({
+                    stage: 'Shortlisted',
+                    notes: shortlistedNotes,
+                }),
+            }
+        );
+        if (!stagePatchRes.ok) {
+            const detail = formatSbError(stagePatchRes);
+            const hint =
+                stagePatchRes.status === 409
+                    ? ' A Shortlisted row may already exist for this email and job — check candidates table.'
+                    : '';
+            throw new Error(`Candidate stage update failed: ${detail}${hint}`);
+        }
+
         const sessionBody = {
             gmail_thread_id: null,
             candidate_email: email,
@@ -314,7 +358,7 @@ export default async function handler(req, res) {
         const sessionId = session?.id;
         if (!sessionId) throw new Error('Session created but no id returned');
 
-        const patchRes = await sbFetch(
+        const notesPatchRes = await sbFetch(
             supabaseUrl,
             serviceKey,
             `/rest/v1/candidates?id=eq.${encodeURIComponent(candidateId)}`,
@@ -322,24 +366,15 @@ export default async function handler(req, res) {
                 method: 'PATCH',
                 headers: { Prefer: 'return=minimal' },
                 body: JSON.stringify({
-                    stage: 'Shortlisted',
-                    updated_at: nowIso,
                     notes: {
-                        ...notes,
-                        requisition_id: requisitionId,
-                        requisition_title: jdTitle,
-                        recommendation: 'SHORTLIST',
-                        decision: 'SHORTLIST',
-                        manual_shortlist: true,
-                        approved_at: nowIso,
-                        approved_by: auth.profile.email,
+                        ...shortlistedNotes,
                         assessment_session_id: sessionId,
                     },
                 }),
             }
         );
-        if (!patchRes.ok) {
-            throw new Error('Session created but candidate stage update failed');
+        if (!notesPatchRes.ok) {
+            console.warn('manual-shortlist: session link note update failed:', formatSbError(notesPatchRes));
         }
 
         const assessmentLink =

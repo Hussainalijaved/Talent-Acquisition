@@ -547,6 +547,7 @@
 
         const runWindow = async () => {
             if (!active || busy || chunks.length === 0) return;
+            if (browserLiveActive) return;
             if (chunks.length === lastChunkCount) return;
             lastChunkCount = chunks.length;
             busy = true;
@@ -681,15 +682,20 @@
                 }
 
                 const blob = chunks.length ? new Blob(chunks, { type: mime }) : null;
-                onStatus?.('transcribing');
-
-                let text = lastText || browserText;
-                const finalText = await transcribeBlob(blob, transcribeUrl);
-                if (finalText) text = finalText;
-                else if (browserText) text = browserText;
-
+                let text = sanitizeTranscript(lastText || browserText);
                 mediaRecorder = null;
-                return { text: sanitizeTranscript(text), blob, durationSeconds, delivery };
+                onStatus?.('ready');
+
+                const onFinalTranscript = opts.onFinalTranscript;
+                if (blob && typeof onFinalTranscript === 'function') {
+                    transcribeBlob(blob, transcribeUrl)
+                        .then((finalText) => {
+                            if (finalText) onFinalTranscript(sanitizeTranscript(finalText));
+                        })
+                        .catch(() => {});
+                }
+
+                return { text, blob, durationSeconds, delivery };
             },
 
             cancel() {

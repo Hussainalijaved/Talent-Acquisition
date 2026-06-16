@@ -1825,9 +1825,9 @@
                                         >
                                             <p className="text-slate-200 whitespace-pre-wrap">
                                                 {transcript || (isRecording
-                                                    ? 'Listening… your words will appear here as you speak.'
+                                                    ? 'Listening… speak now — words appear here live.'
                                                     : isTranscribing
-                                                        ? 'Finalizing transcript…'
+                                                        ? transcript || 'Finalizing transcript…'
                                                         : 'Press Record, speak your answer, press Stop, then submit below.')}
                                                 {isRecording ? (
                                                     <span className="inline-block w-0.5 h-[1em] bg-emerald-400 ml-0.5 align-middle animate-pulse" aria-hidden="true" />

@@ -245,6 +245,13 @@
         return t.split(/\s+/).filter(Boolean).length < 4;
     }
 
+    function isLiveTranscriptUsable(text) {
+        const t = String(text || '').trim();
+        if (!t) return false;
+        if (/^\[(no speech detected|timeout)/i.test(t)) return false;
+        return t.split(/\s+/).filter(Boolean).length >= 1;
+    }
+
     function liveSanitize(text) {
         return String(text || '').replace(/\s+/g, ' ').trim();
     }
@@ -322,6 +329,7 @@
     /** Browser STT with interim results — smooth live captions while MediaRecorder captures audio. */
     function createSpeechRecognizer(options) {
         const onTranscript = typeof options === 'function' ? options : options?.onTranscript;
+        const onError = typeof options === 'object' ? options?.onError : null;
         const SR = global.SpeechRecognition || global.webkitSpeechRecognition;
         if (!SR) {
             return {
@@ -337,11 +345,39 @@
         let rec = null;
         let listening = false;
         let finalized = '';
+        let restartTimer = null;
 
         const emit = (interim) => {
             const base = finalized.trim();
             const combined = interim ? `${base} ${interim}`.trim() : base;
             if (onTranscript) onTranscript(liveSanitize(combined));
+        };
+
+        const scheduleRestart = () => {
+            if (!listening) return;
+            if (restartTimer) clearTimeout(restartTimer);
+            restartTimer = setTimeout(() => {
+                restartTimer = null;
+                if (!listening) return;
+                try {
+                    if (rec) {
+                        rec.onend = null;
+                        rec.onerror = null;
+                        rec.stop();
+                    }
+                } catch (_) {}
+                try {
+                    rec = new SR();
+                    rec.lang = 'en-US';
+                    rec.continuous = true;
+                    rec.interimResults = true;
+                    rec.maxAlternatives = 1;
+                    attach();
+                    rec.start();
+                } catch (err) {
+                    onError?.(err);
+                }
+            }, 120);
         };
 
         const attach = () => {
@@ -361,15 +397,18 @@
                 }
                 emit(interim);
             };
-            rec.onerror = () => {};
+            rec.onerror = (ev) => {
+                const code = String(ev?.error || '');
+                if (code === 'not-allowed' || code === 'service-not-allowed') {
+                    listening = false;
+                    onError?.(ev);
+                    return;
+                }
+                if (listening) scheduleRestart();
+            };
             rec.onend = () => {
                 if (!listening) return;
-                setTimeout(() => {
-                    if (!listening || !rec) return;
-                    try {
-                        rec.start();
-                    } catch (_) {}
-                }, 180);
+                scheduleRestart();
             };
         };
 
@@ -383,16 +422,22 @@
                 rec.lang = 'en-US';
                 rec.continuous = true;
                 rec.interimResults = true;
+                rec.maxAlternatives = 1;
                 attach();
                 try {
                     rec.start();
-                } catch (_) {
+                } catch (err) {
                     rec = null;
                     listening = false;
+                    onError?.(err);
                 }
             },
             async stop() {
                 listening = false;
+                if (restartTimer) {
+                    clearTimeout(restartTimer);
+                    restartTimer = null;
+                }
                 if (!rec) return finalized.trim();
                 return new Promise((resolve) => {
                     const done = () => resolve(finalized.trim());
@@ -407,9 +452,14 @@
             },
             cancel() {
                 listening = false;
+                if (restartTimer) {
+                    clearTimeout(restartTimer);
+                    restartTimer = null;
+                }
                 if (!rec) return;
                 try {
                     rec.onend = null;
+                    rec.onerror = null;
                     rec.stop();
                 } catch (_) {}
                 rec = null;
@@ -419,8 +469,9 @@
     }
 
     /** Send an audio Blob to the server Whisper proxy and return its transcript. */
-    async function transcribeBlob(blob, transcribeUrl) {
-        if (!blob || blob.size < 1200) return '';
+    async function transcribeBlob(blob, transcribeUrl, options) {
+        const minBytes = Number(options?.minBytes) > 0 ? Number(options.minBytes) : 1200;
+        if (!blob || blob.size < minBytes) return '';
         try {
             const res = await fetch(transcribeUrl || DEFAULT_TRANSCRIBE_URL, {
                 method: 'POST',
@@ -439,10 +490,27 @@
         }
     }
 
+    function mergeLiveTranscripts(...parts) {
+        let best = '';
+        for (const raw of parts) {
+            const text = liveSanitize(raw);
+            if (!text) continue;
+            const words = text.split(/\s+/).filter(Boolean);
+            const bestWords = best.split(/\s+/).filter(Boolean);
+            if (words.length > bestWords.length) {
+                best = text;
+                continue;
+            }
+            if (words.length === bestWords.length && text.length > best.length) {
+                best = text;
+            }
+        }
+        return best;
+    }
+
     /**
      * Records one continuous audio take with smooth live captions.
-     * Chrome/Edge: browser SpeechRecognition interim results (word-by-word feel).
-     * Fallback: server Whisper windows with gradual word reveal.
+     * Browser SpeechRecognition shows interim words; Whisper windows run in parallel as backup.
      * Submit always uses Whisper on the full recording for accuracy.
      */
     function createLiveTranscriber(options) {
@@ -451,7 +519,7 @@
         const onStatus = opts.onStatus;
         const onMicLevel = opts.onMicLevel;
         const transcribeUrl = opts.transcribeUrl || DEFAULT_TRANSCRIBE_URL;
-        const windowMs = Number(opts.windowMs) > 0 ? Number(opts.windowMs) : 2600;
+        const windowMs = Number(opts.windowMs) > 0 ? Number(opts.windowMs) : 1400;
         const preferBrowserLive = opts.preferBrowserLive !== false;
 
         let stream = null;
@@ -466,33 +534,33 @@
         let busy = false;
         let active = false;
         let lastText = '';
+        let browserLiveText = '';
+        let whisperLiveText = '';
         let lastChunkCount = 0;
-        let liveMode = 'whisper';
+        let browserLiveActive = false;
 
-        const emitDirect = (text) => {
-            lastText = liveSanitize(text);
+        const publishLive = () => {
+            const merged = mergeLiveTranscripts(browserLiveText, whisperLiveText);
+            lastText = merged;
             if (onTranscript) onTranscript(lastText);
         };
 
-        const emitTarget = (text) => {
-            lastText = liveSanitize(text);
-            if (liveMode === 'browser') {
-                emitDirect(lastText);
-                return;
-            }
-            if (smoothEmitter) smoothEmitter.setTarget(lastText);
-            else emitDirect(lastText);
-        };
-
         const runWindow = async () => {
-            if (!active || busy || liveMode === 'browser' || chunks.length === 0) return;
+            if (!active || busy || chunks.length === 0) return;
             if (chunks.length === lastChunkCount) return;
             lastChunkCount = chunks.length;
             busy = true;
             try {
                 const blob = new Blob(chunks, { type: mime });
-                const text = await transcribeBlob(blob, transcribeUrl);
-                if (text && active && !isWeakTranscript(text)) emitTarget(text);
+                const text = await transcribeBlob(blob, transcribeUrl, { minBytes: 700 });
+                if (text && active && isLiveTranscriptUsable(text)) {
+                    whisperLiveText = liveSanitize(text);
+                    if (smoothEmitter && !browserLiveActive) {
+                        smoothEmitter.setTarget(whisperLiveText);
+                    } else {
+                        publishLive();
+                    }
+                }
             } finally {
                 busy = false;
             }
@@ -507,6 +575,9 @@
             speechRecognizer = null;
             smoothEmitter?.reset?.();
             smoothEmitter = null;
+            browserLiveText = '';
+            whisperLiveText = '';
+            browserLiveActive = false;
         };
 
         return {
@@ -515,12 +586,31 @@
                 active = true;
                 chunks = [];
                 lastText = '';
+                browserLiveText = '';
+                whisperLiveText = '';
                 lastChunkCount = 0;
-                emitDirect('');
+                publishLive();
                 onStatus?.('starting');
 
                 if (global.speechSynthesis) global.speechSynthesis.cancel();
                 await wait(150);
+
+                if (preferBrowserLive) {
+                    speechRecognizer = createSpeechRecognizer({
+                        onTranscript: (text) => {
+                            if (!active) return;
+                            browserLiveText = liveSanitize(text);
+                            if (browserLiveText) browserLiveActive = true;
+                            publishLive();
+                        },
+                        onError: () => {
+                            browserLiveActive = false;
+                        },
+                    });
+                    if (speechRecognizer.isSupported) {
+                        speechRecognizer.start();
+                    }
+                }
 
                 stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
@@ -541,31 +631,16 @@
                 mediaRecorder.ondataavailable = (e) => {
                     if (e.data && e.data.size > 0) chunks.push(e.data);
                 };
-                mediaRecorder.start(500);
+                mediaRecorder.start(400);
                 startedAt = Date.now();
 
-                if (preferBrowserLive) {
-                    speechRecognizer = createSpeechRecognizer({
-                        onTranscript: (text) => {
-                            if (!active || liveMode !== 'browser') return;
-                            lastText = liveSanitize(text);
-                            emitDirect(lastText);
-                        },
-                    });
-                    if (speechRecognizer.isSupported) {
-                        liveMode = 'browser';
-                        speechRecognizer.start();
-                    }
-                }
-
-                if (liveMode !== 'browser') {
-                    smoothEmitter = createSmoothTranscriptEmitter((text) => {
-                        lastText = liveSanitize(text);
-                        if (onTranscript) onTranscript(lastText);
-                    });
-                    timer = setInterval(runWindow, windowMs);
-                    setTimeout(runWindow, 1400);
-                }
+                smoothEmitter = createSmoothTranscriptEmitter((text) => {
+                    if (!active || browserLiveActive) return;
+                    whisperLiveText = liveSanitize(text);
+                    publishLive();
+                }, 48);
+                timer = setInterval(runWindow, windowMs);
+                setTimeout(runWindow, 900);
 
                 onStatus?.('recording');
             },
@@ -584,6 +659,8 @@
                 if (speechRecognizer) {
                     browserText = await speechRecognizer.stop();
                 }
+                if (browserText) browserLiveText = liveSanitize(browserText);
+                publishLive();
                 teardownLive();
 
                 if (mediaRecorder && mediaRecorder.state !== 'inactive') {
@@ -683,10 +760,12 @@
         sanitizeTranscript,
         liveSanitize,
         isWeakTranscript,
+        isLiveTranscriptUsable,
         wait,
         transcribeBlob,
         createSpeechRecognizer,
         createSmoothTranscriptEmitter,
+        mergeLiveTranscripts,
         createLiveTranscriber,
         uploadAudio,
         uploadAudioWithTimeout,

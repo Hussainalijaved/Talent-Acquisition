@@ -582,6 +582,24 @@ tbody tr:last-child td { border-bottom: none; }
 .phase-card { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 12px; overflow: hidden; background: var(--surface); }
 .phase-card-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--surface-2); border-bottom: 1px solid var(--border); gap: 12px; }
 .phase-card-body { padding: 14px; }
+.phase-card-speech { border-color: rgba(99, 102, 241, 0.28); }
+.phase-card-speech .phase-card-head { background: linear-gradient(180deg, rgba(99, 102, 241, 0.06) 0%, var(--surface-2) 100%); }
+
+.speech-insights { margin: 12px 0 14px; padding: 14px; border-radius: var(--radius-sm); border: 1px solid rgba(99, 102, 241, 0.18); background: rgba(99, 102, 241, 0.04); }
+.speech-skills-grid { display: grid; gap: 10px; margin-bottom: 12px; }
+.speech-skill-row { display: grid; gap: 6px; }
+.speech-skill-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--text-sm); color: var(--text-soft); }
+.speech-skill-track { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.speech-skill-fill { height: 100%; border-radius: 999px; }
+.speech-skill-fill.hi { background: var(--success); }
+.speech-skill-fill.mid { background: #d97706; }
+.speech-skill-fill.lo { background: var(--danger); }
+.speech-metrics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.speech-metric-chip { padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); }
+.speech-metric-lbl { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 4px; }
+.speech-metric-chip strong { font-size: var(--text-md); color: var(--text); }
+.speech-audio-wrap audio { width: 100%; margin-top: 4px; }
+.speech-audio-meta { margin-top: 8px; font-size: var(--text-xs); color: var(--text-faint); }
 .qa-block { border-left: 3px solid var(--border); padding-left: 12px; margin-bottom: 12px; }
 .qa-block.answer { border-left-color: #93c5fd; }
 .qa-block.feedback { border-left-color: #86efac; }

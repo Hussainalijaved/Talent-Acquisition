@@ -1480,11 +1480,93 @@
                 '<div class="qa-body">' + esc(String(text)) + '</div></div>';
         }
 
-        function renderPhaseCard(h, maxPhases) {
+        function isSpeechPhaseRow(h, techMax) {
+            if (!h) return false;
+            if (String(h.mode || '').toLowerCase() === 'speech') return true;
+            return Number(h.phase) > techMax;
+        }
+
+        function inferTechMax(hist, cfg, sess) {
+            const speech = (hist || []).filter((h) => String(h.mode || '').toLowerCase() === 'speech');
+            if (speech.length) return Math.min(...speech.map((h) => Number(h.phase))) - 1;
+            return Number(sess?.max_phases || cfg?.max_questions || 5);
+        }
+
+        function renderSpeechSkillBars(skills) {
+            if (!skills || typeof skills !== 'object') return '';
+            const dims = [
+                ['Clarity', skills.clarity],
+                ['Confidence', skills.confidence],
+                ['Professionalism', skills.professionalism],
+                ['Relevance', skills.relevance],
+            ].filter(([, v]) => v != null && Number.isFinite(Number(v)));
+            if (!dims.length) return '';
+            let html = '<div class="speech-skills-grid">';
+            dims.forEach(([label, val]) => {
+                const n = Math.max(0, Math.min(100, Number(val)));
+                const cls = n >= 70 ? 'hi' : n >= 50 ? 'mid' : 'lo';
+                html += '<div class="speech-skill-row"><div class="speech-skill-head"><span>' + esc(label) +
+                    '</span><strong class="' + scoreClass(n) + '">' + n + '</strong></div>' +
+                    '<div class="speech-skill-track"><div class="speech-skill-fill ' + cls + '" style="width:' + n + '%"></div></div></div>';
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function renderSpeechMetrics(metrics) {
+            if (!metrics || typeof metrics !== 'object') return '';
+            const items = [
+                ['Pace', metrics.words_per_minute != null ? metrics.words_per_minute + ' WPM' : ''],
+                ['Duration', metrics.duration_seconds != null ? metrics.duration_seconds + 's' : ''],
+                ['Words', metrics.word_count],
+                ['Fillers', metrics.filler_word_count],
+                ['Long pauses', metrics.long_pause_count],
+                ['Avg pause', metrics.avg_pause_ms != null ? metrics.avg_pause_ms + ' ms' : ''],
+            ].filter(([, v]) => v != null && v !== '');
+            if (!items.length) return '';
+            let html = '<div class="speech-metrics-grid">';
+            items.forEach(([label, val]) => {
+                html += '<div class="speech-metric-chip"><span class="speech-metric-lbl">' + esc(label) +
+                    '</span><strong>' + esc(String(val)) + '</strong></div>';
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function renderSpeechInsights(h) {
+            const skills = h.soft_skills;
+            const metrics = h.speech_metrics;
+            const audio = h.answer_audio_url;
+            if (!skills && !metrics && !audio) return '';
+            let html = '<div class="speech-insights">';
+            if (skills) {
+                html += '<div class="qlabel">Communication skills</div>' + renderSpeechSkillBars(skills);
+            }
+            if (metrics) {
+                html += '<div class="qlabel">Delivery metrics</div>' + renderSpeechMetrics(metrics);
+            }
+            if (audio) {
+                html += '<div class="qlabel">Voice recording</div><div class="speech-audio-wrap">' +
+                    '<audio controls preload="metadata" src="' + esc(audio) + '">Audio not supported</audio>';
+                if (h.scoring_source || h.stt_source) {
+                    html += '<div class="speech-audio-meta">' + esc(
+                        [h.scoring_source && 'Scoring: ' + h.scoring_source, h.stt_source && 'Transcript: ' + h.stt_source]
+                            .filter(Boolean).join(' · ')
+                    ) + '</div>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function renderPhaseCard(h, maxPhases, techMax) {
             const phase = Number(h.phase || 0);
+            const isSpeech = isSpeechPhaseRow(h, techMax);
             const q = h.question_text || h.question || '';
             const status = phaseStatusLabel(h);
             const meta = [];
+            if (isSpeech) meta.push('Voice');
             if (h.time_limit_seconds) meta.push('Limit ' + Math.round(h.time_limit_seconds) + 's');
             if (h.complexity_tier) meta.push('Tier ' + h.complexity_tier);
             if (h.sent_at) meta.push('Sent ' + fmtDateTime(h.sent_at));
@@ -1494,8 +1576,10 @@
             if (q) body += renderQaBlock('Question', q, '');
             else body += '<div class="phase-empty">No question text recorded for this phase.</div>';
 
+            if (isSpeech) body += renderSpeechInsights(h);
+
             if (h.answer_text) {
-                body += renderQaBlock('Candidate answer', h.answer_text, 'answer');
+                body += renderQaBlock(isSpeech ? 'Spoken transcript' : 'Candidate answer', h.answer_text, 'answer');
             } else if (!h.integrity_terminated) {
                 body += '<div class="phase-empty">No answer submitted.</div>';
             }
@@ -1504,15 +1588,19 @@
                 body += '<div class="phase-empty" style="color:var(--danger);font-style:normal;font-weight:600">Integrity violation — phase terminated without score.</div>';
             }
             if (h.feedback) body += renderQaBlock('AI evaluator feedback', h.feedback, 'feedback');
-            if (h.suggested_answer) body += renderQaBlock('Model answer reference', h.suggested_answer, 'model');
+            if (!isSpeech && h.suggested_answer) body += renderQaBlock('Model answer reference', h.suggested_answer, 'model');
 
             const scoreHtml = h.integrity_terminated
                 ? '<span class="integrity">Not scored</span>'
                 : (h.score != null ? scoreBadge(h.score) : '<span class="c-role">—</span>');
 
-            return '<div class="phase-card">' +
+            const phaseTitle = isSpeech
+                ? 'Voice Q' + (phase - techMax) + ' (Phase ' + phase + ')'
+                : 'Phase ' + esc(phase || '?') + ' of ' + maxPhases;
+
+            return '<div class="phase-card' + (isSpeech ? ' phase-card-speech' : '') + '">' +
                 '<div class="phase-card-head">' +
-                '<div><div class="phase-title">Phase ' + esc(phase || '?') + ' of ' + maxPhases + '</div>' +
+                '<div><div class="phase-title">' + phaseTitle + '</div>' +
                 '<div class="phase-meta">' + esc(status) + (meta.length ? ' · ' + esc(meta.join(' · ')) : '') + '</div></div>' +
                 scoreHtml +
                 '</div><div class="phase-card-body">' + body + '</div></div>';
@@ -1520,10 +1608,16 @@
 
         function renderAssessmentReport(sess) {
             const hist = parseHistory(sess);
-            const maxPh = Number(sess.max_phases || 5);
-            const avg = avgPhaseScore(hist);
-            const answered = hist.filter((h) => h && h.answer_text).length;
             const cfg = parseJson(sess.config);
+            const techMax = inferTechMax(hist, cfg, sess);
+            const speechMax = Number(cfg.speech_phases || 5);
+            const totalPh = techMax + speechMax;
+            const techHist = hist.filter((h) => !isSpeechPhaseRow(h, techMax));
+            const speechHist = hist.filter((h) => isSpeechPhaseRow(h, techMax));
+            const avg = avgPhaseScore(hist);
+            const techAvg = avgPhaseScore(techHist);
+            const speechAvg = avgPhaseScore(speechHist);
+            const answered = hist.filter((h) => h && h.answer_text).length;
 
             let html = '<div class="section assessment-report"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' +
@@ -1532,24 +1626,28 @@
             html += '<div class="assess-summary">' +
                 '<div class="assess-stat">' + assessPill(sess) + '<span class="assess-stat-lbl">Outcome</span></div>' +
                 '<div class="assess-stat">' + scoreBadge(sess.score) + '<span class="assess-stat-lbl">Final score</span></div>' +
-                '<div class="assess-stat">' + (avg != null ? scoreBadge(avg) : '<span class="c-role">—</span>') + '<span class="assess-stat-lbl">Phase average</span></div>' +
-                '<div class="assess-stat"><strong>' + answered + ' / ' + maxPh + '</strong><span class="assess-stat-lbl">Phases answered</span></div>' +
+                '<div class="assess-stat">' + (techAvg != null ? scoreBadge(techAvg) : '<span class="c-role">—</span>') + '<span class="assess-stat-lbl">Technical avg</span></div>' +
+                '<div class="assess-stat">' + (speechAvg != null ? scoreBadge(speechAvg) : '<span class="c-role">—</span>') + '<span class="assess-stat-lbl">Voice avg</span></div>' +
                 '</div>';
 
             html += '<div class="report-meta">' +
                 '<span class="meta-chip">Status: ' + esc(sess.status || '—') + '</span>' +
-                '<span class="meta-chip">Progress: ' + esc(String(sess.current_phase || 1)) + ' / ' + maxPh + '</span>' +
+                '<span class="meta-chip">Progress: ' + esc(String(sess.current_phase || 1)) + ' / ' + totalPh + '</span>' +
+                '<span class="meta-chip">Answered: ' + answered + ' / ' + totalPh + '</span>' +
                 '<span class="meta-chip">Started ' + esc(fmtDateTime(sessionTimestamp(sess, 'start'))) + '</span>' +
                 '<span class="meta-chip">Updated ' + esc(fmtDateTime(sessionTimestamp(sess))) + '</span>' +
                 (cfg.requisition_title ? '<span class="meta-chip">' + esc(roleLabel(cfg.requisition_title)) + '</span>' : '') +
+                (sess.technical_score != null ? '<span class="meta-chip">Tech ' + esc(String(sess.technical_score)) + '</span>' : '') +
+                (sess.speech_score != null ? '<span class="meta-chip">Voice ' + esc(String(sess.speech_score)) + '</span>' : '') +
                 '</div>';
 
             html += '<div class="qlabel">Score by phase</div><div class="phase-bars">';
-            for (let p = 1; p <= maxPh; p++) {
+            for (let p = 1; p <= totalPh; p++) {
                 const row = hist.find((h) => Number(h.phase) === p);
                 const sc = row?.score != null && !row?.integrity_terminated ? Number(row.score) : null;
                 const width = sc != null ? Math.max(4, Math.min(100, sc)) : (row?.question_text || row?.answer_text ? 4 : 0);
-                html += '<div class="phase-bar-row"><span class="phase-bar-lbl">P' + p + '</span>' +
+                const lbl = p > techMax ? 'V' + (p - techMax) : 'P' + p;
+                html += '<div class="phase-bar-row"><span class="phase-bar-lbl">' + lbl + '</span>' +
                     '<div class="phase-bar-track"><div class="phase-bar-fill ' + scoreClass(sc) + '" style="width:' + width + '%"></div></div>' +
                     (sc != null ? scoreBadge(sc) : '<span class="c-role">—</span>') + '</div>';
             }
@@ -1560,11 +1658,11 @@
             hist.forEach((h) => {
                 if (!h) return;
                 phasesSeen.add(Number(h.phase));
-                html += renderPhaseCard(h, maxPh);
+                html += renderPhaseCard(h, techMax, techMax);
             });
-            for (let p = 1; p <= maxPh; p++) {
+            for (let p = 1; p <= totalPh; p++) {
                 if (!phasesSeen.has(p)) {
-                    html += renderPhaseCard({ phase: p }, maxPh);
+                    html += renderPhaseCard({ phase: p }, techMax, techMax);
                 }
             }
             if (!hist.length) {

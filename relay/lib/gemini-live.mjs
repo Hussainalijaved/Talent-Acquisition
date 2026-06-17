@@ -262,6 +262,7 @@ export class GeminiLiveBridge {
     this.awaitingAnswer = true;
 
     // Safety net: if the model never produces a turnComplete, finalize anyway and nudge it.
+    // Kept long so the model's natural reply (which carries the next question) wins normally.
     if (this.answerTimer) clearTimeout(this.answerTimer);
     this.answerTimer = setTimeout(() => {
       if (!this.awaitingAnswer || this.interviewEnded) return;
@@ -271,7 +272,7 @@ export class GeminiLiveBridge {
         `Ask interview question ${this.answers.length + 1} of ${this.maxTurns} now. Ask exactly one question, then stop and wait.`,
         true
       );
-    }, 6000);
+    }, 12000);
   }
 
   sendAudio(base64Pcm, mimeType = 'audio/pcm;rate=16000') {

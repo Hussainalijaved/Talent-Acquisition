@@ -1541,56 +1541,71 @@
                             </button>
                         </aside>
                         <main className="flex-1 flex flex-col min-h-0 p-4 sm:p-6">
-                            <div className="flex-1 min-h-0 overflow-y-auto px-1 sm:px-2 space-y-5">
-                                {cards.length === 0 ? (
-                                    <div className="h-full min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
-                                        <div className="w-12 h-12 rounded-full border border-surface-border flex items-center justify-center text-indigo-300 text-xl">🎧</div>
-                                        <p className="text-sm max-w-sm">The interviewer will ask the first question out loud. Listen carefully, then press <span className="text-slate-300 font-medium">Answer</span> to reply.</p>
-                                    </div>
-                                ) : (
-                                    cards.map((card, i) => {
-                                        const isCurrent = i === cards.length - 1;
-                                        const recording = isCurrent && isAnswering;
-                                        const saving = isCurrent && savingAnswer;
+                            {cards.length > 0 ? (
+                                <div className="shrink-0 flex items-center gap-1.5 mb-5">
+                                    {Array.from({ length: maxTurns }).map((_, i) => {
+                                        const c = cards[i];
+                                        const done = c && c.answer;
+                                        const active = i === cards.length - 1 && !interviewComplete;
                                         return (
-                                            <div key={i} className={`rounded-2xl border bg-surface-elevated/40 overflow-hidden transition-all ${isCurrent && !card.answer ? 'border-indigo-500/40 shadow-lg shadow-indigo-500/5' : 'border-surface-border'}`}>
-                                                <div className="px-5 py-4 flex gap-3.5 items-start border-b border-surface-border/70 bg-indigo-500/[0.06]">
-                                                    <div className="shrink-0 w-7 h-7 rounded-full bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center text-xs font-bold text-indigo-200 tabular-nums">{card.number}</div>
-                                                    <div className="min-w-0">
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300/90">Interviewer · Question {card.number} of {maxTurns}</p>
-                                                        <p className="text-[15px] text-indigo-50 mt-1.5 leading-relaxed">{card.question}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="px-5 py-4 flex gap-3.5 items-start">
-                                                    <div className="shrink-0 w-7 h-7 rounded-full bg-slate-700/40 border border-surface-border flex items-center justify-center text-xs">🗣️</div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Your response</p>
-                                                        {card.answer ? (
-                                                            <p className="text-[15px] text-slate-100 mt-1.5 leading-relaxed">{card.answer}</p>
-                                                        ) : recording ? (
-                                                            <div className="mt-2 flex items-center gap-2.5 text-emerald-300">
-                                                                <span className="flex gap-1 items-end h-4">
-                                                                    <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '60%' }} />
-                                                                    <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '100%', animationDelay: '120ms' }} />
-                                                                    <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '45%', animationDelay: '240ms' }} />
-                                                                    <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '80%', animationDelay: '360ms' }} />
-                                                                </span>
-                                                                <span className="text-sm">Listening — speak your answer…</span>
-                                                            </div>
-                                                        ) : saving ? (
-                                                            <p className="text-sm text-amber-300/90 mt-2 flex items-center gap-2">
-                                                                <span className="inline-block w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />
-                                                                Saving your answer…
-                                                            </p>
-                                                        ) : (
-                                                            <p className="text-sm text-slate-500 mt-1.5 italic">Press “Answer” below to reply out loud.</p>
-                                                        )}
-                                                    </div>
-                                                </div>
+                                            <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${done ? 'bg-emerald-500' : active ? 'bg-indigo-400' : 'bg-surface-border'}`} />
+                                        );
+                                    })}
+                                </div>
+                            ) : null}
+                            <div className="flex-1 min-h-0 overflow-y-auto px-1 sm:px-2 flex flex-col">
+                                {(() => {
+                                    const card = cards.length ? cards[cards.length - 1] : null;
+                                    if (!card) {
+                                        return (
+                                            <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
+                                                <div className="w-14 h-14 rounded-full border border-surface-border flex items-center justify-center text-indigo-300 text-2xl">🎧</div>
+                                                <p className="text-sm max-w-sm">The interviewer will ask the first question out loud. Listen carefully, then press <span className="text-slate-300 font-medium">Answer</span> to reply.</p>
                                             </div>
                                         );
-                                    })
-                                )}
+                                    }
+                                    const recording = isAnswering;
+                                    const saving = savingAnswer;
+                                    const answered = Boolean(card.answer);
+                                    const waitingNext = answered && !interviewComplete;
+                                    return (
+                                        <div key={card.number} className="fade-in rounded-2xl border border-indigo-500/30 bg-surface-elevated/40 overflow-hidden shadow-lg shadow-indigo-500/5">
+                                            <div className="px-6 py-5 border-b border-surface-border/70 bg-indigo-500/[0.06]">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300/90">Interviewer · Question {card.number} of {maxTurns}</p>
+                                                <p className="text-lg text-indigo-50 mt-2 leading-relaxed">{card.question}</p>
+                                            </div>
+                                            <div className="px-6 py-5">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Your response</p>
+                                                {recording ? (
+                                                    <div className="flex items-center gap-2.5 text-emerald-300 py-2">
+                                                        <span className="flex gap-1 items-end h-5">
+                                                            <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '60%' }} />
+                                                            <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '100%', animationDelay: '120ms' }} />
+                                                            <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '45%', animationDelay: '240ms' }} />
+                                                            <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '80%', animationDelay: '360ms' }} />
+                                                        </span>
+                                                        <span className="text-sm">Listening — speak your answer now…</span>
+                                                    </div>
+                                                ) : saving ? (
+                                                    <p className="text-sm text-amber-300/90 py-2 flex items-center gap-2">
+                                                        <span className="inline-block w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />
+                                                        Saving your answer…
+                                                    </p>
+                                                ) : answered ? (
+                                                    <p className="text-[15px] text-slate-100 leading-relaxed">{card.answer}</p>
+                                                ) : (
+                                                    <p className="text-sm text-slate-500 italic py-2">Press “Answer” below to open your mic and reply out loud.</p>
+                                                )}
+                                                {waitingNext ? (
+                                                    <p className="text-xs text-indigo-300/80 mt-4 flex items-center gap-2 pt-3 border-t border-surface-border/60">
+                                                        <span className="inline-block w-3 h-3 border-2 border-indigo-300/40 border-t-indigo-300 rounded-full animate-spin" />
+                                                        Answer saved. Preparing the next question…
+                                                    </p>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                                 <div ref={cardsEndRef} />
                             </div>
                             <div className="shrink-0 pt-4 mt-2 border-t border-surface-border/60">
@@ -2176,8 +2191,8 @@
                                                     <span className="inline-block w-0.5 h-[1.1em] bg-accent ml-0.5 align-middle animate-pulse" aria-hidden="true" />
                                                 ) : null}
                                             </div>
-                                        )}
-                                    </div>
+                            )}
+                        </div>
 
                                     <div className="flex-1 flex flex-col min-h-0 px-4 sm:px-5 lg:px-6 py-4">
                                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">
@@ -2226,7 +2241,7 @@
                                                     className="btn-primary px-6 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-40 w-full sm:w-auto"
                                                 >
                                                     {isStopping ? 'Saving…' : 'Start recording'}
-                                                </button>
+                        </button>
                                             ) : (
                                                 <button
                                                     type="button"
@@ -2278,10 +2293,10 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
                     </div>
-                </Shell>
-            );
+                </div>
+            </Shell>
+        );
         };
 
         const cleanUrlParam = (value) => {
@@ -2530,13 +2545,13 @@
             const pct = Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 0;
             const barTone = pct >= 70 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
             return (
-                <div>
+                        <div>
                     <div className="flex justify-between text-xs mb-1.5">
                         <span className="text-slate-400">{label}</span>
                         <span className={`font-semibold tabular-nums ${scoreTone(v)}`}>
                             {Number.isFinite(v) ? v : '—'}
                         </span>
-                    </div>
+                        </div>
                     <div className="h-2 rounded-full bg-surface-border overflow-hidden">
                         <div className={`h-full ${barTone} rounded-full transition-all`} style={{ width: `${pct}%` }} />
                     </div>
@@ -2562,7 +2577,7 @@
                         <div key={label} className="rounded-lg border border-surface-border bg-surface-elevated/40 px-3 py-2.5">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
                             <p className="text-sm font-semibold text-slate-200 tabular-nums mt-0.5">{val}</p>
-                        </div>
+                                </div>
                     ))}
                 </div>
             );
@@ -2588,10 +2603,10 @@
                         </div>
                     ) : null}
                     {item.speech_metrics ? (
-                        <div>
+                                    <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">Delivery metrics</p>
                             <SpeechMetricsGrid metrics={item.speech_metrics} />
-                        </div>
+                                        </div>
                     ) : null}
                     {audioUrl ? (
                         <div className="rounded-xl border border-surface-border bg-surface-elevated/30 p-4">
@@ -2600,7 +2615,7 @@
                                 Your browser does not support audio playback.
                             </audio>
                             {meta ? <p className="text-xs text-slate-500 mt-2">{meta}</p> : null}
-                        </div>
+                                    </div>
                     ) : null}
                 </div>
             );
@@ -2621,14 +2636,14 @@
             return (
                 <div className="panel rounded-2xl p-6 mb-8 border border-indigo-500/20 bg-indigo-500/5">
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
-                        <div>
+                                    <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-1">Voice round summary</p>
                             <p className="text-sm text-slate-300">{speechRows.length} voice question{speechRows.length === 1 ? '' : 's'} completed</p>
-                        </div>
+                                        </div>
                         {avgScore != null ? (
                             <p className={`text-2xl font-bold tabular-nums ${scoreTone(avgScore)}`}>{avgScore}<span className="text-sm text-slate-500 font-medium">/100</span></p>
                         ) : null}
-                    </div>
+                                    </div>
                     {dims.length ? (
                         <div className="grid sm:grid-cols-2 gap-3">
                             {dims.map(([label, val]) => (
@@ -2696,8 +2711,8 @@
                                 <p className="text-sm text-slate-400 leading-relaxed whitespace-pre-wrap">{item.suggested_answer}</p>
                             </div>
                         )}
-                    </div>
-                </article>
+                                </div>
+                            </article>
             );
         };
 
@@ -2947,8 +2962,8 @@
                                     speechTotal={isSpeechSection ? speechTotal : 0}
                                     totalPhases={totalPhases}
                                 />
-                            ))}
-                        </div>
+                        ))}
+                    </div>
                     </div>
                 );
             };
@@ -3004,7 +3019,7 @@
                     </div>
                 </div>
             </Shell>
-            );
+        );
         };
 
         const App = () => {
@@ -3684,7 +3699,7 @@
                     devToolsOpenRef.current = false;
 
                     setSessionId(resolvedId);
-                    sessionStorage.setItem('current_session_id', resolvedId);
+                        sessionStorage.setItem('current_session_id', resolvedId);
                     sessionStorage.setItem('candidate_email', candidateEmailRef.current || candidateEmail || '');
                     sessionStorage.setItem('assessment_started', 'true');
 
@@ -3711,7 +3726,7 @@
                     }
 
                     setView('assessment');
-                                } catch (e) {
+                } catch (e) {
                     console.error('Start Assessment Error:', e);
                     alert(e?.message || 'Failed to load the first question. Please refresh or re-open the link from your email.');
                 } finally {
@@ -4170,8 +4185,8 @@
                             durationSeconds: 0,
                         });
                     } else {
-                        handleAssessmentSubmit(true);
-                    }
+                    handleAssessmentSubmit(true);
+                }
                 }
             }, [timeLeft, view, isLoading, assessmentMode]);
 

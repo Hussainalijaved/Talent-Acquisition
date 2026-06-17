@@ -15,6 +15,7 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="speech-assessment.js"></script>
+    <script src="live-speech.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -567,7 +568,7 @@
             return false;
         };
 
-        const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'assessment'];
+        const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'assessment', 'live-speech'];
         const isPortalLockedView = (v) => PORTAL_LOCKED_VIEWS.includes(v);
 
         // ===== TEMP TESTING MODE =====
@@ -624,6 +625,9 @@
         // Update when ngrok restarts (free tier gets a new subdomain each time).
         // Must match: ngrok URL + n8n path on TRG - Assessment Answer (assessment-answer).
         const WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
+        // Live speech relay — production: set live_relay_url in n8n CFG (wss://your-relay.app/live)
+        // Local dev: cd relay && npm start → ws://localhost:8080/live
+        const LIVE_SPEECH_RELAY_FALLBACK = 'ws://localhost:8080/live';
 
         const Shell = ({ children, subtitle, footerNote, fullWidth = false, headerExtra = null }) => (
             <div className="min-h-screen flex flex-col w-full">
@@ -1295,11 +1299,11 @@
                                     </li>
                                     <li className="flex gap-3">
                                         <span className="text-indigo-400 font-bold shrink-0">2.</span>
-                                        <span>Press record and answer in your own words, as you would in a real interview.</span>
+                                        <span>You will have a live voice conversation with the AI interviewer — listen and respond naturally.</span>
                                     </li>
                                     <li className="flex gap-3">
                                         <span className="text-indigo-400 font-bold shrink-0">3.</span>
-                                        <span>Live captions show what the system hears; stop recording, then submit from the bottom bar.</span>
+                                        <span>Live captions show what you and the interviewer say. Click End when the conversation is finished.</span>
                                     </li>
                                     <li className="flex gap-3">
                                         <span className="text-indigo-400 font-bold shrink-0">4.</span>
@@ -1343,6 +1347,140 @@
                 </div>
             </Shell>
         );
+
+        const LiveSpeechView = ({
+            context,
+            relayFallback,
+            tabSwitches,
+            isLoading,
+            onFinished,
+            onError,
+        }) => {
+            const sessionRef = React.useRef(null);
+            const [status, setStatus] = React.useState('Preparing live session…');
+            const [micLevel, setMicLevel] = React.useState(0);
+            const [turn, setTurn] = React.useState(0);
+            const [maxTurns, setMaxTurns] = React.useState(context?.speech_phases || 5);
+            const [lines, setLines] = React.useState([]);
+            const [ending, setEnding] = React.useState(false);
+
+            const pushLine = React.useCallback((speaker, text, partial) => {
+                const clean = String(text || '').trim();
+                if (!clean) return;
+                setLines((prev) => {
+                    const next = [...prev];
+                    const key = speaker === 'user' ? 'You' : 'Interviewer';
+                    if (partial && next.length && next[next.length - 1].key === key && next[next.length - 1].partial) {
+                        next[next.length - 1] = { key, text: clean, partial: true };
+                        return next;
+                    }
+                    next.push({ key, text: clean, partial: !!partial });
+                    if (next.length > 40) next.shift();
+                    return next;
+                });
+            }, []);
+
+            React.useEffect(() => {
+                let cancelled = false;
+                (async () => {
+                    if (!window.TA_LIVE) {
+                        onError?.('Live speech module not loaded.');
+                        return;
+                    }
+                    try {
+                        const relayUrl = window.TA_LIVE.resolveRelayUrl(context, relayFallback);
+                        const session = new window.TA_LIVE.LiveSpeechSession({
+                            relayUrl,
+                            context,
+                            tabSwitches,
+                            onStatus: setStatus,
+                            onTranscript: ({ speaker, text, partial }) => pushLine(speaker, text, partial),
+                            onLevel: setMicLevel,
+                            onTurn: ({ turn: t, maxTurns: m }) => {
+                                setTurn(t);
+                                if (m) setMaxTurns(m);
+                            },
+                            onError: (err) => onError?.(err?.message || 'Live speech error'),
+                        });
+                        sessionRef.current = session;
+                        await session.start();
+                        if (!cancelled) setStatus('Live — speak when the interviewer asks a question');
+                    } catch (e) {
+                        if (!cancelled) onError?.(e?.message || 'Could not start live speech');
+                    }
+                })();
+                return () => {
+                    cancelled = true;
+                    sessionRef.current?.cancel?.();
+                    sessionRef.current = null;
+                };
+            }, [context, relayFallback, tabSwitches, onError, pushLine]);
+
+            const handleEnd = async () => {
+                if (ending || isLoading) return;
+                setEnding(true);
+                setStatus('Saving your voice assessment…');
+                try {
+                    const result = await sessionRef.current?.end?.();
+                    const n8n = result?.n8n || {};
+                    onFinished?.({
+                        result: n8n.result || '',
+                        score: n8n.score,
+                        feedback: n8n.feedback || result?.final_feedback || 'Live speech assessment completed.',
+                        isFinal: true,
+                    });
+                } catch (e) {
+                    onError?.(e?.message || 'Could not complete live speech');
+                    setEnding(false);
+                }
+            };
+
+            return (
+                <Shell subtitle="Phase 2 · Live voice interview" fullWidth footerNote="Use headphones to avoid echo. Allow microphone access.">
+                    <div className="min-h-[calc(100dvh-4rem)] flex flex-col lg:flex-row gap-0 fade-in portal-lock">
+                        <aside className="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-surface-border bg-surface-elevated/40 p-4 space-y-4">
+                            <div>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Live speech</p>
+                                <p className="text-sm text-slate-300 mt-1">{context?.requisition_title || 'Voice round'}</p>
+                            </div>
+                            <div className="rounded-lg border border-surface-border px-3 py-2">
+                                <p className="text-xs text-slate-500">Turns</p>
+                                <p className="text-sm text-white font-medium">{turn} / {maxTurns}</p>
+                            </div>
+                            <div className="rounded-lg border border-surface-border px-3 py-2">
+                                <p className="text-xs text-slate-500 mb-2">Mic level</p>
+                                <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                                    <div className="h-full bg-emerald-500 transition-all duration-75" style={{ width: `${Math.round(micLevel * 100)}%` }} />
+                                </div>
+                            </div>
+                            <p className="text-xs text-slate-500 leading-relaxed">{status}</p>
+                            <button
+                                type="button"
+                                onClick={handleEnd}
+                                disabled={ending || isLoading}
+                                className="btn-primary w-full py-3 rounded-xl text-sm disabled:opacity-40"
+                            >
+                                {ending ? 'Finishing…' : 'End voice interview'}
+                            </button>
+                        </aside>
+                        <main className="flex-1 flex flex-col min-h-0 p-4 sm:p-6">
+                            <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-surface-border bg-surface-elevated/30 p-4 space-y-3">
+                                {lines.length === 0 ? (
+                                    <p className="text-sm text-slate-500">Waiting for the interviewer…</p>
+                                ) : (
+                                    lines.map((line, i) => (
+                                        <div key={i} className={`text-sm leading-relaxed ${line.key === 'You' ? 'text-slate-300' : 'text-indigo-200'}`}>
+                                            <span className="font-semibold text-slate-400">{line.key}: </span>
+                                            {line.text}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </main>
+                    </div>
+                </Shell>
+            );
+        };
 
         const AdminView = ({ setView }) => {
             const [jobTitle, setJobTitle] = useState('');
@@ -2702,6 +2840,7 @@
             const [speechTotalSteps, setSpeechTotalSteps] = useState(ASSESSMENT_PHASE_DEFAULTS.speech);
             const [techMaxSteps, setTechMaxSteps] = useState(ASSESSMENT_PHASE_DEFAULTS.tech);
             const [pendingSpeechIntro, setPendingSpeechIntro] = useState(null);
+            const [liveSpeechContext, setLiveSpeechContext] = useState(null);
             const [timeLeft, setTimeLeft] = useState(null);
             const [phaseTimeLimit, setPhaseTimeLimit] = useState(null);
             const deadlineAtRef = useRef(null);
@@ -3694,39 +3833,51 @@
 
             const handleBeginSpeechFromIntro = async () => {
                 if (isLoading) return;
+                if (!window.TA_LIVE?.fetchLiveSpeechStart) {
+                    alert('Live speech module not loaded. Refresh the page.');
+                    return;
+                }
                 setIsLoading(true);
                 try {
-                    let intro = pendingSpeechIntro;
-                    if (!intro?.nextQuestion && sessionId) {
-                        const speechPhaseNum = techMaxSteps + 1;
-                        const fromDb = await pollNextQuestionFromSession(sessionId, speechPhaseNum, 5, 800);
-                        if (fromDb?.nextQuestion) {
-                            intro = {
-                                ...(intro || {}),
-                                nextQuestion: fromDb.nextQuestion,
-                                time_limit_seconds: fromDb.time_limit_seconds ?? intro?.time_limit_seconds,
-                                deadline_at: fromDb.deadline_at ?? intro?.deadline_at,
-                            };
-                            setPendingSpeechIntro(intro);
-                        }
-                    }
-                    if (!intro?.nextQuestion) {
-                        alert('The first voice question is not ready yet. Please wait a moment and try again.');
+                    const ctx = await window.TA_LIVE.fetchLiveSpeechStart(
+                        WEBHOOK_BASE,
+                        sessionId,
+                        candidateEmail
+                    );
+                    const relay = window.TA_LIVE.resolveRelayUrl(ctx, LIVE_SPEECH_RELAY_FALLBACK);
+                    if (!relay) {
+                        alert('live_relay_url is not set. Update n8n CFG or run relay locally on port 8080.');
                         return;
                     }
-                    setQuestion(intro.nextQuestion);
-                    setCurrentStep((prev) => prev + 1);
-                    setAnswer('');
-                    setAssessmentMode('speech');
-                    armSpeechPhaseTimer({
-                        time_limit_seconds: intro.time_limit_seconds,
-                        deadline_at: intro.deadline_at,
+                    setLiveSpeechContext({
+                        ...ctx,
+                        session_id: ctx.session_id || sessionId,
+                        candidate_email: ctx.candidate_email || candidateEmail,
+                        live_relay_url: relay,
                     });
+                    setAssessmentMode('live_speech');
                     setPendingSpeechIntro(null);
-                    setView('assessment');
+                    setView('live-speech');
+                } catch (e) {
+                    console.error('Live speech start error:', e);
+                    alert(e?.message || 'Could not start live voice interview. Check n8n workflow is active.');
                 } finally {
                     setIsLoading(false);
                 }
+            };
+
+            const handleLiveSpeechFinished = (data) => {
+                setView('finished');
+                sessionStorage.removeItem('assessment_started');
+                setResult(data?.result || (Number(data?.score) >= 60 ? 'PASS' : 'FAIL'));
+                if (data?.score != null) setOverallScore(Number(data.score));
+                setFeedback(data?.feedback || 'Assessment completed.');
+                sessionStorage.removeItem('time_left');
+                sessionStorage.removeItem('deadline_at');
+                deadlineAtRef.current = null;
+                setLiveSpeechContext(null);
+                if (sessionId) sessionStorage.setItem('current_session_id', sessionId);
+                if (candidateEmail) sessionStorage.setItem('candidate_email', candidateEmail);
             };
 
             const handleSpeechSubmit = async ({ transcript, blob, durationSeconds, delivery }) => {
@@ -3933,6 +4084,24 @@
                                 techSteps={techMaxSteps}
                                 speechSteps={speechTotalSteps}
                                 isLoading={isLoading}
+                            />
+                        );
+                    case 'live-speech':
+                        if (!liveSpeechContext) {
+                            return (
+                                <Shell subtitle="Live speech">
+                                    <div className="p-8 text-center text-slate-400">Loading live session…</div>
+                                </Shell>
+                            );
+                        }
+                        return (
+                            <LiveSpeechView
+                                context={liveSpeechContext}
+                                relayFallback={LIVE_SPEECH_RELAY_FALLBACK}
+                                tabSwitches={integrityViolationCount}
+                                isLoading={isLoading}
+                                onFinished={handleLiveSpeechFinished}
+                                onError={(msg) => alert(msg || 'Live speech error')}
                             />
                         );
                     case 'assessment':

@@ -1,0 +1,753 @@
+{
+  "name": "Talent Acquisition — Live Speech",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Live Speech — START\nPortal / relay calls **POST /webhook/talent/live-speech-start** with `session_id` + `email`.\nReturns Gemini Live system prompt + session context.\n\nSet **live_relay_url** in CFG to your WebSocket relay.",
+        "height": 200,
+        "width": 420
+      },
+      "id": "ls-note-start",
+      "name": "NOTE - Live Speech Start",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        80,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Live Speech — COMPLETE\nRelay posts **POST /webhook/talent/live-speech-complete** with `turns[]`, scores, optional `session_audio_url`.\nPATCHes session → result mail if PASS/FAIL.\n\n**Connect:** Disable old per-phase speech branch in Assessment workflow when using live mode.",
+        "height": 220,
+        "width": 440
+      },
+      "id": "ls-note-complete",
+      "name": "NOTE - Live Speech Complete",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        80,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "talent/live-speech-start",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ls-trg-start",
+      "name": "TRG - Live Speech Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        240
+      ],
+      "webhookId": "live-speech-start-webhook-01"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "talent/live-speech-complete",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ls-trg-complete",
+      "name": "TRG - Live Speech Complete",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        680
+      ],
+      "webhookId": "live-speech-complete-webhook-01"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ls-cfg-1",
+              "name": "supabase_url",
+              "value": "https://vnxstyadacgntnsvcvzn.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-2",
+              "name": "supabase_key",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-3",
+              "name": "gemini_live_model",
+              "value": "gemini-2.5-flash-native-audio-preview-12-2025",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-4",
+              "name": "max_questions",
+              "value": "5",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-5",
+              "name": "live_speech_turns",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-6",
+              "name": "speech_phases",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-7",
+              "name": "technical_weight",
+              "value": 0.7,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-8",
+              "name": "speech_weight",
+              "value": 0.3,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-9",
+              "name": "pass_score_threshold",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-10",
+              "name": "fail_score_threshold",
+              "value": 30,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-11",
+              "name": "organization_name",
+              "value": "Convo Pvt Ltd",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-12",
+              "name": "interviewer_email",
+              "value": "hussainalijaved712@gmail.com",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-13",
+              "name": "portal_base_url",
+              "value": "https://talent-acquisition-six.vercel.app",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-14",
+              "name": "n8n_public_url",
+              "value": "https://randy-gaunt-bradley.ngrok-free.dev",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-15",
+              "name": "live_relay_url",
+              "value": "wss://YOUR-LIVE-RELAY.example.com/live",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-16",
+              "name": "live_complete_webhook",
+              "value": "={{ $json.n8n_public_url }}/webhook/talent/live-speech-complete",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-17",
+              "name": "table_assessment_sessions",
+              "value": "assessment_sessions",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "ls-cfg-start",
+      "name": "CFG - Live Speech Config (start)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ls-cfg-1",
+              "name": "supabase_url",
+              "value": "https://vnxstyadacgntnsvcvzn.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-2",
+              "name": "supabase_key",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-3",
+              "name": "gemini_live_model",
+              "value": "gemini-2.5-flash-native-audio-preview-12-2025",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-4",
+              "name": "max_questions",
+              "value": "5",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-5",
+              "name": "live_speech_turns",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-6",
+              "name": "speech_phases",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-7",
+              "name": "technical_weight",
+              "value": 0.7,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-8",
+              "name": "speech_weight",
+              "value": 0.3,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-9",
+              "name": "pass_score_threshold",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-10",
+              "name": "fail_score_threshold",
+              "value": 30,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-11",
+              "name": "organization_name",
+              "value": "Convo Pvt Ltd",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-12",
+              "name": "interviewer_email",
+              "value": "hussainalijaved712@gmail.com",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-13",
+              "name": "portal_base_url",
+              "value": "https://talent-acquisition-six.vercel.app",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-14",
+              "name": "n8n_public_url",
+              "value": "https://randy-gaunt-bradley.ngrok-free.dev",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-15",
+              "name": "live_relay_url",
+              "value": "wss://YOUR-LIVE-RELAY.example.com/live",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-16",
+              "name": "live_complete_webhook",
+              "value": "={{ $json.n8n_public_url }}/webhook/talent/live-speech-complete",
+              "type": "string"
+            },
+            {
+              "id": "ls-cfg-17",
+              "name": "table_assessment_sessions",
+              "value": "assessment_sessions",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "ls-cfg-complete",
+      "name": "CFG - Live Speech Config (complete)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Normalize Live Speech Start\n// After: TRG - Live Speech Start → CFG - Live Speech Config\n\nconst item = $input.first().json;\nconst body = item.body || item || {};\nconst cfg = item.config || item;\n\nconst cleanEmail = (raw) => {\n  const first = String(raw || '').trim().toLowerCase().split(/\\n/)[0].trim();\n  return first.split(/\\s+regards/i)[0].trim();\n};\n\nconst session_id = String(\n  body.session_id || body.sessionId || body.session_db_id || ''\n).trim();\nconst candidate_email = cleanEmail(body.email || body.candidate_email);\n\nif (!session_id) throw new Error('live-speech-start: session_id required');\nif (!candidate_email) throw new Error('live-speech-start: email required');\n\nreturn [\n  {\n    json: {\n      flow: 'live_speech_start',\n      session_id,\n      candidate_email,\n      assessment_mode: 'live_speech',\n      config: {\n        supabase_url: String(cfg.supabase_url || '').trim(),\n        supabase_key: String(cfg.supabase_key || '').trim(),\n        max_questions: Number(cfg.max_questions ?? 5),\n        speech_phases: Number(cfg.live_speech_turns ?? cfg.speech_phases ?? 5),\n        technical_weight: Number(cfg.technical_weight ?? 0.7),\n        speech_weight: Number(cfg.speech_weight ?? 0.3),\n        pass_score_threshold: Number(cfg.pass_score_threshold ?? 60),\n        fail_score_threshold: Number(cfg.fail_score_threshold ?? 30),\n        organization_name: String(cfg.organization_name || 'CONVO'),\n        portal_base_url: String(cfg.portal_base_url || 'https://talent-acquisition-six.vercel.app'),\n        n8n_public_url: String(cfg.n8n_public_url || '').replace(/\\/+$/, ''),\n        live_relay_url: String(cfg.live_relay_url || ''),\n        live_complete_webhook: String(\n          cfg.live_complete_webhook ||\n            (cfg.n8n_public_url\n              ? `${String(cfg.n8n_public_url).replace(/\\/+$/, '')}/webhook/talent/live-speech-complete`\n              : '')\n        ),\n        gemini_live_model: String(\n          cfg.gemini_live_model || 'gemini-2.5-flash-native-audio-preview-12-2025'\n        ),\n        table_assessment_sessions: String(cfg.table_assessment_sessions || 'assessment_sessions'),\n      },\n    },\n  },\n];\n"
+      },
+      "id": "ls-norm-start",
+      "name": "CODE - Normalize Live Speech Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Normalize Live Speech Complete\n// After: TRG - Live Speech Complete → CFG - Live Speech Config\n\nconst item = $input.first().json;\nconst body = item.body || item || {};\nconst cfg = item.config || item;\n\nconst cleanEmail = (raw) => {\n  const first = String(raw || '').trim().toLowerCase().split(/\\n/)[0].trim();\n  return first.split(/\\s+regards/i)[0].trim();\n};\n\nconst session_id = String(\n  body.session_id || body.sessionId || body.session_db_id || ''\n).trim();\nconst candidate_email = cleanEmail(body.email || body.candidate_email);\nconst turns = Array.isArray(body.turns) ? body.turns : [];\n\nif (!session_id) throw new Error('live-speech-complete: session_id required');\nif (!candidate_email) throw new Error('live-speech-complete: email required');\nif (!turns.length) throw new Error('live-speech-complete: turns[] required');\n\nreturn [\n  {\n    json: {\n      flow: 'live_speech_complete',\n      session_id,\n      candidate_email,\n      assessment_mode: 'live_speech',\n      turns,\n      combined_speech_score:\n        body.combined_speech_score != null ? Number(body.combined_speech_score) : null,\n      session_audio_url: String(body.session_audio_url || body.audio_url || '').trim(),\n      duration_seconds: Number(body.duration_seconds || 0),\n      final_feedback: String(body.final_feedback || body.feedback || '').trim(),\n      live_session_summary: String(body.live_session_summary || '').trim(),\n      tab_switches: Number(body.tab_switches ?? body.tabSwitches ?? 0),\n      config: {\n        supabase_url: String(cfg.supabase_url || '').trim(),\n        supabase_key: String(cfg.supabase_key || '').trim(),\n        max_questions: Number(cfg.max_questions ?? 5),\n        speech_phases: Number(cfg.live_speech_turns ?? cfg.speech_phases ?? 5),\n        technical_weight: Number(cfg.technical_weight ?? 0.7),\n        speech_weight: Number(cfg.speech_weight ?? 0.3),\n        pass_score_threshold: Number(cfg.pass_score_threshold ?? 60),\n        fail_score_threshold: Number(cfg.fail_score_threshold ?? 30),\n        organization_name: String(cfg.organization_name || 'CONVO'),\n        portal_base_url: String(cfg.portal_base_url || 'https://talent-acquisition-six.vercel.app'),\n        interviewer_email: String(cfg.interviewer_email || ''),\n        table_assessment_sessions: String(cfg.table_assessment_sessions || 'assessment_sessions'),\n      },\n    },\n  },\n];\n"
+      },
+      "id": "ls-norm-complete",
+      "name": "CODE - Normalize Live Speech Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.config.supabase_url }}/rest/v1/{{ $json.config.table_assessment_sessions || 'assessment_sessions' }}?id=eq.{{ encodeURIComponent($json.session_id) }}&select=*",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $json.config.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.config.supabase_key }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "ls-fetch-start",
+      "name": "HTTP - Fetch Session Start",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('CODE - Normalize Live Speech Complete').first().json.config.supabase_url }}/rest/v1/{{ $('CODE - Normalize Live Speech Complete').first().json.config.table_assessment_sessions || 'assessment_sessions' }}?id=eq.{{ encodeURIComponent($('CODE - Normalize Live Speech Complete').first().json.session_id) }}&select=*",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CODE - Normalize Live Speech Complete').first().json.config.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CODE - Normalize Live Speech Complete').first().json.config.supabase_key }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "ls-fetch-complete",
+      "name": "HTTP - Fetch Session Complete",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        680
+      ],
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Build Live Speech Relay Context\n// After: HTTP - Fetch Session (start branch)\n// Returns system instructions + session context for Gemini Live relay server.\n\nfunction parseJson(raw, fallback) {\n  if (raw == null) return fallback;\n  if (typeof raw === 'object') return raw;\n  try {\n    return JSON.parse(raw);\n  } catch (_) {\n    return fallback;\n  }\n}\n\nconst norm = $('CODE - Normalize Live Speech Start').first().json;\nconst cfg = norm.config || {};\nconst fetchRaw = $input.first().json;\nconst session = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;\nif (!session?.id) throw new Error('Session not found for live speech start');\n\nconst sessCfg = { ...parseJson(session.config, {}), ...cfg };\nconst screening = parseJson(session.screening, {});\nconst jdTitle = String(\n  sessCfg.requisition_title || screening.requisition_title || 'Open role'\n).trim();\nconst jdReq = String(\n  sessCfg.requisition_requirements || screening.requisition_requirements || ''\n).trim();\nconst cvText = String(session.cv_plaintext || screening.cv_plaintext || '').slice(0, 12000);\nconst maxQ = Number(sessCfg.max_questions || cfg.max_questions || 5);\nconst speechTurns = Number(cfg.speech_phases || sessCfg.speech_phases || 5);\n\nconst systemInstruction = `You are a professional interviewer for ${jdTitle} at ${cfg.organization_name || 'CONVO'}.\n\nRULES:\n- Conduct exactly ${speechTurns} spoken behavioral questions, one at a time.\n- Use natural voice — warm, professional, concise. No mention of AI or CV parsing.\n- After each candidate answer, internally score (0-100): relevance, clarity, confidence, professionalism.\n- Ask follow-ups only if the answer is too vague; otherwise move to the next planned question.\n- Cover: communication, pressure handling, role motivation, collaboration, growth/reflection.\n- Do NOT diagnose personality disorders or claim to measure \"work ethics\" from voice alone — judge observable communication and answer content.\n- When all turns are done, end the session.\n\nJOB CONTEXT:\n${jdReq.slice(0, 4000)}\n\nCANDIDATE CV (use silently — never say \"on your CV\"):\n${cvText.slice(0, 6000) || '(limited CV context)'}`;\n\nconst completeWebhook = String(\n  cfg.live_complete_webhook ||\n    (cfg.n8n_public_url\n      ? `${String(cfg.n8n_public_url).replace(/\\/+$/, '')}/webhook/talent/live-speech-complete`\n      : '')\n).trim();\nconst relayUrl = String(cfg.live_relay_url || sessCfg.live_relay_url || '').trim();\n\nreturn [\n  {\n    json: {\n      ok: true,\n      flow: 'live_speech_start',\n      session_id: session.id,\n      candidate_email: norm.candidate_email || session.candidate_email,\n      assessment_mode: 'live_speech',\n      max_questions: maxQ,\n      speech_phases: speechTurns,\n      current_phase: Number(session.current_phase || maxQ + 1),\n      requisition_title: jdTitle,\n      system_instruction: systemInstruction,\n      gemini_live_model: String(\n        cfg.gemini_live_model || 'gemini-2.5-flash-native-audio-preview-12-2025'\n      ),\n      live_relay_url: relayUrl,\n      live_complete_webhook: completeWebhook,\n      portal_base_url: cfg.portal_base_url,\n      config: sessCfg,\n      session,\n    },\n  },\n];\n"
+      },
+      "id": "ls-relay-ctx",
+      "name": "CODE - Build Live Speech Relay Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Parse Live Speech Result\n// After: HTTP - Fetch Session (complete branch)\n// Merges relay turns into interview_history; finalizes combined score.\n\nfunction parseJson(raw, fallback) {\n  if (raw == null) return fallback;\n  if (typeof raw === 'object') return raw;\n  try {\n    return JSON.parse(raw);\n  } catch (_) {\n    return fallback;\n  }\n}\n\nfunction computeTechnicalAverage(rows, maxQ) {\n  const scores = rows\n    .filter((row) => {\n      const phase = Number(row.phase);\n      return phase >= 1 && phase <= maxQ && row.score != null;\n    })\n    .map((row) => Number(row.score))\n    .filter((n) => Number.isFinite(n));\n  if (!scores.length) return null;\n  return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);\n}\n\nfunction computeSpeechAverage(rows, maxQ, speechPhases) {\n  const scores = rows\n    .filter((row) => {\n      const phase = Number(row.phase);\n      return phase > maxQ && phase <= maxQ + speechPhases && row.score != null;\n    })\n    .map((row) => Number(row.score))\n    .filter((n) => Number.isFinite(n));\n  if (!scores.length) return null;\n  return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);\n}\n\nconst norm = $('CODE - Normalize Live Speech Complete').first().json;\nconst cfg = norm.config || {};\nconst fetchRaw = $input.first().json;\nconst session = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;\nif (!session?.id) throw new Error('Session not found for live speech complete');\n\nconst sessCfg = { ...parseJson(session.config, {}), ...cfg };\nconst maxQ = Number(sessCfg.max_questions || cfg.max_questions || 5);\nconst speechPhases = Number(cfg.speech_phases || sessCfg.speech_phases || 5);\nconst passThreshold = Number(cfg.pass_score_threshold ?? 60);\nconst techWeight = Number(cfg.technical_weight ?? 0.7);\nconst speechWeight = Number(cfg.speech_weight ?? 0.3);\nconst iso = new Date().toISOString();\n\nlet history = session.interview_history;\nhistory = parseJson(history, []);\nif (!Array.isArray(history)) history = [];\n\nconst turns = Array.isArray(norm.turns) ? norm.turns : [];\nfor (const turn of turns) {\n  const ph = Number(turn.phase);\n  if (!Number.isFinite(ph) || ph <= maxQ) continue;\n\n  const patch = {\n    phase: ph,\n    mode: 'live_speech',\n    question_text: String(turn.question_text || turn.question || '').trim(),\n    answer_text: String(turn.answer_text || turn.transcript || turn.answer || '').trim(),\n    received_at: turn.received_at || iso,\n    sent_at: turn.sent_at || iso,\n    feedback: turn.feedback || null,\n    score: Math.max(0, Math.min(100, Math.round(Number(turn.score ?? 0)))),\n    soft_skills: turn.soft_skills || {\n      clarity: Math.round(Number(turn.clarity ?? turn.score ?? 0)),\n      confidence: Math.round(Number(turn.confidence ?? turn.score ?? 0)),\n      professionalism: Math.round(Number(turn.professionalism ?? turn.score ?? 0)),\n      relevance: Math.round(Number(turn.relevance ?? turn.score ?? 0)),\n    },\n    speech_metrics: turn.speech_metrics || {},\n    answer_audio_url: turn.audio_url || norm.session_audio_url || null,\n    stt_source: turn.stt_source || 'gemini_live',\n    scoring_source: turn.scoring_source || 'gemini_live',\n  };\n\n  const idx = history.findIndex((x) => Number(x.phase) === ph);\n  if (idx >= 0) history[idx] = { ...history[idx], ...patch };\n  else history.push(patch);\n}\n\nconst techAvg =\n  Number(session.technical_score) || computeTechnicalAverage(history, maxQ) || 0;\nlet speechAvg =\n  norm.combined_speech_score != null && Number.isFinite(Number(norm.combined_speech_score))\n    ? Math.round(Number(norm.combined_speech_score))\n    : computeSpeechAverage(history, maxQ, speechPhases);\n\nif (speechAvg == null) {\n  const turnScores = turns\n    .map((t) => Number(t.score))\n    .filter((n) => Number.isFinite(n));\n  speechAvg = turnScores.length\n    ? Math.round(turnScores.reduce((a, b) => a + b, 0) / turnScores.length)\n    : 0;\n}\n\nconst combinedScore = Math.round(techAvg * techWeight + speechAvg * speechWeight);\nconst finalResult = combinedScore >= passThreshold ? 'PASS' : 'FAIL';\nconst lastPhase = maxQ + speechPhases;\n\nconst finalFeedback = [\n  norm.final_feedback || norm.live_session_summary || '',\n  `Technical: ${techAvg}/100 | Live communication: ${speechAvg}/100 | Combined: ${combinedScore}/100 (pass ${passThreshold}).`,\n]\n  .filter(Boolean)\n  .join(' ');\n\nconst body = {\n  interview_history: history,\n  updated_at: iso,\n  assessment_stage: 'completed',\n  current_phase: lastPhase,\n  status: 'completed',\n  technical_score: techAvg,\n  speech_score: speechAvg,\n  score: combinedScore,\n  result: finalResult,\n  live_speech_audio_url: norm.session_audio_url || null,\n  live_speech_duration_seconds: norm.duration_seconds || null,\n  tab_switches: norm.tab_switches || 0,\n};\n\nconst b = String(cfg.supabase_url || sessCfg.supabase_url || '').replace(/\\/+$/, '');\nconst patchUrl = `${b}/rest/v1/${cfg.table_assessment_sessions || 'assessment_sessions'}?id=eq.${encodeURIComponent(String(session.id))}`;\n\nconst lastTurn = turns[turns.length - 1] || {};\nconst phaseScore = Math.round(Number(lastTurn.score ?? speechAvg));\n\nreturn [\n  {\n    json: {\n      score: combinedScore,\n      phase_score: phaseScore,\n      soft_skills: lastTurn.soft_skills || null,\n      feedback: finalFeedback,\n      nextQuestion: '',\n      time_limit_seconds: null,\n      deadline_at: null,\n      complexity_tier: null,\n      isFinal: true,\n      assessment_mode: 'live_speech',\n      speech_phases: speechPhases,\n      result: finalResult,\n      average_score: combinedScore,\n      candidate_email: norm.candidate_email || session.candidate_email,\n      session_id: session.id,\n      current_phase: lastPhase,\n      config: sessCfg,\n      gmail_thread_id: session.gmail_thread_id || null,\n      gmail_message_id: session.gmail_message_id || null,\n      mail_subject: session.mail_subject || null,\n      _session_patch_url: patchUrl,\n      _session_patch_body: body,\n    },\n  },\n];\n"
+      },
+      "id": "ls-parse",
+      "name": "CODE - Parse Live Speech Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Pick Parse Result (live speech)\nfunction pickParseJson() {\n  const names = [\n    'CODE - Parse Live Speech Result',\n    'CODE - Parse Speech Result',\n    'CODE - Parse Technical Result',\n  ];\n  for (const name of names) {\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object' && raw.session_id) return raw;\n    } catch (_) {}\n  }\n  const inp = $input.first().json;\n  if (inp && inp.session_id) return inp;\n  throw new Error('No parse result found.');\n}\nreturn [{ json: pickParseJson() }];"
+      },
+      "id": "ls-pick",
+      "name": "CODE - Pick Parse Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $(\"CODE - Pick Parse Result\").first().json._session_patch_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('CFG - Live Speech Config (complete)').first().json.supabase_key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('CFG - Live Speech Config (complete)').first().json.supabase_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $(\"CODE - Pick Parse Result\").first().json._session_patch_body }}",
+        "options": {}
+      },
+      "id": "ls-patch",
+      "name": "HTTP - SB PATCH session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        680
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  ok: true,\n  session_id: $json.session_id,\n  candidate_email: $json.candidate_email,\n  system_instruction: $json.system_instruction,\n  gemini_live_model: $json.gemini_live_model,\n  live_relay_url: $json.live_relay_url,\n  live_complete_webhook: $json.live_complete_webhook,\n  speech_phases: $json.speech_phases,\n  current_phase: $json.current_phase,\n  requisition_title: $json.requisition_title,\n  assessment_mode: \"live_speech\"\n} }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "ls-respond-start",
+      "name": "Respond - Live Speech Start",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  score: $(\"CODE - Pick Parse Result\").first().json.score,\n  feedback: $(\"CODE - Pick Parse Result\").first().json.feedback,\n  isFinal: $(\"CODE - Pick Parse Result\").first().json.isFinal,\n  result: $(\"CODE - Pick Parse Result\").first().json.result || \"\",\n  assessment_mode: \"live_speech\",\n  speech_phases: $(\"CODE - Pick Parse Result\").first().json.speech_phases || 5\n} }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "ls-respond-complete",
+      "name": "Respond - Live Speech Complete",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "final-check",
+              "leftValue": "={{ $(\"CODE - Pick Parse Result\").first().json.isFinal }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ls-if-finished",
+      "name": "IF - Assessment finished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n: CODE - Build assessment result mail (PASS/FAIL — thread reply)\n// Place AFTER: IF - Assessment finished? (true branch)\n// Place BEFORE: MAIL - Reply candidate (assessment result)\n//\n// Gmail node settings:\n//   Resource:   thread\n//   Operation:  reply\n//   Thread ID:  {{ $json.gmail_thread_id }}\n//   Message ID: {{ $json.gmail_message_id }}\n//   Email Type: HTML\n//   Message:    {{ $json.mail_body_html }}\n\nfunction pickNodeJson(...names) {\n  for (const name of names) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object') return raw;\n    } catch (_) {}\n  }\n  return null;\n}\n\nfunction pickSessionRow() {\n  const built =\n    pickNodeJson(\n      'CODE - Build Live Speech Relay Context',\n      'CODE - Build Speech LLM context',\n      'CODE - Build Speech LLM context1',\n      'CODE - Build LLM context',\n      'CODE - Build LLM context1'\n    ) || {};\n  if (built.session?.id) return built.session;\n\n  const fetchRaw = pickNodeJson(\n    'HTTP - Fetch Session',\n    'HTTP - Fetch Session1',\n    'HTTP - SB PATCH session interview_history',\n    'HTTP - SB PATCH session interview_history1'\n  );\n  const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;\n  if (row?.id) return row;\n\n  return {};\n}\n\nconst parse =\n  pickNodeJson(\n    'CODE - Pick Parse Result',\n    'CODE - Pick Parse Result1',\n    'CODE - Parse Live Speech Result',\n    'CODE - Parse Speech Result',\n    'CODE - Parse Speech Result1',\n    'CODE - Parse Technical Result',\n    'CODE - Parse Technical Result1'\n  ) || $input.first().json || {};\n\nconst session = pickSessionRow();\nconst cfg = parse.config || session.config || {};\n\nconst threadId = String(\n  parse.gmail_thread_id || session.gmail_thread_id || ''\n).trim();\nconst msgId = String(\n  parse.gmail_message_id || session.gmail_message_id || ''\n).trim();\n\nif (!threadId || threadId.startsWith('draft-')) {\n  const sid = parse.session_id || session.id || 'unknown';\n  throw new Error(\n    'gmail_thread_id missing on session ' +\n      sid +\n      ' — CV screening shortlist mail must PATCH gmail_thread_id to assessment_sessions. ' +\n      'Check Supabase row, run supabase_gmail_thread_columns.sql, and verify CV Screening workflow: ' +\n      'MAIL - Email outreach agent (shortlist) → HTTP - SB PATCH session gmail thread.'\n  );\n}\nif (!msgId) {\n  throw new Error(\n    'gmail_message_id missing on session — re-run shortlist flow or set from first mail.'\n  );\n}\n\nconst result = String(parse.result || 'FAIL').toUpperCase();\nconst passed = result === 'PASS';\nconst score = parse.score ?? parse.average_score ?? '—';\nconst role = String(cfg.requisition_title || 'the role');\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\nconst feedback = String(parse.feedback || '').trim();\nconst sessionId = String(parse.session_id || session.id || '');\n\nconst sectionTitle = passed ? 'Assessment Passed' : 'Assessment Result';\nconst headline = passed\n  ? `Congratulations — you passed the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`\n  : `Thank you for completing the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`;\n\nconst portalBase = String(\n  cfg.portal_base_url || 'https://talent-acquisition-six.vercel.app'\n).replace(/\\/+$/, '');\nconst schedulingWaitLink = sessionId\n  ? `${portalBase}/scheduling-wait.html?session=${encodeURIComponent(sessionId)}`\n  : portalBase;\n\nconst nextStep = passed\n  ? `<p>Next step: schedule your interview. Open this page to pick a time as soon as slots are ready (you can leave and return later):</p>\n     <p style=\"text-align:center;margin:20px 0;\"><a href=\"${schedulingWaitLink}\" style=\"display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;\">Schedule interview</a></p>\n     <p style=\"font-size:13px;color:#64748b;\">If the interviewer is not available right now, they may add slots later — we will email you when options are ready.</p>`\n  : '<p>Unfortunately you did not meet the pass threshold for this role at this time.</p>';\n\nconst mailBodyHtml = `<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"></head>\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\n    <tr><td align=\"center\">\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── ${sectionTitle} ──</p>\n          <p>Hi,</p>\n          <p>${headline}</p>\n          <p><strong>Overall score:</strong> ${score}/100 &nbsp;|&nbsp; <strong>Result:</strong> ${result}</p>\n          ${feedback ? `<p style=\"color:#475569;font-size:14px;\">${feedback.replace(/</g, '&lt;')}</p>` : ''}\n          ${nextStep}\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\n        </td></tr>\n      </table>\n    </td></tr>\n  </table>\n</body></html>`;\n\nreturn [\n  {\n    json: {\n      ...parse,\n      session_id: sessionId,\n      gmail_thread_id: threadId,\n      gmail_message_id: msgId,\n      mail_subject: session.mail_subject || parse.mail_subject || '',\n      mail_body_html: mailBodyHtml,\n      mail_stage: passed ? 'pass' : 'fail',\n      candidate_email: parse.candidate_email || session.candidate_email,\n      config: cfg,\n    },\n  },\n];\n"
+      },
+      "id": "ls-mail-build",
+      "name": "CODE - Build assessment result mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "thread",
+        "operation": "reply",
+        "threadId": "={{ $json.gmail_thread_id }}",
+        "messageId": "={{ $json.gmail_message_id }}",
+        "emailType": "html",
+        "message": "={{ $json.mail_body_html }}",
+        "options": {}
+      },
+      "id": "ls-mail-reply",
+      "name": "MAIL - Reply candidate (assessment result)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2400,
+        760
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "TRG - Live Speech Start": {
+      "main": [
+        [
+          {
+            "node": "CFG - Live Speech Config (start)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TRG - Live Speech Complete": {
+      "main": [
+        [
+          {
+            "node": "CFG - Live Speech Config (complete)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CFG - Live Speech Config (start)": {
+      "main": [
+        [
+          {
+            "node": "CODE - Normalize Live Speech Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CFG - Live Speech Config (complete)": {
+      "main": [
+        [
+          {
+            "node": "CODE - Normalize Live Speech Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Normalize Live Speech Start": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Fetch Session Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Normalize Live Speech Complete": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Fetch Session Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Fetch Session Start": {
+      "main": [
+        [
+          {
+            "node": "CODE - Build Live Speech Relay Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Fetch Session Complete": {
+      "main": [
+        [
+          {
+            "node": "CODE - Parse Live Speech Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Build Live Speech Relay Context": {
+      "main": [
+        [
+          {
+            "node": "Respond - Live Speech Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Parse Live Speech Result": {
+      "main": [
+        [
+          {
+            "node": "CODE - Pick Parse Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CODE - Pick Parse Result": {
+      "main": [
+        [
+          {
+            "node": "HTTP - SB PATCH session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - SB PATCH session": {
+      "main": [
+        [
+          {
+            "node": "Respond - Live Speech Complete",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF - Assessment finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Assessment finished?": {
+      "main": [
+        [
+          {
+            "node": "CODE - Build assessment result mail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "CODE - Build assessment result mail": {
+      "main": [
+        [
+          {
+            "node": "MAIL - Reply candidate (assessment result)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

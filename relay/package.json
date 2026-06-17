@@ -1,0 +1,20 @@
+{
+  "name": "talent-live-speech-relay",
+  "version": "1.0.0",
+  "description": "WebSocket relay: browser ↔ Gemini Live API for Talent Acquisition live speech",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@google/genai": "^2.8.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "ws": "^8.18.0"
+  }
+}

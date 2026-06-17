@@ -1,16 +1,12 @@
 import WebSocket from 'ws';
-import {
-  isSubstantiveAnswer,
-  mergeQuestionChunks,
-  sanitizeTranscript,
-} from './transcript-utils.mjs';
+import { sanitizeTranscript } from './transcript-utils.mjs';
 
 const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 
 const DEFAULT_MODEL = 'gemini-2.0-flash-live-001';
 const DEFAULT_KICKOFF =
-  'The candidate is ready. Begin the live voice interview now: greet them briefly in English, then ask question 1 out loud. Speak only as the interviewer.';
+  'The candidate is ready. Greet them in one short sentence, then ask interview question 1 out loud. Ask only ONE question and then stop and wait for the candidate to answer.';
 
 export class GeminiLiveBridge {
   constructor({ apiKey, context, onEvent }) {
@@ -29,8 +25,9 @@ export class GeminiLiveBridge {
     this.startedAt = Date.now();
     this.pendingUser = '';
     this.pendingModel = '';
-    this.questionBuffer = [];
-    this.qaPairs = [];
+    this.questions = [];
+    this.answers = [];
+    this.userTurnActive = false;
     this.maxTurns = Number(context.speech_phases || 5);
     this.maxQuestions = Number(context.max_questions || 5);
   }
@@ -57,6 +54,10 @@ export class GeminiLiveBridge {
             },
             systemInstruction: {
               parts: [{ text: systemText }],
+            },
+            // Push-to-talk: the candidate controls when their turn starts/ends.
+            realtimeInputConfig: {
+              automaticActivityDetection: { disabled: true },
             },
             inputAudioTranscription: {},
             outputAudioTranscription: {},
@@ -87,12 +88,6 @@ export class GeminiLiveBridge {
     });
   }
 
-  emitFinalTranscript(speaker, text) {
-    const clean = sanitizeTranscript(text, speaker === 'user' ? 'user' : 'model');
-    if (!clean) return;
-    this.onEvent({ type: 'transcript', speaker, text: clean, partial: false });
-  }
-
   handleGeminiMessage(msg, resolveSetup, rejectSetup) {
     if (msg.setupComplete) {
       this.ready = true;
@@ -111,24 +106,14 @@ export class GeminiLiveBridge {
 
     if (this.interviewEnded) return;
 
-    if (msg.inputTranscription?.text) {
-      this.pendingUser += msg.inputTranscription.text;
-    }
-
-    if (msg.outputTranscription?.text) {
-      this.pendingModel += msg.outputTranscription.text;
-    }
+    if (msg.inputTranscription?.text) this.pendingUser += msg.inputTranscription.text;
+    if (msg.outputTranscription?.text) this.pendingModel += msg.outputTranscription.text;
 
     const server = msg.serverContent;
     if (!server) return;
 
-    if (server.inputTranscription?.text) {
-      this.pendingUser += server.inputTranscription.text;
-    }
-
-    if (server.outputTranscription?.text) {
-      this.pendingModel += server.outputTranscription.text;
-    }
+    if (server.inputTranscription?.text) this.pendingUser += server.inputTranscription.text;
+    if (server.outputTranscription?.text) this.pendingModel += server.outputTranscription.text;
 
     const parts = server.modelTurn?.parts || [];
     for (const part of parts) {
@@ -156,60 +141,50 @@ export class GeminiLiveBridge {
   }
 
   finalizeTurn() {
-    const userText = sanitizeTranscript(this.pendingUser, 'user');
+    const userRaw = String(this.pendingUser || '').trim();
+    const userText = sanitizeTranscript(this.pendingUser, 'user') || userRaw;
     const modelText = sanitizeTranscript(this.pendingModel, 'model');
-
-    if (modelText) {
-      this.questionBuffer.push(modelText);
-      this.emitFinalTranscript('model', modelText);
-    }
-
-    if (userText && isSubstantiveAnswer(userText)) {
-      const questionText = mergeQuestionChunks(this.questionBuffer);
-      this.qaPairs.push({
-        question_text: questionText,
-        answer_text: userText,
-      });
-      this.questionBuffer = [];
-      this.emitFinalTranscript('user', userText);
-
-      const completed = this.qaPairs.length;
-      this.onEvent({
-        type: 'turn_complete',
-        turn: Math.min(completed, this.maxTurns),
-        maxTurns: this.maxTurns,
-        answersGiven: completed,
-      });
-
-      if (completed >= this.maxTurns) {
-        this.finishInterview();
-      }
-    } else if (modelText && !this.qaPairs.length) {
-      this.onEvent({
-        type: 'turn_complete',
-        turn: 0,
-        maxTurns: this.maxTurns,
-        answersGiven: 0,
-      });
-    }
-
     this.pendingUser = '';
     this.pendingModel = '';
+
+    // An answer is expected whenever the candidate has spoken (more questions than answers).
+    if (this.questions.length > this.answers.length) {
+      const answer = userText || '[No spoken response]';
+      this.answers.push(answer);
+      const answerNum = this.answers.length;
+      this.onEvent({ type: 'transcript', speaker: 'user', text: answer, partial: false });
+      this.onEvent({ type: 'answer', number: answerNum, text: answer });
+      this.onEvent({
+        type: 'turn_complete',
+        turn: answerNum,
+        maxTurns: this.maxTurns,
+        answersGiven: answerNum,
+      });
+
+      if (answerNum >= this.maxTurns) {
+        this.finishInterview();
+        return; // suppress any trailing question from the model
+      }
+    }
+
+    if (modelText) {
+      this.questions.push(modelText);
+      const qNum = this.questions.length;
+      this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false });
+      this.onEvent({ type: 'question', number: qNum, text: modelText });
+      this.onEvent({ type: 'awaiting_answer', number: qNum, maxTurns: this.maxTurns });
+    }
   }
 
   finishInterview() {
     if (this.interviewEnded) return;
     this.interviewEnded = true;
-    this.onEvent({
-      type: 'interview_complete',
-      turn: this.maxTurns,
-      maxTurns: this.maxTurns,
-    });
+    this.onEvent({ type: 'interview_complete', turn: this.maxTurns, maxTurns: this.maxTurns });
     this.sendClientText(
-      'The candidate has completed all interview questions. Thank them briefly in English and end the interview. Do not ask any more questions.',
+      'The candidate has completed all interview questions. Thank them in one short sentence and end the interview. Do not ask any more questions.',
       true
     );
-    setTimeout(() => this.closeGemini(), 8000);
+    setTimeout(() => this.closeGemini(), 6000);
   }
 
   sendClientText(text, turnComplete = true) {
@@ -233,16 +208,32 @@ export class GeminiLiveBridge {
     this.onEvent({ type: 'interviewer_started' });
   }
 
+  // Candidate pressed "Answer" — open their speaking turn.
+  startUserTurn() {
+    if (!this.ready || this.closed || this.interviewEnded || !this.geminiWs) return;
+    if (this.geminiWs.readyState !== WebSocket.OPEN) return;
+    if (this.userTurnActive) return;
+    this.userTurnActive = true;
+    this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
+  }
+
+  // Candidate pressed "Submit" — close their speaking turn so the model replies.
+  endUserTurn() {
+    if (!this.ready || this.closed || !this.geminiWs) return;
+    if (this.geminiWs.readyState !== WebSocket.OPEN) return;
+    if (!this.userTurnActive) return;
+    this.userTurnActive = false;
+    this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
+  }
+
   sendAudio(base64Pcm, mimeType = 'audio/pcm;rate=16000') {
     if (!this.ready || this.closed || this.interviewEnded || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
+    if (!this.userTurnActive) return; // only stream while the candidate is answering
     this.geminiWs.send(
       JSON.stringify({
         realtimeInput: {
-          audio: {
-            mimeType,
-            data: base64Pcm,
-          },
+          audio: { mimeType, data: base64Pcm },
         },
       })
     );
@@ -260,13 +251,17 @@ export class GeminiLiveBridge {
   }
 
   buildTurnPairs() {
-    const pairs = this.qaPairs.slice(0, this.maxTurns);
-    return pairs.map((pair, i) => ({
-      phase: this.maxQuestions + 1 + i,
-      question_text: pair.question_text || '',
-      answer_text: pair.answer_text || '',
-      sent_at: new Date(this.startedAt + i * 60000).toISOString(),
-      received_at: new Date().toISOString(),
-    }));
+    const count = Math.min(Math.max(this.questions.length, this.answers.length), this.maxTurns);
+    const turns = [];
+    for (let i = 0; i < count; i += 1) {
+      turns.push({
+        phase: this.maxQuestions + 1 + i,
+        question_text: this.questions[i] || '',
+        answer_text: this.answers[i] || '',
+        sent_at: new Date(this.startedAt + i * 60000).toISOString(),
+        received_at: new Date().toISOString(),
+      });
+    }
+    return turns;
   }
 }

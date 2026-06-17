@@ -95,6 +95,18 @@ wss.on('connection', (clientWs) => {
         return;
       }
 
+      if (msg.type === 'user_turn_start') {
+        if (!bridge) throw new Error('session not started');
+        bridge.startUserTurn();
+        return;
+      }
+
+      if (msg.type === 'user_turn_end') {
+        if (!bridge) throw new Error('session not started');
+        bridge.endUserTurn();
+        return;
+      }
+
       if (msg.type === 'input_audio') {
         if (!bridge) throw new Error('session not started');
         bridge.sendAudio(msg.data, msg.mimeType || 'audio/pcm;rate=16000');

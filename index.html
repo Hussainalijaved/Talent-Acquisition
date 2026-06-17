@@ -1358,32 +1358,42 @@
         }) => {
             const sessionRef = React.useRef(null);
             const finishedRef = React.useRef(false);
+            const cardsEndRef = React.useRef(null);
             const [status, setStatus] = React.useState('Preparing live session…');
             const [micLevel, setMicLevel] = React.useState(0);
             const [turn, setTurn] = React.useState(0);
             const [maxTurns, setMaxTurns] = React.useState(context?.speech_phases || 5);
-            const [lines, setLines] = React.useState([]);
+            const [cards, setCards] = React.useState([]);
+            const [canAnswer, setCanAnswer] = React.useState(false);
+            const [isAnswering, setIsAnswering] = React.useState(false);
             const [ending, setEnding] = React.useState(false);
             const [interviewComplete, setInterviewComplete] = React.useState(false);
 
-            const pushLine = React.useCallback((speaker, text, partial) => {
-                if (partial) return;
-                const clean = window.TA_LIVE?.sanitizeDisplayTranscript
+            const cleanText = React.useCallback((text, speaker) => (
+                window.TA_LIVE?.sanitizeDisplayTranscript
                     ? window.TA_LIVE.sanitizeDisplayTranscript(text, speaker)
-                    : String(text || '').trim();
-                if (!clean) return;
-                setLines((prev) => {
+                    : String(text || '').trim()
+            ), []);
+
+            const addQuestion = React.useCallback((number, text) => {
+                const clean = cleanText(text, 'model');
+                setCards((prev) => {
                     const next = [...prev];
-                    const key = speaker === 'user' ? 'You' : 'Interviewer';
-                    if (next.length && next[next.length - 1].key === key) {
-                        next[next.length - 1] = { key, text: clean, partial: false };
-                        return next;
-                    }
-                    next.push({ key, text: clean, partial: false });
-                    if (next.length > 30) next.shift();
+                    const idx = number - 1;
+                    next[idx] = { ...(next[idx] || {}), number, question: clean || `Question ${number}`, answer: next[idx]?.answer || '' };
                     return next;
                 });
-            }, []);
+            }, [cleanText]);
+
+            const setAnswerForQuestion = React.useCallback((number, text) => {
+                const clean = cleanText(text, 'user');
+                setCards((prev) => {
+                    const next = [...prev];
+                    const idx = number - 1;
+                    if (next[idx]) next[idx] = { ...next[idx], answer: clean || '(no response captured)' };
+                    return next;
+                });
+            }, [cleanText]);
 
             React.useEffect(() => {
                 let cancelled = false;
@@ -1399,14 +1409,30 @@
                             context,
                             tabSwitches,
                             onStatus: setStatus,
-                            onTranscript: ({ speaker, text, partial }) => pushLine(speaker, text, partial),
+                            onTranscript: () => {},
                             onLevel: setMicLevel,
                             onTurn: ({ turn: t, maxTurns: m }) => {
                                 const capped = Math.min(Number(t) || 0, Number(m) || maxTurns);
                                 setTurn(capped);
                                 if (m) setMaxTurns(m);
                             },
-                            onInterviewComplete: () => setInterviewComplete(true),
+                            onQuestion: ({ number, text }) => {
+                                addQuestion(number, text);
+                            },
+                            onAnswer: ({ number, text }) => {
+                                setAnswerForQuestion(number, text);
+                                setIsAnswering(false);
+                                setCanAnswer(false);
+                            },
+                            onAwaitingAnswer: () => {
+                                setCanAnswer(true);
+                                setIsAnswering(false);
+                            },
+                            onInterviewComplete: () => {
+                                setInterviewComplete(true);
+                                setCanAnswer(false);
+                                setIsAnswering(false);
+                            },
                             onComplete: (result) => {
                                 if (finishedRef.current) return;
                                 finishedRef.current = true;
@@ -1423,7 +1449,7 @@
                         });
                         sessionRef.current = session;
                         await session.start();
-                        if (!cancelled) setStatus('Listen to the interviewer, then answer out loud');
+                        if (!cancelled) setStatus('Listen to the interviewer — the first question is coming');
                     } catch (e) {
                         if (!cancelled) onError?.(e?.message || 'Could not start live speech');
                     }
@@ -1433,7 +1459,23 @@
                     sessionRef.current?.cancel?.();
                     sessionRef.current = null;
                 };
-            }, [context, relayFallback, tabSwitches, onError, pushLine]);
+            }, [context, relayFallback, tabSwitches, onError, addQuestion, setAnswerForQuestion]);
+
+            React.useEffect(() => {
+                cardsEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' });
+            }, [cards, isAnswering]);
+
+            const handleAnswerToggle = () => {
+                if (interviewComplete || ending || isLoading) return;
+                if (isAnswering) {
+                    sessionRef.current?.submitAnswer?.();
+                    setIsAnswering(false);
+                    setCanAnswer(false);
+                } else if (canAnswer) {
+                    sessionRef.current?.beginAnswer?.();
+                    setIsAnswering(true);
+                }
+            };
 
             const handleEnd = async () => {
                 if (ending || isLoading || finishedRef.current) return;
@@ -1494,17 +1536,63 @@
                             </button>
                         </aside>
                         <main className="flex-1 flex flex-col min-h-0 p-4 sm:p-6">
-                            <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-surface-border bg-surface-elevated/30 p-4 space-y-3">
-                                {lines.length === 0 ? (
-                                    <p className="text-sm text-slate-500">The AI interviewer will speak first — listen, then answer out loud.</p>
+                            <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-surface-border bg-surface-elevated/30 p-4 space-y-4">
+                                {cards.length === 0 ? (
+                                    <p className="text-sm text-slate-500">The AI interviewer will speak first. Listen to the question, then press “Answer” to reply out loud.</p>
                                 ) : (
-                                    lines.map((line, i) => (
-                                        <div key={i} className={`text-sm leading-relaxed ${line.key === 'You' ? 'text-slate-300' : 'text-indigo-200'}`}>
-                                            <span className="font-semibold text-slate-400">{line.key}: </span>
-                                            {line.text}
+                                    cards.map((card, i) => (
+                                        <div key={i} className="rounded-xl border border-surface-border bg-surface-elevated/40 overflow-hidden">
+                                            <div className="px-4 py-3 border-b border-surface-border bg-indigo-500/5">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Question {card.number}</p>
+                                                <p className="text-sm text-indigo-100 mt-1 leading-relaxed">{card.question}</p>
+                                            </div>
+                                            <div className="px-4 py-3">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Your answer</p>
+                                                {card.answer ? (
+                                                    <p className="text-sm text-slate-200 mt-1 leading-relaxed">{card.answer}</p>
+                                                ) : (i === cards.length - 1 && isAnswering) ? (
+                                                    <p className="text-sm text-emerald-300 mt-1 flex items-center gap-2">
+                                                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                                        Recording your answer…
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-sm text-slate-500 mt-1 italic">Press “Answer” to reply.</p>
+                                                )}
+                                            </div>
                                         </div>
                                     ))
                                 )}
+                                <div ref={cardsEndRef} />
+                            </div>
+                            <div className="shrink-0 pt-4">
+                                {interviewComplete ? (
+                                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-center text-sm text-emerald-300">
+                                        All {maxTurns} questions complete — submitting your results…
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={handleAnswerToggle}
+                                        disabled={(!canAnswer && !isAnswering) || ending || isLoading}
+                                        className={`w-full py-4 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${isAnswering ? 'bg-red-500 hover:bg-red-600 text-white' : 'btn-primary'}`}
+                                    >
+                                        {isAnswering ? (
+                                            <>
+                                                <span className="inline-block w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+                                                Submit answer
+                                            </>
+                                        ) : (
+                                            <>🎤 Answer</>
+                                        )}
+                                    </button>
+                                )}
+                                <p className="text-[11px] text-slate-500 text-center mt-2">
+                                    {isAnswering
+                                        ? 'Mic is open — speak clearly in English, then press Submit.'
+                                        : canAnswer
+                                        ? 'Press Answer to open your mic and reply.'
+                                        : 'Mic stays off while the interviewer is speaking.'}
+                                </p>
                             </div>
                         </main>
                     </div>

@@ -62,6 +62,9 @@
       this.onTurn = options.onTurn || (() => {});
       this.onComplete = options.onComplete || (() => {});
       this.onInterviewComplete = options.onInterviewComplete || (() => {});
+      this.onQuestion = options.onQuestion || (() => {});
+      this.onAnswer = options.onAnswer || (() => {});
+      this.onAwaitingAnswer = options.onAwaitingAnswer || (() => {});
       this.onError = options.onError || (() => {});
       this.tabSwitches = Number(options.tabSwitches || 0);
 
@@ -75,11 +78,34 @@
       this.nextPlayTime = 0;
       this.ended = false;
       this.interviewEnded = false;
+      this.answering = false;
       this.autoEndTimer = null;
+    }
+
+    // Candidate pressed "Answer" — open their mic and tell the relay to start the turn.
+    beginAnswer() {
+      if (this.ended || this.interviewEnded || this.answering) return;
+      this.answering = true;
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'user_turn_start' }));
+      }
+      this.setStatus('Listening — speak your answer now');
+    }
+
+    // Candidate pressed "Submit" — close their mic and let the interviewer respond.
+    submitAnswer() {
+      if (!this.answering) return;
+      this.answering = false;
+      this.onLevel(0);
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'user_turn_end' }));
+      }
+      this.setStatus('Saving your answer…');
     }
 
     stopMic() {
       this.interviewEnded = true;
+      this.answering = false;
       try {
         this.processor?.disconnect();
         this.source?.disconnect();
@@ -128,7 +154,7 @@
       await this.waitForType('ready', 30000);
       this.setStatus('Interviewer is starting…');
       await this.startMic();
-      this.setStatus('Listen to the interviewer, then answer out loud');
+      this.setStatus('Listen to the interviewer — the first question is coming');
     }
 
     waitForType(type, ms) {
@@ -167,20 +193,25 @@
           text: msg.text,
           partial: false,
         });
-        if (msg.speaker === 'model') {
-          this.setStatus('Your turn — answer out loud in English');
-        }
+      }
+      if (msg.type === 'question') {
+        this.onQuestion({ number: msg.number, text: msg.text });
+      }
+      if (msg.type === 'answer') {
+        this.onAnswer({ number: msg.number, text: msg.text });
+      }
+      if (msg.type === 'awaiting_answer') {
+        this.answering = false;
+        this.onAwaitingAnswer({ number: msg.number, maxTurns: msg.maxTurns });
+        this.setStatus(`Question ${msg.number} ready — press “Answer” to reply`);
       }
       if (msg.type === 'output_audio' && msg.data) {
-        this.setStatus('Interviewer is speaking…');
+        if (!this.answering) this.setStatus('Interviewer is speaking…');
         this.enqueuePlayback(msg.data, msg.mimeType || `audio/pcm;rate=${OUTPUT_RATE}`);
       }
       if (msg.type === 'turn_complete') {
         const capped = Math.min(msg.turn || 0, msg.maxTurns || 5);
         this.onTurn({ turn: capped, maxTurns: msg.maxTurns, answersGiven: msg.answersGiven });
-        if (capped > 0 && msg.maxTurns && capped < msg.maxTurns) {
-          this.setStatus(`Question ${capped} of ${msg.maxTurns} complete — listen for the next question`);
-        }
       }
       if (msg.type === 'interview_complete') {
         this.stopMic();
@@ -228,6 +259,7 @@
 
       this.processor.onaudioprocess = (e) => {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.ended || this.interviewEnded) return;
+        if (!this.answering) return; // push-to-talk: only stream while the candidate is answering
         const input = e.inputBuffer.getChannelData(0);
         let sum = 0;
         for (let i = 0; i < input.length; i += 1) sum += Math.abs(input[i]);

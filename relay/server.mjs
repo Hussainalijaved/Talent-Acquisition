@@ -108,11 +108,27 @@ wss.on('connection', (clientWs) => {
 
         bridge.closeGemini();
         const rawTurns = bridge.buildTurnPairs();
-        const scored = await scoreLiveTurns({
-          apiKey: GEMINI_API_KEY,
-          context,
+
+        let scored = {
           turns: rawTurns,
-        });
+          combined_speech_score: 0,
+          final_feedback: 'Voice interview completed.',
+        };
+        try {
+          scored = await Promise.race([
+            scoreLiveTurns({ apiKey: GEMINI_API_KEY, context, turns: rawTurns }),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('score_timeout')), 45000)
+            ),
+          ]);
+        } catch (scoreErr) {
+          console.warn('[relay] score fallback:', scoreErr.message);
+          scored = {
+            turns: rawTurns.map((t) => ({ ...t, score: 0, feedback: 'Scored locally after timeout.' })),
+            combined_speech_score: 0,
+            final_feedback: 'Voice interview completed. Detailed scoring was delayed.',
+          };
+        }
 
         const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
         const completePayload = {

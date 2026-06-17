@@ -1357,6 +1357,7 @@
             onError,
         }) => {
             const sessionRef = React.useRef(null);
+            const finishedRef = React.useRef(false);
             const [status, setStatus] = React.useState('Preparing live session…');
             const [micLevel, setMicLevel] = React.useState(0);
             const [turn, setTurn] = React.useState(0);
@@ -1366,17 +1367,20 @@
             const [interviewComplete, setInterviewComplete] = React.useState(false);
 
             const pushLine = React.useCallback((speaker, text, partial) => {
-                const clean = String(text || '').trim();
+                if (partial) return;
+                const clean = window.TA_LIVE?.sanitizeDisplayTranscript
+                    ? window.TA_LIVE.sanitizeDisplayTranscript(text, speaker)
+                    : String(text || '').trim();
                 if (!clean) return;
                 setLines((prev) => {
                     const next = [...prev];
                     const key = speaker === 'user' ? 'You' : 'Interviewer';
-                    if (partial && next.length && next[next.length - 1].key === key && next[next.length - 1].partial) {
-                        next[next.length - 1] = { key, text: clean, partial: true };
+                    if (next.length && next[next.length - 1].key === key) {
+                        next[next.length - 1] = { key, text: clean, partial: false };
                         return next;
                     }
-                    next.push({ key, text: clean, partial: !!partial });
-                    if (next.length > 40) next.shift();
+                    next.push({ key, text: clean, partial: false });
+                    if (next.length > 30) next.shift();
                     return next;
                 });
             }, []);
@@ -1398,10 +1402,23 @@
                             onTranscript: ({ speaker, text, partial }) => pushLine(speaker, text, partial),
                             onLevel: setMicLevel,
                             onTurn: ({ turn: t, maxTurns: m }) => {
-                                setTurn(t);
+                                const capped = Math.min(Number(t) || 0, Number(m) || maxTurns);
+                                setTurn(capped);
                                 if (m) setMaxTurns(m);
                             },
                             onInterviewComplete: () => setInterviewComplete(true),
+                            onComplete: (result) => {
+                                if (finishedRef.current) return;
+                                finishedRef.current = true;
+                                setEnding(true);
+                                const n8n = result?.n8n || {};
+                                onFinished?.({
+                                    result: n8n.result || '',
+                                    score: n8n.score ?? result?.combined_speech_score,
+                                    feedback: n8n.feedback || result?.final_feedback || 'Live speech assessment completed.',
+                                    isFinal: true,
+                                });
+                            },
                             onError: (err) => onError?.(err?.message || 'Live speech error'),
                         });
                         sessionRef.current = session;
@@ -1419,15 +1436,17 @@
             }, [context, relayFallback, tabSwitches, onError, pushLine]);
 
             const handleEnd = async () => {
-                if (ending || isLoading) return;
+                if (ending || isLoading || finishedRef.current) return;
                 setEnding(true);
                 setStatus('Saving your voice assessment…');
                 try {
                     const result = await sessionRef.current?.end?.();
+                    if (!result || finishedRef.current) return;
+                    finishedRef.current = true;
                     const n8n = result?.n8n || {};
                     onFinished?.({
                         result: n8n.result || '',
-                        score: n8n.score,
+                        score: n8n.score ?? result?.combined_speech_score,
                         feedback: n8n.feedback || result?.final_feedback || 'Live speech assessment completed.',
                         isFinal: true,
                     });
@@ -1447,7 +1466,7 @@
                             </div>
                             <div className="rounded-lg border border-surface-border px-3 py-2">
                                 <p className="text-xs text-slate-500">Questions</p>
-                                <p className="text-sm text-white font-medium">{turn} / {maxTurns}</p>
+                                <p className="text-sm text-white font-medium">{Math.min(turn, maxTurns)} / {maxTurns}</p>
                             </div>
                             <div className="rounded-lg border border-surface-border px-3 py-2">
                                 <p className="text-xs text-slate-500 mb-2">Mic level</p>
@@ -1458,16 +1477,20 @@
                             <p className="text-xs text-slate-500 leading-relaxed">{status}</p>
                             {interviewComplete ? (
                                 <p className="text-xs text-emerald-400/90 leading-relaxed">
-                                    All {maxTurns} questions are done. Click below to save your scores and finish.
+                                    All {maxTurns} questions are done. Results will submit automatically in a few seconds.
                                 </p>
-                            ) : null}
+                            ) : (
+                                <p className="text-xs text-slate-600 leading-relaxed">
+                                    Interview ends after {maxTurns} questions. Speak in English.
+                                </p>
+                            )}
                             <button
                                 type="button"
                                 onClick={handleEnd}
                                 disabled={ending || isLoading}
                                 className={`w-full py-3 rounded-xl text-sm disabled:opacity-40 ${interviewComplete ? 'btn-primary' : 'btn-secondary border border-surface-border'}`}
                             >
-                                {ending ? 'Finishing…' : interviewComplete ? 'Submit voice interview' : 'End voice interview'}
+                                {ending ? 'Finishing…' : interviewComplete ? 'Submitting results…' : 'End voice interview'}
                             </button>
                         </aside>
                         <main className="flex-1 flex flex-col min-h-0 p-4 sm:p-6">

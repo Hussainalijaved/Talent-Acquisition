@@ -1,15 +1,16 @@
 import WebSocket from 'ws';
+import {
+  isSubstantiveAnswer,
+  mergeQuestionChunks,
+  sanitizeTranscript,
+} from './transcript-utils.mjs';
 
 const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 
 const DEFAULT_MODEL = 'gemini-2.0-flash-live-001';
 const DEFAULT_KICKOFF =
-  'The candidate is ready. Begin the live voice interview now: greet them briefly, then ask question 1 of your planned questions out loud. Speak as the interviewer only.';
-
-function b64ToBuffer(data) {
-  return Buffer.from(String(data || ''), 'base64');
-}
+  'The candidate is ready. Begin the live voice interview now: greet them briefly in English, then ask question 1 out loud. Speak only as the interviewer.';
 
 export class GeminiLiveBridge {
   constructor({ apiKey, context, onEvent }) {
@@ -24,12 +25,12 @@ export class GeminiLiveBridge {
     this.geminiWs = null;
     this.ready = false;
     this.closed = false;
+    this.interviewEnded = false;
     this.startedAt = Date.now();
-    this.userLines = [];
-    this.modelLines = [];
     this.pendingUser = '';
     this.pendingModel = '';
-    this.turnCount = 0;
+    this.questionBuffer = [];
+    this.qaPairs = [];
     this.maxTurns = Number(context.speech_phases || 5);
     this.maxQuestions = Number(context.max_questions || 5);
   }
@@ -86,6 +87,12 @@ export class GeminiLiveBridge {
     });
   }
 
+  emitFinalTranscript(speaker, text) {
+    const clean = sanitizeTranscript(text, speaker === 'user' ? 'user' : 'model');
+    if (!clean) return;
+    this.onEvent({ type: 'transcript', speaker, text: clean, partial: false });
+  }
+
   handleGeminiMessage(msg, resolveSetup, rejectSetup) {
     if (msg.setupComplete) {
       this.ready = true;
@@ -102,24 +109,14 @@ export class GeminiLiveBridge {
       return;
     }
 
+    if (this.interviewEnded) return;
+
     if (msg.inputTranscription?.text) {
       this.pendingUser += msg.inputTranscription.text;
-      this.onEvent({
-        type: 'transcript',
-        speaker: 'user',
-        text: msg.inputTranscription.text,
-        partial: true,
-      });
     }
 
     if (msg.outputTranscription?.text) {
       this.pendingModel += msg.outputTranscription.text;
-      this.onEvent({
-        type: 'transcript',
-        speaker: 'model',
-        text: msg.outputTranscription.text,
-        partial: true,
-      });
     }
 
     const server = msg.serverContent;
@@ -127,22 +124,10 @@ export class GeminiLiveBridge {
 
     if (server.inputTranscription?.text) {
       this.pendingUser += server.inputTranscription.text;
-      this.onEvent({
-        type: 'transcript',
-        speaker: 'user',
-        text: server.inputTranscription.text,
-        partial: true,
-      });
     }
 
     if (server.outputTranscription?.text) {
       this.pendingModel += server.outputTranscription.text;
-      this.onEvent({
-        type: 'transcript',
-        speaker: 'model',
-        text: server.outputTranscription.text,
-        partial: true,
-      });
     }
 
     const parts = server.modelTurn?.parts || [];
@@ -156,47 +141,75 @@ export class GeminiLiveBridge {
         });
       }
       if (part.text) {
-        this.pendingModel += part.text;
-        this.onEvent({ type: 'transcript', speaker: 'model', text: part.text, partial: true });
+        const chunk = sanitizeTranscript(part.text, 'model');
+        if (chunk) this.pendingModel += chunk;
       }
     }
 
     if (server.turnComplete) {
-      const userText = this.pendingUser.trim();
-      const modelText = this.pendingModel.trim();
-      if (modelText) {
-        this.modelLines.push(modelText);
-        this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false });
-      }
-      if (userText) {
-        this.userLines.push(userText);
-        this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
-      }
-      this.pendingUser = '';
-      this.pendingModel = '';
-      this.turnCount += 1;
-
-      const questionsAsked = this.modelLines.length;
-      const answersGiven = this.userLines.length;
-      this.onEvent({
-        type: 'turn_complete',
-        turn: questionsAsked,
-        maxTurns: this.maxTurns,
-        answersGiven,
-      });
-
-      if (questionsAsked >= this.maxTurns && answersGiven >= this.maxTurns) {
-        this.onEvent({
-          type: 'interview_complete',
-          turn: questionsAsked,
-          maxTurns: this.maxTurns,
-        });
-      }
+      this.finalizeTurn();
     }
 
     if (server.interrupted) {
       this.onEvent({ type: 'interrupted' });
     }
+  }
+
+  finalizeTurn() {
+    const userText = sanitizeTranscript(this.pendingUser, 'user');
+    const modelText = sanitizeTranscript(this.pendingModel, 'model');
+
+    if (modelText) {
+      this.questionBuffer.push(modelText);
+      this.emitFinalTranscript('model', modelText);
+    }
+
+    if (userText && isSubstantiveAnswer(userText)) {
+      const questionText = mergeQuestionChunks(this.questionBuffer);
+      this.qaPairs.push({
+        question_text: questionText,
+        answer_text: userText,
+      });
+      this.questionBuffer = [];
+      this.emitFinalTranscript('user', userText);
+
+      const completed = this.qaPairs.length;
+      this.onEvent({
+        type: 'turn_complete',
+        turn: Math.min(completed, this.maxTurns),
+        maxTurns: this.maxTurns,
+        answersGiven: completed,
+      });
+
+      if (completed >= this.maxTurns) {
+        this.finishInterview();
+      }
+    } else if (modelText && !this.qaPairs.length) {
+      this.onEvent({
+        type: 'turn_complete',
+        turn: 0,
+        maxTurns: this.maxTurns,
+        answersGiven: 0,
+      });
+    }
+
+    this.pendingUser = '';
+    this.pendingModel = '';
+  }
+
+  finishInterview() {
+    if (this.interviewEnded) return;
+    this.interviewEnded = true;
+    this.onEvent({
+      type: 'interview_complete',
+      turn: this.maxTurns,
+      maxTurns: this.maxTurns,
+    });
+    this.sendClientText(
+      'The candidate has completed all interview questions. Thank them briefly in English and end the interview. Do not ask any more questions.',
+      true
+    );
+    setTimeout(() => this.closeGemini(), 8000);
   }
 
   sendClientText(text, turnComplete = true) {
@@ -221,7 +234,7 @@ export class GeminiLiveBridge {
   }
 
   sendAudio(base64Pcm, mimeType = 'audio/pcm;rate=16000') {
-    if (!this.ready || this.closed || !this.geminiWs) return;
+    if (!this.ready || this.closed || this.interviewEnded || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
     this.geminiWs.send(
       JSON.stringify({
@@ -247,24 +260,13 @@ export class GeminiLiveBridge {
   }
 
   buildTurnPairs() {
-    const turns = [];
-    const questions = this.modelLines;
-    const answers = this.userLines;
-    const count = Math.max(questions.length, answers.length);
-    for (let i = 0; i < count; i += 1) {
-      const phase = this.maxQuestions + 1 + i;
-      turns.push({
-        phase,
-        question_text: questions[i] || '',
-        answer_text: answers[i] || '',
-        sent_at: new Date(this.startedAt + i * 60000).toISOString(),
-        received_at: new Date().toISOString(),
-      });
-    }
-    return turns;
+    const pairs = this.qaPairs.slice(0, this.maxTurns);
+    return pairs.map((pair, i) => ({
+      phase: this.maxQuestions + 1 + i,
+      question_text: pair.question_text || '',
+      answer_text: pair.answer_text || '',
+      sent_at: new Date(this.startedAt + i * 60000).toISOString(),
+      received_at: new Date().toISOString(),
+    }));
   }
-}
-
-export function bufferToPcmBase64(buffer) {
-  return b64ToBuffer(buffer).toString('base64');
 }

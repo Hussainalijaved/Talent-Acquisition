@@ -74,6 +74,22 @@
       this.playing = false;
       this.nextPlayTime = 0;
       this.ended = false;
+      this.interviewEnded = false;
+      this.autoEndTimer = null;
+    }
+
+    stopMic() {
+      this.interviewEnded = true;
+      try {
+        this.processor?.disconnect();
+        this.source?.disconnect();
+      } catch (_) {}
+      this.processor = null;
+      this.source = null;
+      if (this.mediaStream) {
+        this.mediaStream.getTracks().forEach((t) => t.stop());
+        this.mediaStream = null;
+      }
     }
 
     setStatus(text) {
@@ -145,14 +161,14 @@
         return;
       }
 
-      if (msg.type === 'transcript' && msg.text) {
+      if (msg.type === 'transcript' && msg.text && !msg.partial) {
         this.onTranscript({
           speaker: msg.speaker,
           text: msg.text,
-          partial: !!msg.partial,
+          partial: false,
         });
-        if (msg.speaker === 'model' && !msg.partial) {
-          this.setStatus('Your turn — answer out loud');
+        if (msg.speaker === 'model') {
+          this.setStatus('Your turn — answer out loud in English');
         }
       }
       if (msg.type === 'output_audio' && msg.data) {
@@ -160,14 +176,27 @@
         this.enqueuePlayback(msg.data, msg.mimeType || `audio/pcm;rate=${OUTPUT_RATE}`);
       }
       if (msg.type === 'turn_complete') {
-        this.onTurn({ turn: msg.turn, maxTurns: msg.maxTurns, answersGiven: msg.answersGiven });
-        if (msg.turn > 0 && msg.maxTurns && msg.turn < msg.maxTurns) {
-          this.setStatus(`Question ${msg.turn} done — listen for the next question`);
+        const capped = Math.min(msg.turn || 0, msg.maxTurns || 5);
+        this.onTurn({ turn: capped, maxTurns: msg.maxTurns, answersGiven: msg.answersGiven });
+        if (capped > 0 && msg.maxTurns && capped < msg.maxTurns) {
+          this.setStatus(`Question ${capped} of ${msg.maxTurns} complete — listen for the next question`);
         }
       }
       if (msg.type === 'interview_complete') {
-        this.setStatus('All questions complete — click End voice interview to submit');
+        this.stopMic();
+        this.setStatus(`All ${msg.maxTurns || 5} questions complete — submitting your results…`);
         this.onInterviewComplete(msg);
+        if (!this.autoEndTimer) {
+          this.autoEndTimer = setTimeout(() => {
+            if (!this.ended) {
+              this.end()
+                .then((result) => {
+                  if (result) this.onComplete(result);
+                })
+                .catch((e) => this.onError(e));
+            }
+          }, 5000);
+        }
       }
       if (msg.type === 'interviewer_started') {
         this.setStatus('Interviewer is speaking…');
@@ -198,7 +227,7 @@
       const inRate = this.audioCtx.sampleRate;
 
       this.processor.onaudioprocess = (e) => {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.ended) return;
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.ended || this.interviewEnded) return;
         const input = e.inputBuffer.getChannelData(0);
         let sum = 0;
         for (let i = 0; i < input.length; i += 1) sum += Math.abs(input[i]);
@@ -254,6 +283,11 @@
 
     async end() {
       if (this.ended) return null;
+      if (this.autoEndTimer) {
+        clearTimeout(this.autoEndTimer);
+        this.autoEndTimer = null;
+      }
+      this.stopMic();
       this.setStatus('Finishing session…');
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(
@@ -265,7 +299,7 @@
         );
       }
       const result = await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('complete timeout')), 120000);
+        const timer = setTimeout(() => reject(new Error('complete timeout')), 60000);
         const onMsg = (ev) => {
           try {
             const msg = JSON.parse(ev.data);
@@ -338,9 +372,19 @@
     );
   }
 
+  function sanitizeDisplayTranscript(text, speaker) {
+    let t = String(text || '').trim();
+    if (!t) return '';
+    t = t.replace(/\*\*[^*]+\*\*/g, ' ').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+    if (speaker === 'model' && /^(okay|ok|on|role\?)$/i.test(t)) return '';
+    if (speaker === 'user' && /^(okay|ok|on)\.?$/i.test(t)) return '';
+    return t;
+  }
+
   global.TA_LIVE = {
     LiveSpeechSession,
     fetchLiveSpeechStart,
     resolveRelayUrl,
+    sanitizeDisplayTranscript,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

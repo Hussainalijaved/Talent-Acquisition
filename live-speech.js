@@ -61,6 +61,7 @@
       this.onLevel = options.onLevel || (() => {});
       this.onTurn = options.onTurn || (() => {});
       this.onComplete = options.onComplete || (() => {});
+      this.onInterviewComplete = options.onInterviewComplete || (() => {});
       this.onError = options.onError || (() => {});
       this.tabSwitches = Number(options.tabSwitches || 0);
 
@@ -109,9 +110,9 @@
       );
 
       await this.waitForType('ready', 30000);
-      this.setStatus('Starting microphone…');
+      this.setStatus('Interviewer is starting…');
       await this.startMic();
-      this.setStatus('Live interview in progress — speak naturally');
+      this.setStatus('Listen to the interviewer, then answer out loud');
     }
 
     waitForType(type, ms) {
@@ -150,12 +151,26 @@
           text: msg.text,
           partial: !!msg.partial,
         });
+        if (msg.speaker === 'model' && !msg.partial) {
+          this.setStatus('Your turn — answer out loud');
+        }
       }
       if (msg.type === 'output_audio' && msg.data) {
+        this.setStatus('Interviewer is speaking…');
         this.enqueuePlayback(msg.data, msg.mimeType || `audio/pcm;rate=${OUTPUT_RATE}`);
       }
       if (msg.type === 'turn_complete') {
-        this.onTurn({ turn: msg.turn, maxTurns: msg.maxTurns });
+        this.onTurn({ turn: msg.turn, maxTurns: msg.maxTurns, answersGiven: msg.answersGiven });
+        if (msg.turn > 0 && msg.maxTurns && msg.turn < msg.maxTurns) {
+          this.setStatus(`Question ${msg.turn} done — listen for the next question`);
+        }
+      }
+      if (msg.type === 'interview_complete') {
+        this.setStatus('All questions complete — click End voice interview to submit');
+        this.onInterviewComplete(msg);
+      }
+      if (msg.type === 'interviewer_started') {
+        this.setStatus('Interviewer is speaking…');
       }
       if (msg.type === 'session.complete') {
         this.ended = true;

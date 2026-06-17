@@ -4,6 +4,8 @@ const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 
 const DEFAULT_MODEL = 'gemini-2.0-flash-live-001';
+const DEFAULT_KICKOFF =
+  'The candidate is ready. Begin the live voice interview now: greet them briefly, then ask question 1 of your planned questions out loud. Speak as the interviewer only.';
 
 function b64ToBuffer(data) {
   return Buffer.from(String(data || ''), 'base64');
@@ -89,6 +91,7 @@ export class GeminiLiveBridge {
       this.ready = true;
       this.onEvent({ type: 'ready', model: this.model });
       resolveSetup();
+      this.kickoffInterview();
       return;
     }
 
@@ -172,12 +175,49 @@ export class GeminiLiveBridge {
       this.pendingUser = '';
       this.pendingModel = '';
       this.turnCount += 1;
-      this.onEvent({ type: 'turn_complete', turn: this.turnCount, maxTurns: this.maxTurns });
+
+      const questionsAsked = this.modelLines.length;
+      const answersGiven = this.userLines.length;
+      this.onEvent({
+        type: 'turn_complete',
+        turn: questionsAsked,
+        maxTurns: this.maxTurns,
+        answersGiven,
+      });
+
+      if (questionsAsked >= this.maxTurns && answersGiven >= this.maxTurns) {
+        this.onEvent({
+          type: 'interview_complete',
+          turn: questionsAsked,
+          maxTurns: this.maxTurns,
+        });
+      }
     }
 
     if (server.interrupted) {
       this.onEvent({ type: 'interrupted' });
     }
+  }
+
+  sendClientText(text, turnComplete = true) {
+    if (!this.ready || this.closed || !this.geminiWs) return;
+    if (this.geminiWs.readyState !== WebSocket.OPEN) return;
+    const clean = String(text || '').trim();
+    if (!clean) return;
+    this.geminiWs.send(
+      JSON.stringify({
+        clientContent: {
+          turns: [{ role: 'user', parts: [{ text: clean }] }],
+          turnComplete,
+        },
+      })
+    );
+  }
+
+  kickoffInterview() {
+    const prompt = String(this.context.kickoff_prompt || DEFAULT_KICKOFF).trim();
+    this.sendClientText(prompt, true);
+    this.onEvent({ type: 'interviewer_started' });
   }
 
   sendAudio(base64Pcm, mimeType = 'audio/pcm;rate=16000') {

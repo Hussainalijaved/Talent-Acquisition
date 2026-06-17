@@ -30,22 +30,32 @@ const cvText = String(session.cv_plaintext || screening.cv_plaintext || '').slic
 const maxQ = Number(sessCfg.max_questions || cfg.max_questions || 5);
 const speechTurns = Number(cfg.speech_phases || sessCfg.speech_phases || 5);
 
-const systemInstruction = `You are a professional interviewer for ${jdTitle} at ${cfg.organization_name || 'CONVO'}.
+const systemInstruction = `You are a professional voice interviewer for ${jdTitle} at ${cfg.organization_name || 'CONVO'}.
 
-RULES:
-- Conduct exactly ${speechTurns} spoken behavioral questions, one at a time.
-- Use natural voice — warm, professional, concise. No mention of AI or CV parsing.
-- After each candidate answer, internally score (0-100): relevance, clarity, confidence, professionalism.
-- Ask follow-ups only if the answer is too vague; otherwise move to the next planned question.
-- Cover: communication, pressure handling, role motivation, collaboration, growth/reflection.
-- Do NOT diagnose personality disorders or claim to measure "work ethics" from voice alone — judge observable communication and answer content.
-- When all turns are done, end the session.
+SESSION FLOW (critical):
+- YOU speak first. When the session starts, greet the candidate briefly and ask question 1 out loud.
+- Ask exactly ${speechTurns} spoken questions, one at a time. Wait for the candidate to finish each answer before asking the next.
+- After the candidate answers question ${speechTurns}, thank them and clearly say the voice interview is complete.
+- Use natural spoken English — warm, professional, concise. Never mention AI, scoring, or CV parsing.
+
+SCORING (internal only — never say scores aloud):
+- After each answer, mentally score 0-100 on: relevance, clarity, confidence, professionalism.
+- Judge observable communication and answer content only.
+
+QUESTION THEMES (spread across ${speechTurns} questions):
+- Communication and clarity under pressure
+- Motivation for this role
+- Collaboration and teamwork
+- Handling setbacks or conflict
+- Growth mindset and self-reflection
 
 JOB CONTEXT:
 ${jdReq.slice(0, 4000)}
 
-CANDIDATE CV (use silently — never say "on your CV"):
+CANDIDATE CV (reference silently — never say "on your CV"):
 ${cvText.slice(0, 6000) || '(limited CV context)'}`;
+
+const kickoffPrompt = `Start the live voice interview now. Greet the candidate briefly, then ask your first spoken question for the ${jdTitle} role. Speak out loud as the interviewer.`;
 
 const completeWebhook = String(
   cfg.live_complete_webhook ||
@@ -68,6 +78,7 @@ return [
       current_phase: Number(session.current_phase || maxQ + 1),
       requisition_title: jdTitle,
       system_instruction: systemInstruction,
+      kickoff_prompt: kickoffPrompt,
       gemini_live_model: String(
         cfg.gemini_live_model || 'gemini-2.5-flash-native-audio-preview-12-2025'
       ),

@@ -200,25 +200,25 @@ function buildFallbackNextQuestion(ph, history, cfg, session) {
     'What is the purpose of middleware in the ASP.NET Core request pipeline?',
   ];
   const dotnetApplied = [
-    'How would you implement pagination in a REST API without hurting performance?',
-    'How would you approach debugging a slow database query in a production API?',
-    'What strategies would you use to handle validation errors consistently across API endpoints?',
-    'How would you structure error handling so clients get useful responses without leaking internals?',
-    'What would you check first if an API endpoint suddenly started returning 500 errors under load?',
+    'An API endpoint suddenly returns 500 errors under load — what are the most likely causes and how would you narrow them down?',
+    'What is the difference between optimistic and pessimistic concurrency, and when would you use each?',
+    'Why might you choose no-tracking queries in EF Core, and what trade-off are you accepting?',
+    'What does idempotency mean for HTTP APIs, and why does it matter for retries?',
+    'Cookie-based session auth vs JWT for an API — what are the main trade-offs?',
   ];
   const genericFundamentals = [
     'What is the difference between SQL INNER JOIN and LEFT JOIN? When would you use each?',
-    'Explain the difference between optimistic and pessimistic concurrency control.',
-    'What is idempotency in HTTP APIs and why does it matter for POST requests?',
     'What is the difference between authentication and authorization?',
-    'Why is caching used in web applications, and what are common cache invalidation challenges?',
+    'Why are REST APIs typically stateless, and what problems does statelessness solve?',
+    'What is idempotency in HTTP APIs and why does it matter?',
+    'What is the difference between synchronous and asynchronous processing in a web service?',
   ];
   const genericApplied = [
-    'How would you design a simple rate-limiting approach for a public API?',
-    'What steps would you take to investigate a memory leak in a long-running service?',
-    'How would you decide between synchronous and asynchronous processing for a background job?',
-    'What would you include in a health-check endpoint for a production service?',
-    'When would you choose a monolith over microservices for a new product?',
+    'An API is slow only under peak traffic — what categories of causes would you consider first?',
+    'What is the difference between a 401 and a 403 response, and when should each be returned?',
+    'Caching can speed up APIs — what are common reasons a cache causes stale or wrong data?',
+    'What is the difference between PUT and PATCH, and when would you use each?',
+    'Token-based auth vs server-side sessions — what are the main trade-offs for a public API?',
   ];
 
   const fundamentals = isDotNet ? dotnetFundamentals : genericFundamentals;

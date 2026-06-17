@@ -93,32 +93,31 @@ function inferExperienceTier(cvText) {
   return 'mid';
 }
 
-function phaseBlueprint(phaseNum, tier) {
-  const blueprints = {
-    2: {
-      junior: 'Hands-on implementation — a practical scenario using a core stack skill from the JD (build, validate, handle errors).',
-      mid: 'Real-world implementation — extend or harden something similar to what this role ships (API, service, data flow, or UI layer).',
-      senior: 'Production implementation — design and defend how you would build or refactor a non-trivial feature with quality and operability in mind.',
-    },
-    3: {
-      junior: 'Debugging basics — trace a concrete bug or failure (logs, exceptions, wrong output) and explain your fix.',
-      mid: 'Troubleshooting under load — diagnose slow, flaky, or intermittent production issues and prioritize fixes.',
-      senior: 'Incident response — root-cause a complex outage or regression; discuss mitigation, rollback, and prevention.',
-    },
-    4: {
-      junior: 'Structured thinking — break a small feature into components, data flow, and testing approach.',
-      mid: 'Design trade-offs — compare two reasonable approaches for a feature this role owns (scalability, maintainability, cost).',
-      senior: 'Architecture — multi-service or multi-tenant design, boundaries, auth, versioning, or cross-team contracts.',
-    },
-    5: {
-      junior: 'Ownership and learning — how you verify your work, handle feedback, and grow into the role.',
-      mid: 'Production readiness — deployment, monitoring, tech debt, and balancing speed vs quality on real delivery.',
-      senior: 'Strategic depth — long-term maintainability, team standards, risk, and mentoring others on technical decisions.',
-    },
+function stackHints(jdReq) {
+  const jd = String(jdReq || '').toLowerCase();
+  if (/\.net|asp\.net|c#|ef core|entity framework|linq/i.test(jd)) {
+    return 'ASP.NET Core, REST, JWT/OAuth, EF Core, LINQ, middleware, DI';
+  }
+  if (/node|javascript|typescript|react/i.test(jd)) {
+    return 'Node/JS APIs, REST, JWT, async I/O, HTTP';
+  }
+  if (/python|django|flask|fastapi/i.test(jd)) {
+    return 'Python web APIs, REST, auth, ORM, HTTP';
+  }
+  return 'REST APIs, HTTP, auth, databases, backend fundamentals';
+}
+
+function phaseBlueprint(phaseNum, tier, jdReq) {
+  const stack = stackHints(jdReq);
+  const depth =
+    tier === 'senior' ? 'advanced trade-offs and edge cases' : tier === 'junior' ? 'clear fundamentals' : 'solid mid-level reasoning';
+  const lanes = {
+    2: `Comparative concept from ${stack} — "what is the difference between X and Y?" or "when would you choose X over Y?" (${depth}).`,
+    3: `Why / how-it-works — explain the reasoning behind a core idea in ${stack} (e.g. stateless REST, token auth, ORM behavior) (${depth}).`,
+    4: `Failure or symptom reasoning — given a realistic symptom, explain likely causes and your diagnostic thinking — no code, no architecture design (${depth}).`,
+    5: `Judgment — one conceptual scenario requiring a reasoned choice between options with justification; tie to ${stack} (${depth}).`,
   };
-  const row = blueprints[phaseNum];
-  if (!row) return 'Follow-up depth probe aligned to the role and prior answers.';
-  return row[tier] || row.mid;
+  return lanes[phaseNum] || `Follow-up conceptual probe on ${stack} aligned to prior answers (${depth}).`;
 }
 
 const cvText = String(session.cv_plaintext || '').slice(0, 8000);
@@ -147,30 +146,39 @@ const prevTimeLimit = prevPhaseRow?.time_limit_seconds ?? null;
 const nextPhaseNum = ph + 1;
 
 const questionRules = `ASSESSMENT QUESTION RULES (next_question and first_speech_question):
-You are conducting a real company software assessment — questions must sound like a live interviewer, not an AI reading a CV.
+Written technical assessment — conceptual and logic-based only. Sound like a real interviewer.
 
-Silent personalization (use CV + JD internally only):
-- Inferred experience level: ${experienceTier}
-- Pick topics/skills that appear in BOTH the JD and CV (or a critical JD gap worth probing)
-- Raise or lower depth based on how they answered prior phases — do not repeat topics already asked
+Silent personalization (CV + JD internal only):
+- Experience level: ${experienceTier}
+- Role stack: ${stackHints(jdReq)}
+- Pick topics in BOTH JD and CV; do not repeat themes already asked
+- Calibrate depth to prior answers
 
-Phase focus for next_question:
-- ${phaseBlueprint(nextPhaseNum, experienceTier)}
+Phase focus for next_question (phase ${nextPhaseNum}):
+- ${phaseBlueprint(nextPhaseNum, experienceTier, jdReq)}
 
-Question style:
-- Scenario-based, practical wording: "Walk me through…", "How would you…", "Describe how you would…", "A production system is…"
-- One clear question only — no multi-part laundry lists
-- Match complexity_tier A-D to the inferred level and phase depth
-- Do NOT ask generic textbook definitions ("What is OOP?", "Explain REST in general")
+Question style (REQUIRED):
+- Comparative: "What is the difference between X and Y?"
+- Reasoning: "Why do teams use X instead of Y?" / "What problem does X solve?"
+- Conceptual scenarios: symptom → explain likely causes (reasoning only)
+- One clear question only — no multi-part lists
+- Answers may exist online — test understanding and explanation quality, not memorized CV stories
 
-FORBIDDEN in next_question / first_speech_question text (never include):
-- "on your CV", "your CV", "you listed", "you mentioned", "according to your resume"
-- Company names, employer names, university names, or project titles copied from the CV
-- "In your role at…", "At [Company]…", "On the [Project]…"
-The candidate must not feel the question was generated from a document.
+GOOD examples:
+- "What is the difference between JWT-based authentication and server-side session cookies, and when would you prefer each?"
+- "Why are REST APIs typically stateless, and what problems does that solve?"
+- "What is the difference between authentication and authorization?"
 
-GOOD: "A production API is returning slow responses under load. How would you diagnose the issue and what would you change first?"
-BAD: "On your CV you built REST APIs at Acme Corp — tell me about that."`;
+STRICTLY FORBIDDEN — never ask:
+- Coding: write code, implement, algorithms, syntax, debug this snippet
+- Design exercises: design a system/architecture, microservices layout, scalability design
+- Implementation recipes: step-by-step how to build or configure something in code
+- Generic fluff: "What is OOP?", "Explain REST in one sentence" with no role context
+- CV quoting: "on your CV", company names, project titles, "At [Company]…"
+
+BAD: "Design a rate-limited microservices architecture for our platform."
+BAD: "Write a C# method to implement pagination."
+BAD: "On your CV you used JWT at Acme — tell us about that."`;
 
 const sharedRules = `"""You are an experienced technical interviewer for ${jdTitle}.
 

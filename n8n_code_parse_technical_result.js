@@ -225,7 +225,53 @@ function buildFirstSpeechQuestion(cfg, session, speechIndex, history, maxQ) {
 }
 
 function buildFallbackNextQuestion(ph, history, cfg, session) {
-  return '';
+  const nextPhase = ph + 1;
+  const jdReq = String(cfg.requisition_requirements || '').trim().toLowerCase();
+  const isDotNet = /\.net|asp\.net|c#|ef core|entity framework/i.test(jdReq);
+
+  const dotnetFundamentals = [
+    'Why are REST APIs typically stateless? What problems does statelessness solve?',
+    'What is dependency injection and why is it useful in ASP.NET Core applications?',
+    'What is the difference between IEnumerable and IQueryable in LINQ? When would you use each?',
+    'How does JWT-based authentication work at a high level?',
+    'What is the purpose of middleware in the ASP.NET Core request pipeline?',
+  ];
+  const dotnetApplied = [
+    'An API endpoint suddenly returns 500 errors under load — what are the most likely causes and how would you narrow them down?',
+    'What is the difference between optimistic and pessimistic concurrency, and when would you use each?',
+    'Why might you choose no-tracking queries in EF Core, and what trade-off are you accepting?',
+    'What does idempotency mean for HTTP APIs, and why does it matter for retries?',
+    'Cookie-based session auth vs JWT for an API — what are the main trade-offs?',
+  ];
+  const genericFundamentals = [
+    'What is the difference between SQL INNER JOIN and LEFT JOIN? When would you use each?',
+    'What is the difference between authentication and authorization?',
+    'Why are REST APIs typically stateless, and what problems does statelessness solve?',
+    'What is idempotency in HTTP APIs and why does it matter?',
+    'What is the difference between synchronous and asynchronous processing in a web service?',
+  ];
+  const genericApplied = [
+    'An API is slow only under peak traffic — what categories of causes would you consider first?',
+    'What is the difference between a 401 and a 403 response, and when should each be returned?',
+    'Caching can speed up APIs — what are common reasons a cache causes stale or wrong data?',
+    'What is the difference between PUT and PATCH, and when would you use each?',
+    'Token-based auth vs server-side sessions — what are the main trade-offs for a public API?',
+  ];
+
+  const fundamentals = isDotNet ? dotnetFundamentals : genericFundamentals;
+  const applied = isDotNet ? dotnetApplied : genericApplied;
+
+  const asked = (history || [])
+    .map((h) => String(h.question_text || '').toLowerCase())
+    .filter(Boolean);
+
+  const pool = nextPhase <= 2 ? fundamentals : nextPhase <= 4 ? applied : [applied[applied.length - 1]];
+
+  for (const q of pool) {
+    const key = q.slice(0, 40).toLowerCase();
+    if (!asked.some((a) => a.includes(key.slice(0, 20)))) return q;
+  }
+  return pool[(nextPhase - 1) % pool.length] || pool[0];
 }
 
 function isIntegrityTermination(answerText) {

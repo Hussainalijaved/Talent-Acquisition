@@ -107,10 +107,11 @@ function buildDeadline(isoStart, seconds) {
 
 async function generatePhase1Question(groqKey, { jdTitle, jdReq, cvContext, screeningSummary }) {
     const systemText = [
-        'You are a senior technical interviewer.',
-        'Generate exactly one Phase 1 written assessment question for this role.',
-        'Use scenario-based natural wording — no "on your CV", no company names from background text.',
-        'Match depth to the role and any candidate context provided.',
+        'You are a senior technical interviewer for a written assessment.',
+        'Generate exactly one Phase 1 conceptual/logic question for this role.',
+        'Ask comparative or "why" questions grounded in the job stack (e.g. JWT vs session auth, auth vs authorization, why REST is stateless, DI purpose).',
+        'Answers may exist online — test reasoning, not obscure trivia.',
+        'FORBIDDEN: coding tasks, system design exercises, step-by-step implementation, quoting CV/company names.',
         'Output JSON only:',
         '- phase_1_question: string',
         '- phase_1_time_limit_seconds: number (90-600)',

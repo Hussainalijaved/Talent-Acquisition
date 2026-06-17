@@ -100,7 +100,7 @@
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'user_turn_end' }));
       }
-      this.setStatus('Saving your answer…');
+      this.setStatus('Saving your answer — the interviewer is reviewing…');
     }
 
     stopMic() {

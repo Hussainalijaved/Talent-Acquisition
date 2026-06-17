@@ -62,6 +62,7 @@ for (const turn of turns) {
   const patch = {
     phase: ph,
     mode: 'live_speech',
+    voice_question_number: Number(turn.voice_question_number || ph - maxQ) || null,
     question_text: String(turn.question_text || turn.question || '').trim(),
     answer_text: String(turn.answer_text || turn.transcript || turn.answer || '').trim(),
     received_at: turn.received_at || iso,

@@ -62,7 +62,7 @@ ${jdReq.slice(0, 4000)}
 CANDIDATE CV (reference silently — never say "on your CV"):
 ${cvText.slice(0, 6000) || '(limited CV context)'}`;
 
-const kickoffPrompt = `Begin the interview now in English. Greet the candidate in ONE short sentence, then ask question 1 of ${speechTurns} for the ${jdTitle} role. Ask only that single question, then stop and wait for the candidate to answer. Do not say anything else.`;
+const kickoffPrompt = `Begin the interview now in English. In the SAME single response: greet the candidate in one short sentence, then immediately ask question 1 of ${speechTurns} for the ${jdTitle} role. Ask only that one question, then stop talking and wait for the candidate. Do not number the question aloud and do not say anything after it.`;
 
 const completeWebhook = String(
   cfg.live_complete_webhook ||

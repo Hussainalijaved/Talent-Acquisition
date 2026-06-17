@@ -1366,6 +1366,7 @@
             const [cards, setCards] = React.useState([]);
             const [canAnswer, setCanAnswer] = React.useState(false);
             const [isAnswering, setIsAnswering] = React.useState(false);
+            const [savingAnswer, setSavingAnswer] = React.useState(false);
             const [ending, setEnding] = React.useState(false);
             const [interviewComplete, setInterviewComplete] = React.useState(false);
 
@@ -1422,16 +1423,19 @@
                             onAnswer: ({ number, text }) => {
                                 setAnswerForQuestion(number, text);
                                 setIsAnswering(false);
+                                setSavingAnswer(false);
                                 setCanAnswer(false);
                             },
                             onAwaitingAnswer: () => {
                                 setCanAnswer(true);
                                 setIsAnswering(false);
+                                setSavingAnswer(false);
                             },
                             onInterviewComplete: () => {
                                 setInterviewComplete(true);
                                 setCanAnswer(false);
                                 setIsAnswering(false);
+                                setSavingAnswer(false);
                             },
                             onComplete: (result) => {
                                 if (finishedRef.current) return;
@@ -1463,14 +1467,15 @@
 
             React.useEffect(() => {
                 cardsEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' });
-            }, [cards, isAnswering]);
+            }, [cards, isAnswering, savingAnswer]);
 
             const handleAnswerToggle = () => {
-                if (interviewComplete || ending || isLoading) return;
+                if (interviewComplete || ending || isLoading || savingAnswer) return;
                 if (isAnswering) {
                     sessionRef.current?.submitAnswer?.();
                     setIsAnswering(false);
                     setCanAnswer(false);
+                    setSavingAnswer(true);
                 } else if (canAnswer) {
                     sessionRef.current?.beginAnswer?.();
                     setIsAnswering(true);
@@ -1536,58 +1541,90 @@
                             </button>
                         </aside>
                         <main className="flex-1 flex flex-col min-h-0 p-4 sm:p-6">
-                            <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-surface-border bg-surface-elevated/30 p-4 space-y-4">
+                            <div className="flex-1 min-h-0 overflow-y-auto px-1 sm:px-2 space-y-5">
                                 {cards.length === 0 ? (
-                                    <p className="text-sm text-slate-500">The AI interviewer will speak first. Listen to the question, then press “Answer” to reply out loud.</p>
+                                    <div className="h-full min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
+                                        <div className="w-12 h-12 rounded-full border border-surface-border flex items-center justify-center text-indigo-300 text-xl">🎧</div>
+                                        <p className="text-sm max-w-sm">The interviewer will ask the first question out loud. Listen carefully, then press <span className="text-slate-300 font-medium">Answer</span> to reply.</p>
+                                    </div>
                                 ) : (
-                                    cards.map((card, i) => (
-                                        <div key={i} className="rounded-xl border border-surface-border bg-surface-elevated/40 overflow-hidden">
-                                            <div className="px-4 py-3 border-b border-surface-border bg-indigo-500/5">
-                                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Question {card.number}</p>
-                                                <p className="text-sm text-indigo-100 mt-1 leading-relaxed">{card.question}</p>
+                                    cards.map((card, i) => {
+                                        const isCurrent = i === cards.length - 1;
+                                        const recording = isCurrent && isAnswering;
+                                        const saving = isCurrent && savingAnswer;
+                                        return (
+                                            <div key={i} className={`rounded-2xl border bg-surface-elevated/40 overflow-hidden transition-all ${isCurrent && !card.answer ? 'border-indigo-500/40 shadow-lg shadow-indigo-500/5' : 'border-surface-border'}`}>
+                                                <div className="px-5 py-4 flex gap-3.5 items-start border-b border-surface-border/70 bg-indigo-500/[0.06]">
+                                                    <div className="shrink-0 w-7 h-7 rounded-full bg-indigo-500/15 border border-indigo-400/30 flex items-center justify-center text-xs font-bold text-indigo-200 tabular-nums">{card.number}</div>
+                                                    <div className="min-w-0">
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300/90">Interviewer · Question {card.number} of {maxTurns}</p>
+                                                        <p className="text-[15px] text-indigo-50 mt-1.5 leading-relaxed">{card.question}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="px-5 py-4 flex gap-3.5 items-start">
+                                                    <div className="shrink-0 w-7 h-7 rounded-full bg-slate-700/40 border border-surface-border flex items-center justify-center text-xs">🗣️</div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Your response</p>
+                                                        {card.answer ? (
+                                                            <p className="text-[15px] text-slate-100 mt-1.5 leading-relaxed">{card.answer}</p>
+                                                        ) : recording ? (
+                                                            <div className="mt-2 flex items-center gap-2.5 text-emerald-300">
+                                                                <span className="flex gap-1 items-end h-4">
+                                                                    <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '60%' }} />
+                                                                    <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '100%', animationDelay: '120ms' }} />
+                                                                    <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '45%', animationDelay: '240ms' }} />
+                                                                    <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '80%', animationDelay: '360ms' }} />
+                                                                </span>
+                                                                <span className="text-sm">Listening — speak your answer…</span>
+                                                            </div>
+                                                        ) : saving ? (
+                                                            <p className="text-sm text-amber-300/90 mt-2 flex items-center gap-2">
+                                                                <span className="inline-block w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />
+                                                                Saving your answer…
+                                                            </p>
+                                                        ) : (
+                                                            <p className="text-sm text-slate-500 mt-1.5 italic">Press “Answer” below to reply out loud.</p>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="px-4 py-3">
-                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Your answer</p>
-                                                {card.answer ? (
-                                                    <p className="text-sm text-slate-200 mt-1 leading-relaxed">{card.answer}</p>
-                                                ) : (i === cards.length - 1 && isAnswering) ? (
-                                                    <p className="text-sm text-emerald-300 mt-1 flex items-center gap-2">
-                                                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                                        Recording your answer…
-                                                    </p>
-                                                ) : (
-                                                    <p className="text-sm text-slate-500 mt-1 italic">Press “Answer” to reply.</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))
+                                        );
+                                    })
                                 )}
                                 <div ref={cardsEndRef} />
                             </div>
-                            <div className="shrink-0 pt-4">
+                            <div className="shrink-0 pt-4 mt-2 border-t border-surface-border/60">
                                 {interviewComplete ? (
-                                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-center text-sm text-emerald-300">
+                                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3.5 text-center text-sm text-emerald-300 flex items-center justify-center gap-2">
+                                        <span className="inline-block w-3.5 h-3.5 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
                                         All {maxTurns} questions complete — submitting your results…
                                     </div>
                                 ) : (
                                     <button
                                         type="button"
                                         onClick={handleAnswerToggle}
-                                        disabled={(!canAnswer && !isAnswering) || ending || isLoading}
-                                        className={`w-full py-4 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${isAnswering ? 'bg-red-500 hover:bg-red-600 text-white' : 'btn-primary'}`}
+                                        disabled={(!canAnswer && !isAnswering) || ending || isLoading || savingAnswer}
+                                        className={`w-full py-4 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 ${isAnswering ? 'bg-red-500 hover:bg-red-600 text-white' : 'btn-primary'}`}
                                     >
-                                        {isAnswering ? (
+                                        {savingAnswer ? (
+                                            <>
+                                                <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                                Saving…
+                                            </>
+                                        ) : isAnswering ? (
                                             <>
                                                 <span className="inline-block w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
                                                 Submit answer
                                             </>
                                         ) : (
-                                            <>🎤 Answer</>
+                                            <span className="flex items-center gap-2"><span>🎤</span> Answer</span>
                                         )}
                                     </button>
                                 )}
-                                <p className="text-[11px] text-slate-500 text-center mt-2">
-                                    {isAnswering
+                                <p className="text-[11px] text-slate-500 text-center mt-2.5">
+                                    {savingAnswer
+                                        ? 'Please wait — the interviewer is preparing the next question.'
+                                        : isAnswering
                                         ? 'Mic is open — speak clearly in English, then press Submit.'
                                         : canAnswer
                                         ? 'Press Answer to open your mic and reply.'
@@ -2258,6 +2295,11 @@
             try { return JSON.parse(raw); } catch (e) { return {}; }
         };
 
+        const isVoiceHistoryMode = (mode) => {
+            const m = String(mode || '').toLowerCase();
+            return m === 'speech' || m === 'live_speech' || m === 'live speech';
+        };
+
         const resolveAssessmentMode = (data, phaseNum, phaseRow) => {
             const cfg = parseSessionConfig(data?.config);
             const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
@@ -2266,7 +2308,7 @@
             const isSpeech =
                 stage === 'speech' ||
                 Number(phaseNum) > maxQ ||
-                String(phaseRow?.mode || '').toLowerCase() === 'speech';
+                isVoiceHistoryMode(phaseRow?.mode);
             return {
                 mode: isSpeech ? 'speech' : 'text',
                 techMaxSteps: maxQ,
@@ -2457,13 +2499,15 @@
 
         const isSpeechHistoryItem = (item, techMax = ASSESSMENT_PHASE_DEFAULTS.tech) => {
             if (!item) return false;
-            if (String(item.mode || '').toLowerCase() === 'speech') return true;
+            if (isVoiceHistoryMode(item.mode)) return true;
             return Number(item.phase) > techMax;
         };
 
         const inferTechPhaseCount = (history) => {
-            const speech = (history || []).filter((h) => String(h.mode || '').toLowerCase() === 'speech');
-            if (speech.length) return Math.min(...speech.map((h) => Number(h.phase))) - 1;
+            const voice = (history || []).filter(
+                (h) => isVoiceHistoryMode(h.mode) || Number(h.phase) > ASSESSMENT_PHASE_DEFAULTS.tech
+            );
+            if (voice.length) return Math.min(...voice.map((h) => Number(h.phase))) - 1;
             return ASSESSMENT_PHASE_DEFAULTS.tech;
         };
 
@@ -2596,9 +2640,11 @@
             );
         };
 
-        const PhaseReviewCard = ({ item, techMax, speechIndex, totalPhases }) => {
+        const PhaseReviewCard = ({ item, techMax, speechIndex, speechTotal, totalPhases }) => {
             const isSpeech = isSpeechHistoryItem(item, techMax);
             const phaseLabel = `Phase ${item.phase} of ${totalPhases}`;
+            const voiceLabel = speechTotal > 0 ? `Voice Q${speechIndex} of ${speechTotal}` : `Voice Q${speechIndex}`;
+            const hasAnswer = Boolean(String(item.answer_text || '').trim());
             return (
                 <article className={`panel rounded-2xl p-6 sm:p-8 ${isSpeech ? 'border border-indigo-500/15' : ''}`}>
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-surface-border">
@@ -2608,28 +2654,36 @@
                             </span>
                             {isSpeech ? (
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                                    Voice Q{speechIndex}
+                                    {voiceLabel}
                                 </span>
                             ) : null}
                         </div>
-                        <span className={`text-lg font-bold tabular-nums ${scoreTone(item.score)}`}>
-                            {item.score !== '—' ? `${item.score}/100` : '—'}
-                        </span>
+                        {item.score !== '—' && Number.isFinite(Number(item.score)) ? (
+                            <div className="text-right">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Score</p>
+                                <p className={`text-xl font-bold tabular-nums ${scoreTone(item.score)}`}>{item.score}<span className="text-sm text-slate-500 font-medium">/100</span></p>
+                            </div>
+                        ) : (
+                            <span className="text-lg font-bold tabular-nums text-slate-500">—</span>
+                        )}
                     </div>
                     <div className="grid gap-5">
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Question</p>
                             <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{item.question_text}</p>
                         </div>
-                        {isSpeech ? <SpeechPhaseInsights item={item} /> : null}
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
                                 {isSpeech ? 'Spoken transcript' : 'Your answer'}
                             </p>
-                            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap panel-elevated rounded-xl p-4">
-                                {item.answer_text?.trim() ? item.answer_text : '—'}
+                            <p className={`text-sm leading-relaxed whitespace-pre-wrap panel-elevated rounded-xl p-4 ${hasAnswer ? 'text-slate-200' : 'text-slate-500 italic'}`}>
+                                {hasAnswer ? item.answer_text : (isSpeech ? 'No transcript captured for this question.' : '—')}
                             </p>
+                            {isSpeech && item.stt_source ? (
+                                <p className="text-[11px] text-slate-600 mt-2">Source: {item.stt_source}</p>
+                            ) : null}
                         </div>
+                        {isSpeech ? <SpeechPhaseInsights item={item} /> : null}
                         {item.feedback && item.feedback !== '—' && (
                             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-amber-400/90 mb-2">Evaluator feedback</p>
@@ -2864,6 +2918,7 @@
         const ReviewView = ({ history, onBack, overallFeedback, sessionConfig }) => {
             const techMax = inferTechPhaseCount(history);
             const totalPhases = inferTotalPhaseCount(history, sessionConfig);
+            const speechTotal = Number(sessionConfig?.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
             const technicalRows = history.filter((item) => !isSpeechHistoryItem(item, techMax));
             const speechRows = history.filter((item) => isSpeechHistoryItem(item, techMax));
 
@@ -2876,7 +2931,11 @@
                                 <h3 className="text-lg font-semibold text-white">{title}</h3>
                                 <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>
                             </div>
-                            <span className={`badge ${badgeClass}`}>{rows.length} question{rows.length === 1 ? '' : 's'}</span>
+                            <span className={`badge ${badgeClass}`}>
+                                {isSpeechSection
+                                    ? `${rows.length} of ${speechTotal} voice question${speechTotal === 1 ? '' : 's'}`
+                                    : `${rows.length} question${rows.length === 1 ? '' : 's'}`}
+                            </span>
                         </div>
                         <div className="space-y-5">
                             {rows.map((item, index) => (
@@ -2885,6 +2944,7 @@
                                     item={item}
                                     techMax={techMax}
                                     speechIndex={isSpeechSection ? index + 1 : 0}
+                                    speechTotal={isSpeechSection ? speechTotal : 0}
                                     totalPhases={totalPhases}
                                 />
                             ))}

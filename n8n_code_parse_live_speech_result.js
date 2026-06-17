@@ -1,6 +1,7 @@
 // n8n: CODE - Parse Live Speech Result
-// After: HTTP - Fetch Session (complete branch)
-// Merges relay turns into interview_history; finalizes combined score.
+// WORKFLOW: Talent Acquisition — Live Speech ONLY
+// NODE: CODE - Parse Live Speech Result (after HTTP - Fetch Session Complete)
+// DO NOT paste into Assessment workflow "CODE - Build LLM context" — use n8n_code_build_llm_context.js there.
 
 function parseJson(raw, fallback) {
   if (raw == null) return fallback;
@@ -10,6 +11,97 @@ function parseJson(raw, fallback) {
   } catch (_) {
     return fallback;
   }
+}
+
+function pickNodeJson(name) {
+  try {
+    const raw = $(name).first().json;
+    if (raw && typeof raw === 'object') return raw;
+  } catch (_) {}
+  return null;
+}
+
+function cleanEmail(raw) {
+  const first = String(raw || '').trim().toLowerCase().split(/\n/)[0].trim();
+  return first.split(/\s+regards/i)[0].trim();
+}
+
+function buildConfig(cfg) {
+  const c = cfg || {};
+  return {
+    supabase_url: String(c.supabase_url || '').trim(),
+    supabase_key: String(c.supabase_key || '').trim(),
+    max_questions: Number(c.max_questions ?? 5),
+    speech_phases: Number(c.live_speech_turns ?? c.speech_phases ?? 5),
+    technical_weight: Number(c.technical_weight ?? 0.7),
+    speech_weight: Number(c.speech_weight ?? 0.3),
+    pass_score_threshold: Number(c.pass_score_threshold ?? 60),
+    fail_score_threshold: Number(c.fail_score_threshold ?? 30),
+    organization_name: String(c.organization_name || 'CONVO'),
+    portal_base_url: String(c.portal_base_url || 'https://talent-acquisition-six.vercel.app'),
+    interviewer_email: String(c.interviewer_email || ''),
+    table_assessment_sessions: String(c.table_assessment_sessions || 'assessment_sessions'),
+  };
+}
+
+function resolveLiveSpeechNorm() {
+  const normalized = pickNodeJson('CODE - Normalize Live Speech Complete');
+  if (normalized?.session_id && Array.isArray(normalized.turns) && normalized.turns.length) {
+    return normalized;
+  }
+
+  const triggerRaw = pickNodeJson('TRG - Live Speech Complete');
+  const cfgNode = pickNodeJson('CFG - Live Speech Config (complete)');
+  const body = triggerRaw?.body || triggerRaw || {};
+  const cfg = buildConfig(normalized?.config || cfgNode?.config || cfgNode);
+
+  const session_id = String(
+    body.session_id || body.sessionId || body.session_db_id || normalized?.session_id || ''
+  ).trim();
+  const candidate_email = cleanEmail(
+    body.email || body.candidate_email || normalized?.candidate_email
+  );
+  const turns = Array.isArray(body.turns)
+    ? body.turns
+    : Array.isArray(normalized?.turns)
+      ? normalized.turns
+      : [];
+
+  if (!session_id) {
+    throw new Error(
+      'live-speech-complete: session_id required — run from TRG - Live Speech Complete (not assessment-answer webhook).'
+    );
+  }
+  if (!candidate_email) throw new Error('live-speech-complete: email required');
+  if (!turns.length) {
+    throw new Error(
+      'live-speech-complete: turns[] required — relay must POST scored Q&A pairs to this webhook.'
+    );
+  }
+
+  return {
+    flow: 'live_speech_complete',
+    session_id,
+    candidate_email,
+    assessment_mode: 'live_speech',
+    turns,
+    combined_speech_score:
+      body.combined_speech_score != null
+        ? Number(body.combined_speech_score)
+        : normalized?.combined_speech_score ?? null,
+    session_audio_url: String(
+      body.session_audio_url || body.audio_url || normalized?.session_audio_url || ''
+    ).trim(),
+    duration_seconds: Number(body.duration_seconds || normalized?.duration_seconds || 0),
+    final_feedback: String(
+      body.final_feedback || body.feedback || normalized?.final_feedback || ''
+    ).trim(),
+    live_session_summary: String(
+      body.live_session_summary || normalized?.live_session_summary || ''
+    ).trim(),
+    tab_switches: Number(body.tab_switches ?? body.tabSwitches ?? normalized?.tab_switches ?? 0),
+    config: cfg,
+  };
 }
 
 function computeTechnicalAverage(rows, maxQ) {
@@ -36,7 +128,7 @@ function computeSpeechAverage(rows, maxQ, speechPhases) {
   return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 }
 
-const norm = $('CODE - Normalize Live Speech Complete').first().json;
+const norm = resolveLiveSpeechNorm();
 const cfg = norm.config || {};
 const fetchRaw = $input.first().json;
 const session = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;

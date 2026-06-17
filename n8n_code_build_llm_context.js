@@ -1,7 +1,18 @@
 // n8n: CODE - Build LLM context (assessment phases 1–5)
-// Paste into: CODE - Build LLM context (before Basic LLM Chain)
+// WORKFLOW: Assessment Answer workflow ONLY (NOT Live Speech)
+// NODE: CODE - Build LLM context (before Basic LLM Chain)
+// Requires upstream: CODE - Normalize Data
+// Source file: n8n_code_build_llm_context.js — never paste parse_live_speech_result.js here.
 
-const norm = $('CODE - Normalize Data').first().json;
+let norm;
+try {
+  norm = $('CODE - Normalize Data').first().json;
+} catch (_) {
+  throw new Error(
+    'Wrong code in this node. Paste n8n_code_build_llm_context.js into "CODE - Build LLM context". ' +
+    'If you see "Normalize Live Speech Complete" errors, you accidentally pasted n8n_code_parse_live_speech_result.js.'
+  );
+}
 const raw = $input.first().json;
 const session = Array.isArray(raw) ? raw[0] : raw;
 if (!session?.id) {

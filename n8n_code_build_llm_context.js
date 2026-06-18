@@ -363,6 +363,8 @@ Tasks:
 2. Decide PASS or FAIL for the technical round.
 3. feedback + suggested_answer.
 
+OUTPUT RULES (critical): Return ONE valid JSON object and nothing else — no markdown, no prose, no code fences. Keep feedback to 1-2 sentences and suggested_answer to 2-3 sentences so the JSON stays small and complete. Escape any quotes inside strings.
+
 Output: {"status":"finished","result":"PASS"|"FAIL","score":number,"feedback":string,"suggested_answer":string,"next_question":""${speechField}}`;
 } else {
   systemContent = `${sharedRules}
@@ -381,6 +383,8 @@ Tasks:
 3. next_question for phase ${nextPhaseNum} — follow ASSESSMENT QUESTION RULES above.
 4. time_limit_seconds (90-600) + complexity_tier (A-D).
 
+OUTPUT RULES (critical): Return ONE valid JSON object and nothing else — no markdown, no prose, no code fences. Keep feedback to 1-2 sentences and suggested_answer to 2-3 sentences so the JSON stays small and complete. Put score and feedback first. Escape any quotes inside strings.
+
 Output: {"score":number,"feedback":string,"suggested_answer":string,"next_question":string,"time_limit_seconds":number,"complexity_tier":"A"|"B"|"C"|"D"}`;
 }
 
@@ -391,6 +395,7 @@ const body = {
     { role: 'user', content: 'Evaluate and respond with JSON only.' },
   ],
   temperature: isFinal ? 0.25 : 0.55,
+  max_tokens: Number(cfg.assessment_max_tokens || 1400),
   response_format: { type: 'json_object' },
 };
 

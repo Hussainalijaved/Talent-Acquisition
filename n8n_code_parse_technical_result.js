@@ -108,57 +108,190 @@ function salvageNextQuestionFromText(rawText) {
   return '';
 }
 
+function salvageStringField(text, keys) {
+  const t = String(text || '');
+  for (const key of keys) {
+    const re = new RegExp('"' + key + '"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"', 'i');
+    const m = t.match(re);
+    if (m && m[1] != null) {
+      return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
+    }
+  }
+  return null;
+}
+
+function salvageNumberField(text, keys) {
+  const t = String(text || '');
+  for (const key of keys) {
+    const re = new RegExp('"' + key + '"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)', 'i');
+    const m = t.match(re);
+    if (m && m[1] != null) return Number(m[1]);
+  }
+  return null;
+}
+
+function stripCodeFences(text) {
+  return String(text || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/```(?:json|javascript|js)?/gi, '')
+    .replace(/```/g, '')
+    .trim();
+}
+
+// Extract the first balanced {...}; if truncated, returns from first "{" to end.
+function extractJsonObjectText(text) {
+  const s = String(text || '');
+  const start = s.indexOf('{');
+  if (start < 0) return '';
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (esc) { esc = false; continue; }
+    if (ch === '\\') { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) return s.slice(start, i + 1); }
+  }
+  return s.slice(start);
+}
+
+// Repair truncated JSON: cut to the last complete top-level property and close structures.
+function repairTruncatedJson(jsonish) {
+  const s = String(jsonish || '');
+  if (!s) return '';
+  let inStr = false;
+  let esc = false;
+  let depth = 0;
+  let lastComplete = -1;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (esc) { esc = false; continue; }
+    if (ch === '\\') { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{' || ch === '[') depth++;
+    else if (ch === '}' || ch === ']') depth--;
+    else if (ch === ',' && depth === 1) lastComplete = i;
+  }
+  if (lastComplete < 0) return '';
+  let head = s.slice(0, lastComplete);
+  const stack = [];
+  let is2 = false;
+  let e2 = false;
+  for (let i = 0; i < head.length; i++) {
+    const ch = head[i];
+    if (e2) { e2 = false; continue; }
+    if (ch === '\\') { e2 = true; continue; }
+    if (ch === '"') { is2 = !is2; continue; }
+    if (is2) continue;
+    if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  if (is2) head += '"';
+  while (stack.length) head += stack.pop();
+  return head;
+}
+
+function tryParseJson(text) {
+  const base = String(text || '').trim();
+  if (!base) return null;
+  const variants = [base, base.replace(/,\s*([}\]])/g, '$1')];
+  for (const v of variants) {
+    try { return JSON.parse(v); } catch (_) {}
+  }
+  const repaired = repairTruncatedJson(base);
+  if (repaired) {
+    try { return JSON.parse(repaired); } catch (_) {}
+    try { return JSON.parse(repaired.replace(/,\s*([}\]])/g, '$1')); } catch (_) {}
+  }
+  return null;
+}
+
+function ensureNextQuestion(obj, rawText) {
+  const out = obj && typeof obj === 'object' ? { ...obj } : {};
+  const nextQ = String(out.next_question || out.nextQuestion || out.question || '').trim();
+  if (!nextQ && rawText) {
+    const salv = salvageNextQuestionFromText(rawText);
+    if (salv) { out.next_question = salv; out.nextQuestion = salv; }
+  }
+  return out;
+}
+
 function parseLlmContent(api) {
+  // 1) Upstream already provided a structured object.
   if (
-    api &&
+    api && typeof api === 'object' &&
     (api.score != null ||
       api.feedback ||
       api.next_question ||
       api.nextQuestion ||
       api.result ||
-      api.status === 'finished')
+      api.status === 'finished' ||
+      api.suggested_answer)
   ) {
-    const nextQ = String(api.next_question || api.nextQuestion || api.question || '').trim();
-    if (!nextQ) {
-      const salvaged = salvageNextQuestionFromText(extractLlmText(api));
-      if (salvaged) {
-        return { ...api, next_question: salvaged, nextQuestion: salvaged };
-      }
-    }
-    return api;
+    return ensureNextQuestion(api, extractLlmText(api));
   }
+
   const rawText = extractLlmText(api);
   if (!rawText) {
     return {
       status: 'in_progress',
-      score: 0,
-      feedback: 'Empty model output.',
+      score: null,
+      feedback:
+        'Empty model output — your answer was saved but could not be scored automatically. Please resubmit.',
       next_question: '',
       nextQuestion: '',
+      _scoring_failed: true,
     };
   }
-  try {
-    const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-    const parsed = JSON.parse(cleaned);
-    const nextQ = String(parsed.next_question || parsed.nextQuestion || parsed.question || '').trim();
-    if (!nextQ) {
-      const salvaged = salvageNextQuestionFromText(rawText);
-      if (salvaged) {
-        parsed.next_question = salvaged;
-        parsed.nextQuestion = salvaged;
-      }
-    }
-    return parsed;
-  } catch (e) {
-    const salvaged = salvageNextQuestionFromText(rawText);
-    return {
-      status: 'in_progress',
-      score: 0,
-      feedback: salvaged ? 'Recovered question from partial model output.' : 'Could not parse model output.',
-      next_question: salvaged,
-      nextQuestion: salvaged,
-    };
+
+  const cleaned = stripCodeFences(rawText);
+
+  // 2) Robust JSON recovery: direct → loose → extracted object → repaired.
+  let parsed = tryParseJson(cleaned);
+  if (!parsed) {
+    const objText = extractJsonObjectText(cleaned);
+    if (objText) parsed = tryParseJson(objText);
   }
+  if (parsed && typeof parsed === 'object') {
+    return ensureNextQuestion(parsed, rawText);
+  }
+
+  // 3) Field-level salvage — recover score/feedback even from truncated JSON.
+  const score = salvageNumberField(rawText, ['score']);
+  const feedback = salvageStringField(rawText, ['feedback']);
+  const suggested = salvageStringField(rawText, ['suggested_answer', 'suggestedAnswer']);
+  const nextQ = salvageNextQuestionFromText(rawText);
+  const firstSpeech = salvageStringField(rawText, ['first_speech_question', 'firstSpeechQuestion']);
+  const result = salvageStringField(rawText, ['result']);
+  const tier = salvageStringField(rawText, ['complexity_tier', 'complexityTier']);
+  const timeLimit = salvageNumberField(rawText, ['time_limit_seconds']);
+
+  const recoveredScore = score != null;
+  const recoveredAnything = recoveredScore || !!feedback || !!nextQ || !!suggested || !!result;
+
+  return {
+    status: result ? 'finished' : 'in_progress',
+    score: recoveredScore ? score : null,
+    feedback:
+      feedback ||
+      (recoveredAnything
+        ? 'Partial evaluation recovered from model output.'
+        : 'Answer saved but automatic scoring failed (model returned unreadable output). This phase was left unscored for review.'),
+    suggested_answer: suggested || '',
+    next_question: nextQ || '',
+    nextQuestion: nextQ || '',
+    first_speech_question: firstSpeech || '',
+    result: result || '',
+    complexity_tier: tier || null,
+    time_limit_seconds: timeLimit != null ? timeLimit : null,
+    _scoring_failed: !recoveredScore,
+    _partial_recovery: recoveredAnything && !recoveredScore,
+  };
 }
 
 function extractJdThemes(text) {
@@ -616,6 +749,7 @@ const passThreshold = Number(cfg.pass_score_threshold ?? 60);
 const iso = new Date().toISOString();
 
 const integrityTerminated = isIntegrityTermination(current.answer);
+const scoringFailed = content._scoring_failed === true || content.score == null;
 const rawLlmScore = Number(content.score ?? 0);
 let normalizedScore = null;
 let scoreAdjusted = false;
@@ -628,6 +762,10 @@ const questionForPhase = String(
 ).trim();
 
 if (integrityTerminated) {
+  normalizedScore = null;
+} else if (scoringFailed) {
+  // Model returned unreadable output — keep the answer, leave the phase unscored
+  // (excluded from the average) instead of unfairly recording a zero.
   normalizedScore = null;
 } else {
   normalizedScore = normalizePhaseScore(current.answer, rawLlmScore, questionForPhase);
@@ -646,6 +784,13 @@ const patch = {
 if (integrityTerminated) {
   patch.feedback =
     `Integrity violation on phase ${ph} — this phase is not scored. Prior completed phases keep their recorded scores.`;
+} else if (scoringFailed) {
+  patch.feedback = [
+    patch.feedback,
+    '[System: automatic scoring was unavailable for this answer; it was preserved for review and excluded from the average rather than scored zero.]',
+  ]
+    .filter(Boolean)
+    .join(' ');
 } else if (scoreAdjusted && normalizedScore < rawLlmScore) {
   const relCap = questionRelevanceCap(current.answer, questionForPhase);
   patch.feedback = [

@@ -222,9 +222,14 @@ A: ${t.answer_text}`
 export async function postCompleteWebhook(context, payload) {
   const url = String(context.live_complete_webhook || process.env.LIVE_COMPLETE_WEBHOOK || '').trim();
   if (!url) {
-    return { ok: false, skipped: true, reason: 'live_complete_webhook missing' };
+    // This is always a misconfiguration — fail loudly so relay logs show it.
+    throw new Error(
+      'live_complete_webhook missing — set live_complete_webhook (or n8n_public_url) in CFG - Live Speech Config so the interview result can be saved. ' +
+      'URL format: https://your-n8n-instance.com/webhook/talent/live-speech-complete'
+    );
   }
 
+  console.log(`[relay] POST complete webhook → ${url} (${payload.turns?.length ?? 0} turns)`);
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -243,7 +248,9 @@ export async function postCompleteWebhook(context, payload) {
   }
 
   if (!res.ok) {
+    console.error(`[relay] complete webhook HTTP ${res.status}: ${text.slice(0, 400)}`);
     throw new Error(`complete_webhook_failed ${res.status}: ${text.slice(0, 300)}`);
   }
+  console.log(`[relay] complete webhook saved — HTTP ${res.status}`);
   return { ok: true, status: res.status, body: json };
 }

@@ -70,6 +70,7 @@ wss.on('connection', (clientWs) => {
   let bridge = null;
   let context = null;
   let finishing = false;
+  let webhookFired = false; // guard: fire complete webhook at most once per session
 
   sendJson(clientWs, { type: 'hello', message: 'Send session.start with n8n live-speech-start context' });
 
@@ -86,6 +87,12 @@ wss.on('connection', (clientWs) => {
       if (msg.type === 'session.start') {
         if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured on relay server');
         context = msg.context || {};
+        const webhookUrl = String(context.live_complete_webhook || process.env.LIVE_COMPLETE_WEBHOOK || '').trim();
+        if (!webhookUrl) {
+          console.error('[relay] WARNING: live_complete_webhook is EMPTY — voice turns will NOT be saved to the database. Set n8n_public_url or live_complete_webhook in CFG - Live Speech Config.');
+        } else {
+          console.log('[relay] complete webhook configured:', webhookUrl);
+        }
         bridge = new GeminiLiveBridge({
           apiKey: GEMINI_API_KEY,
           context,
@@ -193,10 +200,14 @@ wss.on('connection', (clientWs) => {
         };
 
         let webhookResult = { ok: false, skipped: true };
-        try {
-          webhookResult = await postCompleteWebhook(context, completePayload);
-        } catch (whErr) {
-          webhookResult = { ok: false, error: whErr.message };
+        if (!webhookFired) {
+          webhookFired = true;
+          try {
+            webhookResult = await postCompleteWebhook(context, completePayload);
+          } catch (whErr) {
+            console.error('[relay] complete webhook failed:', whErr.message);
+            webhookResult = { ok: false, error: whErr.message };
+          }
         }
 
         sendJson(clientWs, {
@@ -219,8 +230,35 @@ wss.on('connection', (clientWs) => {
     }
   });
 
-  clientWs.on('close', () => {
+  clientWs.on('close', async () => {
     if (bridge) bridge.closeGemini();
+
+    // Fallback: if the client disconnected (tab close / network drop) before
+    // sending session.end, fire the complete webhook with whatever turns were
+    // captured so the DB always gets at least a partial save.
+    if (webhookFired || !context || !bridge) return;
+    const rawTurns = bridge.buildTurnPairs();
+    if (!rawTurns.length) return;
+
+    webhookFired = true;
+    const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
+    const fallbackPayload = {
+      session_id: context.session_id,
+      email: context.candidate_email,
+      turns: rawTurns.map((t) => ({
+        ...t,
+        score: t.score ?? 0,
+        feedback: t.feedback || 'Saved on disconnect — will be re-scored.',
+      })),
+      combined_speech_score: 0,
+      duration_seconds: durationSeconds,
+      final_feedback: 'Voice interview ended unexpectedly (connection lost). Answers captured.',
+      tab_switches: 0,
+    };
+
+    postCompleteWebhook(context, fallbackPayload).catch((err) => {
+      console.warn('[relay] disconnect-fallback webhook failed:', err.message);
+    });
   });
 });
 

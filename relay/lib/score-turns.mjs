@@ -221,92 +221,141 @@ A: ${t.answer_text}`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Direct Supabase save — primary persistence path, no n8n dependency.
-// Fetches the current session, merges voice turns into interview_history, then
-// PATCHes the row with final scores and status=completed.
 // ─────────────────────────────────────────────────────────────────────────────
-export async function directSaveToSupabase(context, scoredTurns, {
-  combinedSpeechScore = 0,
-  finalFeedback = '',
-  durationSeconds = 0,
-} = {}) {
+
+function getSupabaseConfig(context) {
   const supabaseUrl = String(
     context.config?.supabase_url || context.supabase_url || ''
   ).replace(/\/+$/, '');
   const supabaseKey = String(
     context.config?.supabase_key || context.supabase_key || ''
   );
-  const sessionId  = String(context.session_id || '');
-  const maxQ       = Number(context.max_questions || 5);
+  const sessionId = String(context.session_id || '');
+  const maxQ = Number(context.max_questions || 5);
   const speechPhases = Number(context.speech_phases || 5);
-  const table      = String(context.config?.table_assessment_sessions || 'assessment_sessions');
+  const table = String(context.config?.table_assessment_sessions || 'assessment_sessions');
 
   if (!supabaseUrl || !/^https?:\/\//i.test(supabaseUrl)) {
     throw new Error(
-      'directSaveToSupabase: supabase_url missing or invalid in context.config. ' +
-      'Set supabase_url in CFG - Live Speech Config (start).'
+      'supabase_url missing or invalid in context.config — set supabase_url in CFG - Live Speech Config (start).'
     );
   }
-  if (!supabaseKey) {
-    throw new Error('directSaveToSupabase: supabase_key missing in context.config.');
-  }
-  if (!sessionId) {
-    throw new Error('directSaveToSupabase: session_id missing in context.');
-  }
+  if (!supabaseKey) throw new Error('supabase_key missing in context.config.');
+  if (!sessionId) throw new Error('session_id missing in context.');
 
-  const headers = {
-    apikey: supabaseKey,
-    Authorization: `Bearer ${supabaseKey}`,
-    'Content-Type': 'application/json',
+  return {
+    supabaseUrl,
+    supabaseKey,
+    sessionId,
+    maxQ,
+    speechPhases,
+    table,
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+    },
   };
+}
 
-  // 1. Fetch current session to get existing interview_history + technical_score.
-  const fetchUrl = `${supabaseUrl}/rest/v1/${table}?id=eq.${encodeURIComponent(sessionId)}&select=id,interview_history,technical_score,config`;
-  const fetchRes = await fetch(fetchUrl, { headers });
+async function fetchSessionRow(cfg) {
+  const fetchUrl =
+    `${cfg.supabaseUrl}/rest/v1/${cfg.table}?id=eq.${encodeURIComponent(cfg.sessionId)}` +
+    '&select=id,interview_history,technical_score,config';
+  const fetchRes = await fetch(fetchUrl, { headers: cfg.headers });
   if (!fetchRes.ok) {
     const errText = await fetchRes.text();
     throw new Error(`directSave: fetch session failed ${fetchRes.status}: ${errText.slice(0, 200)}`);
   }
   const rows = await fetchRes.json();
   const session = Array.isArray(rows) ? rows[0] : rows;
-  if (!session?.id) throw new Error(`directSave: session not found for id=${sessionId}`);
+  if (!session?.id) throw new Error(`directSave: session not found for id=${cfg.sessionId}`);
+  return session;
+}
 
-  let history = session.interview_history;
+function parseHistory(raw) {
+  let history = raw;
   if (typeof history === 'string') {
     try { history = JSON.parse(history); } catch (_) { history = []; }
   }
-  if (!Array.isArray(history)) history = [];
+  return Array.isArray(history) ? history : [];
+}
 
-  const iso = new Date().toISOString();
-
-  // 2. Merge scored voice turns into history.
-  for (const turn of scoredTurns) {
+function mergeTurnsIntoHistory(history, turns, maxQ, iso = new Date().toISOString()) {
+  const merged = [...history];
+  for (const turn of turns) {
     const ph = Number(turn.phase);
     if (!Number.isFinite(ph) || ph <= maxQ) continue;
     const patch = {
       phase: ph,
       mode: 'live_speech',
       voice_question_number: Number(turn.voice_question_number || ph - maxQ) || null,
-      question_text:  String(turn.question_text  || '').trim(),
-      answer_text:    String(turn.answer_text    || '').trim(),
-      received_at:    turn.received_at || iso,
-      sent_at:        turn.sent_at     || iso,
-      feedback:       turn.feedback    || null,
+      question_text: String(turn.question_text || '').trim(),
+      answer_text: String(turn.answer_text || '').trim(),
+      received_at: turn.received_at || iso,
+      sent_at: turn.sent_at || iso,
+      feedback: turn.feedback || null,
       score: Math.max(0, Math.min(100, Math.round(Number(turn.score ?? 0)))),
       soft_skills: turn.soft_skills || {
-        clarity:         Math.round(Number(turn.clarity         ?? turn.score ?? 0)),
-        confidence:      Math.round(Number(turn.confidence      ?? turn.score ?? 0)),
+        clarity: Math.round(Number(turn.clarity ?? turn.score ?? 0)),
+        confidence: Math.round(Number(turn.confidence ?? turn.score ?? 0)),
         professionalism: Math.round(Number(turn.professionalism ?? turn.score ?? 0)),
-        relevance:       Math.round(Number(turn.relevance       ?? turn.score ?? 0)),
+        relevance: Math.round(Number(turn.relevance ?? turn.score ?? 0)),
       },
-      stt_source:     'gemini_live',
+      stt_source: 'gemini_live',
       scoring_source: 'gemini_live_relay',
     };
-    const idx = history.findIndex((x) => Number(x.phase) === ph);
-    if (idx >= 0) history[idx] = { ...history[idx], ...patch };
-    else history.push(patch);
+    const idx = merged.findIndex((x) => Number(x.phase) === ph);
+    if (idx >= 0) merged[idx] = { ...merged[idx], ...patch };
+    else merged.push(patch);
   }
+  return merged;
+}
 
-  // 3. Compute final scores.
+async function patchSessionRow(cfg, body) {
+  const patchUrl = `${cfg.supabaseUrl}/rest/v1/${cfg.table}?id=eq.${encodeURIComponent(cfg.sessionId)}`;
+  const patchRes = await fetch(patchUrl, {
+    method: 'PATCH',
+    headers: { ...cfg.headers, Prefer: 'return=minimal' },
+    body: JSON.stringify(body),
+  });
+  if (!patchRes.ok) {
+    const errText = await patchRes.text();
+    throw new Error(`directSave: PATCH failed ${patchRes.status}: ${errText.slice(0, 300)}`);
+  }
+}
+
+// Incremental save after each voice Q&A — survives crashes mid-interview.
+export async function directSavePartialTurn(context, turn) {
+  const cfg = getSupabaseConfig(context);
+  const session = await fetchSessionRow(cfg);
+  const iso = new Date().toISOString();
+  const history = mergeTurnsIntoHistory(parseHistory(session.interview_history), [turn], cfg.maxQ, iso);
+  const phase = Number(turn.phase || cfg.maxQ + 1);
+
+  await patchSessionRow(cfg, {
+    interview_history: history,
+    updated_at: iso,
+    assessment_stage: 'live_speech',
+    current_phase: phase,
+    status: 'assessment',
+  });
+
+  console.log(`[relay] partial save OK — session ${cfg.sessionId} phase ${phase}`);
+  return { ok: true, phase, partial: true };
+}
+
+export async function directSaveToSupabase(context, scoredTurns, {
+  combinedSpeechScore = 0,
+  finalFeedback = '',
+  durationSeconds = 0,
+} = {}) {
+  const cfg = getSupabaseConfig(context);
+  const session = await fetchSessionRow(cfg);
+  const iso = new Date().toISOString();
+  const history = mergeTurnsIntoHistory(parseHistory(session.interview_history), scoredTurns, cfg.maxQ, iso);
+
+  // Compute final scores.
   const techAvg = Number(session.technical_score) || 0;
   const speechScores = scoredTurns
     .map((t) => Number(t.score))
@@ -328,33 +377,20 @@ export async function directSaveToSupabase(context, scoredTurns, {
     `Technical: ${techAvg}/100 | Voice: ${speechAvg}/100 | Combined: ${combined}/100 (pass ${passThreshold}).`,
   ].filter(Boolean).join(' ');
 
-  // 4. PATCH session row.
-  const body = {
+  await patchSessionRow(cfg, {
     interview_history:            history,
     updated_at:                   iso,
     assessment_stage:             'completed',
-    current_phase:                maxQ + speechPhases,
+    current_phase:                cfg.maxQ + cfg.speechPhases,
     status:                       'completed',
     technical_score:              techAvg,
     speech_score:                 speechAvg,
     score:                        combined,
     result,
     live_speech_duration_seconds: durationSeconds || null,
-  };
-
-  const patchUrl = `${supabaseUrl}/rest/v1/${table}?id=eq.${encodeURIComponent(sessionId)}`;
-  const patchRes = await fetch(patchUrl, {
-    method:  'PATCH',
-    headers: { ...headers, Prefer: 'return=minimal' },
-    body:    JSON.stringify(body),
   });
 
-  if (!patchRes.ok) {
-    const errText = await patchRes.text();
-    throw new Error(`directSave: PATCH failed ${patchRes.status}: ${errText.slice(0, 300)}`);
-  }
-
-  console.log(`[relay] directSave OK — session ${sessionId} | combined=${combined} | result=${result}`);
+  console.log(`[relay] directSave OK — session ${cfg.sessionId} | combined=${combined} | result=${result}`);
   return { ok: true, combined, result, speechAvg, techAvg, feedback: feedbackLine };
 }
 

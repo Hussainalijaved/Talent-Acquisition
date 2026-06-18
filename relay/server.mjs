@@ -4,6 +4,7 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import { GeminiLiveBridge } from './lib/gemini-live.mjs';
 import {
+  directSavePartialTurn,
   directSaveToSupabase,
   postCompleteWebhook,
   postPartialTurnWebhook,
@@ -93,12 +94,16 @@ wss.on('connection', (clientWs) => {
       if (msg.type === 'session.start') {
         if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured on relay server');
         context = msg.context || {};
-        const webhookUrl = String(context.live_complete_webhook || process.env.LIVE_COMPLETE_WEBHOOK || '').trim();
-        if (!webhookUrl) {
-          console.error('[relay] WARNING: live_complete_webhook is EMPTY — voice turns will NOT be saved to the database. Set n8n_public_url or live_complete_webhook in CFG - Live Speech Config.');
+        const supabaseUrl = String(
+          context.supabase_url || context.config?.supabase_url || ''
+        ).trim();
+        if (!supabaseUrl) {
+          console.error('[relay] WARNING: supabase_url is EMPTY — voice turns will NOT be saved. Set supabase_url in CFG - Live Speech Config.');
         } else {
-          console.log('[relay] complete webhook configured:', webhookUrl);
+          console.log('[relay] direct Supabase save configured:', supabaseUrl);
         }
+        const webhookUrl = String(context.live_complete_webhook || process.env.LIVE_COMPLETE_WEBHOOK || '').trim();
+        if (webhookUrl) console.log('[relay] n8n webhook (secondary):', webhookUrl);
         bridge = new GeminiLiveBridge({
           apiKey: GEMINI_API_KEY,
           context,
@@ -112,23 +117,25 @@ wss.on('connection', (clientWs) => {
                 context,
                 turn: turnPair,
               });
-              const r = await postPartialTurnWebhook(context, {
+              // PRIMARY: direct Supabase incremental save (survives crashes).
+              await directSavePartialTurn(context, scored);
+              saved = true;
+              // SECONDARY: n8n webhook for notifications (optional).
+              postPartialTurnWebhook(context, {
                 session_id: context.session_id,
                 email: context.candidate_email,
                 turns: [scored],
-              });
-              saved = !!r.ok;
+              }).catch((err) => console.warn('[relay] partial n8n webhook:', err.message));
             } catch (err) {
               console.warn('[relay] partial turn save (scored) failed:', err.message);
-              // Scoring or webhook failed — still persist the transcript unscored so
-              // the answer is never lost.
+              // Scoring failed — still persist transcript unscored so answer is never lost.
               try {
-                const r = await postPartialTurnWebhook(context, {
-                  session_id: context.session_id,
-                  email: context.candidate_email,
-                  turns: [{ ...turnPair, score: 0, feedback: 'Saved without scoring (will be re-scored at the end).' }],
+                await directSavePartialTurn(context, {
+                  ...turnPair,
+                  score: null,
+                  feedback: 'Saved without scoring (will be re-scored at the end).',
                 });
-                saved = !!r.ok;
+                saved = true;
               } catch (err2) {
                 saveError = err2.message || 'partial_save_failed';
                 console.error('[relay] partial turn save failed:', saveError);

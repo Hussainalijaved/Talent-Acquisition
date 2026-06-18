@@ -144,6 +144,7 @@ export class GeminiLiveBridge {
     // While the candidate's answer is being finalized, ignore model audio/text.
     if (!this.blockModelOutput && server.outputTranscription?.text) {
       this.modelBuf += server.outputTranscription.text;
+      this.emitModelPartialTranscript();
     }
 
     const parts = server.modelTurn?.parts || [];
@@ -155,11 +156,12 @@ export class GeminiLiveBridge {
           data: inline.data,
           mimeType: inline.mimeType || inline.mime_type || 'audio/pcm;rate=24000',
         };
-        if (this.allowModelAudio) {
-          this.onEvent(chunk);
-        } else {
-          this.pendingAudioChunks.push(chunk);
+        // Stream interviewer audio live (synced with partial question text).
+        if (!this.allowModelAudio) {
+          this.allowModelAudio = true;
+          this.flushPendingAudio();
         }
+        this.onEvent(chunk);
       }
     }
 
@@ -173,6 +175,32 @@ export class GeminiLiveBridge {
     const clean = sanitizeTranscript(this.userBuf, 'user');
     if (!clean) return;
     this.onEvent({ type: 'transcript', speaker: 'user', text: clean, partial: true });
+  }
+
+  // Stream the interviewer's question text as Gemini speaks (output transcription).
+  emitModelPartialTranscript() {
+    if (this.blockModelOutput || this.interviewEnded) return;
+    let modelText = sanitizeTranscript(this.modelBuf, 'model');
+    if (!modelText) return;
+
+    const qNum = this.roundQuestionEmitted
+      ? this.questions.length
+      : this.questions.length + 1;
+    if (!qNum || qNum > this.maxTurns) return;
+
+    if (this.questions.length === 0 && !this.roundQuestionEmitted) {
+      modelText = stripLeadingGreeting(modelText) || modelText;
+    }
+    if (!modelText) return;
+
+    this.onEvent({
+      type: 'transcript',
+      speaker: 'model',
+      text: modelText,
+      partial: true,
+      number: qNum,
+    });
+    this.onEvent({ type: 'question_partial', number: qNum, text: modelText });
   }
 
   onModelTurnComplete() {
@@ -240,7 +268,7 @@ export class GeminiLiveBridge {
     }
 
     const nextQ = aNum + 1;
-    this.allowModelAudio = false;
+    this.allowModelAudio = true;
     this.pendingAudioChunks = [];
     this.sendClientText(
       `The candidate finished answering question ${aNum}. Now ask interview question ${nextQ} of ${this.maxTurns} in clear English. Ask exactly one question, then stop talking and wait for the candidate.`,
@@ -258,19 +286,24 @@ export class GeminiLiveBridge {
       this.questions.push(modelText);
       this.roundQuestionEmitted = true;
       const qNum = this.questions.length;
+      this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
       this.onEvent({ type: 'question', number: qNum, text: modelText });
       this.onEvent({ type: 'awaiting_answer', number: qNum, maxTurns: this.maxTurns });
     } else if (this.roundQuestionEmitted && this.questions.length) {
       const idx = this.questions.length - 1;
       this.questions[idx] = `${this.questions[idx]} ${modelText}`.replace(/\s+/g, ' ').trim();
       this.onEvent({ type: 'question', number: idx + 1, text: this.questions[idx] });
+      this.onEvent({
+        type: 'transcript',
+        speaker: 'model',
+        text: this.questions[idx],
+        partial: false,
+        number: idx + 1,
+      });
     }
-
-    this.flushPendingAudio();
   }
 
   flushPendingAudio() {
-    this.allowModelAudio = true;
     for (const chunk of this.pendingAudioChunks) {
       this.onEvent(chunk);
     }
@@ -304,7 +337,7 @@ export class GeminiLiveBridge {
   }
 
   kickoffInterview() {
-    this.allowModelAudio = false;
+    this.allowModelAudio = true;
     this.pendingAudioChunks = [];
     const prompt = String(this.context.kickoff_prompt || DEFAULT_KICKOFF).trim();
     this.sendClientText(prompt, true);

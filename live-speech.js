@@ -196,9 +196,12 @@
           partial: !!msg.partial,
         });
       }
+      if (msg.type === 'question_partial' && msg.text) {
+        this.onQuestion({ number: msg.number, text: msg.text, partial: true });
+      }
       if (msg.type === 'question') {
         this.processingAnswer = false;
-        this.onQuestion({ number: msg.number, text: msg.text });
+        this.onQuestion({ number: msg.number, text: msg.text, partial: false });
       }
       if (msg.type === 'answer') {
         this.onAnswer({ number: msg.number, text: msg.text });
@@ -219,7 +222,7 @@
         this.answering = false;
         this.processingAnswer = false;
         this.onAwaitingAnswer({ number: msg.number, maxTurns: msg.maxTurns });
-        this.setStatus(`Question ${msg.number} ready — press “Answer” to reply`);
+        this.setStatus(`Question ${msg.number} — press “Answer” to reply (${this.context?.speech_answer_seconds || 120}s)`);
       }
       if (msg.type === 'output_audio' && msg.data) {
         if (this.processingAnswer) return;

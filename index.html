@@ -1370,10 +1370,18 @@
             const [ending, setEnding] = React.useState(false);
             const [interviewComplete, setInterviewComplete] = React.useState(false);
             const [liveCaption, setLiveCaption] = React.useState('');
+            const [liveQuestionCaption, setLiveQuestionCaption] = React.useState('');
+            const [isInterviewerSpeaking, setIsInterviewerSpeaking] = React.useState(false);
+            const [answerTimerActive, setAnswerTimerActive] = React.useState(false);
             const [saveNotice, setSaveNotice] = React.useState('');
             const answerTimeLimit = Number(context?.speech_answer_seconds || context?.config?.speech_answer_seconds || 120);
             const [timeLeft, setTimeLeft] = React.useState(null);
             const timerRef = React.useRef(null);
+            const isAnsweringRef = React.useRef(false);
+            const canAnswerRef = React.useRef(false);
+
+            React.useEffect(() => { isAnsweringRef.current = isAnswering; }, [isAnswering]);
+            React.useEffect(() => { canAnswerRef.current = canAnswer; }, [canAnswer]);
 
             const currentQuestionNum = cards.length ? cards[cards.length - 1].number : 0;
             const completedAnswers = cards.filter((c) => c && c.answer).length;
@@ -1419,7 +1427,20 @@
                             tabSwitches,
                             onStatus: setStatus,
                             onTranscript: ({ speaker, text, partial }) => {
-                                if (speaker !== 'user') return;
+                                if (speaker === 'model') {
+                                    const clean = cleanText(text, 'model');
+                                    if (!clean) return;
+                                    if (partial) {
+                                        setIsInterviewerSpeaking(true);
+                                        setLiveQuestionCaption(clean);
+                                        setAnswerTimerActive(false);
+                                        setTimeLeft(null);
+                                    } else {
+                                        setLiveQuestionCaption('');
+                                        setIsInterviewerSpeaking(false);
+                                    }
+                                    return;
+                                }
                                 const clean = cleanText(text, 'user');
                                 if (partial) {
                                     setLiveCaption(clean || '');
@@ -1443,8 +1464,17 @@
                                 setTurn(capped);
                                 if (m) setMaxTurns(m);
                             },
-                            onQuestion: ({ number, text }) => {
+                            onQuestion: ({ number, text, partial }) => {
+                                const clean = cleanText(text, 'model');
+                                if (partial) {
+                                    setIsInterviewerSpeaking(true);
+                                    setLiveQuestionCaption(clean || '');
+                                    if (clean) addQuestion(number, clean);
+                                    return;
+                                }
                                 addQuestion(number, text);
+                                setLiveQuestionCaption('');
+                                setIsInterviewerSpeaking(false);
                                 setSavingAnswer(false);
                                 setLiveCaption('');
                             },
@@ -1454,18 +1484,26 @@
                                 setSavingAnswer(true);
                                 setCanAnswer(false);
                                 setLiveCaption('');
+                                setAnswerTimerActive(false);
+                                setTimeLeft(null);
                             },
                             onAwaitingAnswer: () => {
                                 setCanAnswer(true);
                                 setIsAnswering(false);
                                 setSavingAnswer(false);
                                 setLiveCaption('');
+                                setLiveQuestionCaption('');
+                                setIsInterviewerSpeaking(false);
+                                setAnswerTimerActive(true);
+                                setTimeLeft(answerTimeLimit);
                             },
                             onInterviewComplete: () => {
                                 setInterviewComplete(true);
                                 setCanAnswer(false);
                                 setIsAnswering(false);
                                 setSavingAnswer(false);
+                                setAnswerTimerActive(false);
+                                setTimeLeft(null);
                             },
                             onComplete: (result) => {
                                 if (finishedRef.current) return;
@@ -1500,26 +1538,35 @@
             }, [cards, isAnswering, savingAnswer]);
 
             React.useEffect(() => {
-                if (!isAnswering) {
+                if (!answerTimerActive) {
                     if (timerRef.current) {
                         clearInterval(timerRef.current);
                         timerRef.current = null;
                     }
-                    setTimeLeft(null);
+                    if (!isAnswering) setTimeLeft(null);
                     return undefined;
                 }
-                setTimeLeft(answerTimeLimit);
+                if (timeLeft == null) setTimeLeft(answerTimeLimit);
                 timerRef.current = setInterval(() => {
                     setTimeLeft((prev) => {
                         if (prev == null || prev <= 1) {
                             clearInterval(timerRef.current);
                             timerRef.current = null;
-                            if (sessionRef.current && !savingAnswer && !ending) {
-                                sessionRef.current.submitAnswer?.();
-                                setIsAnswering(false);
-                                setCanAnswer(false);
-                                setSavingAnswer(true);
+                            if (sessionRef.current && !savingAnswer && !ending && !interviewComplete) {
+                                if (isAnsweringRef.current) {
+                                    sessionRef.current.submitAnswer?.();
+                                    setIsAnswering(false);
+                                    setCanAnswer(false);
+                                    setSavingAnswer(true);
+                                } else if (canAnswerRef.current) {
+                                    sessionRef.current.beginAnswer?.();
+                                    sessionRef.current.submitAnswer?.();
+                                    setIsAnswering(false);
+                                    setCanAnswer(false);
+                                    setSavingAnswer(true);
+                                }
                             }
+                            setAnswerTimerActive(false);
                             return 0;
                         }
                         return prev - 1;
@@ -1529,7 +1576,7 @@
                     if (timerRef.current) clearInterval(timerRef.current);
                     timerRef.current = null;
                 };
-            }, [isAnswering, answerTimeLimit, savingAnswer, ending]);
+            }, [answerTimerActive, answerTimeLimit, savingAnswer, ending, interviewComplete]);
 
             const handleAnswerToggle = () => {
                 if (interviewComplete || ending || isLoading || savingAnswer) return;
@@ -1577,7 +1624,7 @@
                                 <p className="text-xs text-slate-500">Questions</p>
                                 <p className="text-sm text-white font-medium">{currentQuestionNum || completedAnswers} / {maxTurns}</p>
                             </div>
-                            {isAnswering && timeLeft != null ? (
+                            {answerTimerActive && timeLeft != null ? (
                                 <TimerRing seconds={timeLeft} totalSeconds={answerTimeLimit} compact />
                             ) : null}
                             <div className="rounded-lg border border-surface-border px-3 py-2">
@@ -1624,7 +1671,8 @@
                             <div className="flex-1 min-h-0 overflow-y-auto px-1 sm:px-2 flex flex-col">
                                 {(() => {
                                     const card = cards.length ? cards[cards.length - 1] : null;
-                                    if (!card) {
+                                    const questionDisplay = liveQuestionCaption || card?.question || '';
+                                    if (!card && !questionDisplay) {
                                         return (
                                             <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
                                                 <div className="w-14 h-14 rounded-full border border-surface-border flex items-center justify-center text-indigo-300 text-2xl">🎧</div>
@@ -1634,17 +1682,23 @@
                                     }
                                     const recording = isAnswering;
                                     const saving = savingAnswer;
-                                    const answered = Boolean(card.answer);
+                                    const answered = Boolean(card?.answer);
                                     const waitingNext = answered && !interviewComplete;
+                                    const qNum = card?.number || currentQuestionNum || 1;
                                     return (
-                                        <div key={card.number} className="fade-in rounded-2xl border border-indigo-500/30 bg-surface-elevated/40 overflow-hidden shadow-lg shadow-indigo-500/5">
+                                        <div key={qNum} className="fade-in rounded-2xl border border-indigo-500/30 bg-surface-elevated/40 overflow-hidden shadow-lg shadow-indigo-500/5">
                                             <div className="px-6 py-5 border-b border-surface-border/70 bg-indigo-500/[0.06]">
                                                 <div className="flex flex-wrap items-start justify-between gap-4">
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300/90">Interviewer · Question {card.number} of {maxTurns}</p>
-                                                        <p className="text-lg text-indigo-50 mt-2 leading-relaxed">{card.question}</p>
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300/90">Interviewer · Question {qNum} of {maxTurns}</p>
+                                                        <p className="text-lg text-indigo-50 mt-2 leading-relaxed">
+                                                            {questionDisplay || '…'}
+                                                            {isInterviewerSpeaking ? (
+                                                                <span className="inline-block w-1.5 h-4 bg-indigo-400/70 ml-0.5 align-middle animate-pulse" />
+                                                            ) : null}
+                                                        </p>
                                                     </div>
-                                                    {recording && timeLeft != null ? (
+                                                    {answerTimerActive && timeLeft != null ? (
                                                         <TimerRing seconds={timeLeft} totalSeconds={answerTimeLimit} prominent />
                                                     ) : null}
                                                 </div>
@@ -1675,9 +1729,11 @@
                                                         Saving your answer…
                                                     </p>
                                                 ) : answered ? (
-                                                    <p className="text-[15px] text-slate-100 leading-relaxed">{card.answer}</p>
+                                                    <p className="text-[15px] text-slate-100 leading-relaxed">{card?.answer}</p>
+                                                ) : answerTimerActive ? (
+                                                    <p className="text-sm text-slate-400 italic py-2">Press “Answer” below to open your mic and reply out loud.</p>
                                                 ) : (
-                                                    <p className="text-sm text-slate-500 italic py-2">Press “Answer” below to open your mic and reply out loud.</p>
+                                                    <p className="text-sm text-slate-500 italic py-2">Listen to the interviewer…</p>
                                                 )}
                                                 {waitingNext ? (
                                                     <p className="text-xs text-indigo-300/80 mt-4 flex items-center gap-2 pt-3 border-t border-surface-border/60">

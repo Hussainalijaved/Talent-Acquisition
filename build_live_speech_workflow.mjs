@@ -39,7 +39,7 @@ const buildMailJs = readJs('n8n_code_build_assessment_result_mail.js').replace(
 const cfgAssignments = [
   { id: 'ls-cfg-1', name: 'supabase_url', value: 'https://vnxstyadacgntnsvcvzn.supabase.co', type: 'string' },
   { id: 'ls-cfg-2', name: 'supabase_key', value: '={{ $env.SUPABASE_SERVICE_ROLE_KEY }}', type: 'string' },
-  { id: 'ls-cfg-3', name: 'gemini_live_model', value: 'gemini-2.5-flash-native-audio-preview-12-2025', type: 'string' },
+  { id: 'ls-cfg-3', name: 'gemini_live_model', value: 'gemini-2.0-flash-live-001', type: 'string' },
   { id: 'ls-cfg-4', name: 'max_questions', value: '5', type: 'string' },
   { id: 'ls-cfg-5', name: 'live_speech_turns', value: 5, type: 'number' },
   { id: 'ls-cfg-6', name: 'speech_phases', value: 5, type: 'number' },
@@ -235,7 +235,7 @@ const workflow = {
       parameters: {
         respondWith: 'json',
         responseBody:
-          '={{ {\n  ok: true,\n  session_id: $json.session_id,\n  candidate_email: $json.candidate_email,\n  system_instruction: $json.system_instruction,\n  gemini_live_model: $json.gemini_live_model,\n  live_relay_url: $json.live_relay_url,\n  live_complete_webhook: $json.live_complete_webhook,\n  speech_phases: $json.speech_phases,\n  current_phase: $json.current_phase,\n  requisition_title: $json.requisition_title,\n  assessment_mode: "live_speech"\n} }}',
+          '={{ {\n  ok: true,\n  session_id: $json.session_id,\n  candidate_email: $json.candidate_email,\n  system_instruction: $json.system_instruction,\n  kickoff_prompt: $json.kickoff_prompt,\n  gemini_live_model: $json.gemini_live_model,\n  live_relay_url: $json.live_relay_url,\n  live_complete_webhook: $json.live_complete_webhook,\n  portal_base_url: $json.portal_base_url,\n  supabase_url: $json.supabase_url,\n  supabase_key: $json.supabase_key,\n  max_questions: $json.max_questions,\n  speech_phases: $json.speech_phases,\n  speech_answer_seconds: $json.speech_answer_seconds,\n  current_phase: $json.current_phase,\n  requisition_title: $json.requisition_title,\n  assessment_mode: "live_speech",\n  config: $json.config\n} }}',
         options: { responseCode: 200 },
       },
       id: 'ls-respond-start',

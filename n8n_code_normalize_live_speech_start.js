@@ -46,7 +46,7 @@ return [
               : '')
         ),
         gemini_live_model: String(
-          cfg.gemini_live_model || 'gemini-2.5-flash-native-audio-preview-12-2025'
+          cfg.gemini_live_model || 'gemini-2.0-flash-live-001'
         ),
         table_assessment_sessions: String(cfg.table_assessment_sessions || 'assessment_sessions'),
       },

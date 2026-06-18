@@ -5,8 +5,20 @@ const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 
 const DEFAULT_MODEL = 'gemini-2.0-flash-live-001';
+const MODEL_FALLBACKS = [
+  'gemini-2.0-flash-live-001',
+  'gemini-2.5-flash-native-audio-preview-12-2025',
+];
+const SETUP_TIMEOUT_MS = 15000;
 const DEFAULT_KICKOFF =
   'Begin the interview now. In the SAME turn, greet the candidate in one short sentence and then ask interview question 1. Ask exactly one question, then stop talking and wait. Do not say anything else.';
+
+function modelCandidates(context) {
+  const preferred = String(
+    context?.gemini_live_model || process.env.GEMINI_LIVE_MODEL || DEFAULT_MODEL
+  ).replace(/^models\//, '').trim();
+  return [...new Set([preferred, ...MODEL_FALLBACKS, DEFAULT_MODEL].filter(Boolean))];
+}
 
 function stripLeadingGreeting(text) {
   return String(text || '')
@@ -64,11 +76,56 @@ export class GeminiLiveBridge {
   }
 
   async start() {
-    const url = `${GEMINI_WS_BASE}?key=${encodeURIComponent(this.apiKey)}`;
     const systemText = String(this.context.system_instruction || '').trim();
     if (!systemText) throw new Error('system_instruction missing in live speech context');
 
-    await new Promise((resolve, reject) => {
+    const candidates = modelCandidates(this.context);
+    let lastErr = null;
+    for (const model of candidates) {
+      try {
+        this.model = model;
+        this.ready = false;
+        this.closed = false;
+        await this.connectOnce(systemText);
+        console.log(`[relay] Gemini Live ready — model ${model}`);
+        return;
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[relay] Gemini model ${model} failed:`, err.message);
+        this.teardownWs();
+      }
+    }
+    throw lastErr || new Error('gemini_live_setup_failed');
+  }
+
+  teardownWs() {
+    this.ready = false;
+    if (this.geminiWs) {
+      try { this.geminiWs.removeAllListeners(); } catch (_) {}
+      try {
+        if (this.geminiWs.readyState === WebSocket.OPEN) this.geminiWs.close();
+      } catch (_) {}
+    }
+    this.geminiWs = null;
+  }
+
+  connectOnce(systemText) {
+    const url = `${GEMINI_WS_BASE}?key=${encodeURIComponent(this.apiKey)}`;
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(setupTimer);
+        fn(value);
+      };
+
+      const setupTimer = setTimeout(() => {
+        finish(reject, new Error(
+          `gemini_setup_timeout (${SETUP_TIMEOUT_MS / 1000}s) — model ${this.model} did not return setupComplete. Check GEMINI_API_KEY and live model access.`
+        ));
+      }, SETUP_TIMEOUT_MS);
+
       this.geminiWs = new WebSocket(url);
 
       this.geminiWs.on('open', () => {
@@ -85,8 +142,9 @@ export class GeminiLiveBridge {
             realtimeInputConfig: {
               automaticActivityDetection: { disabled: true },
             },
-            inputAudioTranscription: { languageCodes: ['en-US'] },
-            outputAudioTranscription: { languageCodes: ['en-US'] },
+            // AudioTranscriptionConfig has no fields — empty object enables transcription.
+            inputAudioTranscription: {},
+            outputAudioTranscription: {},
           },
         };
         this.geminiWs.send(JSON.stringify(setup));
@@ -99,17 +157,21 @@ export class GeminiLiveBridge {
         } catch (_) {
           return;
         }
-        this.handleGeminiMessage(msg, resolve, reject);
+        this.handleGeminiMessage(msg, () => finish(resolve), (err) => finish(reject, err));
       });
 
       this.geminiWs.on('error', (err) => {
-        if (!this.ready) reject(err);
+        if (!this.ready) finish(reject, err);
         else this.onEvent({ type: 'error', message: err.message || 'gemini_ws_error' });
       });
 
       this.geminiWs.on('close', () => {
         this.closed = true;
-        this.onEvent({ type: 'gemini_closed' });
+        if (!this.ready && !settled) {
+          finish(reject, new Error(`gemini_ws_closed before setupComplete (model ${this.model})`));
+        } else {
+          this.onEvent({ type: 'gemini_closed' });
+        }
       });
     });
   }
@@ -331,6 +393,10 @@ export class GeminiLiveBridge {
       if (this.questions.length === 0) modelText = stripLeadingGreeting(modelText) || modelText;
       this.questions.push(modelText);
       this.roundQuestionEmitted = true;
+      if (this.kickoffWatchdog) {
+        clearTimeout(this.kickoffWatchdog);
+        this.kickoffWatchdog = null;
+      }
       const qNum = this.questions.length;
       this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
       this.onEvent({ type: 'question', number: qNum, text: modelText });
@@ -392,6 +458,19 @@ export class GeminiLiveBridge {
     const prompt = String(this.context.kickoff_prompt || DEFAULT_KICKOFF).trim();
     this.sendClientText(prompt, true);
     this.onEvent({ type: 'interviewer_started' });
+
+    if (this.kickoffWatchdog) clearTimeout(this.kickoffWatchdog);
+    this.kickoffWatchdog = setTimeout(() => {
+      if (this.questions.length > 0 || this.interviewEnded || this.closed) return;
+      console.warn('[relay] kickoff watchdog — no Q1 yet, retrying');
+      this.modelBuf = '';
+      this.allowModelAudio = true;
+      this.blockModelOutput = false;
+      this.sendClientText(
+        'You have not asked question 1 yet. Greet the candidate in one short English sentence, then ask interview question 1. Ask exactly one question and stop talking.',
+        true
+      );
+    }, 18000);
   }
 
   startUserTurn() {

@@ -153,7 +153,7 @@
         })
       );
 
-      await this.waitForType('ready', 30000);
+      await this.waitForType('ready', 50000);
       this.setStatus('Interviewer is starting…');
       await this.startMic();
       this.setStatus('Listen to the interviewer — the first question is coming');
@@ -161,7 +161,12 @@
 
     waitForType(type, ms) {
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(`timeout waiting for ${type}`)), ms);
+        const timer = setTimeout(() => {
+          const hint = type === 'ready'
+            ? 'Gemini Live did not start — check relay is deployed, GEMINI_API_KEY is set, and Railway has latest code.'
+            : '';
+          reject(new Error(`timeout waiting for ${type}${hint ? ` — ${hint}` : ''}`));
+        }, ms);
         const handler = (ev) => {
           try {
             const msg = JSON.parse(ev.data);

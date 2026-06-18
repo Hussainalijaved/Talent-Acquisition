@@ -180,6 +180,11 @@ for (const turn of turns) {
 }
 
 const b = String(cfg.supabase_url || sessCfg.supabase_url || '').replace(/\/+$/, '');
+if (!b || !/^https?:\/\//i.test(b)) {
+  throw new Error(
+    'live-speech save: supabase_url missing/invalid. Set supabase_url in CFG - Live Speech Config (complete) (e.g. https://xxx.supabase.co) so voice turns persist.'
+  );
+}
 const patchUrl = `${b}/rest/v1/${cfg.table_assessment_sessions || 'assessment_sessions'}?id=eq.${encodeURIComponent(String(session.id))}`;
 
 // Incremental save after each voice Q&A — do not finalize the session yet.

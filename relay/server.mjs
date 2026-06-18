@@ -91,25 +91,43 @@ wss.on('connection', (clientWs) => {
           context,
           onEvent: (ev) => sendJson(clientWs, ev),
           onTurnSaved: async (turnPair) => {
+            let saved = false;
+            let saveError = '';
             try {
               const scored = await scoreSingleTurn({
                 apiKey: GEMINI_API_KEY,
                 context,
                 turn: turnPair,
               });
-              await postPartialTurnWebhook(context, {
+              const r = await postPartialTurnWebhook(context, {
                 session_id: context.session_id,
                 email: context.candidate_email,
                 turns: [scored],
               });
+              saved = !!r.ok;
             } catch (err) {
-              console.warn('[relay] partial turn save:', err.message);
-              await postPartialTurnWebhook(context, {
-                session_id: context.session_id,
-                email: context.candidate_email,
-                turns: [turnPair],
-              }).catch(() => {});
+              console.warn('[relay] partial turn save (scored) failed:', err.message);
+              // Scoring or webhook failed — still persist the transcript unscored so
+              // the answer is never lost.
+              try {
+                const r = await postPartialTurnWebhook(context, {
+                  session_id: context.session_id,
+                  email: context.candidate_email,
+                  turns: [{ ...turnPair, score: 0, feedback: 'Saved without scoring (will be re-scored at the end).' }],
+                });
+                saved = !!r.ok;
+              } catch (err2) {
+                saveError = err2.message || 'partial_save_failed';
+                console.error('[relay] partial turn save failed:', saveError);
+              }
             }
+            sendJson(clientWs, {
+              type: 'turn_saved_status',
+              number: turnPair.voice_question_number,
+              phase: turnPair.phase,
+              saved,
+              error: saveError || undefined,
+            });
           },
         });
         await bridge.start();

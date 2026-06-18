@@ -128,12 +128,18 @@ export class GeminiLiveBridge {
 
     if (this.interviewEnded) return;
 
-    if (msg.inputTranscription?.text) this.userBuf += msg.inputTranscription.text;
+    if (msg.inputTranscription?.text) {
+      this.userBuf += msg.inputTranscription.text;
+      this.emitUserPartialTranscript();
+    }
 
     const server = msg.serverContent;
     if (!server) return;
 
-    if (server.inputTranscription?.text) this.userBuf += server.inputTranscription.text;
+    if (server.inputTranscription?.text) {
+      this.userBuf += server.inputTranscription.text;
+      this.emitUserPartialTranscript();
+    }
 
     // While the candidate's answer is being finalized, ignore model audio/text.
     if (!this.blockModelOutput && server.outputTranscription?.text) {
@@ -159,6 +165,14 @@ export class GeminiLiveBridge {
 
     if (server.turnComplete) this.onModelTurnComplete();
     if (server.interrupted) this.onEvent({ type: 'interrupted' });
+  }
+
+  // Stream the candidate's speech-to-text to the client as a live caption.
+  emitUserPartialTranscript() {
+    if (!this.userTurnActive && !this.awaitingAnswer) return;
+    const clean = sanitizeTranscript(this.userBuf, 'user');
+    if (!clean) return;
+    this.onEvent({ type: 'transcript', speaker: 'user', text: clean, partial: true });
   }
 
   onModelTurnComplete() {
@@ -204,6 +218,7 @@ export class GeminiLiveBridge {
       received_at: new Date().toISOString(),
     };
 
+    this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
     this.onEvent({ type: 'answer', number: aNum, text: userText });
     this.onEvent({
       type: 'turn_complete',

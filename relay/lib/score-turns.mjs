@@ -1,5 +1,51 @@
 const SCORE_MODEL = process.env.GEMINI_SCORE_MODEL || 'gemini-2.0-flash';
 
+// Tolerant JSON parse: strip fences, extract the first balanced object, repair
+// trailing commas. Returns {} on total failure so scoring never throws away a turn.
+function safeParseJson(rawText) {
+  let text = String(rawText || '')
+    .replace(/```(?:json)?/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  if (!text) return {};
+  const tryParse = (s) => {
+    try {
+      return JSON.parse(s);
+    } catch (_) {
+      try {
+        return JSON.parse(s.replace(/,\s*([}\]])/g, '$1'));
+      } catch (_) {
+        return null;
+      }
+    }
+  };
+  let parsed = tryParse(text);
+  if (parsed) return parsed;
+  const start = text.indexOf('{');
+  if (start >= 0) {
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let i = start; i < text.length; i += 1) {
+      const ch = text[i];
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === '{') depth += 1;
+      else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          parsed = tryParse(text.slice(start, i + 1));
+          if (parsed) return parsed;
+          break;
+        }
+      }
+    }
+  }
+  return {};
+}
+
 export async function scoreSingleTurn({ apiKey, context, turn }) {
   if (!apiKey) throw new Error('GEMINI_API_KEY missing for scoring');
   const role = String(context.requisition_title || 'the role');
@@ -27,8 +73,7 @@ A: ${turn.answer_text}`;
 
   const data = await res.json();
   const rawText = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
-  const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-  const parsed = JSON.parse(cleaned);
+  const parsed = safeParseJson(rawText);
 
   return {
     ...turn,
@@ -51,7 +96,13 @@ A: ${turn.answer_text}`;
 
 export async function postPartialTurnWebhook(context, payload) {
   const url = String(context.live_complete_webhook || process.env.LIVE_COMPLETE_WEBHOOK || '').trim();
-  if (!url) return { ok: false, skipped: true, reason: 'live_complete_webhook missing' };
+  if (!url) {
+    // Loud failure: a missing webhook URL is the #1 reason voice turns silently
+    // never reach the database. Surface it instead of skipping quietly.
+    throw new Error(
+      'live_complete_webhook missing — set live_complete_webhook (or n8n_public_url) in CFG - Live Speech Config so voice turns can be saved.'
+    );
+  }
 
   const res = await fetch(url, {
     method: 'POST',
@@ -129,8 +180,7 @@ A: ${t.answer_text}`
 
   const data = await res.json();
   const rawText = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
-  const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-  const parsed = JSON.parse(cleaned);
+  const parsed = safeParseJson(rawText);
 
   const scoredByPhase = new Map((parsed.turns || []).map((t) => [Number(t.phase), t]));
   const merged = turns.map((t) => {

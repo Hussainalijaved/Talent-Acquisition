@@ -189,11 +189,11 @@
         return;
       }
 
-      if (msg.type === 'transcript' && msg.text && !msg.partial) {
+      if (msg.type === 'transcript' && msg.text) {
         this.onTranscript({
           speaker: msg.speaker,
           text: msg.text,
-          partial: false,
+          partial: !!msg.partial,
         });
       }
       if (msg.type === 'question') {
@@ -205,7 +205,15 @@
       }
       if (msg.type === 'answer_saved') {
         this.processingAnswer = true;
-        this.setStatus(`Answer ${msg.number} saved — the interviewer will ask the next question…`);
+        this.setStatus(`Answer ${msg.number} captured — the interviewer will ask the next question…`);
+      }
+      if (msg.type === 'turn_saved_status') {
+        this.onTurn({ savedStatus: { number: msg.number, saved: !!msg.saved, error: msg.error } });
+        if (msg.saved) {
+          this.setStatus(`Answer ${msg.number} saved — the interviewer will ask the next question…`);
+        } else {
+          this.setStatus(`Answer ${msg.number} recorded — saving will be retried when the interview ends.`);
+        }
       }
       if (msg.type === 'awaiting_answer') {
         this.answering = false;

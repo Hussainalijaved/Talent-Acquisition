@@ -350,6 +350,74 @@ async function patchSessionRow(cfg, body) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Vercel API save — calls /api/live-speech-save on the Vercel frontend.
+// This is always publicly accessible (no ngrok/n8n required).
+// ─────────────────────────────────────────────────────────────────────────────
+function getVercelSaveUrl(context) {
+  // Prefer explicit override, then derive from portal_base_url.
+  const explicit = String(
+    context.live_save_url || process.env.LIVE_SAVE_URL || ''
+  ).trim();
+  if (explicit) return explicit;
+
+  const base = String(context.portal_base_url || process.env.PORTAL_BASE_URL || '').replace(/\/+$/, '').trim();
+  if (base) return `${base}/api/live-speech-save`;
+  return null;
+}
+
+export async function vercelSaveTurn(context, turn) {
+  const url = getVercelSaveUrl(context);
+  if (!url) throw new Error('vercelSaveTurn: live_save_url / portal_base_url not set in context');
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      partial: true,
+      session_id: String(context.session_id || ''),
+      max_questions: Number(context.max_questions || 5),
+      turns: [turn],
+    }),
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch (_) { json = { raw: text }; }
+  if (!res.ok) throw new Error(`vercelSaveTurn ${res.status}: ${text.slice(0, 200)}`);
+  return json;
+}
+
+export async function vercelSaveFinal(context, scoredTurns, {
+  combinedSpeechScore = 0,
+  finalFeedback = '',
+  durationSeconds = 0,
+  tabSwitches = 0,
+} = {}) {
+  const url = getVercelSaveUrl(context);
+  if (!url) throw new Error('vercelSaveFinal: live_save_url / portal_base_url not set in context');
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      partial: false,
+      session_id: String(context.session_id || ''),
+      max_questions: Number(context.max_questions || 5),
+      turns: scoredTurns,
+      combined_speech_score: combinedSpeechScore,
+      final_feedback: finalFeedback,
+      duration_seconds: durationSeconds,
+      tab_switches: tabSwitches,
+    }),
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch (_) { json = { raw: text }; }
+  if (!res.ok) throw new Error(`vercelSaveFinal ${res.status}: ${text.slice(0, 200)}`);
+  console.log(`[relay] Vercel final save OK — session ${context.session_id}`, json);
+  return json;
+}
+
 // Incremental save after each voice Q&A — survives crashes mid-interview.
 export async function directSavePartialTurn(context, turn) {
   const cfg = getSupabaseConfig(context);

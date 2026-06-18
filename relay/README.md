@@ -48,6 +48,7 @@ http://localhost:8080/health
 3. Environment variables:
    - `GEMINI_API_KEY` = your Google AI Studio key
    - `ALLOWED_ORIGINS` = `https://talent-acquisition-six.vercel.app`
+   - `PORTAL_BASE_URL` = `https://talent-acquisition-six.vercel.app`  ← **required for DB save**
    - `PORT` = `8080` (Railway sets automatically)
 4. After deploy, copy public URL e.g. `https://talent-relay-production.up.railway.app`
 5. n8n CFG:
@@ -55,6 +56,9 @@ http://localhost:8080/health
 ```
 live_relay_url = wss://talent-relay-production.up.railway.app/live
 ```
+
+> **Save flow:** Relay → POST `https://talent-acquisition-six.vercel.app/api/live-speech-save` → Supabase.
+> No ngrok, no n8n needed for DB save. Vercel env vars `SUPABASE_URL` + `SUPABASE_KEY` must be set.
 
 Railway gives HTTPS — use **`wss://`** not `ws://`.
 
@@ -88,7 +92,8 @@ live_relay_url = wss://YOUR-ID.ngrok-free.app/live
 | `ALLOWED_ORIGINS` | No | Comma-separated CORS origins (`*` = all) |
 | `GEMINI_LIVE_MODEL` | No | Default `gemini-2.0-flash-live-001` |
 | `GEMINI_SCORE_MODEL` | No | Post-session scoring, default `gemini-2.0-flash` |
-| `LIVE_COMPLETE_WEBHOOK` | No | Fallback n8n complete URL if context omits it |
+| `PORTAL_BASE_URL` | **Yes** | Vercel URL e.g. `https://talent-acquisition-six.vercel.app` — relay posts saves here |
+| `LIVE_COMPLETE_WEBHOOK` | No | n8n webhook URL for email notifications (DB save works without this) |
 
 ## Flow
 

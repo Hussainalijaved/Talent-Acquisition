@@ -10,6 +10,8 @@ import {
   postPartialTurnWebhook,
   scoreLiveTurns,
   scoreSingleTurn,
+  vercelSaveTurn,
+  vercelSaveFinal,
 } from './lib/score-turns.mjs';
 
 const PORT = Number(process.env.PORT || 8080);
@@ -152,40 +154,33 @@ wss.on('connection', (clientWs) => {
           onTurnSaved: async (turnPair) => {
             let saved = false;
             let saveError = '';
+            let scoredTurn = { ...turnPair, score: null };
+
+            // Score the turn (with timeout so next question is never delayed too long).
             try {
-              // Cap scoring time so the next question is never delayed too long.
-              const scored = await Promise.race([
-                scoreSingleTurn({
-                  apiKey: GEMINI_API_KEY,
-                  context,
-                  turn: turnPair,
-                }),
+              scoredTurn = await Promise.race([
+                scoreSingleTurn({ apiKey: GEMINI_API_KEY, context, turn: turnPair }),
                 new Promise((_, reject) =>
                   setTimeout(() => reject(new Error('single_score_timeout')), 12000)
                 ),
               ]);
-              // PRIMARY: direct Supabase incremental save (survives crashes).
-              await directSavePartialTurn(context, scored);
+            } catch (scoreErr) {
+              console.warn('[relay] scoring skipped (timeout/error):', scoreErr.message);
+            }
+
+            // PRIMARY: Vercel API (always publicly reachable from Railway).
+            try {
+              await vercelSaveTurn(context, scoredTurn);
               saved = true;
-              // SECONDARY: n8n webhook for notifications (optional).
-              postPartialTurnWebhook(context, {
-                session_id: context.session_id,
-                email: context.candidate_email,
-                turns: [scored],
-              }).catch((err) => console.warn('[relay] partial n8n webhook:', err.message));
-            } catch (err) {
-              console.warn('[relay] partial turn save (scored) failed:', err.message);
-              // Scoring failed — still persist transcript unscored so answer is never lost.
+            } catch (vercelErr) {
+              console.warn('[relay] Vercel save failed, trying direct Supabase:', vercelErr.message);
+              // FALLBACK: direct Supabase REST (needs supabase_url + supabase_key in context).
               try {
-                await directSavePartialTurn(context, {
-                  ...turnPair,
-                  score: null,
-                  feedback: 'Saved without scoring (will be re-scored at the end).',
-                });
+                await directSavePartialTurn(context, scoredTurn);
                 saved = true;
-              } catch (err2) {
-                saveError = err2.message || 'partial_save_failed';
-                console.error('[relay] partial turn save failed:', saveError);
+              } catch (dbErr) {
+                saveError = dbErr.message || 'partial_save_failed';
+                console.error('[relay] ALL partial saves failed:', saveError);
               }
             }
             sendJson(clientWs, {
@@ -265,47 +260,52 @@ wss.on('connection', (clientWs) => {
         }
         webhookFired = true;
 
-        // ── PRIMARY: Direct Supabase save (no n8n dependency) ─────────────────
-        let directResult = { ok: false };
+        // ── PRIMARY: Vercel API save (always reachable from Railway) ──────────
+        let finalResult = { ok: false };
         try {
-          directResult = await directSaveToSupabase(context, scored.turns, {
+          finalResult = await vercelSaveFinal(context, scored.turns, {
             combinedSpeechScore: scored.combined_speech_score,
             finalFeedback:       scored.final_feedback,
             durationSeconds,
+            tabSwitches:         Number(msg.tab_switches || 0),
           });
-          console.log('[relay] direct Supabase save OK:', directResult);
-        } catch (dbErr) {
-          console.error('[relay] direct Supabase save FAILED:', dbErr.message);
-          directResult = { ok: false, error: dbErr.message };
+        } catch (vercelErr) {
+          console.warn('[relay] Vercel final save failed, trying direct Supabase:', vercelErr.message);
+          // ── FALLBACK: direct Supabase ───────────────────────────────────────
+          try {
+            finalResult = await directSaveToSupabase(context, scored.turns, {
+              combinedSpeechScore: scored.combined_speech_score,
+              finalFeedback:       scored.final_feedback,
+              durationSeconds,
+            });
+          } catch (dbErr) {
+            console.error('[relay] ALL final saves FAILED:', dbErr.message);
+            finalResult = { ok: false, error: dbErr.message };
+          }
         }
 
         // ── SECONDARY: n8n webhook (email / notifications only) ───────────────
         const completePayload = {
-          session_id:           context.session_id,
-          email:                context.candidate_email || msg.email,
-          turns:                scored.turns,
+          session_id:            context.session_id,
+          email:                 context.candidate_email || msg.email,
+          turns:                 scored.turns,
           combined_speech_score: scored.combined_speech_score,
-          duration_seconds:     durationSeconds,
-          final_feedback:       scored.final_feedback,
-          tab_switches:         Number(msg.tab_switches || 0),
+          duration_seconds:      durationSeconds,
+          final_feedback:        scored.final_feedback,
+          tab_switches:          Number(msg.tab_switches || 0),
         };
-        let webhookResult = { ok: false, skipped: true };
-        try {
-          webhookResult = await postCompleteWebhook(context, completePayload);
-        } catch (whErr) {
-          console.warn('[relay] n8n webhook (secondary):', whErr.message);
-          webhookResult = { ok: false, error: whErr.message };
-        }
+        postCompleteWebhook(context, completePayload).catch((whErr) => {
+          console.warn('[relay] n8n webhook (secondary/optional):', whErr.message);
+        });
 
         sendJson(clientWs, {
-          type:                 'session.complete',
-          ok:                   directResult.ok,
-          saved_to_db:          directResult.ok,
-          turns:                scored.turns.length,
+          type:                  'session.complete',
+          ok:                    finalResult.ok,
+          saved_to_db:           finalResult.ok,
+          turns:                 scored.turns.length,
           combined_speech_score: scored.combined_speech_score,
-          final_feedback:       scored.final_feedback,
-          db:                   directResult,
-          n8n:                  webhookResult.body || null,
+          final_feedback:        scored.final_feedback,
+          save:                  finalResult,
         });
         clientWs.close();
         return;
@@ -335,31 +335,23 @@ wss.on('connection', (clientWs) => {
     const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
     const fallbackTurns = rawTurns.map((t) => ({
       ...t,
-      score: t.score ?? 0,
+      score: t.score ?? null,
       feedback: t.feedback || 'Saved on disconnect.',
     }));
 
-    // Direct Supabase (primary, reliable)
-    directSaveToSupabase(context, fallbackTurns, {
+    // Primary: Vercel API (always reachable).
+    vercelSaveFinal(context, fallbackTurns, {
       combinedSpeechScore: 0,
       finalFeedback: 'Interview ended unexpectedly (connection lost). Answers captured.',
       durationSeconds,
-    }).catch((err) => {
-      console.error('[relay] disconnect direct Supabase save failed:', err.message);
-    });
-
-    // n8n webhook (secondary, for notifications)
-    const fallbackPayload = {
-      session_id:           context.session_id,
-      email:                context.candidate_email,
-      turns:                fallbackTurns,
-      combined_speech_score: 0,
-      duration_seconds:     durationSeconds,
-      final_feedback:       'Interview ended unexpectedly. Answers saved directly.',
-      tab_switches:         0,
-    };
-    postCompleteWebhook(context, fallbackPayload).catch((err) => {
-      console.warn('[relay] disconnect n8n webhook (secondary) failed:', err.message);
+    }).catch((vercelErr) => {
+      console.warn('[relay] disconnect Vercel save failed, trying direct:', vercelErr.message);
+      // Fallback: direct Supabase.
+      directSaveToSupabase(context, fallbackTurns, {
+        combinedSpeechScore: 0,
+        finalFeedback: 'Interview ended unexpectedly (connection lost). Answers captured.',
+        durationSeconds,
+      }).catch((dbErr) => console.error('[relay] disconnect all saves failed:', dbErr.message));
     });
   });
 });

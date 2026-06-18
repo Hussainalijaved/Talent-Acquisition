@@ -112,11 +112,17 @@ wss.on('connection', (clientWs) => {
             let saved = false;
             let saveError = '';
             try {
-              const scored = await scoreSingleTurn({
-                apiKey: GEMINI_API_KEY,
-                context,
-                turn: turnPair,
-              });
+              // Cap scoring time so the next question is never delayed too long.
+              const scored = await Promise.race([
+                scoreSingleTurn({
+                  apiKey: GEMINI_API_KEY,
+                  context,
+                  turn: turnPair,
+                }),
+                new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error('single_score_timeout')), 12000)
+                ),
+              ]);
               // PRIMARY: direct Supabase incremental save (survives crashes).
               await directSavePartialTurn(context, scored);
               saved = true;
@@ -181,9 +187,12 @@ wss.on('connection', (clientWs) => {
         const rawTurns = bridge.buildTurnPairs();
         const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
 
-        // ── Score ──────────────────────────────────────────────────────────────
+        // Each turn was already scored + saved individually during the interview
+        // (onTurnSaved → directSavePartialTurn). Try a final combined re-score only
+        // to fill any gaps, but NEVER let a timeout zero-out existing scores:
+        // on failure we pass score:null so the saved per-turn scores are preserved.
         let scored = {
-          turns: rawTurns.map((t) => ({ ...t, score: 0, feedback: '' })),
+          turns: rawTurns.map((t) => ({ ...t, score: null })),
           combined_speech_score: 0,
           final_feedback: 'Voice interview completed.',
         };
@@ -191,15 +200,15 @@ wss.on('connection', (clientWs) => {
           scored = await Promise.race([
             scoreLiveTurns({ apiKey: GEMINI_API_KEY, context, turns: rawTurns }),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('score_timeout')), 45000)
+              setTimeout(() => reject(new Error('score_timeout')), 20000)
             ),
           ]);
         } catch (scoreErr) {
-          console.warn('[relay] scoring fallback:', scoreErr.message);
+          console.warn('[relay] final re-score skipped (per-turn scores kept):', scoreErr.message);
           scored = {
-            turns: rawTurns.map((t) => ({ ...t, score: 0, feedback: 'Scored on next run (timeout).' })),
+            turns: rawTurns.map((t) => ({ ...t, score: null })),
             combined_speech_score: 0,
-            final_feedback: 'Voice interview completed. Scoring timed out — will retry.',
+            final_feedback: 'Voice interview completed.',
           };
         }
 

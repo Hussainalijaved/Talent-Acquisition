@@ -126,7 +126,31 @@ export class GeminiLiveBridge {
       return;
     }
 
-    if (this.interviewEnded) return;
+    // After the final answer we still want the closing thank-you to stream
+    // (audio + caption). Forward model output, but stop capturing new turns.
+    if (this.interviewEnded) {
+      const closingServer = msg.serverContent;
+      if (!closingServer) return;
+      if (closingServer.outputTranscription?.text) {
+        this.modelBuf += closingServer.outputTranscription.text;
+        const closingText = sanitizeTranscript(this.modelBuf, 'model');
+        if (closingText) {
+          this.onEvent({ type: 'transcript', speaker: 'model', text: closingText, partial: true, closing: true });
+        }
+      }
+      const closingParts = closingServer.modelTurn?.parts || [];
+      for (const part of closingParts) {
+        const inline = part.inlineData || part.inline_data;
+        if (inline?.data) {
+          this.onEvent({
+            type: 'output_audio',
+            data: inline.data,
+            mimeType: inline.mimeType || inline.mime_type || 'audio/pcm;rate=24000',
+          });
+        }
+      }
+      return;
+    }
 
     if (msg.inputTranscription?.text) {
       this.userBuf += msg.inputTranscription.text;
@@ -220,10 +244,12 @@ export class GeminiLiveBridge {
     }, 1500);
   }
 
-  completeAnswerTurn() {
+  async completeAnswerTurn() {
     if (!this.awaitingAnswer) return;
     this.awaitingAnswer = false;
-    this.blockModelOutput = false;
+    // Keep model output blocked until this turn is saved AND the next prompt is sent,
+    // so the interviewer never speaks the next question before the current one is saved.
+    this.blockModelOutput = true;
     if (this.answerTimer) {
       clearTimeout(this.answerTimer);
       this.answerTimer = null;
@@ -236,7 +262,6 @@ export class GeminiLiveBridge {
 
     this.answers.push(userText);
     const aNum = this.answers.length;
-    const qNum = aNum;
     const turnPair = {
       phase: this.maxQuestions + aNum,
       voice_question_number: aNum,
@@ -246,6 +271,7 @@ export class GeminiLiveBridge {
       received_at: new Date().toISOString(),
     };
 
+    // 1. Show the answer on the frontend immediately (instant UX).
     this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
     this.onEvent({ type: 'answer', number: aNum, text: userText });
     this.onEvent({
@@ -254,22 +280,28 @@ export class GeminiLiveBridge {
       maxTurns: this.maxTurns,
       answersGiven: aNum,
     });
-    this.onEvent({ type: 'answer_saved', number: aNum });
 
-    this.onTurnSaved(turnPair).catch((err) => {
+    // 2. Score + save THIS turn to the DB before asking the next question.
+    this.onEvent({ type: 'saving_turn', number: aNum });
+    try {
+      await this.onTurnSaved(turnPair);
+    } catch (err) {
       console.warn('[relay] incremental turn save failed:', err.message);
-    });
+    }
 
     this.roundQuestionEmitted = false;
 
+    // 3. Last question? Close the interview with a thank-you message.
     if (aNum >= this.maxTurns) {
       this.finishInterview();
       return;
     }
 
+    // 4. Now (and only now) ask the next question.
     const nextQ = aNum + 1;
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];
+    this.blockModelOutput = false;
     this.sendClientText(
       `The candidate finished answering question ${aNum}. Now ask interview question ${nextQ} of ${this.maxTurns} in clear English. Ask exactly one question, then stop talking and wait for the candidate.`,
       true
@@ -313,9 +345,13 @@ export class GeminiLiveBridge {
   finishInterview() {
     if (this.interviewEnded) return;
     this.interviewEnded = true;
+    // Unblock so the closing thank-you message is actually spoken + transcribed.
+    this.blockModelOutput = false;
+    this.allowModelAudio = true;
+    this.pendingAudioChunks = [];
     this.onEvent({ type: 'interview_complete', turn: this.maxTurns, maxTurns: this.maxTurns });
     this.sendClientText(
-      'The candidate has answered all interview questions. Thank them warmly in one short sentence and say the voice interview is complete. Do not ask any more questions.',
+      'The candidate has now answered all 5 interview questions. In one warm, short sentence, thank the candidate by saying something like "Thank you for your time — that completes the voice interview." Do not ask any more questions and do not say anything after the thank-you.',
       true
     );
     setTimeout(() => this.closeGemini(), 8000);

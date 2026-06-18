@@ -206,6 +206,10 @@
       if (msg.type === 'answer') {
         this.onAnswer({ number: msg.number, text: msg.text });
       }
+      if (msg.type === 'saving_turn') {
+        this.processingAnswer = true;
+        this.setStatus(`Answer ${msg.number} captured — saving and scoring…`);
+      }
       if (msg.type === 'answer_saved') {
         this.processingAnswer = true;
         this.setStatus(`Answer ${msg.number} captured — the interviewer will ask the next question…`);
@@ -235,18 +239,23 @@
       }
       if (msg.type === 'interview_complete') {
         this.stopMic();
-        this.setStatus(`All ${msg.maxTurns || 5} questions complete — submitting your results…`);
+        // Allow the closing thank-you audio to play (no longer "processing" a save).
+        this.processingAnswer = false;
+        this.interviewEnded = true;
+        this.setStatus(`All ${msg.maxTurns || 5} questions complete — the interviewer is wrapping up…`);
         this.onInterviewComplete(msg);
         if (!this.autoEndTimer) {
+          // Wait long enough for the spoken thank-you to finish before submitting.
           this.autoEndTimer = setTimeout(() => {
             if (!this.ended) {
+              this.setStatus('Submitting your results…');
               this.end()
                 .then((result) => {
                   if (result) this.onComplete(result);
                 })
                 .catch((e) => this.onError(e));
             }
-          }, 5000);
+          }, 9000);
         }
       }
       if (msg.type === 'interviewer_started') {

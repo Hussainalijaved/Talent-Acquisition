@@ -184,27 +184,34 @@ A: ${t.answer_text}`
 
   const scoredByPhase = new Map((parsed.turns || []).map((t) => [Number(t.phase), t]));
   const merged = turns.map((t) => {
-    const s = scoredByPhase.get(Number(t.phase)) || {};
+    const s = scoredByPhase.get(Number(t.phase));
+    // No score for this turn in the model output → return null so the merge keeps
+    // whatever score was already saved per-question (never overwrite with 0).
+    if (!s || s.score == null || !Number.isFinite(Number(s.score))) {
+      return { ...t, score: null };
+    }
     return {
       ...t,
-      score: Math.round(Number(s.score ?? 0)),
-      clarity: Math.round(Number(s.clarity ?? s.score ?? 0)),
-      confidence: Math.round(Number(s.confidence ?? s.score ?? 0)),
-      professionalism: Math.round(Number(s.professionalism ?? s.score ?? 0)),
-      relevance: Math.round(Number(s.relevance ?? s.score ?? 0)),
+      score: Math.round(Number(s.score)),
+      clarity: Math.round(Number(s.clarity ?? s.score)),
+      confidence: Math.round(Number(s.confidence ?? s.score)),
+      professionalism: Math.round(Number(s.professionalism ?? s.score)),
+      relevance: Math.round(Number(s.relevance ?? s.score)),
       feedback: String(s.feedback || '').trim(),
       soft_skills: {
-        clarity: Math.round(Number(s.clarity ?? s.score ?? 0)),
-        confidence: Math.round(Number(s.confidence ?? s.score ?? 0)),
-        professionalism: Math.round(Number(s.professionalism ?? s.score ?? 0)),
-        relevance: Math.round(Number(s.relevance ?? s.score ?? 0)),
+        clarity: Math.round(Number(s.clarity ?? s.score)),
+        confidence: Math.round(Number(s.confidence ?? s.score)),
+        professionalism: Math.round(Number(s.professionalism ?? s.score)),
+        relevance: Math.round(Number(s.relevance ?? s.score)),
       },
       scoring_source: 'gemini_live_relay',
       stt_source: 'gemini_live',
     };
   });
 
-  const scores = merged.map((t) => Number(t.score)).filter((n) => Number.isFinite(n));
+  const scores = merged
+    .filter((t) => t.score != null && Number.isFinite(Number(t.score)))
+    .map((t) => Number(t.score));
   const combined =
     parsed.combined_speech_score != null && Number.isFinite(Number(parsed.combined_speech_score))
       ? Math.round(Number(parsed.combined_speech_score))
@@ -286,27 +293,45 @@ function mergeTurnsIntoHistory(history, turns, maxQ, iso = new Date().toISOStrin
   for (const turn of turns) {
     const ph = Number(turn.phase);
     if (!Number.isFinite(ph) || ph <= maxQ) continue;
+
+    const idx = merged.findIndex((x) => Number(x.phase) === ph);
+    const existing = idx >= 0 ? merged[idx] : {};
+
+    // Only treat the incoming score as valid when it is a real finite number.
+    // A null/undefined score means "not scored this pass" — in that case we MUST
+    // preserve any score already saved for this turn (e.g. from the per-question
+    // incremental save), never overwrite it with 0.
+    const hasNewScore = turn.score != null && Number.isFinite(Number(turn.score));
+    const score = hasNewScore
+      ? Math.max(0, Math.min(100, Math.round(Number(turn.score))))
+      : (existing.score ?? null);
+
+    const softSkills = turn.soft_skills
+      || (hasNewScore
+        ? {
+            clarity: Math.round(Number(turn.clarity ?? turn.score ?? 0)),
+            confidence: Math.round(Number(turn.confidence ?? turn.score ?? 0)),
+            professionalism: Math.round(Number(turn.professionalism ?? turn.score ?? 0)),
+            relevance: Math.round(Number(turn.relevance ?? turn.score ?? 0)),
+          }
+        : (existing.soft_skills ?? null));
+
     const patch = {
       phase: ph,
       mode: 'live_speech',
-      voice_question_number: Number(turn.voice_question_number || ph - maxQ) || null,
-      question_text: String(turn.question_text || '').trim(),
-      answer_text: String(turn.answer_text || '').trim(),
-      received_at: turn.received_at || iso,
-      sent_at: turn.sent_at || iso,
-      feedback: turn.feedback || null,
-      score: Math.max(0, Math.min(100, Math.round(Number(turn.score ?? 0)))),
-      soft_skills: turn.soft_skills || {
-        clarity: Math.round(Number(turn.clarity ?? turn.score ?? 0)),
-        confidence: Math.round(Number(turn.confidence ?? turn.score ?? 0)),
-        professionalism: Math.round(Number(turn.professionalism ?? turn.score ?? 0)),
-        relevance: Math.round(Number(turn.relevance ?? turn.score ?? 0)),
-      },
+      voice_question_number:
+        Number(turn.voice_question_number || ph - maxQ) || existing.voice_question_number || null,
+      question_text: String(turn.question_text || existing.question_text || '').trim(),
+      answer_text: String(turn.answer_text || existing.answer_text || '').trim(),
+      received_at: turn.received_at || existing.received_at || iso,
+      sent_at: turn.sent_at || existing.sent_at || iso,
+      feedback: turn.feedback || existing.feedback || null,
+      score,
+      soft_skills: softSkills,
       stt_source: 'gemini_live',
       scoring_source: 'gemini_live_relay',
     };
-    const idx = merged.findIndex((x) => Number(x.phase) === ph);
-    if (idx >= 0) merged[idx] = { ...merged[idx], ...patch };
+    if (idx >= 0) merged[idx] = { ...existing, ...patch };
     else merged.push(patch);
   }
   return merged;
@@ -355,11 +380,13 @@ export async function directSaveToSupabase(context, scoredTurns, {
   const iso = new Date().toISOString();
   const history = mergeTurnsIntoHistory(parseHistory(session.interview_history), scoredTurns, cfg.maxQ, iso);
 
-  // Compute final scores.
+  // Compute final scores. Read speech scores from the MERGED history (which already
+  // contains every per-question incremental save), so a timed-out final re-score
+  // can never wipe scores that were saved during the interview.
   const techAvg = Number(session.technical_score) || 0;
-  const speechScores = scoredTurns
-    .map((t) => Number(t.score))
-    .filter((n) => Number.isFinite(n) && n >= 0);
+  const speechScores = history
+    .filter((h) => Number(h.phase) > cfg.maxQ && h.score != null && Number.isFinite(Number(h.score)))
+    .map((h) => Number(h.score));
   const speechAvg = speechScores.length
     ? Math.round(speechScores.reduce((a, b) => a + b, 0) / speechScores.length)
     : (combinedSpeechScore || 0);

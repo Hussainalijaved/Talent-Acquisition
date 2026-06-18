@@ -105,21 +105,74 @@ function buildDeadline(isoStart, seconds) {
     return new Date(new Date(isoStart).getTime() + seconds * 1000).toISOString();
 }
 
+function detectSeniorityFromTitle(title) {
+    const t = String(title || '').toLowerCase();
+    if (/\b(intern|trainee|graduate|entry[\s-]?level|fresher|bootcamp)\b/.test(t)) return 'junior';
+    if (/\b(junior|jr\.?)\b/.test(t)) return 'junior';
+    if (/\b(associate)\b/.test(t)) return 'mid';
+    if (/\b(senior|sr\.?|lead|principal|staff|architect|head|manager|director)\b/.test(t)) return 'senior';
+    return 'mid';
+}
+
+function inferYearsFromText(text) {
+    const matches = [...String(text || '').matchAll(/(\d+)\+?\s*(?:years?|yrs?)(?:\s+of)?\s*(?:experience|exp)?/gi)];
+    let max = 0;
+    for (const m of matches) {
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n > max) max = n;
+    }
+    return max;
+}
+
+function yearsToTier(years) {
+    if (!Number.isFinite(years) || years <= 0) return null;
+    if (years <= 2) return 'junior';
+    if (years <= 5) return 'mid';
+    return 'senior';
+}
+
+function tierRank(tier) {
+    if (tier === 'junior') return 1;
+    if (tier === 'senior') return 3;
+    return 2;
+}
+
+function resolveTargetTier(jdTitle, jdReq) {
+    const roleTier = detectSeniorityFromTitle(jdTitle);
+    const jdYears = Math.max(inferYearsFromText(jdTitle), inferYearsFromText(jdReq));
+    const jdTier = yearsToTier(jdYears);
+    let targetTier = roleTier;
+    if (jdTier && tierRank(jdTier) > tierRank(targetTier)) targetTier = jdTier;
+    return targetTier;
+}
+
 async function generatePhase1Question(groqKey, { jdTitle, jdReq, cvContext, screeningSummary }) {
+    const targetTier = resolveTargetTier(jdTitle, jdReq);
+    const tierNote =
+        targetTier === 'senior'
+            ? 'Senior-level: trade-offs, production nuance, or deep reasoning — not system design or coding.'
+            : targetTier === 'junior'
+              ? 'Junior-level: clear fundamentals, simple comparisons, or why a core idea matters.'
+              : 'Mid-level: trade-offs, reasoning, or realistic troubleshooting without code.';
+
     const systemText = [
         'You are a senior technical interviewer for a written assessment.',
-        'Generate exactly one Phase 1 conceptual/logic question for this role.',
-        'Ask comparative or "why" questions grounded in the job stack (e.g. JWT vs session auth, auth vs authorization, why REST is stateless, DI purpose).',
+        `Generate exactly one Phase 1 conceptual/logic question for a ${targetTier}-level role (${jdTitle}).`,
+        tierNote,
+        'Ask comparative or "why" questions grounded in the job stack.',
+        'Pick topics matching BOTH JD and candidate background (never quote CV/company names).',
         'Answers may exist online — test reasoning, not obscure trivia.',
-        'FORBIDDEN: coding tasks, system design exercises, step-by-step implementation, quoting CV/company names.',
+        'FORBIDDEN: coding tasks, system design exercises, step-by-step implementation.',
         'Output JSON only:',
         '- phase_1_question: string',
         '- phase_1_time_limit_seconds: number (90-600)',
         '- phase_1_complexity_tier: A | B | C | D',
+        '- assessment_level: "junior" | "mid" | "senior"',
     ].join('\n');
 
     const userText = [
         `Job title: ${jdTitle}`,
+        `Target level: ${targetTier}`,
         `Requirements: ${jdReq}`,
         screeningSummary ? `Screening summary: ${screeningSummary}` : '',
         cvContext ? `Candidate background:\n${cvContext}` : '',

@@ -87,21 +87,68 @@ function extractJdThemes(text) {
   return lines.length ? [...new Set(lines)].slice(0, 10) : [String(text).slice(0, 500)];
 }
 
-function inferExperienceTier(cvText) {
-  const cv = String(cvText || '');
-  const yearMatches = [...cv.matchAll(/(\d+)\+?\s*(?:years?|yrs?)(?:\s+of)?\s*(?:experience|exp)?/gi)];
-  let maxYears = 0;
-  for (const m of yearMatches) {
+function inferYearsFromText(text) {
+  const matches = [...String(text || '').matchAll(/(\d+)\+?\s*(?:years?|yrs?)(?:\s+of)?\s*(?:experience|exp)?/gi)];
+  let max = 0;
+  for (const m of matches) {
     const n = Number(m[1]);
-    if (Number.isFinite(n) && n > maxYears) maxYears = n;
+    if (Number.isFinite(n) && n > max) max = n;
   }
-  if (/\b(senior|lead|principal|architect|staff|head of|engineering manager)\b/i.test(cv) || maxYears >= 6) {
-    return 'senior';
-  }
-  if (/\b(junior|intern|trainee|graduate|entry[- ]?level|fresher|bootcamp)\b/i.test(cv) || maxYears <= 2) {
-    return 'junior';
-  }
+  return max;
+}
+
+function detectSeniorityFromTitle(title) {
+  const t = String(title || '').toLowerCase();
+  if (/\b(intern|trainee|graduate|entry[\s-]?level|fresher|bootcamp)\b/.test(t)) return 'junior';
+  if (/\b(junior|jr\.?)\b/.test(t)) return 'junior';
+  if (/\b(associate)\b/.test(t)) return 'mid';
+  if (/\b(senior|sr\.?|lead|principal|staff|architect|head|manager|director)\b/.test(t)) return 'senior';
   return 'mid';
+}
+
+function yearsToTier(years) {
+  if (!Number.isFinite(years) || years <= 0) return null;
+  if (years <= 2) return 'junior';
+  if (years <= 5) return 'mid';
+  return 'senior';
+}
+
+function tierRank(tier) {
+  if (tier === 'junior') return 1;
+  if (tier === 'senior') return 3;
+  return 2;
+}
+
+function inferCandidateTier(cvText) {
+  const cv = String(cvText || '');
+  const years = inferYearsFromText(cv);
+  const cvTitleTier = detectSeniorityFromTitle(cv);
+  const yearTier = yearsToTier(years);
+  let tier = cvTitleTier;
+  if (yearTier && tierRank(yearTier) > tierRank(tier)) tier = yearTier;
+  if (/\b(senior|lead|principal|architect|staff)\b/i.test(cv) && tierRank(tier) < 3) tier = 'senior';
+  if (/\b(intern|trainee|fresher|bootcamp)\b/i.test(cv) && tierRank(tier) > 1) tier = 'junior';
+  return tier;
+}
+
+function resolveTargetTier(jdTitle, jdReq, cvText) {
+  const roleTier = detectSeniorityFromTitle(jdTitle);
+  const jdYears = Math.max(inferYearsFromText(jdTitle), inferYearsFromText(jdReq));
+  const jdTier = yearsToTier(jdYears);
+  let targetTier = roleTier;
+  if (jdTier && tierRank(jdTier) > tierRank(targetTier)) targetTier = jdTier;
+  return {
+    targetTier,
+    roleTier,
+    jdYears,
+    candidateTier: inferCandidateTier(cvText),
+  };
+}
+
+function tierLabel(tier) {
+  if (tier === 'junior') return 'Junior / entry-level';
+  if (tier === 'senior') return 'Senior / lead';
+  return 'Mid-level';
 }
 
 function stackHints(jdReq) {
@@ -118,21 +165,84 @@ function stackHints(jdReq) {
   return 'REST APIs, HTTP, auth, databases, backend fundamentals';
 }
 
-function phaseBlueprint(phaseNum, tier, jdReq) {
+function phaseBlueprint(phaseNum, targetTier, jdReq) {
   const stack = stackHints(jdReq);
-  const depth =
-    tier === 'senior' ? 'advanced trade-offs and edge cases' : tier === 'junior' ? 'clear fundamentals' : 'solid mid-level reasoning';
   const lanes = {
-    2: `Comparative concept from ${stack} — "what is the difference between X and Y?" or "when would you choose X over Y?" (${depth}).`,
-    3: `Why / how-it-works — explain the reasoning behind a core idea in ${stack} (e.g. stateless REST, token auth, ORM behavior) (${depth}).`,
-    4: `Failure or symptom reasoning — given a realistic symptom, explain likely causes and your diagnostic thinking — no code, no architecture design (${depth}).`,
-    5: `Judgment — one conceptual scenario requiring a reasoned choice between options with justification; tie to ${stack} (${depth}).`,
+    junior: {
+      2: `Fundamentals — one clear comparison from ${stack} (definitions + when to use each).`,
+      3: `Why it matters — explain one core concept from ${stack} in plain language.`,
+      4: `Light scenario — straightforward symptom in ${stack}; name 2–3 likely causes and how you would check.`,
+      5: `Simple judgment — pick between two reasonable options for ${stack} and justify briefly.`,
+    },
+    mid: {
+      2: `Trade-offs — compare two approaches in ${stack}; when would you choose each?`,
+      3: `Mechanism — explain how/why something works in ${stack}, not just what it is.`,
+      4: `Troubleshooting — realistic symptom in ${stack}; diagnostic reasoning, no code.`,
+      5: `Decision — conceptual scenario with constraints; reasoned choice tied to ${stack}.`,
+    },
+    senior: {
+      2: `Advanced trade-offs — nuanced comparison in ${stack} including failure modes or operational impact.`,
+      3: `Deep mechanism — inner behavior, pitfalls, or production consequences in ${stack}.`,
+      4: `Production incident — ambiguous symptom (load, deploy, intermittent) in ${stack}; prioritized hypotheses.`,
+      5: `Strategic judgment — multi-constraint decision for ${stack}; articulate risks of each path.`,
+    },
   };
-  return lanes[phaseNum] || `Follow-up conceptual probe on ${stack} aligned to prior answers (${depth}).`;
+  const set = lanes[targetTier] || lanes.mid;
+  return set[phaseNum] || `Follow-up conceptual probe on ${stack} at ${tierLabel(targetTier)} depth.`;
+}
+
+function tierCalibrationBlock(cal) {
+  const { targetTier, roleTier, jdYears, candidateTier } = cal;
+  const timing =
+    targetTier === 'junior'
+      ? 'Prefer complexity_tier A–B and 90–180s for most questions.'
+      : targetTier === 'senior'
+        ? 'Prefer complexity_tier C–D and 180–480s when depth warrants it.'
+        : 'Prefer complexity_tier B–C and 120–300s for most questions.';
+  return `ROLE CALIBRATION (critical — match the job being hired for):
+- Target interview level: ${tierLabel(targetTier)} — grade answers against THIS bar
+- Role title signals: ${tierLabel(roleTier)}${jdYears ? ` | JD experience hint: ~${jdYears} years` : ''}
+- Candidate CV signals (topic selection only, never quote CV): ${tierLabel(candidateTier)}
+- Ask questions for a ${tierLabel(targetTier)} hire — not easier because the CV looks junior
+- ${timing}
+- Pick topics in BOTH JD and CV; if the candidate scored 70+ on the current answer, make the next question slightly harder within the same tier`;
+}
+
+function tierExamplesBlock(targetTier, jdReq) {
+  const isDotNet = /\.net|asp\.net|c#/i.test(String(jdReq || ''));
+  if (targetTier === 'senior') {
+    return isDotNet
+      ? `GOOD senior examples:
+- "After a deploy, some users get intermittent 401s while tokens look valid — what would you investigate first and why?"
+- "When would you accept eventual consistency in a read-heavy API, and what user-visible risks must you handle?"
+- "EF Core N+1 appeared only under peak traffic — how do you diagnose without defaulting to caching?"`
+      : `GOOD senior examples:
+- "Intermittent 5xx on one pod after deploy — how do you narrow root cause before rollback?"
+- "When is JWT validation at the edge insufficient, and what additional controls would you expect?"`;
+  }
+  if (targetTier === 'junior') {
+    return isDotNet
+      ? `GOOD junior examples:
+- "What is the difference between authentication and authorization?"
+- "Why is dependency injection useful in ASP.NET Core?"
+- "What does a 404 status code mean versus a 500?"`
+      : `GOOD junior examples:
+- "What is the difference between authentication and authorization?"
+- "Why are REST APIs often stateless?"`;
+  }
+  return isDotNet
+    ? `GOOD mid-level examples:
+- "Cookie-based session auth vs JWT for an API — what are the main trade-offs?"
+- "Why might you use no-tracking queries in EF Core, and what trade-off are you accepting?"
+- "An endpoint returns 500 only under load — what causes would you consider first?"`
+    : `GOOD mid-level examples:
+- "Token-based auth vs server-side sessions — main trade-offs for a public API?"
+- "An API is slow only at peak traffic — what would you check first?"`;
 }
 
 const cvText = String(session.cv_plaintext || '').slice(0, 8000);
-const experienceTier = inferExperienceTier(cvText);
+const levelCal = resolveTargetTier(jdTitle, jdReq, cvText);
+const targetTier = levelCal.targetTier;
 const jdThemes = extractJdThemes(jdReq).join('\n- ');
 const historyText = history
   .map(
@@ -159,14 +269,10 @@ const nextPhaseNum = ph + 1;
 const questionRules = `ASSESSMENT QUESTION RULES (next_question and first_speech_question):
 Written technical assessment — conceptual and logic-based only. Sound like a real interviewer.
 
-Silent personalization (CV + JD internal only):
-- Experience level: ${experienceTier}
-- Role stack: ${stackHints(jdReq)}
-- Pick topics in BOTH JD and CV; do not repeat themes already asked
-- Calibrate depth to prior answers
+${tierCalibrationBlock(levelCal)}
 
 Phase focus for next_question (phase ${nextPhaseNum}):
-- ${phaseBlueprint(nextPhaseNum, experienceTier, jdReq)}
+- ${phaseBlueprint(nextPhaseNum, targetTier, jdReq)}
 
 Question style (REQUIRED):
 - Comparative: "What is the difference between X and Y?"
@@ -174,11 +280,9 @@ Question style (REQUIRED):
 - Conceptual scenarios: symptom → explain likely causes (reasoning only)
 - One clear question only — no multi-part lists
 - Answers may exist online — test understanding and explanation quality, not memorized CV stories
+- Difficulty must match ${tierLabel(targetTier)} expectations for ${jdTitle}
 
-GOOD examples:
-- "What is the difference between JWT-based authentication and server-side session cookies, and when would you prefer each?"
-- "Why are REST APIs typically stateless, and what problems does that solve?"
-- "What is the difference between authentication and authorization?"
+${tierExamplesBlock(targetTier, jdReq)}
 
 STRICTLY FORBIDDEN — never ask:
 - Coding: write code, implement, algorithms, syntax, debug this snippet
@@ -204,8 +308,10 @@ Final phase:
 - Score the answer, then decide PASS or FAIL for the technical round overall
 
 Scoring guidance:
+- Grade against ${tierLabel(targetTier)} expectations for ${jdTitle}
 - Do not repeat topics you already covered
-- Calibrate difficulty to experience level (${experienceTier}) and prior answers
+- If the answer is strong (75+), the next question should probe deeper within the same tier
+- If the answer is weak (<40), you may re-probe the same topic with a narrower angle — do not drop below role level
 - Empty, timeout, or [SYSTEM TERMINATION] answers: score 0-15
 
 ${questionRules}
@@ -298,6 +404,7 @@ return [
       isFinal,
       failThreshold,
       current_question_text: currentQuestionText,
+      assessment_level: targetTier,
     },
   },
 ];

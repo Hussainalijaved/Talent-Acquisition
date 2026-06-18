@@ -50,7 +50,30 @@ app.get('/health', (_req, res) => {
     ok: true,
     gemini_key: !!GEMINI_API_KEY,
     port: PORT,
+    version: '2.0-direct-supabase',
+    env_supabase_url: !!process.env.SUPABASE_URL,
+    env_live_webhook: String(process.env.LIVE_COMPLETE_WEBHOOK || '').slice(0, 60) || null,
   });
+});
+
+// Diagnostic endpoint — POST {supabase_url, supabase_key} to verify DB connectivity.
+app.post('/test-db', async (req, res) => {
+  const { supabase_url, supabase_key, table = 'assessment_sessions' } = req.body || {};
+  const url = String(supabase_url || process.env.SUPABASE_URL || '').trim();
+  const key = String(supabase_key || process.env.SUPABASE_KEY || '').trim();
+  if (!url || !key) {
+    return res.status(400).json({ ok: false, error: 'supabase_url and supabase_key required' });
+  }
+  try {
+    const r = await fetch(
+      `${url.replace(/\/+$/, '')}/rest/v1/${table}?select=id&limit=1`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+    );
+    const text = await r.text();
+    res.json({ ok: r.ok, status: r.status, body: text.slice(0, 200) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 const server = http.createServer(app);
@@ -97,12 +120,30 @@ wss.on('connection', (clientWs) => {
         const supabaseUrl = String(
           context.supabase_url || context.config?.supabase_url || ''
         ).trim();
-        if (!supabaseUrl) {
-          console.error('[relay] WARNING: supabase_url is EMPTY — voice turns will NOT be saved. Set supabase_url in CFG - Live Speech Config.');
+        const supabaseKey = String(
+          context.supabase_key || context.config?.supabase_key || ''
+        ).trim();
+        const webhookUrl = String(context.live_complete_webhook || process.env.LIVE_COMPLETE_WEBHOOK || '').trim();
+
+        // Diagnostic: tell the client exactly what credentials the relay received.
+        sendJson(clientWs, {
+          type: 'context_received',
+          session_id: context.session_id || null,
+          has_supabase_url: !!supabaseUrl,
+          has_supabase_key: !!supabaseKey,
+          supabase_url_preview: supabaseUrl ? supabaseUrl.slice(0, 40) + '…' : null,
+          has_n8n_webhook: !!webhookUrl,
+          n8n_webhook_preview: webhookUrl ? webhookUrl.slice(0, 60) + '…' : null,
+        });
+
+        if (!supabaseUrl || !supabaseKey) {
+          console.error('[relay] FATAL: supabase_url or supabase_key is EMPTY — voice turns CANNOT be saved to the database.');
+          console.error('[relay]   supabase_url present:', !!supabaseUrl);
+          console.error('[relay]   supabase_key present:', !!supabaseKey);
+          console.error('[relay]   Set supabase_url + supabase_key in CFG - Live Speech Config (start) in n8n.');
         } else {
           console.log('[relay] direct Supabase save configured:', supabaseUrl);
         }
-        const webhookUrl = String(context.live_complete_webhook || process.env.LIVE_COMPLETE_WEBHOOK || '').trim();
         if (webhookUrl) console.log('[relay] n8n webhook (secondary):', webhookUrl);
         bridge = new GeminiLiveBridge({
           apiKey: GEMINI_API_KEY,

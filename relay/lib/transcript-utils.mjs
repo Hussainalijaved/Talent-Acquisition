@@ -11,6 +11,19 @@ const INTERNAL_MODEL_PATTERNS = [
   /^internal/i,
 ];
 
+export function isEnglishTranscript(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  // Reject common non-Latin scripts (Arabic, Urdu, Hindi, Bengali, CJK, etc.)
+  if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(t)) {
+    return false;
+  }
+  const latin = (t.match(/[A-Za-z]/g) || []).length;
+  const letters = (t.match(/\p{L}/gu) || []).length;
+  if (letters === 0) return latin > 0;
+  return latin / letters >= 0.6;
+}
+
 export function sanitizeTranscript(text, role = 'model') {
   let t = String(text || '').trim();
   if (!t) return '';
@@ -25,6 +38,8 @@ export function sanitizeTranscript(text, role = 'model') {
 
   if (role === 'user') {
     if (/^(okay|ok|on|yes|no|hmm|uh|um)\.?$/i.test(t)) return '';
+    // Only accept English/Latin-script candidate speech in captions + saved answers.
+    if (!isEnglishTranscript(t)) return '';
   }
 
   return t;

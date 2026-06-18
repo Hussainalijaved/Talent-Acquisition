@@ -197,6 +197,7 @@
         });
       }
       if (msg.type === 'question_partial' && msg.text) {
+        this.processingAnswer = false;
         this.onQuestion({ number: msg.number, text: msg.text, partial: true });
       }
       if (msg.type === 'question') {
@@ -210,16 +211,19 @@
         this.processingAnswer = true;
         this.setStatus(`Answer ${msg.number} captured — saving and scoring…`);
       }
-      if (msg.type === 'answer_saved') {
-        this.processingAnswer = true;
-        this.setStatus(`Answer ${msg.number} captured — the interviewer will ask the next question…`);
+      if (msg.type === 'next_question_ready') {
+        // Save done — unblock interviewer audio for the next question.
+        this.processingAnswer = false;
+        this.setStatus(`Question ${msg.number} — the interviewer is speaking…`);
       }
       if (msg.type === 'turn_saved_status') {
         this.onTurn({ savedStatus: { number: msg.number, saved: !!msg.saved, error: msg.error } });
+        // Whether or not DB save succeeded, the relay is about to ask the next question.
+        this.processingAnswer = false;
         if (msg.saved) {
           this.setStatus(`Answer ${msg.number} saved — the interviewer will ask the next question…`);
         } else {
-          this.setStatus(`Answer ${msg.number} recorded — saving will be retried when the interview ends.`);
+          this.setStatus(`Answer ${msg.number} recorded — the interviewer will ask the next question…`);
         }
       }
       if (msg.type === 'awaiting_answer') {
@@ -229,7 +233,9 @@
         this.setStatus(`Question ${msg.number} — press “Answer” to reply (${this.context?.speech_answer_seconds || 120}s)`);
       }
       if (msg.type === 'output_audio' && msg.data) {
-        if (this.processingAnswer) return;
+        // Only block interviewer audio while the candidate's mic is open.
+        // Do NOT block during save — that was preventing Q2+ voice from playing.
+        if (this.answering) return;
         if (!this.answering) this.setStatus('Interviewer is speaking…');
         this.enqueuePlayback(msg.data, msg.mimeType || `audio/pcm;rate=${OUTPUT_RATE}`);
       }
@@ -258,8 +264,8 @@
           }, 9000);
         }
       }
-      if (msg.type === 'interviewer_started') {
-        this.setStatus('Interviewer is speaking…');
+      if (msg.type === 'non_english_detected') {
+        this.setStatus(msg.hint || 'Please answer in English only.');
       }
       if (msg.type === 'session.complete') {
         this.ended = true;

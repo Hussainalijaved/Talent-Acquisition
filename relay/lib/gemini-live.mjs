@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import { sanitizeTranscript } from './transcript-utils.mjs';
+import { isEnglishTranscript, sanitizeTranscript } from './transcript-utils.mjs';
 
 const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
@@ -21,6 +21,10 @@ function cleanUserAnswer(text) {
   const raw = String(text || '').trim();
   if (!raw) return '';
   const sanitized = sanitizeTranscript(raw, 'user');
+  if (sanitized) return sanitized;
+  if (raw.length > 3 && !isEnglishTranscript(raw)) {
+    return '[Non-English response — please answer in English]';
+  }
   return sanitized || raw;
 }
 
@@ -81,8 +85,8 @@ export class GeminiLiveBridge {
             realtimeInputConfig: {
               automaticActivityDetection: { disabled: true },
             },
-            inputAudioTranscription: {},
-            outputAudioTranscription: {},
+            inputAudioTranscription: { languageCodes: ['en-US'] },
+            outputAudioTranscription: { languageCodes: ['en-US'] },
           },
         };
         this.geminiWs.send(JSON.stringify(setup));
@@ -197,7 +201,13 @@ export class GeminiLiveBridge {
   emitUserPartialTranscript() {
     if (!this.userTurnActive && !this.awaitingAnswer) return;
     const clean = sanitizeTranscript(this.userBuf, 'user');
-    if (!clean) return;
+    if (!clean) {
+      const raw = String(this.userBuf || '').trim();
+      if (raw.length > 8 && !isEnglishTranscript(raw)) {
+        this.onEvent({ type: 'non_english_detected', hint: 'Please answer in English only.' });
+      }
+      return;
+    }
     this.onEvent({ type: 'transcript', speaker: 'user', text: clean, partial: true });
   }
 
@@ -297,8 +307,12 @@ export class GeminiLiveBridge {
       return;
     }
 
-    // 4. Now (and only now) ask the next question.
+    // 4. Tell the client save is done — interviewer audio may now play.
     const nextQ = aNum + 1;
+    this.onEvent({ type: 'next_question_ready', number: nextQ });
+
+    // 5. Now ask the next question.
+    this.modelBuf = '';
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];
     this.blockModelOutput = false;

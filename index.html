@@ -1369,6 +1369,12 @@
             const [savingAnswer, setSavingAnswer] = React.useState(false);
             const [ending, setEnding] = React.useState(false);
             const [interviewComplete, setInterviewComplete] = React.useState(false);
+            const answerTimeLimit = Number(context?.speech_answer_seconds || context?.config?.speech_answer_seconds || 120);
+            const [timeLeft, setTimeLeft] = React.useState(null);
+            const timerRef = React.useRef(null);
+
+            const currentQuestionNum = cards.length ? cards[cards.length - 1].number : 0;
+            const completedAnswers = cards.filter((c) => c && c.answer).length;
 
             const cleanText = React.useCallback((text, speaker) => (
                 window.TA_LIVE?.sanitizeDisplayTranscript
@@ -1419,11 +1425,12 @@
                             },
                             onQuestion: ({ number, text }) => {
                                 addQuestion(number, text);
+                                setSavingAnswer(false);
                             },
                             onAnswer: ({ number, text }) => {
                                 setAnswerForQuestion(number, text);
                                 setIsAnswering(false);
-                                setSavingAnswer(false);
+                                setSavingAnswer(true);
                                 setCanAnswer(false);
                             },
                             onAwaitingAnswer: () => {
@@ -1469,6 +1476,38 @@
                 cardsEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' });
             }, [cards, isAnswering, savingAnswer]);
 
+            React.useEffect(() => {
+                if (!isAnswering) {
+                    if (timerRef.current) {
+                        clearInterval(timerRef.current);
+                        timerRef.current = null;
+                    }
+                    setTimeLeft(null);
+                    return undefined;
+                }
+                setTimeLeft(answerTimeLimit);
+                timerRef.current = setInterval(() => {
+                    setTimeLeft((prev) => {
+                        if (prev == null || prev <= 1) {
+                            clearInterval(timerRef.current);
+                            timerRef.current = null;
+                            if (sessionRef.current && !savingAnswer && !ending) {
+                                sessionRef.current.submitAnswer?.();
+                                setIsAnswering(false);
+                                setCanAnswer(false);
+                                setSavingAnswer(true);
+                            }
+                            return 0;
+                        }
+                        return prev - 1;
+                    });
+                }, 1000);
+                return () => {
+                    if (timerRef.current) clearInterval(timerRef.current);
+                    timerRef.current = null;
+                };
+            }, [isAnswering, answerTimeLimit, savingAnswer, ending]);
+
             const handleAnswerToggle = () => {
                 if (interviewComplete || ending || isLoading || savingAnswer) return;
                 if (isAnswering) {
@@ -1513,8 +1552,11 @@
                             </div>
                             <div className="rounded-lg border border-surface-border px-3 py-2">
                                 <p className="text-xs text-slate-500">Questions</p>
-                                <p className="text-sm text-white font-medium">{Math.min(turn, maxTurns)} / {maxTurns}</p>
+                                <p className="text-sm text-white font-medium">{currentQuestionNum || completedAnswers} / {maxTurns}</p>
                             </div>
+                            {isAnswering && timeLeft != null ? (
+                                <TimerRing seconds={timeLeft} totalSeconds={answerTimeLimit} compact />
+                            ) : null}
                             <div className="rounded-lg border border-surface-border px-3 py-2">
                                 <p className="text-xs text-slate-500 mb-2">Mic level</p>
                                 <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
@@ -1571,8 +1613,15 @@
                                     return (
                                         <div key={card.number} className="fade-in rounded-2xl border border-indigo-500/30 bg-surface-elevated/40 overflow-hidden shadow-lg shadow-indigo-500/5">
                                             <div className="px-6 py-5 border-b border-surface-border/70 bg-indigo-500/[0.06]">
-                                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300/90">Interviewer · Question {card.number} of {maxTurns}</p>
-                                                <p className="text-lg text-indigo-50 mt-2 leading-relaxed">{card.question}</p>
+                                                <div className="flex flex-wrap items-start justify-between gap-4">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300/90">Interviewer · Question {card.number} of {maxTurns}</p>
+                                                        <p className="text-lg text-indigo-50 mt-2 leading-relaxed">{card.question}</p>
+                                                    </div>
+                                                    {recording && timeLeft != null ? (
+                                                        <TimerRing seconds={timeLeft} totalSeconds={answerTimeLimit} prominent />
+                                                    ) : null}
+                                                </div>
                                             </div>
                                             <div className="px-6 py-5">
                                                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Your response</p>

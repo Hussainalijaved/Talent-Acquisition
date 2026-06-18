@@ -79,6 +79,7 @@
       this.ended = false;
       this.interviewEnded = false;
       this.answering = false;
+      this.processingAnswer = false;
       this.autoEndTimer = null;
     }
 
@@ -96,11 +97,12 @@
     submitAnswer() {
       if (!this.answering) return;
       this.answering = false;
+      this.processingAnswer = true;
       this.onLevel(0);
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'user_turn_end' }));
       }
-      this.setStatus('Saving your answer — the interviewer is reviewing…');
+      this.setStatus('Saving your answer — please wait…');
     }
 
     stopMic() {
@@ -195,17 +197,24 @@
         });
       }
       if (msg.type === 'question') {
+        this.processingAnswer = false;
         this.onQuestion({ number: msg.number, text: msg.text });
       }
       if (msg.type === 'answer') {
         this.onAnswer({ number: msg.number, text: msg.text });
       }
+      if (msg.type === 'answer_saved') {
+        this.processingAnswer = true;
+        this.setStatus(`Answer ${msg.number} saved — the interviewer will ask the next question…`);
+      }
       if (msg.type === 'awaiting_answer') {
         this.answering = false;
+        this.processingAnswer = false;
         this.onAwaitingAnswer({ number: msg.number, maxTurns: msg.maxTurns });
         this.setStatus(`Question ${msg.number} ready — press “Answer” to reply`);
       }
       if (msg.type === 'output_audio' && msg.data) {
+        if (this.processingAnswer) return;
         if (!this.answering) this.setStatus('Interviewer is speaking…');
         this.enqueuePlayback(msg.data, msg.mimeType || `audio/pcm;rate=${OUTPUT_RATE}`);
       }

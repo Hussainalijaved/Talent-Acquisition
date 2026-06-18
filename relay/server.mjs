@@ -3,7 +3,7 @@ import http from 'http';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import { GeminiLiveBridge } from './lib/gemini-live.mjs';
-import { postCompleteWebhook, scoreLiveTurns } from './lib/score-turns.mjs';
+import { postCompleteWebhook, postPartialTurnWebhook, scoreLiveTurns, scoreSingleTurn } from './lib/score-turns.mjs';
 
 const PORT = Number(process.env.PORT || 8080);
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim();
@@ -90,6 +90,27 @@ wss.on('connection', (clientWs) => {
           apiKey: GEMINI_API_KEY,
           context,
           onEvent: (ev) => sendJson(clientWs, ev),
+          onTurnSaved: async (turnPair) => {
+            try {
+              const scored = await scoreSingleTurn({
+                apiKey: GEMINI_API_KEY,
+                context,
+                turn: turnPair,
+              });
+              await postPartialTurnWebhook(context, {
+                session_id: context.session_id,
+                email: context.candidate_email,
+                turns: [scored],
+              });
+            } catch (err) {
+              console.warn('[relay] partial turn save:', err.message);
+              await postPartialTurnWebhook(context, {
+                session_id: context.session_id,
+                email: context.candidate_email,
+                turns: [turnPair],
+              }).catch(() => {});
+            }
+          },
         });
         await bridge.start();
         return;

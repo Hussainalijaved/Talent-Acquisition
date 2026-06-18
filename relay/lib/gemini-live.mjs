@@ -8,7 +8,6 @@ const DEFAULT_MODEL = 'gemini-2.0-flash-live-001';
 const DEFAULT_KICKOFF =
   'Begin the interview now. In the SAME turn, greet the candidate in one short sentence and then ask interview question 1. Ask exactly one question, then stop talking and wait. Do not say anything else.';
 
-// Strip a leading greeting clause from the first question so the card reads cleanly.
 function stripLeadingGreeting(text) {
   return String(text || '')
     .replace(
@@ -18,11 +17,19 @@ function stripLeadingGreeting(text) {
     .trim();
 }
 
+function cleanUserAnswer(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  const sanitized = sanitizeTranscript(raw, 'user');
+  return sanitized || raw;
+}
+
 export class GeminiLiveBridge {
-  constructor({ apiKey, context, onEvent }) {
+  constructor({ apiKey, context, onEvent, onTurnSaved }) {
     this.apiKey = apiKey;
     this.context = context || {};
     this.onEvent = onEvent || (() => {});
+    this.onTurnSaved = onTurnSaved || (() => Promise.resolve());
     this.model = String(
       context.gemini_live_model || process.env.GEMINI_LIVE_MODEL || DEFAULT_MODEL
     ).replace(/^models\//, '');
@@ -33,19 +40,20 @@ export class GeminiLiveBridge {
     this.interviewEnded = false;
     this.startedAt = Date.now();
 
-    // Finalized Q&A. Index i => question i+1 paired with answer i+1.
     this.questions = [];
     this.answers = [];
 
-    // Per-turn accumulators (audio transcription only — matches what is spoken).
     this.modelBuf = '';
     this.userBuf = '';
 
-    // Deterministic turn state.
-    this.roundQuestionEmitted = false; // a question card exists for the current round
-    this.awaitingAnswer = false; // candidate pressed Submit; finalize their answer next
-    this.userTurnActive = false; // candidate mic is open
+    this.roundQuestionEmitted = false;
+    this.awaitingAnswer = false;
+    this.blockModelOutput = false;
+    this.userTurnActive = false;
     this.answerTimer = null;
+    this.pendingFinalize = null;
+    this.pendingAudioChunks = [];
+    this.allowModelAudio = false;
 
     this.maxTurns = Number(context.speech_phases || 5);
     this.maxQuestions = Number(context.max_questions || 5);
@@ -70,7 +78,6 @@ export class GeminiLiveBridge {
               },
             },
             systemInstruction: { parts: [{ text: systemText }] },
-            // Push-to-talk: the candidate decides exactly when their turn starts/ends.
             realtimeInputConfig: {
               automaticActivityDetection: { disabled: true },
             },
@@ -121,27 +128,32 @@ export class GeminiLiveBridge {
 
     if (this.interviewEnded) return;
 
-    // Transcriptions can appear at the top level or under serverContent depending on version.
     if (msg.inputTranscription?.text) this.userBuf += msg.inputTranscription.text;
-    if (msg.outputTranscription?.text) this.modelBuf += msg.outputTranscription.text;
 
     const server = msg.serverContent;
     if (!server) return;
 
     if (server.inputTranscription?.text) this.userBuf += server.inputTranscription.text;
-    if (server.outputTranscription?.text) this.modelBuf += server.outputTranscription.text;
 
-    // Only forward audio from model parts; rely on outputTranscription for text so the
-    // displayed question always matches the spoken audio.
+    // While the candidate's answer is being finalized, ignore model audio/text.
+    if (!this.blockModelOutput && server.outputTranscription?.text) {
+      this.modelBuf += server.outputTranscription.text;
+    }
+
     const parts = server.modelTurn?.parts || [];
     for (const part of parts) {
       const inline = part.inlineData || part.inline_data;
-      if (inline?.data) {
-        this.onEvent({
+      if (inline?.data && !this.blockModelOutput) {
+        const chunk = {
           type: 'output_audio',
           data: inline.data,
           mimeType: inline.mimeType || inline.mime_type || 'audio/pcm;rate=24000',
-        });
+        };
+        if (this.allowModelAudio) {
+          this.onEvent(chunk);
+        } else {
+          this.pendingAudioChunks.push(chunk);
+        }
       }
     }
 
@@ -150,17 +162,78 @@ export class GeminiLiveBridge {
   }
 
   onModelTurnComplete() {
-    // 1) If the candidate just submitted, this turn carries the rest of their
-    //    transcription plus the model's next question. Finalize the answer first.
     if (this.awaitingAnswer) {
-      this.finalizeAnswer();
-      if (this.interviewEnded) {
-        this.modelBuf = '';
-        return;
-      }
+      this.scheduleFinalizeAnswer();
+      return;
     }
 
-    // 2) Handle the model's spoken question for this round.
+    this.emitQuestionFromBuffer();
+  }
+
+  scheduleFinalizeAnswer() {
+    if (this.pendingFinalize) return;
+    this.pendingFinalize = setTimeout(() => {
+      this.pendingFinalize = null;
+      this.completeAnswerTurn();
+    }, 1500);
+  }
+
+  completeAnswerTurn() {
+    if (!this.awaitingAnswer) return;
+    this.awaitingAnswer = false;
+    this.blockModelOutput = false;
+    if (this.answerTimer) {
+      clearTimeout(this.answerTimer);
+      this.answerTimer = null;
+    }
+
+    this.modelBuf = '';
+
+    const userText = cleanUserAnswer(this.userBuf) || '[No spoken response captured]';
+    this.userBuf = '';
+
+    this.answers.push(userText);
+    const aNum = this.answers.length;
+    const qNum = aNum;
+    const turnPair = {
+      phase: this.maxQuestions + aNum,
+      voice_question_number: aNum,
+      question_text: this.questions[aNum - 1] || '',
+      answer_text: userText,
+      sent_at: new Date(this.startedAt + (aNum - 1) * 60000).toISOString(),
+      received_at: new Date().toISOString(),
+    };
+
+    this.onEvent({ type: 'answer', number: aNum, text: userText });
+    this.onEvent({
+      type: 'turn_complete',
+      turn: aNum,
+      maxTurns: this.maxTurns,
+      answersGiven: aNum,
+    });
+    this.onEvent({ type: 'answer_saved', number: aNum });
+
+    this.onTurnSaved(turnPair).catch((err) => {
+      console.warn('[relay] incremental turn save failed:', err.message);
+    });
+
+    this.roundQuestionEmitted = false;
+
+    if (aNum >= this.maxTurns) {
+      this.finishInterview();
+      return;
+    }
+
+    const nextQ = aNum + 1;
+    this.allowModelAudio = false;
+    this.pendingAudioChunks = [];
+    this.sendClientText(
+      `The candidate finished answering question ${aNum}. Now ask interview question ${nextQ} of ${this.maxTurns} in clear English. Ask exactly one question, then stop talking and wait for the candidate.`,
+      true
+    );
+  }
+
+  emitQuestionFromBuffer() {
     let modelText = sanitizeTranscript(this.modelBuf, 'model');
     this.modelBuf = '';
     if (!modelText) return;
@@ -173,41 +246,20 @@ export class GeminiLiveBridge {
       this.onEvent({ type: 'question', number: qNum, text: modelText });
       this.onEvent({ type: 'awaiting_answer', number: qNum, maxTurns: this.maxTurns });
     } else if (this.roundQuestionEmitted && this.questions.length) {
-      // The model kept talking before the candidate answered — append to the same card.
       const idx = this.questions.length - 1;
       this.questions[idx] = `${this.questions[idx]} ${modelText}`.replace(/\s+/g, ' ').trim();
       this.onEvent({ type: 'question', number: idx + 1, text: this.questions[idx] });
     }
+
+    this.flushPendingAudio();
   }
 
-  finalizeAnswer() {
-    if (!this.awaitingAnswer) return;
-    this.awaitingAnswer = false;
-    if (this.answerTimer) {
-      clearTimeout(this.answerTimer);
-      this.answerTimer = null;
+  flushPendingAudio() {
+    this.allowModelAudio = true;
+    for (const chunk of this.pendingAudioChunks) {
+      this.onEvent(chunk);
     }
-
-    const userText =
-      sanitizeTranscript(this.userBuf, 'user') ||
-      String(this.userBuf || '').trim() ||
-      '[No spoken response]';
-    this.userBuf = '';
-
-    this.answers.push(userText);
-    const aNum = this.answers.length;
-    this.onEvent({ type: 'answer', number: aNum, text: userText });
-    this.onEvent({
-      type: 'turn_complete',
-      turn: aNum,
-      maxTurns: this.maxTurns,
-      answersGiven: aNum,
-    });
-
-    // Ready for a fresh question on the next model turn.
-    this.roundQuestionEmitted = false;
-
-    if (aNum >= this.maxTurns) this.finishInterview();
+    this.pendingAudioChunks = [];
   }
 
   finishInterview() {
@@ -215,10 +267,10 @@ export class GeminiLiveBridge {
     this.interviewEnded = true;
     this.onEvent({ type: 'interview_complete', turn: this.maxTurns, maxTurns: this.maxTurns });
     this.sendClientText(
-      'The candidate has answered all interview questions. Thank them in one short sentence and end the interview. Do not ask any more questions.',
+      'The candidate has answered all interview questions. Thank them warmly in one short sentence and say the voice interview is complete. Do not ask any more questions.',
       true
     );
-    setTimeout(() => this.closeGemini(), 6000);
+    setTimeout(() => this.closeGemini(), 8000);
   }
 
   sendClientText(text, turnComplete = true) {
@@ -237,12 +289,13 @@ export class GeminiLiveBridge {
   }
 
   kickoffInterview() {
+    this.allowModelAudio = false;
+    this.pendingAudioChunks = [];
     const prompt = String(this.context.kickoff_prompt || DEFAULT_KICKOFF).trim();
     this.sendClientText(prompt, true);
     this.onEvent({ type: 'interviewer_started' });
   }
 
-  // Candidate pressed "Answer" — open their speaking turn.
   startUserTurn() {
     if (!this.ready || this.closed || this.interviewEnded || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
@@ -252,33 +305,26 @@ export class GeminiLiveBridge {
     this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
   }
 
-  // Candidate pressed "Submit" — close their turn; the model will respond next.
   endUserTurn() {
     if (!this.ready || this.closed || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
     if (!this.userTurnActive) return;
     this.userTurnActive = false;
-    this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
     this.awaitingAnswer = true;
+    this.blockModelOutput = true;
+    this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
 
-    // Safety net: if the model never produces a turnComplete, finalize anyway and nudge it.
-    // Kept long so the model's natural reply (which carries the next question) wins normally.
     if (this.answerTimer) clearTimeout(this.answerTimer);
     this.answerTimer = setTimeout(() => {
       if (!this.awaitingAnswer || this.interviewEnded) return;
-      this.finalizeAnswer();
-      if (this.interviewEnded) return;
-      this.sendClientText(
-        `Ask interview question ${this.answers.length + 1} of ${this.maxTurns} now. Ask exactly one question, then stop and wait.`,
-        true
-      );
-    }, 12000);
+      this.completeAnswerTurn();
+    }, 15000);
   }
 
   sendAudio(base64Pcm, mimeType = 'audio/pcm;rate=16000') {
     if (!this.ready || this.closed || this.interviewEnded || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
-    if (!this.userTurnActive) return; // only stream while the candidate is answering
+    if (!this.userTurnActive) return;
     this.geminiWs.send(
       JSON.stringify({ realtimeInput: { audio: { mimeType, data: base64Pcm } } })
     );
@@ -288,6 +334,10 @@ export class GeminiLiveBridge {
     if (this.answerTimer) {
       clearTimeout(this.answerTimer);
       this.answerTimer = null;
+    }
+    if (this.pendingFinalize) {
+      clearTimeout(this.pendingFinalize);
+      this.pendingFinalize = null;
     }
     if (this.geminiWs && this.geminiWs.readyState === WebSocket.OPEN) {
       try {

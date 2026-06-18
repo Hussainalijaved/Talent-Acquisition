@@ -1,5 +1,81 @@
 const SCORE_MODEL = process.env.GEMINI_SCORE_MODEL || 'gemini-2.0-flash';
 
+export async function scoreSingleTurn({ apiKey, context, turn }) {
+  if (!apiKey) throw new Error('GEMINI_API_KEY missing for scoring');
+  const role = String(context.requisition_title || 'the role');
+  const prompt = `Score this live voice interview answer for ${role}. Return JSON only:
+{"phase":number,"score":number,"clarity":number,"confidence":number,"professionalism":number,"relevance":number,"feedback":string}
+
+Phase ${turn.phase}
+Q: ${turn.question_text}
+A: ${turn.answer_text}`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${SCORE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`gemini_single_score_failed ${res.status}: ${errText.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+  const rawText = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+  const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  const parsed = JSON.parse(cleaned);
+
+  return {
+    ...turn,
+    score: Math.round(Number(parsed.score ?? 0)),
+    clarity: Math.round(Number(parsed.clarity ?? parsed.score ?? 0)),
+    confidence: Math.round(Number(parsed.confidence ?? parsed.score ?? 0)),
+    professionalism: Math.round(Number(parsed.professionalism ?? parsed.score ?? 0)),
+    relevance: Math.round(Number(parsed.relevance ?? parsed.score ?? 0)),
+    feedback: String(parsed.feedback || '').trim(),
+    soft_skills: {
+      clarity: Math.round(Number(parsed.clarity ?? parsed.score ?? 0)),
+      confidence: Math.round(Number(parsed.confidence ?? parsed.score ?? 0)),
+      professionalism: Math.round(Number(parsed.professionalism ?? parsed.score ?? 0)),
+      relevance: Math.round(Number(parsed.relevance ?? parsed.score ?? 0)),
+    },
+    scoring_source: 'gemini_live_relay',
+    stt_source: 'gemini_live',
+  };
+}
+
+export async function postPartialTurnWebhook(context, payload) {
+  const url = String(context.live_complete_webhook || process.env.LIVE_COMPLETE_WEBHOOK || '').trim();
+  if (!url) return { ok: false, skipped: true, reason: 'live_complete_webhook missing' };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
+    },
+    body: JSON.stringify({ ...payload, partial: true }),
+  });
+
+  const text = await res.text();
+  let json = null;
+  try {
+    json = JSON.parse(text);
+  } catch (_) {
+    json = { raw: text };
+  }
+
+  if (!res.ok) {
+    throw new Error(`partial_webhook_failed ${res.status}: ${text.slice(0, 300)}`);
+  }
+  return { ok: true, status: res.status, body: json };
+}
+
 export async function scoreLiveTurns({ apiKey, context, turns }) {
   if (!apiKey) throw new Error('GEMINI_API_KEY missing for scoring');
   if (!turns.length) {

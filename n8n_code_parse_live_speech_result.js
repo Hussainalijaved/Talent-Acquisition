@@ -80,7 +80,8 @@ function resolveLiveSpeechNorm() {
   }
 
   return {
-    flow: 'live_speech_complete',
+    flow: normalized?.partial ? 'live_speech_turn' : 'live_speech_complete',
+    partial: normalized?.partial === true || body.partial === true,
     session_id,
     candidate_email,
     assessment_mode: 'live_speech',
@@ -178,6 +179,40 @@ for (const turn of turns) {
   else history.push(patch);
 }
 
+const b = String(cfg.supabase_url || sessCfg.supabase_url || '').replace(/\/+$/, '');
+const patchUrl = `${b}/rest/v1/${cfg.table_assessment_sessions || 'assessment_sessions'}?id=eq.${encodeURIComponent(String(session.id))}`;
+
+// Incremental save after each voice Q&A — do not finalize the session yet.
+if (norm.partial === true) {
+  const lastTurn = turns[turns.length - 1] || {};
+  const currentPhase = Number(lastTurn.phase || maxQ + 1);
+  const partialBody = {
+    interview_history: history,
+    updated_at: iso,
+    assessment_stage: 'live_speech',
+    current_phase: currentPhase,
+    status: 'assessment',
+  };
+
+  return [
+    {
+      json: {
+        partial: true,
+        ok: true,
+        isFinal: false,
+        session_id: session.id,
+        candidate_email: norm.candidate_email || session.candidate_email,
+        phase: currentPhase,
+        turns_saved: turns.length,
+        assessment_mode: 'live_speech',
+        config: sessCfg,
+        _session_patch_url: patchUrl,
+        _session_patch_body: partialBody,
+      },
+    },
+  ];
+}
+
 const techAvg =
   Number(session.technical_score) || computeTechnicalAverage(history, maxQ) || 0;
 let speechAvg =
@@ -219,9 +254,6 @@ const body = {
   live_speech_duration_seconds: norm.duration_seconds || null,
   tab_switches: norm.tab_switches || 0,
 };
-
-const b = String(cfg.supabase_url || sessCfg.supabase_url || '').replace(/\/+$/, '');
-const patchUrl = `${b}/rest/v1/${cfg.table_assessment_sessions || 'assessment_sessions'}?id=eq.${encodeURIComponent(String(session.id))}`;
 
 const lastTurn = turns[turns.length - 1] || {};
 const phaseScore = Math.round(Number(lastTurn.score ?? speechAvg));

@@ -15,6 +15,7 @@ const session_id = String(
 ).trim();
 const candidate_email = cleanEmail(body.email || body.candidate_email);
 const turns = Array.isArray(body.turns) ? body.turns : [];
+const partial = body.partial === true;
 
 if (!session_id) throw new Error('live-speech-complete: session_id required');
 if (!candidate_email) throw new Error('live-speech-complete: email required');
@@ -23,7 +24,8 @@ if (!turns.length) throw new Error('live-speech-complete: turns[] required');
 return [
   {
     json: {
-      flow: 'live_speech_complete',
+      flow: partial ? 'live_speech_turn' : 'live_speech_complete',
+      partial,
       session_id,
       candidate_email,
       assessment_mode: 'live_speech',

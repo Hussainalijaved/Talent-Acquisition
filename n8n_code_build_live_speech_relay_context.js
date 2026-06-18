@@ -93,6 +93,9 @@ return [
       live_relay_url: relayUrl,
       live_complete_webhook: completeWebhook,
       portal_base_url: cfg.portal_base_url,
+      // Supabase creds at top-level so the relay can save directly without n8n.
+      supabase_url: String(sessCfg.supabase_url || '').trim(),
+      supabase_key: String(sessCfg.supabase_key || '').trim(),
       config: sessCfg,
       session,
     },

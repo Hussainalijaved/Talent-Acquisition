@@ -3,7 +3,13 @@ import http from 'http';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import { GeminiLiveBridge } from './lib/gemini-live.mjs';
-import { postCompleteWebhook, postPartialTurnWebhook, scoreLiveTurns, scoreSingleTurn } from './lib/score-turns.mjs';
+import {
+  directSaveToSupabase,
+  postCompleteWebhook,
+  postPartialTurnWebhook,
+  scoreLiveTurns,
+  scoreSingleTurn,
+} from './lib/score-turns.mjs';
 
 const PORT = Number(process.env.PORT || 8080);
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || '').trim();
@@ -166,9 +172,11 @@ wss.on('connection', (clientWs) => {
 
         bridge.closeGemini();
         const rawTurns = bridge.buildTurnPairs();
+        const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
 
+        // ── Score ──────────────────────────────────────────────────────────────
         let scored = {
-          turns: rawTurns,
+          turns: rawTurns.map((t) => ({ ...t, score: 0, feedback: '' })),
           combined_speech_score: 0,
           final_feedback: 'Voice interview completed.',
         };
@@ -180,44 +188,67 @@ wss.on('connection', (clientWs) => {
             ),
           ]);
         } catch (scoreErr) {
-          console.warn('[relay] score fallback:', scoreErr.message);
+          console.warn('[relay] scoring fallback:', scoreErr.message);
           scored = {
-            turns: rawTurns.map((t) => ({ ...t, score: 0, feedback: 'Scored locally after timeout.' })),
+            turns: rawTurns.map((t) => ({ ...t, score: 0, feedback: 'Scored on next run (timeout).' })),
             combined_speech_score: 0,
-            final_feedback: 'Voice interview completed. Detailed scoring was delayed.',
+            final_feedback: 'Voice interview completed. Scoring timed out — will retry.',
           };
         }
 
-        const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
-        const completePayload = {
-          session_id: context.session_id,
-          email: context.candidate_email || msg.email,
-          turns: scored.turns,
-          combined_speech_score: scored.combined_speech_score,
-          duration_seconds: durationSeconds,
-          final_feedback: scored.final_feedback,
-          tab_switches: Number(msg.tab_switches || 0),
-        };
+        if (webhookFired) {
+          sendJson(clientWs, {
+            type: 'session.complete', ok: true,
+            turns: scored.turns.length,
+            combined_speech_score: scored.combined_speech_score,
+            final_feedback: scored.final_feedback,
+          });
+          clientWs.close();
+          return;
+        }
+        webhookFired = true;
 
+        // ── PRIMARY: Direct Supabase save (no n8n dependency) ─────────────────
+        let directResult = { ok: false };
+        try {
+          directResult = await directSaveToSupabase(context, scored.turns, {
+            combinedSpeechScore: scored.combined_speech_score,
+            finalFeedback:       scored.final_feedback,
+            durationSeconds,
+          });
+          console.log('[relay] direct Supabase save OK:', directResult);
+        } catch (dbErr) {
+          console.error('[relay] direct Supabase save FAILED:', dbErr.message);
+          directResult = { ok: false, error: dbErr.message };
+        }
+
+        // ── SECONDARY: n8n webhook (email / notifications only) ───────────────
+        const completePayload = {
+          session_id:           context.session_id,
+          email:                context.candidate_email || msg.email,
+          turns:                scored.turns,
+          combined_speech_score: scored.combined_speech_score,
+          duration_seconds:     durationSeconds,
+          final_feedback:       scored.final_feedback,
+          tab_switches:         Number(msg.tab_switches || 0),
+        };
         let webhookResult = { ok: false, skipped: true };
-        if (!webhookFired) {
-          webhookFired = true;
-          try {
-            webhookResult = await postCompleteWebhook(context, completePayload);
-          } catch (whErr) {
-            console.error('[relay] complete webhook failed:', whErr.message);
-            webhookResult = { ok: false, error: whErr.message };
-          }
+        try {
+          webhookResult = await postCompleteWebhook(context, completePayload);
+        } catch (whErr) {
+          console.warn('[relay] n8n webhook (secondary):', whErr.message);
+          webhookResult = { ok: false, error: whErr.message };
         }
 
         sendJson(clientWs, {
-          type: 'session.complete',
-          ok: true,
-          turns: scored.turns.length,
+          type:                 'session.complete',
+          ok:                   directResult.ok,
+          saved_to_db:          directResult.ok,
+          turns:                scored.turns.length,
           combined_speech_score: scored.combined_speech_score,
-          final_feedback: scored.final_feedback,
-          webhook: webhookResult,
-          n8n: webhookResult.body || null,
+          final_feedback:       scored.final_feedback,
+          db:                   directResult,
+          n8n:                  webhookResult.body || null,
         });
         clientWs.close();
         return;
@@ -233,31 +264,45 @@ wss.on('connection', (clientWs) => {
   clientWs.on('close', async () => {
     if (bridge) bridge.closeGemini();
 
-    // Fallback: if the client disconnected (tab close / network drop) before
-    // sending session.end, fire the complete webhook with whatever turns were
-    // captured so the DB always gets at least a partial save.
+    // Fallback: client disconnected before session.end (tab close / network drop).
+    // Save whatever turns were captured directly to Supabase — no n8n needed.
     if (webhookFired || !context || !bridge) return;
     const rawTurns = bridge.buildTurnPairs();
-    if (!rawTurns.length) return;
+    if (!rawTurns.length) {
+      console.log('[relay] disconnect: no turns captured, skipping fallback save.');
+      return;
+    }
 
     webhookFired = true;
+    console.log(`[relay] disconnect fallback save — ${rawTurns.length} turn(s)`);
     const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
-    const fallbackPayload = {
-      session_id: context.session_id,
-      email: context.candidate_email,
-      turns: rawTurns.map((t) => ({
-        ...t,
-        score: t.score ?? 0,
-        feedback: t.feedback || 'Saved on disconnect — will be re-scored.',
-      })),
-      combined_speech_score: 0,
-      duration_seconds: durationSeconds,
-      final_feedback: 'Voice interview ended unexpectedly (connection lost). Answers captured.',
-      tab_switches: 0,
-    };
+    const fallbackTurns = rawTurns.map((t) => ({
+      ...t,
+      score: t.score ?? 0,
+      feedback: t.feedback || 'Saved on disconnect.',
+    }));
 
+    // Direct Supabase (primary, reliable)
+    directSaveToSupabase(context, fallbackTurns, {
+      combinedSpeechScore: 0,
+      finalFeedback: 'Interview ended unexpectedly (connection lost). Answers captured.',
+      durationSeconds,
+    }).catch((err) => {
+      console.error('[relay] disconnect direct Supabase save failed:', err.message);
+    });
+
+    // n8n webhook (secondary, for notifications)
+    const fallbackPayload = {
+      session_id:           context.session_id,
+      email:                context.candidate_email,
+      turns:                fallbackTurns,
+      combined_speech_score: 0,
+      duration_seconds:     durationSeconds,
+      final_feedback:       'Interview ended unexpectedly. Answers saved directly.',
+      tab_switches:         0,
+    };
     postCompleteWebhook(context, fallbackPayload).catch((err) => {
-      console.warn('[relay] disconnect-fallback webhook failed:', err.message);
+      console.warn('[relay] disconnect n8n webhook (secondary) failed:', err.message);
     });
   });
 });

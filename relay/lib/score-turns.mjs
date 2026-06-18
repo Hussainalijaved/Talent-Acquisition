@@ -219,6 +219,145 @@ A: ${t.answer_text}`
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Direct Supabase save — primary persistence path, no n8n dependency.
+// Fetches the current session, merges voice turns into interview_history, then
+// PATCHes the row with final scores and status=completed.
+// ─────────────────────────────────────────────────────────────────────────────
+export async function directSaveToSupabase(context, scoredTurns, {
+  combinedSpeechScore = 0,
+  finalFeedback = '',
+  durationSeconds = 0,
+} = {}) {
+  const supabaseUrl = String(
+    context.config?.supabase_url || context.supabase_url || ''
+  ).replace(/\/+$/, '');
+  const supabaseKey = String(
+    context.config?.supabase_key || context.supabase_key || ''
+  );
+  const sessionId  = String(context.session_id || '');
+  const maxQ       = Number(context.max_questions || 5);
+  const speechPhases = Number(context.speech_phases || 5);
+  const table      = String(context.config?.table_assessment_sessions || 'assessment_sessions');
+
+  if (!supabaseUrl || !/^https?:\/\//i.test(supabaseUrl)) {
+    throw new Error(
+      'directSaveToSupabase: supabase_url missing or invalid in context.config. ' +
+      'Set supabase_url in CFG - Live Speech Config (start).'
+    );
+  }
+  if (!supabaseKey) {
+    throw new Error('directSaveToSupabase: supabase_key missing in context.config.');
+  }
+  if (!sessionId) {
+    throw new Error('directSaveToSupabase: session_id missing in context.');
+  }
+
+  const headers = {
+    apikey: supabaseKey,
+    Authorization: `Bearer ${supabaseKey}`,
+    'Content-Type': 'application/json',
+  };
+
+  // 1. Fetch current session to get existing interview_history + technical_score.
+  const fetchUrl = `${supabaseUrl}/rest/v1/${table}?id=eq.${encodeURIComponent(sessionId)}&select=id,interview_history,technical_score,config`;
+  const fetchRes = await fetch(fetchUrl, { headers });
+  if (!fetchRes.ok) {
+    const errText = await fetchRes.text();
+    throw new Error(`directSave: fetch session failed ${fetchRes.status}: ${errText.slice(0, 200)}`);
+  }
+  const rows = await fetchRes.json();
+  const session = Array.isArray(rows) ? rows[0] : rows;
+  if (!session?.id) throw new Error(`directSave: session not found for id=${sessionId}`);
+
+  let history = session.interview_history;
+  if (typeof history === 'string') {
+    try { history = JSON.parse(history); } catch (_) { history = []; }
+  }
+  if (!Array.isArray(history)) history = [];
+
+  const iso = new Date().toISOString();
+
+  // 2. Merge scored voice turns into history.
+  for (const turn of scoredTurns) {
+    const ph = Number(turn.phase);
+    if (!Number.isFinite(ph) || ph <= maxQ) continue;
+    const patch = {
+      phase: ph,
+      mode: 'live_speech',
+      voice_question_number: Number(turn.voice_question_number || ph - maxQ) || null,
+      question_text:  String(turn.question_text  || '').trim(),
+      answer_text:    String(turn.answer_text    || '').trim(),
+      received_at:    turn.received_at || iso,
+      sent_at:        turn.sent_at     || iso,
+      feedback:       turn.feedback    || null,
+      score: Math.max(0, Math.min(100, Math.round(Number(turn.score ?? 0)))),
+      soft_skills: turn.soft_skills || {
+        clarity:         Math.round(Number(turn.clarity         ?? turn.score ?? 0)),
+        confidence:      Math.round(Number(turn.confidence      ?? turn.score ?? 0)),
+        professionalism: Math.round(Number(turn.professionalism ?? turn.score ?? 0)),
+        relevance:       Math.round(Number(turn.relevance       ?? turn.score ?? 0)),
+      },
+      stt_source:     'gemini_live',
+      scoring_source: 'gemini_live_relay',
+    };
+    const idx = history.findIndex((x) => Number(x.phase) === ph);
+    if (idx >= 0) history[idx] = { ...history[idx], ...patch };
+    else history.push(patch);
+  }
+
+  // 3. Compute final scores.
+  const techAvg = Number(session.technical_score) || 0;
+  const speechScores = scoredTurns
+    .map((t) => Number(t.score))
+    .filter((n) => Number.isFinite(n) && n >= 0);
+  const speechAvg = speechScores.length
+    ? Math.round(speechScores.reduce((a, b) => a + b, 0) / speechScores.length)
+    : (combinedSpeechScore || 0);
+
+  const techWeight    = Number(context.config?.technical_weight    ?? 0.7);
+  const speechWeight  = Number(context.config?.speech_weight       ?? 0.3);
+  const passThreshold = Number(context.config?.pass_score_threshold ?? 60);
+  const combined = techAvg > 0
+    ? Math.round(techAvg * techWeight + speechAvg * speechWeight)
+    : speechAvg;
+  const result = combined >= passThreshold ? 'PASS' : 'FAIL';
+
+  const feedbackLine = [
+    finalFeedback,
+    `Technical: ${techAvg}/100 | Voice: ${speechAvg}/100 | Combined: ${combined}/100 (pass ${passThreshold}).`,
+  ].filter(Boolean).join(' ');
+
+  // 4. PATCH session row.
+  const body = {
+    interview_history:            history,
+    updated_at:                   iso,
+    assessment_stage:             'completed',
+    current_phase:                maxQ + speechPhases,
+    status:                       'completed',
+    technical_score:              techAvg,
+    speech_score:                 speechAvg,
+    score:                        combined,
+    result,
+    live_speech_duration_seconds: durationSeconds || null,
+  };
+
+  const patchUrl = `${supabaseUrl}/rest/v1/${table}?id=eq.${encodeURIComponent(sessionId)}`;
+  const patchRes = await fetch(patchUrl, {
+    method:  'PATCH',
+    headers: { ...headers, Prefer: 'return=minimal' },
+    body:    JSON.stringify(body),
+  });
+
+  if (!patchRes.ok) {
+    const errText = await patchRes.text();
+    throw new Error(`directSave: PATCH failed ${patchRes.status}: ${errText.slice(0, 300)}`);
+  }
+
+  console.log(`[relay] directSave OK — session ${sessionId} | combined=${combined} | result=${result}`);
+  return { ok: true, combined, result, speechAvg, techAvg, feedback: feedbackLine };
+}
+
 export async function postCompleteWebhook(context, payload) {
   const url = String(context.live_complete_webhook || process.env.LIVE_COMPLETE_WEBHOOK || '').trim();
   if (!url) {

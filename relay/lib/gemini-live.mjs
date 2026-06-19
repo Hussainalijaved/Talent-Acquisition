@@ -353,13 +353,11 @@ export class GeminiLiveBridge {
       answersGiven: aNum,
     });
 
-    // 2. Score + save THIS turn to the DB before asking the next question.
+    // 2. Save in background — never block the next question.
     this.onEvent({ type: 'saving_turn', number: aNum });
-    try {
-      await this.onTurnSaved(turnPair);
-    } catch (err) {
+    void Promise.resolve(this.onTurnSaved(turnPair)).catch((err) => {
       console.warn('[relay] incremental turn save failed:', err.message);
-    }
+    });
 
     this.roundQuestionEmitted = false;
 
@@ -369,11 +367,11 @@ export class GeminiLiveBridge {
       return;
     }
 
-    // 4. Tell the client save is done — interviewer audio may now play.
+    // 4. Ask the next question immediately (do not wait for save/score).
     const nextQ = aNum + 1;
     this.onEvent({ type: 'next_question_ready', number: nextQ });
 
-    // 5. Now ask the next question.
+    // 5. Prompt Gemini for the next question right away.
     this.modelBuf = '';
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];

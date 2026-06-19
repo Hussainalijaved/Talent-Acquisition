@@ -151,45 +151,52 @@ wss.on('connection', (clientWs) => {
           apiKey: GEMINI_API_KEY,
           context,
           onEvent: (ev) => sendJson(clientWs, ev),
-          onTurnSaved: async (turnPair) => {
-            let saved = false;
-            let saveError = '';
-            let scoredTurn = { ...turnPair, score: null };
-
-            // Score the turn (with timeout so next question is never delayed too long).
-            try {
-              scoredTurn = await Promise.race([
-                scoreSingleTurn({ apiKey: GEMINI_API_KEY, context, turn: turnPair }),
-                new Promise((_, reject) =>
-                  setTimeout(() => reject(new Error('single_score_timeout')), 12000)
-                ),
-              ]);
-            } catch (scoreErr) {
-              console.warn('[relay] scoring skipped (timeout/error):', scoreErr.message);
-            }
-
-            // PRIMARY: Vercel API (always publicly reachable from Railway).
-            try {
-              await vercelSaveTurn(context, scoredTurn);
-              saved = true;
-            } catch (vercelErr) {
-              console.warn('[relay] Vercel save failed, trying direct Supabase:', vercelErr.message);
-              // FALLBACK: direct Supabase REST (needs supabase_url + supabase_key in context).
+          onTurnSaved: (turnPair) => {
+            // Fast path: save transcript now; score in background so Q2+ is never delayed.
+            const unscored = { ...turnPair, score: null };
+            void (async () => {
+              let saved = false;
+              let saveError = '';
               try {
-                await directSavePartialTurn(context, scoredTurn);
+                await vercelSaveTurn(context, unscored);
                 saved = true;
-              } catch (dbErr) {
-                saveError = dbErr.message || 'partial_save_failed';
-                console.error('[relay] ALL partial saves failed:', saveError);
+              } catch (vercelErr) {
+                console.warn('[relay] Vercel save failed, trying direct Supabase:', vercelErr.message);
+                try {
+                  await directSavePartialTurn(context, unscored);
+                  saved = true;
+                } catch (dbErr) {
+                  saveError = dbErr.message || 'partial_save_failed';
+                  console.error('[relay] ALL partial saves failed:', saveError);
+                }
               }
-            }
-            sendJson(clientWs, {
-              type: 'turn_saved_status',
-              number: turnPair.voice_question_number,
-              phase: turnPair.phase,
-              saved,
-              error: saveError || undefined,
-            });
+              sendJson(clientWs, {
+                type: 'turn_saved_status',
+                number: turnPair.voice_question_number,
+                phase: turnPair.phase,
+                saved,
+                error: saveError || undefined,
+              });
+
+              // Background score + patch — does not block the next question.
+              try {
+                const scored = await Promise.race([
+                  scoreSingleTurn({ apiKey: GEMINI_API_KEY, context, turn: turnPair }),
+                  new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('single_score_timeout')), 15000)
+                  ),
+                ]);
+                try {
+                  await vercelSaveTurn(context, scored);
+                } catch (vercelErr) {
+                  await directSavePartialTurn(context, scored).catch((dbErr) => {
+                    console.warn('[relay] background score patch failed:', dbErr.message);
+                  });
+                }
+              } catch (scoreErr) {
+                console.warn('[relay] background scoring skipped:', scoreErr.message);
+              }
+            })();
           },
         });
         await bridge.start();

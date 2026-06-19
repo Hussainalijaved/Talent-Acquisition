@@ -65,6 +65,7 @@
       this.onQuestion = options.onQuestion || (() => {});
       this.onAnswer = options.onAnswer || (() => {});
       this.onAwaitingAnswer = options.onAwaitingAnswer || (() => {});
+      this.onNextQuestionReady = options.onNextQuestionReady || (() => {});
       this.onError = options.onError || (() => {});
       this.tabSwitches = Number(options.tabSwitches || 0);
 
@@ -214,11 +215,11 @@
       }
       if (msg.type === 'saving_turn') {
         this.processingAnswer = true;
-        this.setStatus(`Answer ${msg.number} captured — saving and scoring…`);
+        this.setStatus(`Answer ${msg.number} captured — saving in background…`);
       }
       if (msg.type === 'next_question_ready') {
-        // Save done — unblock interviewer audio for the next question.
         this.processingAnswer = false;
+        this.onNextQuestionReady({ number: msg.number });
         this.setStatus(`Question ${msg.number} — the interviewer is speaking…`);
       }
       if (msg.type === 'turn_saved_status') {

@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import {
+  cleanUserAnswerText,
   fallbackInterviewQuestion,
   isClosingMessage,
   isEnglishTranscript,
@@ -39,14 +40,7 @@ function stripLeadingGreeting(text) {
 }
 
 function cleanUserAnswer(text) {
-  const raw = String(text || '').trim();
-  if (!raw) return '';
-  const sanitized = sanitizeTranscript(raw, 'user');
-  if (sanitized) return sanitized;
-  if (raw.length > 3 && !isEnglishTranscript(raw)) {
-    return '[Non-English response — please answer in English]';
-  }
-  return sanitized || raw;
+  return cleanUserAnswerText(text);
 }
 
 export class GeminiLiveBridge {
@@ -70,6 +64,7 @@ export class GeminiLiveBridge {
 
     this.modelBuf = '';
     this.userBuf = '';
+    this.lateUserBuf = '';
 
     this.roundQuestionEmitted = false;
     this.awaitingAnswer = false;
@@ -278,7 +273,12 @@ export class GeminiLiveBridge {
     }
 
     if (msg.inputTranscription?.text) {
-      this.userBuf += msg.inputTranscription.text;
+      if (this.userTurnActive) {
+        this.userBuf += msg.inputTranscription.text;
+      } else if (this.awaitingAnswer) {
+        // Transcription can arrive after activityEnd — keep for this answer turn.
+        this.lateUserBuf += msg.inputTranscription.text;
+      }
       this.emitUserPartialTranscript();
     }
 
@@ -286,7 +286,11 @@ export class GeminiLiveBridge {
     if (!server) return;
 
     if (server.inputTranscription?.text) {
-      this.userBuf += server.inputTranscription.text;
+      if (this.userTurnActive) {
+        this.userBuf += server.inputTranscription.text;
+      } else if (this.awaitingAnswer) {
+        this.lateUserBuf += server.inputTranscription.text;
+      }
       this.emitUserPartialTranscript();
     }
 
@@ -321,9 +325,10 @@ export class GeminiLiveBridge {
   // Stream the candidate's speech-to-text to the client as a live caption.
   emitUserPartialTranscript() {
     if (!this.userTurnActive && !this.awaitingAnswer) return;
-    const clean = sanitizeTranscript(this.userBuf, 'user');
+    const combined = `${this.userBuf}${this.lateUserBuf}`;
+    const clean = sanitizeTranscript(combined, 'user');
     if (!clean) {
-      const raw = String(this.userBuf || '').trim();
+      const raw = String(`${this.userBuf}${this.lateUserBuf}` || '').trim();
       if (raw.length > 8 && !isEnglishTranscript(raw)) {
         this.onEvent({ type: 'non_english_detected', hint: 'Please answer in English only.' });
       }
@@ -373,10 +378,9 @@ export class GeminiLiveBridge {
 
   scheduleFinalizeAnswer() {
     if (this.pendingFinalize) return;
-    // Wait for Gemini to flush input transcription — first turn (Q1) often lags.
     const sinceEnd = this.userTurnEndedAt ? Date.now() - this.userTurnEndedAt : 9999;
-    const minFlushMs = 3500;
-    const delay = Math.max(minFlushMs - sinceEnd, 800);
+    const minFlushMs = 5000;
+    const delay = Math.max(minFlushMs - sinceEnd, 1200);
     this.pendingFinalize = setTimeout(() => {
       this.pendingFinalize = null;
       this.completeAnswerTurn();
@@ -385,6 +389,18 @@ export class GeminiLiveBridge {
 
   async completeAnswerTurn() {
     if (!this.awaitingAnswer) return;
+
+    // Mic may still be open (auto-open) — close activity so transcription flushes.
+    if (this.userTurnActive) {
+      this.userTurnActive = false;
+      if (this.geminiWs?.readyState === WebSocket.OPEN) {
+        this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
+      }
+      this.userTurnEndedAt = Date.now();
+      this.scheduleFinalizeAnswer();
+      return;
+    }
+
     this.awaitingAnswer = false;
     // Keep model output blocked until this turn is saved AND the next prompt is sent,
     // so the interviewer never speaks the next question before the current one is saved.
@@ -396,8 +412,10 @@ export class GeminiLiveBridge {
 
     this.modelBuf = '';
 
-    const userText = cleanUserAnswer(this.userBuf) || '[No spoken response captured]';
+    const combined = `${this.userBuf}${this.lateUserBuf}`.trim();
     this.userBuf = '';
+    this.lateUserBuf = '';
+    const userText = cleanUserAnswer(combined) || '[No spoken response captured]';
 
     this.answers.push(userText);
     const aNum = this.answers.length;
@@ -562,6 +580,7 @@ export class GeminiLiveBridge {
     if (this.userTurnActive) return;
     this.userTurnActive = true;
     this.userBuf = '';
+    this.lateUserBuf = '';
     this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
   }
 

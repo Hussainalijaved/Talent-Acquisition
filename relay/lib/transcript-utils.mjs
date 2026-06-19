@@ -45,6 +45,38 @@ export function sanitizeTranscript(text, role = 'model') {
   return t;
 }
 
+export function extractEnglishAnswer(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  // Drop non-Latin script spans but keep the English the candidate did say.
+  let t = raw
+    .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = t.split(/\s+/).filter(Boolean);
+  return words.length >= 3 ? t : '';
+}
+
+/** Best-effort English answer for saving — never false-flag mixed English answers. */
+export function cleanUserAnswerText(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+
+  const sanitized = sanitizeTranscript(raw, 'user');
+  if (sanitized) return sanitized;
+
+  const extracted = extractEnglishAnswer(raw);
+  if (extracted) return extracted;
+
+  // Short filler only — not a real answer.
+  if (raw.length < 12 || raw.split(/\s+/).filter(Boolean).length < 3) return '';
+
+  if (!isEnglishTranscript(raw)) {
+    return '[Non-English response — please answer in English]';
+  }
+  return raw;
+}
+
 export function isSubstantiveAnswer(text) {
   const t = sanitizeTranscript(text, 'user');
   if (!t) return false;

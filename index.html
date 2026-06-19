@@ -1541,13 +1541,17 @@
                             },
                             onAwaitingAnswer: () => {
                                 setCanAnswer(true);
-                                setIsAnswering(true);
+                                setIsAnswering(false);
                                 setSavingAnswer(false);
                                 setLiveCaption('');
                                 setLiveQuestionCaption('');
                                 setIsInterviewerSpeaking(false);
                                 setAnswerTimerActive(true);
                                 setTimeLeft(answerTimeLimit);
+                            },
+                            onMicOpen: () => {
+                                setIsAnswering(true);
+                                setCanAnswer(true);
                             },
                             onNextQuestionReady: ({ number }) => {
                                 setSavingAnswer(false);
@@ -1818,7 +1822,7 @@
                                         return (
                                             <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
                                                 <div className="w-14 h-14 rounded-full border border-surface-border flex items-center justify-center text-indigo-300 text-2xl">🎧</div>
-                                                <p className="text-sm max-w-sm">The interviewer will ask the first question out loud. Your mic opens automatically when they finish — speak in English, then press <span className="text-slate-300 font-medium">Submit</span>.</p>
+                                                <p className="text-sm max-w-sm">The interviewer will ask each question out loud. Your mic opens a few seconds after they finish — speak in English, then press <span className="text-slate-300 font-medium">Submit</span>.</p>
                                             </div>
                                         );
                                     }
@@ -1884,7 +1888,7 @@
                                                         </p>
                                                     </div>
                                                 ) : answerTimerActive ? (
-                                                    <p className="text-sm text-slate-400 italic py-2">Mic will open automatically when the interviewer finishes speaking.</p>
+                                                    <p className="text-sm text-slate-400 italic py-2">Mic opens shortly after the interviewer finishes speaking.</p>
                                                 ) : (
                                                     <p className="text-sm text-slate-500 italic py-2">Listen to the interviewer…</p>
                                                 )}

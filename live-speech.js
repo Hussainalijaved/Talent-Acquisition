@@ -68,6 +68,7 @@
       this.onAwaitingAnswer = options.onAwaitingAnswer || (() => {});
       this.onNextQuestionReady = options.onNextQuestionReady || (() => {});
       this.onPrematureClosing = options.onPrematureClosing || (() => {});
+      this.onMicOpen = options.onMicOpen || (() => {});
       this.onError = options.onError || (() => {});
       this.tabSwitches = Number(options.tabSwitches || 0);
 
@@ -84,6 +85,34 @@
       this.answering = false;
       this.processingAnswer = false;
       this.autoEndTimer = null;
+      this.micOpenTimer = null;
+    }
+
+    cancelMicOpen() {
+      if (this.micOpenTimer) {
+        clearTimeout(this.micOpenTimer);
+        this.micOpenTimer = null;
+      }
+    }
+
+    scheduleMicOpen(delayMs = 3500) {
+      this.cancelMicOpen();
+      if (this.ended || this.interviewEnded) return;
+      this.micOpenTimer = setTimeout(() => {
+        this.micOpenTimer = null;
+        if (!this.ended && !this.interviewEnded && !this.answering) {
+          this.beginAnswer();
+        }
+      }, delayMs);
+    }
+
+    forceEndAnswer() {
+      if (!this.answering) return;
+      this.answering = false;
+      this.onLevel(0);
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'user_turn_end' }));
+      }
     }
 
     // Candidate pressed "Answer" — open their mic and tell the relay to start the turn.
@@ -93,6 +122,7 @@
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'user_turn_start' }));
       }
+      this.onMicOpen();
       this.setStatus('Listening — speak your answer now');
     }
 
@@ -207,11 +237,15 @@
       }
       if (msg.type === 'question_partial' && msg.text) {
         if (window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
+        this.cancelMicOpen();
+        this.forceEndAnswer();
         this.processingAnswer = false;
         this.onQuestion({ number: msg.number, text: msg.text, partial: true });
       }
       if (msg.type === 'question') {
         if (window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
+        this.cancelMicOpen();
+        this.forceEndAnswer();
         this.processingAnswer = false;
         this.onQuestion({ number: msg.number, text: msg.text, partial: false });
       }
@@ -223,6 +257,8 @@
         this.setStatus(`Answer ${msg.number} captured — saving in background…`);
       }
       if (msg.type === 'next_question_ready') {
+        this.cancelMicOpen();
+        this.forceEndAnswer();
         this.processingAnswer = false;
         this.onNextQuestionReady({ number: msg.number });
         this.setStatus(`Question ${msg.number} — the interviewer is speaking…`);
@@ -238,15 +274,13 @@
         }
       }
       if (msg.type === 'awaiting_answer') {
-        this.answering = false;
+        this.cancelMicOpen();
+        this.forceEndAnswer();
         this.processingAnswer = false;
         this.onAwaitingAnswer({ number: msg.number, maxTurns: msg.maxTurns });
-        // Auto-open mic when the interviewer finishes — candidates often forget
-        // to press "Answer" on Q1, which leaves userBuf empty.
-        if (!this.interviewEnded && !this.ended) {
-          this.beginAnswer();
-        }
-        this.setStatus(`Question ${msg.number} — speak your answer now (${this.context?.speech_answer_seconds || 120}s)`);
+        // Delay mic open so interviewer audio finishes and previous answer cannot bleed in.
+        this.scheduleMicOpen(3500);
+        this.setStatus(`Question ${msg.number} — listen, then speak when the mic opens (${this.context?.speech_answer_seconds || 120}s)`);
       }
       if (msg.type === 'output_audio' && msg.data) {
         // Only block interviewer audio while the candidate's mic is open.

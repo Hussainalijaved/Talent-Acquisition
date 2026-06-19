@@ -1,4 +1,4 @@
-const SCORE_MODEL = process.env.GEMINI_SCORE_MODEL || 'gemini-2.0-flash';
+import { cleanUserAnswerText } from './transcript-utils.mjs';
 
 // Tolerant JSON parse: strip fences, extract the first balanced object, repair
 // trailing commas. Returns {} on total failure so scoring never throws away a turn.
@@ -51,7 +51,7 @@ export async function scoreSingleTurn({ apiKey, context, turn }) {
   const role = String(context.requisition_title || 'the role');
   const isNoResponse = !turn.answer_text ||
     /^\[(no spoken|non-english|no speech|noise)/i.test(turn.answer_text) ||
-    String(turn.answer_text || '').trim().length < 4;
+    (!cleanUserAnswerText(turn.answer_text) && String(turn.answer_text || '').trim().length < 12);
 
   // Short-circuit unscorable answers — avoids API call and score=0 parse bug.
   if (isNoResponse) {

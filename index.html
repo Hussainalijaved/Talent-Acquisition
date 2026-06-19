@@ -1363,6 +1363,16 @@
             </Shell>
         );
 
+        function normalizeLiveCompleteResult(result) {
+            const save = result?.save || result?.n8n || {};
+            return {
+                result: save.result || result?.result || '',
+                score: save.score ?? result?.score ?? result?.combined_speech_score ?? null,
+                feedback: save.feedback || result?.final_feedback || result?.feedback || 'Live speech assessment completed.',
+                saved: save.ok !== false && result?.saved_to_db !== false,
+            };
+        }
+
         const LiveSpeechView = ({
             context,
             relayFallback,
@@ -1527,11 +1537,11 @@
                                 if (finishedRef.current) return;
                                 finishedRef.current = true;
                                 setEnding(true);
-                                const n8n = result?.n8n || {};
+                                const done = normalizeLiveCompleteResult(result);
                                 onFinished?.({
-                                    result: n8n.result || '',
-                                    score: n8n.score ?? result?.combined_speech_score,
-                                    feedback: n8n.feedback || result?.final_feedback || 'Live speech assessment completed.',
+                                    result: done.result,
+                                    score: done.score,
+                                    feedback: done.feedback,
                                     isFinal: true,
                                 });
                             },
@@ -1617,11 +1627,11 @@
                     const result = await sessionRef.current?.end?.();
                     if (!result || finishedRef.current) return;
                     finishedRef.current = true;
-                    const n8n = result?.n8n || {};
+                    const done = normalizeLiveCompleteResult(result);
                     onFinished?.({
-                        result: n8n.result || '',
-                        score: n8n.score ?? result?.combined_speech_score,
-                        feedback: n8n.feedback || result?.final_feedback || 'Live speech assessment completed.',
+                        result: done.result,
+                        score: done.score,
+                        feedback: done.feedback,
                         isFinal: true,
                     });
                 } catch (e) {
@@ -4270,12 +4280,36 @@
                 }
             };
 
-            const handleLiveSpeechFinished = (data) => {
+            const handleLiveSpeechFinished = async (data) => {
+                let result = data?.result || '';
+                let score = data?.score;
+                let feedback = data?.feedback || 'Assessment completed.';
+
+                // Prefer fresh DB values — relay UI may only have speech-only score before final PATCH.
+                if (sessionId && supabase) {
+                    try {
+                        const { data: row } = await supabase
+                            .from('assessment_sessions')
+                            .select('result, score, speech_score, status, assessment_stage')
+                            .eq('id', sessionId)
+                            .single();
+                        if (row) {
+                            if (row.result) result = row.result;
+                            if (row.score != null) score = Number(row.score);
+                            if (row.status === 'completed' && !result && row.score != null) {
+                                result = Number(row.score) >= 60 ? 'PASS' : 'FAIL';
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Could not refresh session after live speech:', e);
+                    }
+                }
+
                 setView('finished');
                 sessionStorage.removeItem('assessment_started');
-                setResult(data?.result || (Number(data?.score) >= 60 ? 'PASS' : 'FAIL'));
-                if (data?.score != null) setOverallScore(Number(data.score));
-                setFeedback(data?.feedback || 'Assessment completed.');
+                setResult(result || (Number(score) >= 60 ? 'PASS' : 'FAIL'));
+                if (score != null) setOverallScore(Number(score));
+                setFeedback(feedback);
                 sessionStorage.removeItem('time_left');
                 sessionStorage.removeItem('deadline_at');
                 deadlineAtRef.current = null;

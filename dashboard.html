@@ -858,7 +858,10 @@
         }
 
         function inferTechMax(hist, cfg, sess) {
-            const speech = (hist || []).filter((h) => String(h.mode || '').toLowerCase() === 'speech');
+            const speech = (hist || []).filter((h) => {
+                const mode = String(h.mode || '').toLowerCase();
+                return mode === 'speech' || mode === 'live_speech';
+            });
             if (speech.length) return Math.min(...speech.map((h) => Number(h.phase))) - 1;
             return Number(sess?.max_phases || cfg?.max_questions || 5);
         }
@@ -886,14 +889,20 @@
                 return '<span class="c-role">—</span>';
             }
             const { answered, maxPh } = historyStats(sess);
-            const progress = answered > 0 ? ' <span class="assess-progress">' + answered + '/' + maxPh + '</span>' : '';
-            if (sess.result === 'PASS') return '<span class="pill p-pass">Passed' + progress + '</span>';
-            if (sess.result === 'FAIL') return '<span class="pill p-reject">Failed' + progress + '</span>';
-            if (sess.status === 'completed') return '<span class="pill p-assess">Completed' + progress + '</span>';
-            if (sess.status === 'assessment') {
-                return '<span class="pill p-pending">Phase ' + (sess.current_phase || 1) + progress + '</span>';
+            const phaseProgress = (sess.current_phase || 1) + '/' + maxPh;
+            const answerProgress = answered > 0 ? answered + '/' + maxPh + ' answered' : '';
+            if (sess.result === 'PASS') return '<span class="pill p-pass">Passed</span>';
+            if (sess.result === 'FAIL') return '<span class="pill p-reject">Failed</span>';
+            if (sess.status === 'completed') {
+                return '<span class="pill p-assess">Completed</span>' +
+                    (answerProgress ? ' <span class="assess-progress">' + answerProgress + '</span>' : '');
             }
-            return '<span class="pill p-assess">' + esc(sess.status || 'Active') + progress + '</span>';
+            if (sess.status === 'assessment') {
+                return '<span class="pill p-pending">Phase ' + phaseProgress + '</span>' +
+                    (answerProgress ? ' <span class="assess-progress">' + answerProgress + '</span>' : '');
+            }
+            return '<span class="pill p-assess">' + esc(sess.status || 'Active') + '</span>' +
+                (answerProgress ? ' <span class="assess-progress">' + answerProgress + '</span>' : '');
         }
 
         function lookupJobTitle(slugOrTitle) {
@@ -1529,7 +1538,8 @@
 
         function isSpeechPhaseRow(h, techMax) {
             if (!h) return false;
-            if (String(h.mode || '').toLowerCase() === 'speech') return true;
+            const mode = String(h.mode || '').toLowerCase();
+            if (mode === 'speech' || mode === 'live_speech') return true;
             return Number(h.phase) > techMax;
         }
 

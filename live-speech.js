@@ -58,6 +58,7 @@
       this.context = options.context || {};
       this.onStatus = options.onStatus || (() => {});
       this.onTranscript = options.onTranscript || (() => {});
+      this.onTurnScored = options.onTurnScored || (() => {});
       this.onLevel = options.onLevel || (() => {});
       this.onTurn = options.onTurn || (() => {});
       this.onComplete = options.onComplete || (() => {});
@@ -200,6 +201,7 @@
           speaker: msg.speaker,
           text: msg.text,
           partial: !!msg.partial,
+          closing: !!msg.closing,
         });
       }
       if (msg.type === 'question_partial' && msg.text) {
@@ -253,6 +255,19 @@
       if (msg.type === 'turn_complete') {
         const capped = Math.min(msg.turn || 0, msg.maxTurns || 5);
         this.onTurn({ turn: capped, maxTurns: msg.maxTurns, answersGiven: msg.answersGiven });
+      }
+      if (msg.type === 'turn_scored') {
+        this.onTurnScored({
+          number: msg.number,
+          phase: msg.phase,
+          score: msg.score,
+          feedback: msg.feedback,
+          soft_skills: msg.soft_skills,
+        });
+      }
+      if (msg.type === 'interview_closing') {
+        this.processingAnswer = false;
+        this.interviewEnded = true;
       }
       if (msg.type === 'interview_complete') {
         this.stopMic();

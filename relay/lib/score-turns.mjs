@@ -52,6 +52,33 @@ export async function scoreSingleTurn({ apiKey, context, turn }) {
   const isNoResponse = !turn.answer_text ||
     /^\[(no spoken|non-english|no speech)/i.test(turn.answer_text);
 
+  // Short-circuit unscorable answers — avoids API call and score=0 parse bug.
+  if (isNoResponse) {
+    const zero = {
+      communication_clarity: 0,
+      fluency: 0,
+      confidence: 0,
+      professionalism: 0,
+      english_proficiency: 0,
+      answer_relevance: 0,
+    };
+    const feedback = /non-english/i.test(turn.answer_text)
+      ? 'Please answer in English. Non-English responses cannot be evaluated for communication skills.'
+      : 'No spoken response was captured for this question.';
+    return {
+      ...turn,
+      score: 0,
+      clarity: 0,
+      confidence: 0,
+      professionalism: 0,
+      relevance: 0,
+      feedback,
+      soft_skills: zero,
+      scoring_source: 'gemini_live_relay',
+      stt_source: 'gemini_live',
+    };
+  }
+
   const prompt = `You are evaluating a live voice interview answer for a ${role} position.
 This is a COMMUNICATION SKILLS round — score the candidate on HOW they speak, not just WHAT they say.
 
@@ -69,8 +96,7 @@ Return JSON only (no markdown, no explanation):
 }
 
 Question: ${turn.question_text}
-Candidate's transcribed answer: ${turn.answer_text}
-${isNoResponse ? '\nNOTE: Candidate gave no spoken response or spoke in a non-English language.' : ''}`;
+Candidate's transcribed answer: ${turn.answer_text}`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${SCORE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const res = await fetch(url, {
@@ -91,11 +117,14 @@ ${isNoResponse ? '\nNOTE: Candidate gave no spoken response or spoke in a non-En
   const rawText = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
   const parsed = safeParseJson(rawText);
 
-  if (!parsed.score && !parsed.communication_clarity) {
+  const parsedScore = parsed.score != null ? Number(parsed.score) : null;
+  const parsedClarity = parsed.communication_clarity != null
+    ? Number(parsed.communication_clarity) : null;
+  if (!Number.isFinite(parsedScore) && !Number.isFinite(parsedClarity)) {
     throw new Error(`scoreSingleTurn: empty parse from model — raw: ${rawText.slice(0, 200)}`);
   }
 
-  const overall = Math.round(Number(parsed.score ?? 0));
+  const overall = Math.round(Number(parsed.score ?? parsed.communication_clarity ?? 0));
   const soft = {
     communication_clarity: Math.round(Number(parsed.communication_clarity ?? parsed.score ?? 0)),
     fluency:               Math.round(Number(parsed.fluency               ?? parsed.score ?? 0)),
@@ -118,6 +147,54 @@ ${isNoResponse ? '\nNOTE: Candidate gave no spoken response or spoke in a non-En
     scoring_source: 'gemini_live_relay',
     stt_source:     'gemini_live',
   };
+}
+
+/** Score turns one-by-one (reliable — bulk scoring often times out on 5 turns). */
+export async function scoreTurnsSequential({ apiKey, context, turns, timeoutMs = 25000 }) {
+  const results = [];
+  for (const turn of turns) {
+    try {
+      const scored = await Promise.race([
+        scoreSingleTurn({ apiKey, context, turn }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('single_score_timeout')), timeoutMs)
+        ),
+      ]);
+      results.push(scored);
+      console.log(`[relay] scored phase ${turn.phase}: ${scored.score}`);
+    } catch (err) {
+      console.warn(`[relay] score phase ${turn.phase} failed:`, err.message);
+      results.push({ ...turn, score: turn.score ?? null });
+    }
+  }
+  return results;
+}
+
+/** Pull already-saved per-turn scores from DB so final save never loses them. */
+export async function enrichTurnsFromDb(context, turns) {
+  try {
+    const cfg = getSupabaseConfig(context);
+    const session = await fetchSessionRow(cfg);
+    const byPhase = new Map(
+      parseHistory(session.interview_history).map((h) => [Number(h.phase), h])
+    );
+    return turns.map((t) => {
+      if (t.score != null && Number.isFinite(Number(t.score))) return t;
+      const db = byPhase.get(Number(t.phase));
+      if (db?.score != null && Number.isFinite(Number(db.score))) {
+        return {
+          ...t,
+          score: Number(db.score),
+          feedback: db.feedback || t.feedback,
+          soft_skills: db.soft_skills || t.soft_skills,
+        };
+      }
+      return t;
+    });
+  } catch (err) {
+    console.warn('[relay] enrichTurnsFromDb failed:', err.message);
+    return turns;
+  }
 }
 
 export async function postPartialTurnWebhook(context, payload) {
@@ -352,10 +429,12 @@ function mergeTurnsIntoHistory(history, turns, maxQ, iso = new Date().toISOStrin
     const softSkills = turn.soft_skills
       || (hasNewScore
         ? {
-            clarity: Math.round(Number(turn.clarity ?? turn.score ?? 0)),
-            confidence: Math.round(Number(turn.confidence ?? turn.score ?? 0)),
-            professionalism: Math.round(Number(turn.professionalism ?? turn.score ?? 0)),
-            relevance: Math.round(Number(turn.relevance ?? turn.score ?? 0)),
+            communication_clarity: Math.round(Number(turn.communication_clarity ?? turn.clarity ?? turn.score ?? 0)),
+            fluency:               Math.round(Number(turn.fluency               ?? turn.score ?? 0)),
+            confidence:            Math.round(Number(turn.confidence            ?? turn.score ?? 0)),
+            professionalism:       Math.round(Number(turn.professionalism       ?? turn.score ?? 0)),
+            english_proficiency:   Math.round(Number(turn.english_proficiency   ?? turn.score ?? 0)),
+            answer_relevance:      Math.round(Number(turn.answer_relevance      ?? turn.relevance ?? turn.score ?? 0)),
           }
         : (existing.soft_skills ?? null));
 

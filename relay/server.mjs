@@ -6,9 +6,10 @@ import { GeminiLiveBridge } from './lib/gemini-live.mjs';
 import {
   directSavePartialTurn,
   directSaveToSupabase,
+  enrichTurnsFromDb,
   postCompleteWebhook,
   postPartialTurnWebhook,
-  scoreLiveTurns,
+  scoreTurnsSequential,
   scoreSingleTurn,
   vercelSaveTurn,
   vercelSaveFinal,
@@ -183,7 +184,7 @@ wss.on('connection', (clientWs) => {
                 const scored = await Promise.race([
                   scoreSingleTurn({ apiKey: GEMINI_API_KEY, context, turn: turnPair }),
                   new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('single_score_timeout')), 15000)
+                    setTimeout(() => reject(new Error('single_score_timeout')), 25000)
                   ),
                 ]);
                 try {
@@ -193,6 +194,14 @@ wss.on('connection', (clientWs) => {
                     console.warn('[relay] background score patch failed:', dbErr.message);
                   });
                 }
+                sendJson(clientWs, {
+                  type: 'turn_scored',
+                  number: turnPair.voice_question_number,
+                  phase: turnPair.phase,
+                  score: scored.score,
+                  feedback: scored.feedback,
+                  soft_skills: scored.soft_skills,
+                });
               } catch (scoreErr) {
                 console.warn('[relay] background scoring skipped:', scoreErr.message);
               }
@@ -230,46 +239,39 @@ wss.on('connection', (clientWs) => {
         const rawTurns = bridge.buildTurnPairs();
         const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
 
-        // Strategy: per-turn background scoring has already been running during the
-        // interview. For the final save we re-score any turns that are still null,
-        // then send vercelSaveFinal which PRESERVES already-scored turns in the DB.
-        // This prevents the race condition where a bulk re-score timeout zeroes out
-        // the per-turn scores that were already saved.
-        const nullTurns = rawTurns.filter((t) => t.score == null);
+        // Merge any scores already saved per-turn in DB, then score remaining sequentially.
         let scored = {
-          turns: rawTurns,
+          turns: await enrichTurnsFromDb(context, rawTurns),
           combined_speech_score: 0,
           final_feedback: 'Voice interview completed.',
         };
 
+        const nullTurns = scored.turns.filter(
+          (t) => t.score == null || !Number.isFinite(Number(t.score))
+        );
         if (nullTurns.length > 0) {
-          // Only score the turns that are missing scores (likely background scored the rest).
-          try {
-            const partial = await Promise.race([
-              scoreLiveTurns({ apiKey: GEMINI_API_KEY, context, turns: nullTurns }),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('score_timeout')), 30000)
-              ),
-            ]);
-            // Merge partial scores back — preserve any already-scored turns.
-            const byPhase = new Map(partial.turns.map((t) => [Number(t.phase), t]));
-            scored.turns = rawTurns.map((t) => {
-              const s = byPhase.get(Number(t.phase));
-              return (s && s.score != null) ? s : t;
-            });
-            scored.final_feedback = partial.final_feedback || scored.final_feedback;
-          } catch (scoreErr) {
-            console.warn('[relay] final re-score skipped (per-turn scores kept):', scoreErr.message);
-          }
+          console.log(`[relay] final scoring ${nullTurns.length} unscored turn(s) sequentially`);
+          const freshlyScored = await scoreTurnsSequential({
+            apiKey: GEMINI_API_KEY,
+            context,
+            turns: nullTurns,
+          });
+          const byPhase = new Map(freshlyScored.map((t) => [Number(t.phase), t]));
+          scored.turns = scored.turns.map((t) => {
+            const s = byPhase.get(Number(t.phase));
+            return (s && s.score != null && Number.isFinite(Number(s.score))) ? s : t;
+          });
         }
 
-        // Compute combined from whichever scores we have (in-memory + from background saves).
         const allScores = scored.turns
           .map((t) => Number(t.score))
           .filter((n) => Number.isFinite(n) && n >= 0);
         scored.combined_speech_score = allScores.length
           ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length)
           : 0;
+        if (allScores.length) {
+          scored.final_feedback = `Voice interview completed. Average communication score: ${scored.combined_speech_score}/100 across ${allScores.length} question${allScores.length === 1 ? '' : 's'}.`;
+        }
 
         if (webhookFired) {
           sendJson(clientWs, {

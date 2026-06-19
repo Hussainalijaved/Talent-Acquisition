@@ -1396,6 +1396,7 @@
             const [savingAnswer, setSavingAnswer] = React.useState(false);
             const [ending, setEnding] = React.useState(false);
             const [interviewComplete, setInterviewComplete] = React.useState(false);
+            const [closingCaption, setClosingCaption] = React.useState('');
             const [liveCaption, setLiveCaption] = React.useState('');
             const [liveQuestionCaption, setLiveQuestionCaption] = React.useState('');
             const [isInterviewerSpeaking, setIsInterviewerSpeaking] = React.useState(false);
@@ -1439,6 +1440,22 @@
                 });
             }, [cleanText]);
 
+            const setScoreForQuestion = React.useCallback((number, score, feedback, soft_skills) => {
+                setCards((prev) => {
+                    const next = [...prev];
+                    const idx = number - 1;
+                    if (next[idx]) {
+                        next[idx] = {
+                            ...next[idx],
+                            score: score != null ? Number(score) : next[idx].score,
+                            feedback: feedback || next[idx].feedback,
+                            soft_skills: soft_skills || next[idx].soft_skills,
+                        };
+                    }
+                    return next;
+                });
+            }, []);
+
             React.useEffect(() => {
                 let cancelled = false;
                 (async () => {
@@ -1453,10 +1470,16 @@
                             context,
                             tabSwitches,
                             onStatus: setStatus,
-                            onTranscript: ({ speaker, text, partial }) => {
+                            onTranscript: ({ speaker, text, partial, closing }) => {
                                 if (speaker === 'model') {
                                     const clean = cleanText(text, 'model');
                                     if (!clean) return;
+                                    if (closing) {
+                                        setClosingCaption(clean);
+                                        setLiveQuestionCaption('');
+                                        setIsInterviewerSpeaking(true);
+                                        return;
+                                    }
                                     if (partial) {
                                         setIsInterviewerSpeaking(true);
                                         setLiveQuestionCaption(clean);
@@ -1534,6 +1557,9 @@
                                 setLiveQuestionCaption('');
                                 addQuestion(number, '…');
                             },
+                            onTurnScored: ({ number, score, feedback, soft_skills }) => {
+                                setScoreForQuestion(number, score, feedback, soft_skills);
+                            },
                             onInterviewComplete: () => {
                                 setInterviewComplete(true);
                                 setCanAnswer(false);
@@ -1541,6 +1567,8 @@
                                 setSavingAnswer(false);
                                 setAnswerTimerActive(false);
                                 setTimeLeft(null);
+                                setLiveCaption('');
+                                setLiveQuestionCaption('');
                             },
                             onComplete: (result) => {
                                 if (finishedRef.current) return;
@@ -1568,7 +1596,7 @@
                     sessionRef.current?.cancel?.();
                     sessionRef.current = null;
                 };
-            }, [context, relayFallback, tabSwitches, onError, addQuestion, setAnswerForQuestion]);
+            }, [context, relayFallback, tabSwitches, onError, addQuestion, setAnswerForQuestion, setScoreForQuestion]);
 
             React.useEffect(() => {
                 cardsEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' });
@@ -1743,7 +1771,24 @@
                                 </div>
                             </div>
                             <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
-                                {(() => {
+                                {interviewComplete ? (
+                                    <div className="fade-in rounded-2xl border border-emerald-500/30 bg-emerald-500/5 overflow-hidden shadow-lg shadow-emerald-500/5">
+                                        <div className="px-6 py-8 text-center">
+                                            <div className="w-14 h-14 rounded-full border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-center text-emerald-300 text-2xl mx-auto mb-4">✓</div>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-300 mb-2">Interview complete</p>
+                                            <p className="text-lg text-emerald-50 leading-relaxed max-w-lg mx-auto">
+                                                {closingCaption || 'Thank you for your time — that completes the voice interview.'}
+                                                {isInterviewerSpeaking ? (
+                                                    <span className="inline-block w-1.5 h-4 bg-emerald-400/70 ml-0.5 align-middle animate-pulse" />
+                                                ) : null}
+                                            </p>
+                                            <p className="text-sm text-slate-400 mt-4 flex items-center justify-center gap-2">
+                                                <span className="inline-block w-3.5 h-3.5 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                                                Submitting your results…
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : (() => {
                                     const card = cards.length ? cards[cards.length - 1] : null;
                                     const questionDisplay = liveQuestionCaption || card?.question || '';
                                     if (!card && !questionDisplay) {
@@ -1817,6 +1862,26 @@
                                                         <span className="inline-block w-3 h-3 border-2 border-indigo-300/40 border-t-indigo-300 rounded-full animate-spin" />
                                                         Moving to question {turn + 1}…
                                                     </p>
+                                                ) : null}
+                                                {card?.score != null && Number.isFinite(Number(card.score)) ? (
+                                                    <div className="mt-4 pt-3 border-t border-surface-border/60">
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">Communication score</p>
+                                                        <p className="text-lg font-bold text-indigo-200 tabular-nums">{card.score}<span className="text-sm text-slate-500 font-medium">/100</span></p>
+                                                        {card.soft_skills ? (
+                                                            <div className="grid grid-cols-2 gap-2 mt-3">
+                                                                {SPEECH_SKILL_DIMS.map(([label, key, legacy]) => {
+                                                                    const val = getSpeechSkillValue(card.soft_skills, key, legacy);
+                                                                    if (val == null) return null;
+                                                                    return (
+                                                                        <div key={label} className="text-xs text-slate-400">
+                                                                            <span>{label}: </span>
+                                                                            <span className="text-slate-200 font-semibold tabular-nums">{val}</span>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
                                                 ) : null}
                                             </div>
                                         </div>
@@ -2766,6 +2831,25 @@
             return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
         };
 
+        const SPEECH_SKILL_DIMS = [
+            ['Communication clarity', 'communication_clarity', 'clarity'],
+            ['Fluency', 'fluency', null],
+            ['Confidence', 'confidence', null],
+            ['Professionalism', 'professionalism', null],
+            ['English proficiency', 'english_proficiency', null],
+            ['Answer relevance', 'answer_relevance', 'relevance'],
+        ];
+
+        const getSpeechSkillValue = (skills, primary, legacy) => {
+            if (!skills || typeof skills !== 'object') return null;
+            const primaryVal = skills[primary];
+            if (primaryVal != null && Number.isFinite(Number(primaryVal))) return Number(primaryVal);
+            if (legacy && skills[legacy] != null && Number.isFinite(Number(skills[legacy]))) {
+                return Number(skills[legacy]);
+            }
+            return null;
+        };
+
         const SkillBar = ({ label, value }) => {
             const v = Number(value);
             const pct = Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 0;
@@ -2811,7 +2895,10 @@
 
         const SpeechPhaseInsights = ({ item }) => {
             const skills = item.soft_skills;
-            const hasSkills = skills && typeof skills === 'object' && Object.keys(skills).length > 0;
+            const skillRows = SPEECH_SKILL_DIMS
+                .map(([label, key, legacy]) => [label, getSpeechSkillValue(skills, key, legacy)])
+                .filter(([, v]) => v != null);
+            const hasSkills = skillRows.length > 0;
             const audioUrl = item.answer_audio_url;
             const meta = [item.scoring_source && `Scoring: ${item.scoring_source}`, item.stt_source && `Transcript: ${item.stt_source}`]
                 .filter(Boolean)
@@ -2822,10 +2909,9 @@
                     {hasSkills ? (
                         <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 p-4 sm:p-5 space-y-3">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Communication skills</p>
-                            <SkillBar label="Clarity" value={skills.clarity} />
-                            <SkillBar label="Confidence" value={skills.confidence} />
-                            <SkillBar label="Professionalism" value={skills.professionalism} />
-                            <SkillBar label="Relevance" value={skills.relevance} />
+                            {skillRows.map(([label, val]) => (
+                                <SkillBar key={label} label={label} value={val} />
+                            ))}
                         </div>
                     ) : null}
                     {item.speech_metrics ? (
@@ -2853,12 +2939,9 @@
                 const vals = speechRows.map((r) => Number(r.score)).filter((n) => Number.isFinite(n));
                 return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
             })();
-            const dims = [
-                ['Clarity', avgSpeechSkill(speechRows, 'clarity')],
-                ['Confidence', avgSpeechSkill(speechRows, 'confidence')],
-                ['Professionalism', avgSpeechSkill(speechRows, 'professionalism')],
-                ['Relevance', avgSpeechSkill(speechRows, 'relevance')],
-            ].filter(([, v]) => v != null);
+            const dims = SPEECH_SKILL_DIMS
+                .map(([label, key, legacy]) => [label, avgSpeechSkill(speechRows, key) ?? avgSpeechSkill(speechRows, legacy)])
+                .filter(([, v]) => v != null);
             return (
                 <div className="panel rounded-2xl p-6 mb-8 border border-indigo-500/20 bg-indigo-500/5">
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-5">

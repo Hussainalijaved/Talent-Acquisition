@@ -230,30 +230,46 @@ wss.on('connection', (clientWs) => {
         const rawTurns = bridge.buildTurnPairs();
         const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
 
-        // Each turn was already scored + saved individually during the interview
-        // (onTurnSaved → directSavePartialTurn). Try a final combined re-score only
-        // to fill any gaps, but NEVER let a timeout zero-out existing scores:
-        // on failure we pass score:null so the saved per-turn scores are preserved.
+        // Strategy: per-turn background scoring has already been running during the
+        // interview. For the final save we re-score any turns that are still null,
+        // then send vercelSaveFinal which PRESERVES already-scored turns in the DB.
+        // This prevents the race condition where a bulk re-score timeout zeroes out
+        // the per-turn scores that were already saved.
+        const nullTurns = rawTurns.filter((t) => t.score == null);
         let scored = {
-          turns: rawTurns.map((t) => ({ ...t, score: null })),
+          turns: rawTurns,
           combined_speech_score: 0,
           final_feedback: 'Voice interview completed.',
         };
-        try {
-          scored = await Promise.race([
-            scoreLiveTurns({ apiKey: GEMINI_API_KEY, context, turns: rawTurns }),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('score_timeout')), 20000)
-            ),
-          ]);
-        } catch (scoreErr) {
-          console.warn('[relay] final re-score skipped (per-turn scores kept):', scoreErr.message);
-          scored = {
-            turns: rawTurns.map((t) => ({ ...t, score: null })),
-            combined_speech_score: 0,
-            final_feedback: 'Voice interview completed.',
-          };
+
+        if (nullTurns.length > 0) {
+          // Only score the turns that are missing scores (likely background scored the rest).
+          try {
+            const partial = await Promise.race([
+              scoreLiveTurns({ apiKey: GEMINI_API_KEY, context, turns: nullTurns }),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('score_timeout')), 30000)
+              ),
+            ]);
+            // Merge partial scores back — preserve any already-scored turns.
+            const byPhase = new Map(partial.turns.map((t) => [Number(t.phase), t]));
+            scored.turns = rawTurns.map((t) => {
+              const s = byPhase.get(Number(t.phase));
+              return (s && s.score != null) ? s : t;
+            });
+            scored.final_feedback = partial.final_feedback || scored.final_feedback;
+          } catch (scoreErr) {
+            console.warn('[relay] final re-score skipped (per-turn scores kept):', scoreErr.message);
+          }
         }
+
+        // Compute combined from whichever scores we have (in-memory + from background saves).
+        const allScores = scored.turns
+          .map((t) => Number(t.score))
+          .filter((n) => Number.isFinite(n) && n >= 0);
+        scored.combined_speech_score = allScores.length
+          ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length)
+          : 0;
 
         if (webhookFired) {
           sendJson(clientWs, {

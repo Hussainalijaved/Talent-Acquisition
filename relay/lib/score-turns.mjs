@@ -49,12 +49,28 @@ function safeParseJson(rawText) {
 export async function scoreSingleTurn({ apiKey, context, turn }) {
   if (!apiKey) throw new Error('GEMINI_API_KEY missing for scoring');
   const role = String(context.requisition_title || 'the role');
-  const prompt = `Score this live voice interview answer for ${role}. Return JSON only:
-{"phase":number,"score":number,"clarity":number,"confidence":number,"professionalism":number,"relevance":number,"feedback":string}
+  const isNoResponse = !turn.answer_text ||
+    /^\[(no spoken|non-english|no speech)/i.test(turn.answer_text);
 
-Phase ${turn.phase}
-Q: ${turn.question_text}
-A: ${turn.answer_text}`;
+  const prompt = `You are evaluating a live voice interview answer for a ${role} position.
+This is a COMMUNICATION SKILLS round — score the candidate on HOW they speak, not just WHAT they say.
+
+Return JSON only (no markdown, no explanation):
+{
+  "phase": ${turn.phase},
+  "score": <overall 0-100>,
+  "communication_clarity": <0-100, clear articulation, logical flow, easy to follow>,
+  "fluency": <0-100, smooth delivery, natural pace, minimal filler words>,
+  "confidence": <0-100, assertive tone, no excessive hedging, speaks with conviction>,
+  "professionalism": <0-100, appropriate tone, formal register, respectful>,
+  "english_proficiency": <0-100, grammar, vocabulary, pronunciation quality>,
+  "answer_relevance": <0-100, did they actually answer what was asked>,
+  "feedback": "<2-3 sentences: what was strong, what to improve in communication style>"
+}
+
+Question: ${turn.question_text}
+Candidate's transcribed answer: ${turn.answer_text}
+${isNoResponse ? '\nNOTE: Candidate gave no spoken response or spoke in a non-English language.' : ''}`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${SCORE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const res = await fetch(url, {
@@ -75,22 +91,32 @@ A: ${turn.answer_text}`;
   const rawText = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
   const parsed = safeParseJson(rawText);
 
+  if (!parsed.score && !parsed.communication_clarity) {
+    throw new Error(`scoreSingleTurn: empty parse from model — raw: ${rawText.slice(0, 200)}`);
+  }
+
+  const overall = Math.round(Number(parsed.score ?? 0));
+  const soft = {
+    communication_clarity: Math.round(Number(parsed.communication_clarity ?? parsed.score ?? 0)),
+    fluency:               Math.round(Number(parsed.fluency               ?? parsed.score ?? 0)),
+    confidence:            Math.round(Number(parsed.confidence            ?? parsed.score ?? 0)),
+    professionalism:       Math.round(Number(parsed.professionalism       ?? parsed.score ?? 0)),
+    english_proficiency:   Math.round(Number(parsed.english_proficiency   ?? parsed.score ?? 0)),
+    answer_relevance:      Math.round(Number(parsed.answer_relevance      ?? parsed.score ?? 0)),
+  };
+
   return {
     ...turn,
-    score: Math.round(Number(parsed.score ?? 0)),
-    clarity: Math.round(Number(parsed.clarity ?? parsed.score ?? 0)),
-    confidence: Math.round(Number(parsed.confidence ?? parsed.score ?? 0)),
-    professionalism: Math.round(Number(parsed.professionalism ?? parsed.score ?? 0)),
-    relevance: Math.round(Number(parsed.relevance ?? parsed.score ?? 0)),
-    feedback: String(parsed.feedback || '').trim(),
-    soft_skills: {
-      clarity: Math.round(Number(parsed.clarity ?? parsed.score ?? 0)),
-      confidence: Math.round(Number(parsed.confidence ?? parsed.score ?? 0)),
-      professionalism: Math.round(Number(parsed.professionalism ?? parsed.score ?? 0)),
-      relevance: Math.round(Number(parsed.relevance ?? parsed.score ?? 0)),
-    },
+    score: overall,
+    // Keep legacy fields for backwards compat with dashboard
+    clarity:        soft.communication_clarity,
+    confidence:     soft.confidence,
+    professionalism: soft.professionalism,
+    relevance:      soft.answer_relevance,
+    feedback:       String(parsed.feedback || '').trim(),
+    soft_skills:    soft,
     scoring_source: 'gemini_live_relay',
-    stt_source: 'gemini_live',
+    stt_source:     'gemini_live',
   };
 }
 
@@ -134,34 +160,42 @@ export async function scoreLiveTurns({ apiKey, context, turns }) {
   }
 
   const role = String(context.requisition_title || 'the role');
-  const prompt = `You are scoring a live voice interview for ${role}.
-Score each Q&A turn 0-100 on clarity, confidence, professionalism, relevance.
+  const prompt = `You are evaluating a full live voice interview for a ${role} position.
+This is a COMMUNICATION SKILLS round. Score each answer on HOW the candidate communicates.
+
 Return JSON only:
 {
   "turns": [
     {
-      "phase": number,
-      "score": number,
-      "clarity": number,
-      "confidence": number,
-      "professionalism": number,
-      "relevance": number,
-      "feedback": string
+      "phase": <number>,
+      "score": <overall 0-100>,
+      "communication_clarity": <0-100>,
+      "fluency": <0-100>,
+      "confidence": <0-100>,
+      "professionalism": <0-100>,
+      "english_proficiency": <0-100>,
+      "answer_relevance": <0-100>,
+      "feedback": "<2-3 sentences on communication strengths and areas to improve>"
     }
   ],
-  "combined_speech_score": number,
-  "final_feedback": string
+  "combined_speech_score": <0-100 weighted average>,
+  "final_feedback": "<overall summary of the candidate's communication profile>"
 }
 
+Scoring dimensions:
+- communication_clarity: clear articulation, logical structure, easy to follow
+- fluency: smooth delivery, natural pace, no excessive filler words
+- confidence: assertive tone, speaks with conviction, no excessive hedging
+- professionalism: appropriate register, respectful, interview-ready demeanor
+- english_proficiency: grammar, vocabulary range, pronunciation quality
+- answer_relevance: did they actually address what was asked (bonus dimension)
+
+For turns with [No spoken response] or [Non-English response]: score 0 across all dimensions.
+
 Turns:
-${turns
-  .map(
-    (t, i) =>
-      `Turn ${i + 1} (phase ${t.phase})
+${turns.map((t, i) => `Turn ${i + 1} (phase ${t.phase})
 Q: ${t.question_text}
-A: ${t.answer_text}`
-  )
-  .join('\n\n')}`;
+A: ${t.answer_text}`).join('\n\n')}`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${SCORE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const res = await fetch(url, {
@@ -185,27 +219,29 @@ A: ${t.answer_text}`
   const scoredByPhase = new Map((parsed.turns || []).map((t) => [Number(t.phase), t]));
   const merged = turns.map((t) => {
     const s = scoredByPhase.get(Number(t.phase));
-    // No score for this turn in the model output → return null so the merge keeps
-    // whatever score was already saved per-question (never overwrite with 0).
     if (!s || s.score == null || !Number.isFinite(Number(s.score))) {
-      return { ...t, score: null };
+      // No score from model → preserve whatever was already saved (never overwrite with null)
+      return { ...t, score: t.score ?? null };
     }
+    const soft = {
+      communication_clarity: Math.round(Number(s.communication_clarity ?? s.score)),
+      fluency:               Math.round(Number(s.fluency               ?? s.score)),
+      confidence:            Math.round(Number(s.confidence            ?? s.score)),
+      professionalism:       Math.round(Number(s.professionalism       ?? s.score)),
+      english_proficiency:   Math.round(Number(s.english_proficiency   ?? s.score)),
+      answer_relevance:      Math.round(Number(s.answer_relevance      ?? s.score)),
+    };
     return {
       ...t,
-      score: Math.round(Number(s.score)),
-      clarity: Math.round(Number(s.clarity ?? s.score)),
-      confidence: Math.round(Number(s.confidence ?? s.score)),
-      professionalism: Math.round(Number(s.professionalism ?? s.score)),
-      relevance: Math.round(Number(s.relevance ?? s.score)),
-      feedback: String(s.feedback || '').trim(),
-      soft_skills: {
-        clarity: Math.round(Number(s.clarity ?? s.score)),
-        confidence: Math.round(Number(s.confidence ?? s.score)),
-        professionalism: Math.round(Number(s.professionalism ?? s.score)),
-        relevance: Math.round(Number(s.relevance ?? s.score)),
-      },
+      score:          Math.round(Number(s.score)),
+      clarity:        soft.communication_clarity,
+      confidence:     soft.confidence,
+      professionalism: soft.professionalism,
+      relevance:      soft.answer_relevance,
+      feedback:       String(s.feedback || '').trim(),
+      soft_skills:    soft,
       scoring_source: 'gemini_live_relay',
-      stt_source: 'gemini_live',
+      stt_source:     'gemini_live',
     };
   });
 

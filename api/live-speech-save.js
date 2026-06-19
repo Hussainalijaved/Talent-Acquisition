@@ -45,10 +45,13 @@ function mergeTurns(history, newTurns, maxQ) {
         const softSkills = turn.soft_skills
             || (hasNewScore
                 ? {
-                    clarity: Math.round(Number(turn.clarity ?? turn.score ?? 0)),
-                    confidence: Math.round(Number(turn.confidence ?? turn.score ?? 0)),
-                    professionalism: Math.round(Number(turn.professionalism ?? turn.score ?? 0)),
-                    relevance: Math.round(Number(turn.relevance ?? turn.score ?? 0)),
+                    // New scoring dimensions (communication-focused)
+                    communication_clarity: Math.round(Number(turn.communication_clarity ?? turn.clarity ?? turn.score ?? 0)),
+                    fluency:               Math.round(Number(turn.fluency               ?? turn.score ?? 0)),
+                    confidence:            Math.round(Number(turn.confidence            ?? turn.score ?? 0)),
+                    professionalism:       Math.round(Number(turn.professionalism       ?? turn.score ?? 0)),
+                    english_proficiency:   Math.round(Number(turn.english_proficiency   ?? turn.score ?? 0)),
+                    answer_relevance:      Math.round(Number(turn.answer_relevance      ?? turn.relevance ?? turn.score ?? 0)),
                 }
                 : (existing.soft_skills ?? null));
 

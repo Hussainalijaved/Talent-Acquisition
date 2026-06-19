@@ -232,10 +232,17 @@ A: ${t.answer_text}`
 
 function getSupabaseConfig(context) {
   const supabaseUrl = String(
-    context.config?.supabase_url || context.supabase_url || ''
+    context.config?.supabase_url ||
+    context.supabase_url ||
+    process.env.SUPABASE_URL ||
+    ''
   ).replace(/\/+$/, '');
   const supabaseKey = String(
-    context.config?.supabase_key || context.supabase_key || ''
+    context.config?.supabase_key ||
+    context.supabase_key ||
+    process.env.SUPABASE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    ''
   );
   const sessionId = String(context.session_id || '');
   const maxQ = Number(context.max_questions || 5);

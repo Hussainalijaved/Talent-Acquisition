@@ -1729,9 +1729,6 @@
                                                 : 'Listen to the interviewer'}
                                         </p>
                                     </div>
-                                    {answerTimerActive && timeLeft != null ? (
-                                        <TimerRing seconds={timeLeft} totalSeconds={answerTimeLimit} prominent />
-                                    ) : null}
                                 </div>
                             </div>
                             <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
@@ -1764,9 +1761,6 @@
                                                             ) : null}
                                                         </p>
                                                     </div>
-                                                    {answerTimerActive && timeLeft != null ? (
-                                                        <TimerRing seconds={timeLeft} totalSeconds={answerTimeLimit} prominent />
-                                                    ) : null}
                                                 </div>
                                             </div>
                                             <div className="px-6 py-5">
@@ -4263,11 +4257,24 @@
                         alert('live_relay_url is not set. Update n8n CFG or run relay locally on port 8080.');
                         return;
                     }
+                    const portalBase = String(
+                        ctx.portal_base_url || 'https://talent-acquisition-six.vercel.app'
+                    ).replace(/\/+$/, '');
                     setLiveSpeechContext({
                         ...ctx,
                         session_id: ctx.session_id || sessionId,
                         candidate_email: ctx.candidate_email || candidateEmail,
                         live_relay_url: relay,
+                        portal_base_url: portalBase,
+                        live_save_url: ctx.live_save_url || `${portalBase}/api/live-speech-save`,
+                        supabase_url: ctx.supabase_url || ctx.config?.supabase_url || '',
+                        supabase_key: ctx.supabase_key || ctx.config?.supabase_key || '',
+                        config: {
+                            ...(ctx.config || {}),
+                            supabase_url: ctx.supabase_url || ctx.config?.supabase_url || '',
+                            supabase_key: ctx.supabase_key || ctx.config?.supabase_key || '',
+                            portal_base_url: portalBase,
+                        },
                     });
                     setAssessmentMode('live_speech');
                     setPendingSpeechIntro(null);

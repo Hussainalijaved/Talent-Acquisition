@@ -12,6 +12,14 @@ function parseJson(raw, fallback) {
   }
 }
 
+function safeEnv(name) {
+  try {
+    return String($env[name] || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
 const norm = $('CODE - Normalize Live Speech Start').first().json;
 const cfg = norm.config || {};
 const fetchRaw = $input.first().json;
@@ -73,6 +81,22 @@ const completeWebhook = String(
       : '')
 ).trim();
 const relayUrl = String(cfg.live_relay_url || sessCfg.live_relay_url || '').trim();
+const supabaseUrl = String(
+  cfg.supabase_url ||
+    sessCfg.supabase_url ||
+    safeEnv('SUPABASE_URL') ||
+    ''
+).trim();
+const supabaseKey = String(
+  cfg.supabase_key ||
+    sessCfg.supabase_key ||
+    safeEnv('SUPABASE_SERVICE_ROLE_KEY') ||
+    safeEnv('SUPABASE_KEY') ||
+    ''
+).trim();
+const portalBase = String(
+  cfg.portal_base_url || sessCfg.portal_base_url || 'https://talent-acquisition-six.vercel.app'
+).replace(/\/+$/, '');
 
 return [
   {
@@ -94,13 +118,17 @@ return [
       ),
       live_relay_url: relayUrl,
       live_complete_webhook: completeWebhook,
-      portal_base_url: String(
-        cfg.portal_base_url || sessCfg.portal_base_url || 'https://talent-acquisition-six.vercel.app'
-      ).replace(/\/+$/, ''),
+      portal_base_url: portalBase,
+      live_save_url: `${portalBase}/api/live-speech-save`,
       // Supabase creds at top-level so the relay can save directly without n8n.
-      supabase_url: String(sessCfg.supabase_url || '').trim(),
-      supabase_key: String(sessCfg.supabase_key || '').trim(),
-      config: sessCfg,
+      supabase_url: supabaseUrl,
+      supabase_key: supabaseKey,
+      config: {
+        ...sessCfg,
+        supabase_url: supabaseUrl,
+        supabase_key: supabaseKey,
+        portal_base_url: portalBase,
+      },
       session,
     },
   },

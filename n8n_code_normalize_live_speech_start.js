@@ -1,9 +1,20 @@
 // n8n: CODE - Normalize Live Speech Start
 // After: TRG - Live Speech Start → CFG - Live Speech Config
 
+function safeEnv(name) {
+  try {
+    return String($env[name] || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
 const item = $input.first().json;
 const body = item.body || item || {};
-const cfg = item.config || item;
+const cfg = {
+  ...(typeof item.config === 'object' && item.config ? item.config : {}),
+  ...item,
+};
 
 const cleanEmail = (raw) => {
   const first = String(raw || '').trim().toLowerCase().split(/\n/)[0].trim();
@@ -26,8 +37,15 @@ return [
       candidate_email,
       assessment_mode: 'live_speech',
       config: {
-        supabase_url: String(cfg.supabase_url || '').trim(),
-        supabase_key: String(cfg.supabase_key || '').trim(),
+        supabase_url: String(
+          cfg.supabase_url || safeEnv('SUPABASE_URL') || ''
+        ).trim(),
+        supabase_key: String(
+          cfg.supabase_key ||
+            safeEnv('SUPABASE_SERVICE_ROLE_KEY') ||
+            safeEnv('SUPABASE_KEY') ||
+            ''
+        ).trim(),
         max_questions: Number(cfg.max_questions ?? 5),
         speech_phases: Number(cfg.live_speech_turns ?? cfg.speech_phases ?? 5),
         speech_answer_seconds: Number(cfg.speech_answer_seconds ?? 120),

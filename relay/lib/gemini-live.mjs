@@ -84,6 +84,7 @@ export class GeminiLiveBridge {
     this.maxTurns = Number(context.speech_phases || 5);
     this.maxQuestions = Number(context.max_questions || 5);
     this.prematureClosingReprompts = 0;
+    this.nextQuestionWatchdog = null;
   }
 
   buildNextQuestionPrompt(aNum, nextQ) {
@@ -105,6 +106,32 @@ export class GeminiLiveBridge {
       `Ask interview question ${expectedQ} of ${this.maxTurns} now — one clear behavioural question only. ` +
       'Do NOT thank the candidate. Do NOT say the interview is complete. Then stop and wait.'
     );
+  }
+
+  scheduleNextQuestionWatchdog(nextQ) {
+    if (this.nextQuestionWatchdog) clearTimeout(this.nextQuestionWatchdog);
+    this.nextQuestionWatchdog = setTimeout(() => {
+      this.nextQuestionWatchdog = null;
+      if (this.interviewEnded || this.closed || this.questions.length >= nextQ) return;
+      console.warn(`[relay] next-question watchdog — Q${nextQ} not received, injecting fallback`);
+      this.roundQuestionEmitted = false;
+      this.modelBuf = '';
+      this.blockModelOutput = false;
+      this.allowModelAudio = true;
+      const fallback = fallbackInterviewQuestion(nextQ, this.maxTurns);
+      this.questions.push(fallback);
+      this.roundQuestionEmitted = true;
+      this.onEvent({ type: 'transcript', speaker: 'model', text: fallback, partial: false, number: nextQ });
+      this.onEvent({ type: 'question', number: nextQ, text: fallback });
+      this.onEvent({ type: 'awaiting_answer', number: nextQ, maxTurns: this.maxTurns });
+    }, 12000);
+  }
+
+  clearNextQuestionWatchdog() {
+    if (this.nextQuestionWatchdog) {
+      clearTimeout(this.nextQuestionWatchdog);
+      this.nextQuestionWatchdog = null;
+    }
   }
 
   async start() {
@@ -417,6 +444,7 @@ export class GeminiLiveBridge {
     this.pendingAudioChunks = [];
     this.blockModelOutput = false;
     this.sendClientText(this.buildNextQuestionPrompt(aNum, nextQ), true);
+    this.scheduleNextQuestionWatchdog(nextQ);
   }
 
   emitQuestionFromBuffer() {
@@ -451,6 +479,7 @@ export class GeminiLiveBridge {
         this.kickoffWatchdog = null;
       }
       const qNum = this.questions.length;
+      this.clearNextQuestionWatchdog();
       this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
       this.onEvent({ type: 'question', number: qNum, text: modelText });
       this.onEvent({ type: 'awaiting_answer', number: qNum, maxTurns: this.maxTurns });
@@ -564,6 +593,7 @@ export class GeminiLiveBridge {
   }
 
   closeGemini() {
+    this.clearNextQuestionWatchdog();
     if (this.answerTimer) {
       clearTimeout(this.answerTimer);
       this.answerTimer = null;

@@ -1512,7 +1512,8 @@
                                 }
                                 const { turn: t, maxTurns: m } = payload || {};
                                 const capped = Math.min(Number(t) || 0, Number(m) || maxTurns);
-                                setTurn(capped);
+                                // Never move progress backwards (turn_complete can arrive after next_question_ready).
+                                setTurn((prev) => Math.max(Number(prev) || 0, capped));
                                 if (m) setMaxTurns(m);
                             },
                             onQuestion: ({ number, text, partial }) => {
@@ -1555,7 +1556,13 @@
                                 setTurn(number);
                                 setIsInterviewerSpeaking(true);
                                 setLiveQuestionCaption('');
+                                setStatus(`Question ${number} — the interviewer is speaking…`);
                                 addQuestion(number, '…');
+                            },
+                            onPrematureClosing: () => {
+                                setSavingAnswer(false);
+                                setIsInterviewerSpeaking(true);
+                                setStatus('Preparing the next question — please wait…');
                             },
                             onTurnScored: ({ number, score, feedback, soft_skills }) => {
                                 setScoreForQuestion(number, score, feedback, soft_skills);
@@ -1642,6 +1649,20 @@
                     timerRef.current = null;
                 };
             }, [answerTimerActive, answerTimeLimit, savingAnswer, ending, interviewComplete]);
+
+            // Safety: never leave the UI stuck on "Saving…" if the next question is delayed.
+            React.useEffect(() => {
+                if (!savingAnswer) return undefined;
+                const timer = setTimeout(() => {
+                    setSavingAnswer(false);
+                    setStatus((prev) => (
+                        /saving/i.test(prev)
+                            ? 'Preparing the next question — please wait…'
+                            : prev
+                    ));
+                }, 6000);
+                return () => clearTimeout(timer);
+            }, [savingAnswer]);
 
             const handleAnswerToggle = () => {
                 if (interviewComplete || ending || isLoading || savingAnswer) return;
@@ -1754,6 +1775,8 @@
                                         <p className="text-sm text-slate-500 mt-1">
                                             {isAnswering
                                                 ? 'Mic open — speak clearly in English, then submit'
+                                                : savingAnswer && cards[cards.length - 1]?.answer
+                                                ? 'Answer recorded — preparing the next question…'
                                                 : savingAnswer
                                                 ? 'Saving your answer — please wait…'
                                                 : canAnswer
@@ -1803,7 +1826,7 @@
                                     const saving = savingAnswer;
                                     const answered = Boolean(card?.answer);
                                     const displayAnswer = card?.answer || liveCaption || '';
-                                    const waitingNext = answered && !interviewComplete && !recording;
+                                    const waitingNext = answered && !interviewComplete && !recording && !saving;
                                     const qNum = card?.number || currentQuestionNum || 1;
                                     return (
                                         <div key={qNum} className="fade-in rounded-2xl border border-indigo-500/30 bg-surface-elevated/40 overflow-hidden shadow-lg shadow-indigo-500/5">
@@ -1840,6 +1863,16 @@
                                                             </p>
                                                         ) : null}
                                                     </div>
+                                                ) : answered ? (
+                                                    <div className="py-1">
+                                                        <p className="text-[15px] text-slate-100 leading-relaxed">{card?.answer}</p>
+                                                        {saving ? (
+                                                            <p className="text-sm text-amber-300/90 flex items-center gap-2 mt-3">
+                                                                <span className="inline-block w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />
+                                                                Saving your answer…
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
                                                 ) : saving ? (
                                                     <div className="py-1">
                                                         {displayAnswer && !/^\[(no spoken|non-english)/i.test(displayAnswer) ? (
@@ -1850,8 +1883,6 @@
                                                             Saving your answer…
                                                         </p>
                                                     </div>
-                                                ) : answered ? (
-                                                    <p className="text-[15px] text-slate-100 leading-relaxed">{card?.answer}</p>
                                                 ) : answerTimerActive ? (
                                                     <p className="text-sm text-slate-400 italic py-2">Mic will open automatically when the interviewer finishes speaking.</p>
                                                 ) : (

@@ -67,6 +67,7 @@
       this.onAnswer = options.onAnswer || (() => {});
       this.onAwaitingAnswer = options.onAwaitingAnswer || (() => {});
       this.onNextQuestionReady = options.onNextQuestionReady || (() => {});
+      this.onPrematureClosing = options.onPrematureClosing || (() => {});
       this.onError = options.onError || (() => {});
       this.tabSwitches = Number(options.tabSwitches || 0);
 
@@ -270,6 +271,7 @@
       if (msg.type === 'interview_closing_premature') {
         this.processingAnswer = false;
         this.answering = false;
+        this.onPrematureClosing(msg);
         this.setStatus('Preparing the next question — please wait…');
         return;
       }

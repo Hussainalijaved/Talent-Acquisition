@@ -50,7 +50,8 @@ export async function scoreSingleTurn({ apiKey, context, turn }) {
   if (!apiKey) throw new Error('GEMINI_API_KEY missing for scoring');
   const role = String(context.requisition_title || 'the role');
   const isNoResponse = !turn.answer_text ||
-    /^\[(no spoken|non-english|no speech)/i.test(turn.answer_text);
+    /^\[(no spoken|non-english|no speech|noise)/i.test(turn.answer_text) ||
+    String(turn.answer_text || '').trim().length < 4;
 
   // Short-circuit unscorable answers — avoids API call and score=0 parse bug.
   if (isNoResponse) {
@@ -61,10 +62,14 @@ export async function scoreSingleTurn({ apiKey, context, turn }) {
       professionalism: 0,
       english_proficiency: 0,
       answer_relevance: 0,
+      clarity: 0,
+      relevance: 0,
     };
     const feedback = /non-english/i.test(turn.answer_text)
       ? 'Please answer in English. Non-English responses cannot be evaluated for communication skills.'
-      : 'No spoken response was captured for this question.';
+      : /^\[noise\]/i.test(turn.answer_text)
+        ? 'No clear speech detected — background noise or unintelligible audio.'
+        : 'No spoken response was captured for this question.';
     return {
       ...turn,
       score: 0,
@@ -140,6 +145,8 @@ Candidate's transcribed answer: ${turn.answer_text}`;
         professionalism: base,
         english_proficiency: base,
         answer_relevance: Math.max(0, base - 10),
+        clarity: base,
+        relevance: Math.max(0, base - 10),
       },
       feedback:
         'Automatic fallback score — the scoring model returned an unparseable response. ' +
@@ -174,6 +181,9 @@ Candidate's transcribed answer: ${turn.answer_text}`;
     professionalism:       Math.round(Number(parsed.professionalism       ?? parsed.score ?? 0)),
     english_proficiency:   Math.round(Number(parsed.english_proficiency   ?? parsed.score ?? 0)),
     answer_relevance:      Math.round(Number(parsed.answer_relevance      ?? parsed.score ?? 0)),
+    // Legacy keys for admin dashboard
+    clarity:               Math.round(Number(parsed.communication_clarity ?? parsed.clarity ?? parsed.score ?? 0)),
+    relevance:             Math.round(Number(parsed.answer_relevance      ?? parsed.relevance ?? parsed.score ?? 0)),
   };
 
   return {

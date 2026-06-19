@@ -1545,11 +1545,20 @@
 
         function renderSpeechSkillBars(skills) {
             if (!skills || typeof skills !== 'object') return '';
+            const pick = (primary, legacy) => {
+                const p = skills[primary];
+                if (p != null && Number.isFinite(Number(p))) return Number(p);
+                const l = legacy ? skills[legacy] : null;
+                if (l != null && Number.isFinite(Number(l))) return Number(l);
+                return null;
+            };
             const dims = [
-                ['Clarity', skills.clarity],
-                ['Confidence', skills.confidence],
-                ['Professionalism', skills.professionalism],
-                ['Relevance', skills.relevance],
+                ['Communication clarity', pick('communication_clarity', 'clarity')],
+                ['Fluency', pick('fluency', null)],
+                ['Confidence', pick('confidence', null)],
+                ['Professionalism', pick('professionalism', null)],
+                ['English proficiency', pick('english_proficiency', null)],
+                ['Answer relevance', pick('answer_relevance', 'relevance')],
             ].filter(([, v]) => v != null && Number.isFinite(Number(v)));
             if (!dims.length) return '';
             let html = '<div class="speech-skills-grid">';
@@ -1646,7 +1655,11 @@
 
             const scoreHtml = h.integrity_terminated
                 ? '<span class="integrity">Not scored</span>'
-                : (h.score != null ? scoreBadge(h.score) : '<span class="c-role">—</span>');
+                : (h.score != null && Number.isFinite(Number(h.score))
+                    ? scoreBadge(h.score)
+                    : (isSpeech && h.answer_text
+                        ? '<span class="score-badge lo" title="Scoring did not complete for this voice turn">Unscored</span>'
+                        : '<span class="c-role">—</span>'));
 
             const phaseTitle = 'Phase ' + (phase || '?') + ' of ' + totalPh;
 

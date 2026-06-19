@@ -1517,7 +1517,7 @@
                             },
                             onAwaitingAnswer: () => {
                                 setCanAnswer(true);
-                                setIsAnswering(false);
+                                setIsAnswering(true);
                                 setSavingAnswer(false);
                                 setLiveCaption('');
                                 setLiveQuestionCaption('');
@@ -1656,11 +1656,6 @@
 
             const sidebarExtras = (
                 <>
-                    {answerTimerActive && timeLeft != null ? (
-                        <div className="flex justify-center py-1">
-                            <TimerRing seconds={timeLeft} totalSeconds={answerTimeLimit} compact />
-                        </div>
-                    ) : null}
                     <div>
                         <p className="text-xs text-slate-500 mb-2">Mic level</p>
                         <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
@@ -1734,10 +1729,17 @@
                                                 : savingAnswer
                                                 ? 'Saving your answer — please wait…'
                                                 : canAnswer
-                                                ? 'Press Answer below to open your mic'
+                                                ? 'Mic will open when the interviewer finishes'
                                                 : 'Listen to the interviewer'}
                                         </p>
                                     </div>
+                                    {answerTimerActive && timeLeft != null ? (
+                                        <TimerRing
+                                            seconds={timeLeft}
+                                            totalSeconds={answerTimeLimit}
+                                            prominent
+                                        />
+                                    ) : null}
                                 </div>
                             </div>
                             <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
@@ -1748,14 +1750,15 @@
                                         return (
                                             <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
                                                 <div className="w-14 h-14 rounded-full border border-surface-border flex items-center justify-center text-indigo-300 text-2xl">🎧</div>
-                                                <p className="text-sm max-w-sm">The interviewer will ask the first question out loud. Listen carefully, then press <span className="text-slate-300 font-medium">Answer</span> to reply.</p>
+                                                <p className="text-sm max-w-sm">The interviewer will ask the first question out loud. Your mic opens automatically when they finish — speak in English, then press <span className="text-slate-300 font-medium">Submit</span>.</p>
                                             </div>
                                         );
                                     }
                                     const recording = isAnswering;
                                     const saving = savingAnswer;
                                     const answered = Boolean(card?.answer);
-                                    const waitingNext = answered && !interviewComplete;
+                                    const displayAnswer = card?.answer || liveCaption || '';
+                                    const waitingNext = answered && !interviewComplete && !recording;
                                     const qNum = card?.number || currentQuestionNum || 1;
                                     return (
                                         <div key={qNum} className="fade-in rounded-2xl border border-indigo-500/30 bg-surface-elevated/40 overflow-hidden shadow-lg shadow-indigo-500/5">
@@ -1793,14 +1796,19 @@
                                                         ) : null}
                                                     </div>
                                                 ) : saving ? (
-                                                    <p className="text-sm text-amber-300/90 py-2 flex items-center gap-2">
-                                                        <span className="inline-block w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />
-                                                        Saving your answer…
-                                                    </p>
+                                                    <div className="py-1">
+                                                        {displayAnswer && !/^\[(no spoken|non-english)/i.test(displayAnswer) ? (
+                                                            <p className="text-[15px] text-slate-100 leading-relaxed mb-2">{displayAnswer}</p>
+                                                        ) : null}
+                                                        <p className="text-sm text-amber-300/90 flex items-center gap-2">
+                                                            <span className="inline-block w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />
+                                                            Saving your answer…
+                                                        </p>
+                                                    </div>
                                                 ) : answered ? (
                                                     <p className="text-[15px] text-slate-100 leading-relaxed">{card?.answer}</p>
                                                 ) : answerTimerActive ? (
-                                                    <p className="text-sm text-slate-400 italic py-2">Press “Answer” below to open your mic and reply out loud.</p>
+                                                    <p className="text-sm text-slate-400 italic py-2">Mic will open automatically when the interviewer finishes speaking.</p>
                                                 ) : (
                                                     <p className="text-sm text-slate-500 italic py-2">Listen to the interviewer…</p>
                                                 )}
@@ -1840,7 +1848,7 @@
                                                 Submit answer
                                             </>
                                         ) : (
-                                            <span className="flex items-center gap-2"><span>🎤</span> Answer</span>
+                                            <span className="flex items-center gap-2"><span>🎤</span> Waiting for mic…</span>
                                         )}
                                     </button>
                                 )}
@@ -1850,7 +1858,7 @@
                                         : isAnswering
                                         ? 'Mic is open — speak clearly in English, then press Submit.'
                                         : canAnswer
-                                        ? 'Press Answer to open your mic and reply.'
+                                        ? 'Mic opens automatically when the interviewer finishes.'
                                         : 'Mic stays off while the interviewer is speaking.'}
                                 </p>
                             </div>

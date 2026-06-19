@@ -236,7 +236,12 @@
         this.answering = false;
         this.processingAnswer = false;
         this.onAwaitingAnswer({ number: msg.number, maxTurns: msg.maxTurns });
-        this.setStatus(`Question ${msg.number} — press “Answer” to reply (${this.context?.speech_answer_seconds || 120}s)`);
+        // Auto-open mic when the interviewer finishes — candidates often forget
+        // to press "Answer" on Q1, which leaves userBuf empty.
+        if (!this.interviewEnded && !this.ended) {
+          this.beginAnswer();
+        }
+        this.setStatus(`Question ${msg.number} — speak your answer now (${this.context?.speech_answer_seconds || 120}s)`);
       }
       if (msg.type === 'output_audio' && msg.data) {
         // Only block interviewer audio while the candidate's mic is open.

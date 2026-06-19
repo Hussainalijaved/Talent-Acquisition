@@ -21,12 +21,16 @@ function modelCandidates(context) {
 }
 
 function stripLeadingGreeting(text) {
-  return String(text || '')
-    .replace(
-      /^(hi|hello|hey|welcome|good (morning|afternoon|evening)|thanks for joining|thank you for joining|great to (meet|have) you|let's begin|let's get started|to start|first|alright|okay|so)[,!.\s-]*/i,
-      ''
-    )
-    .trim();
+  // Only strip a short standalone greeting sentence, not the question body.
+  const t = String(text || '').trim();
+  const greetingOnly = t.match(
+    /^(?:hi|hello|hey|welcome|good (?:morning|afternoon|evening)|thanks for joining|thank you for joining)[,!.\s-]+/i
+  );
+  if (!greetingOnly) return t;
+  const rest = t.slice(greetingOnly[0].length).trim();
+  // Keep stripping only while the remainder still looks like filler, not the real question.
+  if (rest.length < 20) return t;
+  return rest;
 }
 
 function cleanUserAnswer(text) {
@@ -68,6 +72,7 @@ export class GeminiLiveBridge {
     this.userTurnActive = false;
     this.answerTimer = null;
     this.pendingFinalize = null;
+    this.userTurnEndedAt = 0;
     this.pendingAudioChunks = [];
     this.allowModelAudio = false;
 
@@ -310,10 +315,14 @@ export class GeminiLiveBridge {
 
   scheduleFinalizeAnswer() {
     if (this.pendingFinalize) return;
+    // Wait for Gemini to flush input transcription — first turn (Q1) often lags.
+    const sinceEnd = this.userTurnEndedAt ? Date.now() - this.userTurnEndedAt : 9999;
+    const minFlushMs = 3500;
+    const delay = Math.max(minFlushMs - sinceEnd, 800);
     this.pendingFinalize = setTimeout(() => {
       this.pendingFinalize = null;
       this.completeAnswerTurn();
-    }, 1500);
+    }, delay);
   }
 
   async completeAnswerTurn() {
@@ -487,13 +496,15 @@ export class GeminiLiveBridge {
     this.userTurnActive = false;
     this.awaitingAnswer = true;
     this.blockModelOutput = true;
+    this.userTurnEndedAt = Date.now();
     this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
 
     if (this.answerTimer) clearTimeout(this.answerTimer);
+    // Fallback: finalize after flush window even if model never sends turnComplete.
     this.answerTimer = setTimeout(() => {
       if (!this.awaitingAnswer || this.interviewEnded) return;
       this.completeAnswerTurn();
-    }, 15000);
+    }, 12000);
   }
 
   sendAudio(base64Pcm, mimeType = 'audio/pcm;rate=16000') {

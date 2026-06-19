@@ -1,5 +1,10 @@
 import WebSocket from 'ws';
-import { isEnglishTranscript, sanitizeTranscript } from './transcript-utils.mjs';
+import {
+  fallbackInterviewQuestion,
+  isClosingMessage,
+  isEnglishTranscript,
+  sanitizeTranscript,
+} from './transcript-utils.mjs';
 
 const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
@@ -78,6 +83,28 @@ export class GeminiLiveBridge {
 
     this.maxTurns = Number(context.speech_phases || 5);
     this.maxQuestions = Number(context.max_questions || 5);
+    this.prematureClosingReprompts = 0;
+  }
+
+  buildNextQuestionPrompt(aNum, nextQ) {
+    if (nextQ >= this.maxTurns) {
+      return (
+        `The candidate finished answering question ${aNum}. You MUST ask interview question ${nextQ} of ${this.maxTurns} now — this is the LAST question before the interview ends. ` +
+        'Ask exactly one new behavioural interview question in clear English. Do NOT thank the candidate. Do NOT say the interview is complete. Do NOT say goodbye or "we will be in touch". Ask the question only, then stop and wait.'
+      );
+    }
+    return (
+      `The candidate finished answering question ${aNum}. Now ask interview question ${nextQ} of ${this.maxTurns} in clear English. ` +
+      'Ask exactly one question, then stop talking and wait for the candidate. Do not thank or close the interview yet.'
+    );
+  }
+
+  buildClosingReprompt(expectedQ) {
+    return (
+      `You spoke a closing or thank-you message too early. The interview is NOT finished yet. ` +
+      `Ask interview question ${expectedQ} of ${this.maxTurns} now — one clear behavioural question only. ` +
+      'Do NOT thank the candidate. Do NOT say the interview is complete. Then stop and wait.'
+    );
   }
 
   async start() {
@@ -283,6 +310,10 @@ export class GeminiLiveBridge {
     if (this.blockModelOutput || this.interviewEnded) return;
     let modelText = sanitizeTranscript(this.modelBuf, 'model');
     if (!modelText) return;
+    if (isClosingMessage(modelText) && this.answers.length < this.maxTurns) {
+      this.onEvent({ type: 'interview_closing_premature', text: modelText });
+      return;
+    }
 
     const qNum = this.roundQuestionEmitted
       ? this.questions.length
@@ -385,16 +416,31 @@ export class GeminiLiveBridge {
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];
     this.blockModelOutput = false;
-    this.sendClientText(
-      `The candidate finished answering question ${aNum}. Now ask interview question ${nextQ} of ${this.maxTurns} in clear English. Ask exactly one question, then stop talking and wait for the candidate.`,
-      true
-    );
+    this.sendClientText(this.buildNextQuestionPrompt(aNum, nextQ), true);
   }
 
   emitQuestionFromBuffer() {
     let modelText = sanitizeTranscript(this.modelBuf, 'model');
     this.modelBuf = '';
     if (!modelText) return;
+
+    // Gemini sometimes closes early (e.g. thank-you as "Q5") — reject and re-prompt.
+    if (!this.interviewEnded && isClosingMessage(modelText) && this.answers.length < this.maxTurns) {
+      const expectedQ = this.questions.length + 1;
+      this.prematureClosingReprompts += 1;
+      console.warn(
+        `[relay] premature closing at Q${expectedQ} (answers=${this.answers.length}), reprompt #${this.prematureClosingReprompts}`
+      );
+      this.roundQuestionEmitted = false;
+      if (this.prematureClosingReprompts <= 3) {
+        this.blockModelOutput = false;
+        this.allowModelAudio = true;
+        this.sendClientText(this.buildClosingReprompt(expectedQ), true);
+        return;
+      }
+      modelText = fallbackInterviewQuestion(expectedQ, this.maxTurns);
+      console.warn(`[relay] using fallback question for Q${expectedQ}`);
+    }
 
     if (!this.roundQuestionEmitted && this.questions.length < this.maxTurns) {
       if (this.questions.length === 0) modelText = stripLeadingGreeting(modelText) || modelText;

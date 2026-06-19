@@ -120,8 +120,50 @@ Candidate's transcribed answer: ${turn.answer_text}`;
   const parsedScore = parsed.score != null ? Number(parsed.score) : null;
   const parsedClarity = parsed.communication_clarity != null
     ? Number(parsed.communication_clarity) : null;
+
+  // Heuristic fallback: never return null — base on transcript length + English-ness.
+  // This guarantees a saved score even when Gemini returns malformed JSON.
+  const buildHeuristicScore = () => {
+    const a = String(turn.answer_text || '').trim();
+    const words = a.split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    let base = 30;
+    if (wordCount >= 8) base = 45;
+    if (wordCount >= 20) base = 55;
+    if (wordCount >= 40) base = 60;
+    return {
+      score: base,
+      soft: {
+        communication_clarity: base,
+        fluency: base,
+        confidence: base - 5,
+        professionalism: base,
+        english_proficiency: base,
+        answer_relevance: Math.max(0, base - 10),
+      },
+      feedback:
+        'Automatic fallback score — the scoring model returned an unparseable response. ' +
+        'Heuristic based on transcript length; consider re-scoring offline if needed.',
+    };
+  };
+
   if (!Number.isFinite(parsedScore) && !Number.isFinite(parsedClarity)) {
-    throw new Error(`scoreSingleTurn: empty parse from model — raw: ${rawText.slice(0, 200)}`);
+    console.warn(
+      `[relay] scoreSingleTurn parse empty for phase ${turn.phase}; using heuristic. Raw: ${rawText.slice(0, 200)}`
+    );
+    const h = buildHeuristicScore();
+    return {
+      ...turn,
+      score: h.score,
+      clarity: h.soft.communication_clarity,
+      confidence: h.soft.confidence,
+      professionalism: h.soft.professionalism,
+      relevance: h.soft.answer_relevance,
+      feedback: h.feedback,
+      soft_skills: h.soft,
+      scoring_source: 'gemini_live_relay_heuristic',
+      stt_source: 'gemini_live',
+    };
   }
 
   const overall = Math.round(Number(parsed.score ?? parsed.communication_clarity ?? 0));
@@ -137,7 +179,6 @@ Candidate's transcribed answer: ${turn.answer_text}`;
   return {
     ...turn,
     score: overall,
-    // Keep legacy fields for backwards compat with dashboard
     clarity:        soft.communication_clarity,
     confidence:     soft.confidence,
     professionalism: soft.professionalism,
@@ -164,7 +205,41 @@ export async function scoreTurnsSequential({ apiKey, context, turns, timeoutMs =
       console.log(`[relay] scored phase ${turn.phase}: ${scored.score}`);
     } catch (err) {
       console.warn(`[relay] score phase ${turn.phase} failed:`, err.message);
-      results.push({ ...turn, score: turn.score ?? null });
+      // Last-resort fallback — keep DB consistent: never save null after final scoring.
+      const a = String(turn.answer_text || '').trim();
+      const isUnscorable = !a || /^\[(no spoken|non-english|no speech)/i.test(a);
+      if (isUnscorable) {
+        const zero = {
+          communication_clarity: 0, fluency: 0, confidence: 0,
+          professionalism: 0, english_proficiency: 0, answer_relevance: 0,
+        };
+        results.push({
+          ...turn,
+          score: 0,
+          soft_skills: zero,
+          feedback: /non-english/i.test(a)
+            ? 'Please answer in English. Non-English responses cannot be evaluated.'
+            : 'No spoken response captured for this question.',
+          scoring_source: 'gemini_live_relay',
+          stt_source: 'gemini_live',
+        });
+      } else {
+        const wordCount = a.split(/\s+/).filter(Boolean).length;
+        const base = wordCount >= 40 ? 60 : wordCount >= 20 ? 55 : wordCount >= 8 ? 45 : 30;
+        const soft = {
+          communication_clarity: base, fluency: base, confidence: Math.max(0, base - 5),
+          professionalism: base, english_proficiency: base,
+          answer_relevance: Math.max(0, base - 10),
+        };
+        results.push({
+          ...turn,
+          score: turn.score ?? base,
+          soft_skills: turn.soft_skills || soft,
+          feedback: turn.feedback || 'Scoring service unavailable — heuristic score saved.',
+          scoring_source: 'gemini_live_relay_heuristic',
+          stt_source: 'gemini_live',
+        });
+      }
     }
   }
   return results;

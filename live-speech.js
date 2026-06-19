@@ -205,10 +205,12 @@
         });
       }
       if (msg.type === 'question_partial' && msg.text) {
+        if (window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
         this.processingAnswer = false;
         this.onQuestion({ number: msg.number, text: msg.text, partial: true });
       }
       if (msg.type === 'question') {
+        if (window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
         this.processingAnswer = false;
         this.onQuestion({ number: msg.number, text: msg.text, partial: false });
       }
@@ -265,9 +267,16 @@
           soft_skills: msg.soft_skills,
         });
       }
+      if (msg.type === 'interview_closing_premature') {
+        this.processingAnswer = false;
+        this.answering = false;
+        this.setStatus('Preparing the next question — please wait…');
+        return;
+      }
       if (msg.type === 'interview_closing') {
         this.processingAnswer = false;
         this.interviewEnded = true;
+        this.onInterviewComplete(msg);
       }
       if (msg.type === 'interview_complete') {
         this.stopMic();
@@ -474,10 +483,17 @@
     return t;
   }
 
+  function looksLikeClosingMessage(text) {
+    const t = String(text || '').trim().toLowerCase();
+    if (!t) return false;
+    return /conclud(e|es|ed|ing).*interview|completes? the voice interview|that concludes|we will be in touch|thank you for your time|end of (the )?interview/.test(t);
+  }
+
   global.TA_LIVE = {
     LiveSpeechSession,
     fetchLiveSpeechStart,
     resolveRelayUrl,
     sanitizeDisplayTranscript,
+    looksLikeClosingMessage,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

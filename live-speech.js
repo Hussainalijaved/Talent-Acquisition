@@ -106,6 +106,21 @@
       }, delayMs);
     }
 
+    async scheduleMicAfterPlayback() {
+      this.cancelMicOpen();
+      if (this.ended || this.interviewEnded) return;
+      // Wait until interviewer audio finishes, then open mic.
+      let waited = 0;
+      while ((this.playing || this.playQueue.length > 0) && waited < 30000) {
+        await new Promise((r) => setTimeout(r, 200));
+        waited += 200;
+      }
+      await new Promise((r) => setTimeout(r, 600));
+      if (!this.ended && !this.interviewEnded && !this.answering) {
+        this.beginAnswer();
+      }
+    }
+
     forceEndAnswer() {
       if (!this.answering) return;
       this.answering = false;
@@ -278,9 +293,8 @@
         this.forceEndAnswer();
         this.processingAnswer = false;
         this.onAwaitingAnswer({ number: msg.number, maxTurns: msg.maxTurns });
-        // Delay mic open so interviewer audio finishes and previous answer cannot bleed in.
-        this.scheduleMicOpen(3500);
-        this.setStatus(`Question ${msg.number} — listen, then speak when the mic opens (${this.context?.speech_answer_seconds || 120}s)`);
+        void this.scheduleMicAfterPlayback();
+        this.setStatus(`Question ${msg.number} — listen, then speak when the mic opens`);
       }
       if (msg.type === 'output_audio' && msg.data) {
         // Only block interviewer audio while the candidate's mic is open.
@@ -437,7 +451,7 @@
         );
       }
       const result = await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('complete timeout')), 60000);
+        const timer = setTimeout(() => reject(new Error('complete timeout')), 120000);
         const onMsg = (ev) => {
           try {
             const msg = JSON.parse(ev.data);
@@ -516,6 +530,8 @@
     t = t.replace(/\*\*[^*]+\*\*/g, ' ').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
     if (speaker === 'model' && /^(okay|ok|on|role\?)$/i.test(t)) return '';
     if (speaker === 'user' && /^(okay|ok|on)\.?$/i.test(t)) return '';
+    // Keep live captions visible — don't blank partial English speech.
+    if (speaker === 'user' && t.length >= 2) return t;
     return t;
   }
 

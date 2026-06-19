@@ -10,6 +10,7 @@ import {
   postCompleteWebhook,
   postPartialTurnWebhook,
   scoreTurnsSequential,
+  scoreTurnGuaranteed,
   scoreSingleTurn,
   vercelSaveTurn,
   vercelSaveFinal,
@@ -153,9 +154,9 @@ wss.on('connection', (clientWs) => {
           context,
           onEvent: (ev) => sendJson(clientWs, ev),
           onTurnSaved: (turnPair) => {
-            // Fast path: save transcript now; score in background so Q2+ is never delayed.
-            const unscored = { ...turnPair, score: null };
             void (async () => {
+              // 1. Save transcript immediately.
+              const unscored = { ...turnPair, score: null };
               let saved = false;
               let saveError = '';
               try {
@@ -179,32 +180,27 @@ wss.on('connection', (clientWs) => {
                 error: saveError || undefined,
               });
 
-              // Background score + patch — does not block the next question.
+              // 2. Score — guaranteed, never null (API → heuristic → zero).
+              const scored = await scoreTurnGuaranteed({
+                apiKey: GEMINI_API_KEY,
+                context,
+                turn: turnPair,
+              });
               try {
-                const scored = await Promise.race([
-                  scoreSingleTurn({ apiKey: GEMINI_API_KEY, context, turn: turnPair }),
-                  new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('single_score_timeout')), 25000)
-                  ),
-                ]);
-                try {
-                  await vercelSaveTurn(context, scored);
-                } catch (vercelErr) {
-                  await directSavePartialTurn(context, scored).catch((dbErr) => {
-                    console.warn('[relay] background score patch failed:', dbErr.message);
-                  });
-                }
-                sendJson(clientWs, {
-                  type: 'turn_scored',
-                  number: turnPair.voice_question_number,
-                  phase: turnPair.phase,
-                  score: scored.score,
-                  feedback: scored.feedback,
-                  soft_skills: scored.soft_skills,
+                await vercelSaveTurn(context, scored);
+              } catch (vercelErr) {
+                await directSavePartialTurn(context, scored).catch((dbErr) => {
+                  console.warn('[relay] scored turn patch failed:', dbErr.message);
                 });
-              } catch (scoreErr) {
-                console.warn('[relay] background scoring skipped:', scoreErr.message);
               }
+              sendJson(clientWs, {
+                type: 'turn_scored',
+                number: turnPair.voice_question_number,
+                phase: turnPair.phase,
+                score: scored.score,
+                feedback: scored.feedback,
+                soft_skills: scored.soft_skills,
+              });
             })();
           },
         });
@@ -239,29 +235,28 @@ wss.on('connection', (clientWs) => {
         const rawTurns = bridge.buildTurnPairs();
         const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
 
-        // Merge any scores already saved per-turn in DB, then score remaining sequentially.
-        let scored = {
-          turns: await enrichTurnsFromDb(context, rawTurns),
-          combined_speech_score: 0,
-          final_feedback: 'Voice interview completed.',
-        };
-
-        const nullTurns = scored.turns.filter(
+        // Merge DB scores, then guarantee every unscored turn gets a score.
+        let turns = await enrichTurnsFromDb(context, rawTurns);
+        const unscored = turns.filter(
           (t) => t.score == null || !Number.isFinite(Number(t.score))
         );
-        if (nullTurns.length > 0) {
-          console.log(`[relay] final scoring ${nullTurns.length} unscored turn(s) sequentially`);
+        if (unscored.length > 0) {
+          console.log(`[relay] final pass: scoring ${unscored.length} turn(s)`);
           const freshlyScored = await scoreTurnsSequential({
             apiKey: GEMINI_API_KEY,
             context,
-            turns: nullTurns,
+            turns: unscored,
+            timeoutMs: 35000,
           });
           const byPhase = new Map(freshlyScored.map((t) => [Number(t.phase), t]));
-          scored.turns = scored.turns.map((t) => {
-            const s = byPhase.get(Number(t.phase));
-            return (s && s.score != null && Number.isFinite(Number(s.score))) ? s : t;
-          });
+          turns = turns.map((t) => byPhase.get(Number(t.phase)) || t);
         }
+
+        const scored = {
+          turns,
+          combined_speech_score: 0,
+          final_feedback: 'Voice interview completed.',
+        };
 
         const allScores = scored.turns
           .map((t) => Number(t.score))

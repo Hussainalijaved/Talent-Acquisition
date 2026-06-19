@@ -77,6 +77,19 @@ export function cleanUserAnswerText(text) {
   return raw;
 }
 
+/** Text safe to show in live captions while the candidate is speaking. */
+export function displayUserTranscript(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  const sanitized = sanitizeTranscript(raw, 'user');
+  if (sanitized) return sanitized;
+  const extracted = extractEnglishAnswer(raw);
+  if (extracted) return extracted;
+  // Show partial raw text while still speaking (don't blank the caption).
+  if (raw.length >= 2 && isEnglishTranscript(raw)) return raw;
+  return '';
+}
+
 export function isSubstantiveAnswer(text) {
   const t = sanitizeTranscript(text, 'user');
   if (!t) return false;

@@ -1,5 +1,7 @@
 import { cleanUserAnswerText } from './transcript-utils.mjs';
 
+const SCORE_MODEL = process.env.GEMINI_SCORE_MODEL || 'gemini-2.0-flash';
+
 // Tolerant JSON parse: strip fences, extract the first balanced object, repair
 // trailing commas. Returns {} on total failure so scoring never throws away a turn.
 function safeParseJson(rawText) {
@@ -200,57 +202,71 @@ Candidate's transcribed answer: ${turn.answer_text}`;
   };
 }
 
+/** Always returns a scored turn — never throws, never leaves score null. */
+export async function scoreTurnGuaranteed({ apiKey, context, turn, timeoutMs = 30000 }) {
+  try {
+    const scored = await Promise.race([
+      scoreSingleTurn({ apiKey, context, turn }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('single_score_timeout')), timeoutMs)
+      ),
+    ]);
+    if (scored.score != null && Number.isFinite(Number(scored.score))) return scored;
+  } catch (err) {
+    console.warn(`[relay] scoreTurnGuaranteed API failed phase ${turn.phase}:`, err.message);
+  }
+
+  const a = String(turn.answer_text || '').trim();
+  const isUnscorable = !a ||
+    /^\[(no spoken|non-english|no speech|noise)/i.test(a) ||
+    (!cleanUserAnswerText(a) && a.length < 12);
+
+  if (isUnscorable) {
+    const zero = {
+      communication_clarity: 0, fluency: 0, confidence: 0,
+      professionalism: 0, english_proficiency: 0, answer_relevance: 0,
+      clarity: 0, relevance: 0,
+    };
+    return {
+      ...turn,
+      score: 0,
+      clarity: 0, confidence: 0, professionalism: 0, relevance: 0,
+      soft_skills: zero,
+      feedback: /non-english/i.test(a)
+        ? 'Please answer in English. Non-English responses cannot be evaluated.'
+        : 'No spoken response captured for this question.',
+      scoring_source: 'gemini_live_relay',
+      stt_source: 'gemini_live',
+    };
+  }
+
+  const wordCount = a.split(/\s+/).filter(Boolean).length;
+  const base = wordCount >= 40 ? 60 : wordCount >= 20 ? 55 : wordCount >= 8 ? 45 : 30;
+  const soft = {
+    communication_clarity: base, fluency: base, confidence: Math.max(0, base - 5),
+    professionalism: base, english_proficiency: base,
+    answer_relevance: Math.max(0, base - 10),
+    clarity: base, relevance: Math.max(0, base - 10),
+  };
+  return {
+    ...turn,
+    score: base,
+    clarity: soft.clarity, confidence: soft.confidence,
+    professionalism: soft.professionalism, relevance: soft.relevance,
+    soft_skills: soft,
+    feedback: 'Automatic fallback score — scoring service was slow or unavailable.',
+    scoring_source: 'gemini_live_relay_heuristic',
+    stt_source: 'gemini_live',
+  };
+}
+
 /** Score turns one-by-one (reliable — bulk scoring often times out on 5 turns). */
-export async function scoreTurnsSequential({ apiKey, context, turns, timeoutMs = 25000 }) {
+export async function scoreTurnsSequential({ apiKey, context, turns, timeoutMs = 30000 }) {
   const results = [];
   for (const turn of turns) {
-    try {
-      const scored = await Promise.race([
-        scoreSingleTurn({ apiKey, context, turn }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('single_score_timeout')), timeoutMs)
-        ),
-      ]);
-      results.push(scored);
-      console.log(`[relay] scored phase ${turn.phase}: ${scored.score}`);
-    } catch (err) {
-      console.warn(`[relay] score phase ${turn.phase} failed:`, err.message);
-      // Last-resort fallback — keep DB consistent: never save null after final scoring.
-      const a = String(turn.answer_text || '').trim();
-      const isUnscorable = !a || /^\[(no spoken|non-english|no speech)/i.test(a);
-      if (isUnscorable) {
-        const zero = {
-          communication_clarity: 0, fluency: 0, confidence: 0,
-          professionalism: 0, english_proficiency: 0, answer_relevance: 0,
-        };
-        results.push({
-          ...turn,
-          score: 0,
-          soft_skills: zero,
-          feedback: /non-english/i.test(a)
-            ? 'Please answer in English. Non-English responses cannot be evaluated.'
-            : 'No spoken response captured for this question.',
-          scoring_source: 'gemini_live_relay',
-          stt_source: 'gemini_live',
-        });
-      } else {
-        const wordCount = a.split(/\s+/).filter(Boolean).length;
-        const base = wordCount >= 40 ? 60 : wordCount >= 20 ? 55 : wordCount >= 8 ? 45 : 30;
-        const soft = {
-          communication_clarity: base, fluency: base, confidence: Math.max(0, base - 5),
-          professionalism: base, english_proficiency: base,
-          answer_relevance: Math.max(0, base - 10),
-        };
-        results.push({
-          ...turn,
-          score: turn.score ?? base,
-          soft_skills: turn.soft_skills || soft,
-          feedback: turn.feedback || 'Scoring service unavailable — heuristic score saved.',
-          scoring_source: 'gemini_live_relay_heuristic',
-          stt_source: 'gemini_live',
-        });
-      }
-    }
+    const scored = await scoreTurnGuaranteed({ apiKey, context, turn, timeoutMs });
+    results.push(scored);
+    console.log(`[relay] scored phase ${turn.phase}: ${scored.score}`);
   }
   return results;
 }

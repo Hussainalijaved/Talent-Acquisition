@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import {
   cleanUserAnswerText,
+  displayUserTranscript,
   fallbackInterviewQuestion,
   isClosingMessage,
   isEnglishTranscript,
@@ -326,9 +327,9 @@ export class GeminiLiveBridge {
   emitUserPartialTranscript() {
     if (!this.userTurnActive && !this.awaitingAnswer) return;
     const combined = `${this.userBuf}${this.lateUserBuf}`;
-    const clean = sanitizeTranscript(combined, 'user');
+    const clean = displayUserTranscript(combined);
     if (!clean) {
-      const raw = String(`${this.userBuf}${this.lateUserBuf}` || '').trim();
+      const raw = combined.trim();
       if (raw.length > 8 && !isEnglishTranscript(raw)) {
         this.onEvent({ type: 'non_english_detected', hint: 'Please answer in English only.' });
       }
@@ -378,13 +379,39 @@ export class GeminiLiveBridge {
 
   scheduleFinalizeAnswer() {
     if (this.pendingFinalize) return;
-    const sinceEnd = this.userTurnEndedAt ? Date.now() - this.userTurnEndedAt : 9999;
-    const minFlushMs = 5000;
-    const delay = Math.max(minFlushMs - sinceEnd, 1200);
-    this.pendingFinalize = setTimeout(() => {
-      this.pendingFinalize = null;
-      this.completeAnswerTurn();
-    }, delay);
+    const startedAt = Date.now();
+    let lastLen = -1;
+    let stableSince = 0;
+
+    const tick = () => {
+      const combined = `${this.userBuf}${this.lateUserBuf}`;
+      const len = combined.length;
+      const now = Date.now();
+
+      if (len > 0 && len === lastLen) {
+        if (!stableSince) stableSince = now;
+        // Transcript stable for 900ms — safe to finalize.
+        if (now - stableSince >= 900) {
+          this.pendingFinalize = null;
+          this.completeAnswerTurn();
+          return;
+        }
+      } else {
+        stableSince = 0;
+        lastLen = len;
+      }
+
+      // Hard cap — never wait more than 8s for transcription flush.
+      if (now - startedAt >= 8000) {
+        this.pendingFinalize = null;
+        this.completeAnswerTurn();
+        return;
+      }
+
+      this.pendingFinalize = setTimeout(tick, 250);
+    };
+
+    this.pendingFinalize = setTimeout(tick, 600);
   }
 
   async completeAnswerTurn() {

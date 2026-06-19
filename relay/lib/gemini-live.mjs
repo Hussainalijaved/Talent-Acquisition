@@ -431,7 +431,7 @@ export class GeminiLiveBridge {
     this.pendingAudioChunks = [];
     this.onEvent({ type: 'interview_complete', turn: this.maxTurns, maxTurns: this.maxTurns });
     this.sendClientText(
-      'The candidate has now answered all 5 interview questions. In one warm, short sentence, thank the candidate by saying something like "Thank you for your time — that completes the voice interview." Do not ask any more questions and do not say anything after the thank-you.',
+      `The candidate has now answered all ${this.maxTurns} interview questions. In one warm, short sentence, thank the candidate by saying something like "Thank you for your time — that completes the voice interview." Do not ask any more questions and do not say anything after the thank-you.`,
       true
     );
     setTimeout(() => this.closeGemini(), 8000);

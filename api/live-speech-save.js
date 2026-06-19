@@ -32,30 +32,44 @@ function mergeTurns(history, newTurns, maxQ) {
     for (const turn of (newTurns || [])) {
         const ph = Number(turn.phase);
         if (!Number.isFinite(ph) || ph <= maxQ) continue;
+
+        const idx = merged.findIndex((x) => Number(x.phase) === ph);
+        const existing = idx >= 0 ? merged[idx] : {};
+
+        const incomingQ = String(turn.question_text || turn.question || '').trim();
+        const incomingA = String(turn.answer_text || turn.transcript || turn.answer || '').trim();
+        const hasNewScore = turn.score != null && Number.isFinite(Number(turn.score));
+        const score = hasNewScore
+            ? Math.max(0, Math.min(100, Math.round(Number(turn.score))))
+            : (existing.score ?? null);
+        const softSkills = turn.soft_skills
+            || (hasNewScore
+                ? {
+                    clarity: Math.round(Number(turn.clarity ?? turn.score ?? 0)),
+                    confidence: Math.round(Number(turn.confidence ?? turn.score ?? 0)),
+                    professionalism: Math.round(Number(turn.professionalism ?? turn.score ?? 0)),
+                    relevance: Math.round(Number(turn.relevance ?? turn.score ?? 0)),
+                }
+                : (existing.soft_skills ?? null));
+
         const entry = {
             phase: ph,
             mode: 'live_speech',
-            voice_question_number: Number(turn.voice_question_number || ph - maxQ) || null,
-            question_text:  String(turn.question_text  || '').trim(),
-            answer_text:    String(turn.answer_text    || '').trim(),
-            received_at:    turn.received_at  || iso,
-            sent_at:        turn.sent_at      || iso,
-            feedback:       turn.feedback     || null,
-            score:          turn.score != null && Number.isFinite(Number(turn.score))
-                ? Math.max(0, Math.min(100, Math.round(Number(turn.score))))
-                : null,
-            soft_skills:    turn.soft_skills  || null,
-            stt_source:     'gemini_live',
+            voice_question_number:
+                Number(turn.voice_question_number || ph - maxQ) || existing.voice_question_number || null,
+            question_text: incomingQ || String(existing.question_text || existing.question || '').trim(),
+            answer_text: incomingA || String(existing.answer_text || '').trim(),
+            received_at: turn.received_at || existing.received_at || iso,
+            sent_at: turn.sent_at || existing.sent_at || iso,
+            feedback: turn.feedback || existing.feedback || null,
+            score,
+            soft_skills: softSkills,
+            stt_source: 'gemini_live',
             scoring_source: 'gemini_live_relay',
         };
-        const idx = merged.findIndex((x) => Number(x.phase) === ph);
-        if (idx >= 0) {
-            // Preserve existing score if new one is null.
-            if (entry.score == null) entry.score = merged[idx].score ?? null;
-            merged[idx] = { ...merged[idx], ...entry };
-        } else {
-            merged.push(entry);
-        }
+
+        if (idx >= 0) merged[idx] = { ...existing, ...entry };
+        else merged.push(entry);
     }
     return merged;
 }

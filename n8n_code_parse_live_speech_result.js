@@ -152,30 +152,42 @@ for (const turn of turns) {
   const ph = Number(turn.phase);
   if (!Number.isFinite(ph) || ph <= maxQ) continue;
 
+  const idx = history.findIndex((x) => Number(x.phase) === ph);
+  const existing = idx >= 0 ? history[idx] : {};
+
+  const incomingQ = String(turn.question_text || turn.question || '').trim();
+  const incomingA = String(turn.answer_text || turn.transcript || turn.answer || '').trim();
+  const hasNewScore = turn.score != null && Number.isFinite(Number(turn.score));
+  const score = hasNewScore
+    ? Math.max(0, Math.min(100, Math.round(Number(turn.score))))
+    : (existing.score ?? null);
+
   const patch = {
     phase: ph,
     mode: 'live_speech',
-    voice_question_number: Number(turn.voice_question_number || ph - maxQ) || null,
-    question_text: String(turn.question_text || turn.question || '').trim(),
-    answer_text: String(turn.answer_text || turn.transcript || turn.answer || '').trim(),
-    received_at: turn.received_at || iso,
-    sent_at: turn.sent_at || iso,
-    feedback: turn.feedback || null,
-    score: Math.max(0, Math.min(100, Math.round(Number(turn.score ?? 0)))),
-    soft_skills: turn.soft_skills || {
-      clarity: Math.round(Number(turn.clarity ?? turn.score ?? 0)),
-      confidence: Math.round(Number(turn.confidence ?? turn.score ?? 0)),
-      professionalism: Math.round(Number(turn.professionalism ?? turn.score ?? 0)),
-      relevance: Math.round(Number(turn.relevance ?? turn.score ?? 0)),
-    },
-    speech_metrics: turn.speech_metrics || {},
-    answer_audio_url: turn.audio_url || norm.session_audio_url || null,
+    voice_question_number:
+      Number(turn.voice_question_number || ph - maxQ) || existing.voice_question_number || null,
+    question_text: incomingQ || String(existing.question_text || existing.question || '').trim(),
+    answer_text: incomingA || String(existing.answer_text || '').trim(),
+    received_at: turn.received_at || existing.received_at || iso,
+    sent_at: turn.sent_at || existing.sent_at || iso,
+    feedback: turn.feedback || existing.feedback || null,
+    score,
+    soft_skills: turn.soft_skills || (hasNewScore
+      ? {
+          clarity: Math.round(Number(turn.clarity ?? turn.score ?? 0)),
+          confidence: Math.round(Number(turn.confidence ?? turn.score ?? 0)),
+          professionalism: Math.round(Number(turn.professionalism ?? turn.score ?? 0)),
+          relevance: Math.round(Number(turn.relevance ?? turn.score ?? 0)),
+        }
+      : (existing.soft_skills ?? null)),
+    speech_metrics: turn.speech_metrics || existing.speech_metrics || {},
+    answer_audio_url: turn.audio_url || norm.session_audio_url || existing.answer_audio_url || null,
     stt_source: turn.stt_source || 'gemini_live',
     scoring_source: turn.scoring_source || 'gemini_live',
   };
 
-  const idx = history.findIndex((x) => Number(x.phase) === ph);
-  if (idx >= 0) history[idx] = { ...history[idx], ...patch };
+  if (idx >= 0) history[idx] = { ...existing, ...patch };
   else history.push(patch);
 }
 

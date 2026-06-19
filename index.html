@@ -803,6 +803,13 @@
             }
         };
 
+        const LIVE_SPEECH_INSTRUCTIONS = [
+            'Use headphones to avoid echo. Allow microphone access when prompted.',
+            'Press Answer to open your mic — speak clearly in English, then Submit.',
+            'Each voice question has a timer; reply before it runs out.',
+            'Stay in fullscreen and keep this tab focused during the interview.',
+        ];
+
         const AssessmentSidebar = ({
             phases,
             currentStep,
@@ -811,6 +818,10 @@
             integrityViolationCount,
             pct,
             sessionLabel = 'Questions in this session',
+            instructions = ASSESSMENT_INSTRUCTIONS,
+            questionLabel = 'Question',
+            phaseDone = null,
+            extraContent = null,
         }) => (
             <aside className="assessment-sidebar" aria-label="Assessment sidebar">
                 <div className="sidebar-section">
@@ -832,7 +843,7 @@
                     <p className="sidebar-label">All phases</p>
                     <ul className="list-none p-0 m-0" role="list">
                         {phases.map((p) => {
-                            const done = p < currentStep;
+                            const done = phaseDone ? phaseDone(p) : p < currentStep;
                             const active = p === currentStep;
                             const rowClass = active ? 'active' : done ? 'done' : 'pending';
                             const statusLabel = active ? 'In progress' : done ? 'Completed' : 'Upcoming';
@@ -856,7 +867,7 @@
                                     </span>
                                     <div className="min-w-0 flex-1 pt-0.5">
                                         <p className={`text-sm font-semibold leading-tight ${active ? 'text-white' : 'text-slate-300'}`}>
-                                            Question {p}
+                                            {questionLabel} {p}
                                         </p>
                                         <p className={`text-xs mt-1 ${active ? 'text-indigo-300' : 'text-slate-500'}`}>{statusLabel}</p>
                                     </div>
@@ -865,6 +876,10 @@
                         })}
                     </ul>
                 </div>
+
+                {extraContent ? (
+                    <div className="sidebar-section">{extraContent}</div>
+                ) : null}
 
                 <div className="sidebar-section">
                     <p className="sidebar-label">Session</p>
@@ -888,7 +903,7 @@
                 <div className="sidebar-section">
                     <p className="sidebar-label">Instructions</p>
                     <ul className="space-y-2.5 m-0 p-0 list-none">
-                        {ASSESSMENT_INSTRUCTIONS.map((line, i) => (
+                        {instructions.map((line, i) => (
                             <li key={i} className="flex gap-2.5 text-xs text-slate-400 leading-relaxed">
                                 <span className="text-accent font-bold shrink-0 mt-px">{i + 1}.</span>
                                 <span>{line}</span>
@@ -1352,6 +1367,8 @@
             context,
             relayFallback,
             tabSwitches,
+            candidateEmail,
+            integrityViolationCount,
             isLoading,
             onFinished,
             onError,
@@ -1452,10 +1469,11 @@
                             onTurn: (payload) => {
                                 if (payload?.savedStatus) {
                                     const { number, saved, error } = payload.savedStatus;
+                                    setSavingAnswer(false);
                                     setSaveNotice(
                                         saved
                                             ? `Answer ${number} saved.`
-                                            : `Answer ${number} recorded — will be saved when the interview ends.`
+                                            : `Answer ${number} recorded — will retry on interview end.${error ? ` (${error})` : ''}`
                                     );
                                     return;
                                 }
@@ -1612,52 +1630,68 @@
                 }
             };
 
+            const voicePhases = Array.from({ length: maxTurns }, (_, i) => i + 1);
+            const voiceStep = Math.min(maxTurns, Math.max(1, turn || currentQuestionNum || 1));
+            const pct = maxTurns > 0 ? Math.min(100, (completedAnswers / maxTurns) * 100) : 0;
+            const phaseDone = (p) => Boolean(cards[p - 1]?.answer);
+
+            const sidebarExtras = (
+                <>
+                    {answerTimerActive && timeLeft != null ? (
+                        <div className="flex justify-center py-1">
+                            <TimerRing seconds={timeLeft} totalSeconds={answerTimeLimit} compact />
+                        </div>
+                    ) : null}
+                    <div>
+                        <p className="text-xs text-slate-500 mb-2">Mic level</p>
+                        <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                            <div className="h-full bg-emerald-500 transition-all duration-75" style={{ width: `${Math.round(micLevel * 100)}%` }} />
+                        </div>
+                    </div>
+                    <div>
+                        <p className="text-xs text-slate-500 mb-1">Status</p>
+                        <p className="text-xs text-slate-300 leading-relaxed">{status}</p>
+                        {saveNotice ? (
+                            <p className={`text-xs mt-2 leading-relaxed ${saveNotice.includes('saved') ? 'text-emerald-400/90' : 'text-amber-400/90'}`}>
+                                {saveNotice}
+                            </p>
+                        ) : null}
+                    </div>
+                    {interviewComplete ? (
+                        <p className="text-xs text-emerald-400/90 leading-relaxed">
+                            All {maxTurns} questions complete — submitting results…
+                        </p>
+                    ) : null}
+                    <button
+                        type="button"
+                        onClick={handleEnd}
+                        disabled={ending || isLoading}
+                        className={`w-full py-2.5 rounded-xl text-sm disabled:opacity-40 ${interviewComplete ? 'btn-primary' : 'btn-secondary border border-surface-border'}`}
+                    >
+                        {ending ? 'Finishing…' : interviewComplete ? 'Submitting results…' : 'End voice interview'}
+                    </button>
+                </>
+            );
+
             return (
-                <Shell subtitle="Phase 2 · Live voice interview" fullWidth footerNote="Use headphones to avoid echo. Allow microphone access.">
-                    <div className="min-h-[calc(100dvh-4rem)] flex flex-col lg:flex-row gap-0 fade-in portal-lock">
-                        <aside className="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-surface-border bg-surface-elevated/40 p-4 space-y-4">
-                            <div>
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Live speech</p>
-                                <p className="text-sm text-slate-300 mt-1">{context?.requisition_title || 'Voice round'}</p>
-                            </div>
-                            <div className="rounded-lg border border-surface-border px-3 py-2">
-                                <p className="text-xs text-slate-500">Questions</p>
-                                <p className="text-sm text-white font-medium">{currentQuestionNum || completedAnswers} / {maxTurns}</p>
-                            </div>
-                            {answerTimerActive && timeLeft != null ? (
-                                <TimerRing seconds={timeLeft} totalSeconds={answerTimeLimit} compact />
-                            ) : null}
-                            <div className="rounded-lg border border-surface-border px-3 py-2">
-                                <p className="text-xs text-slate-500 mb-2">Mic level</p>
-                                <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
-                                    <div className="h-full bg-emerald-500 transition-all duration-75" style={{ width: `${Math.round(micLevel * 100)}%` }} />
-                                </div>
-                            </div>
-                            <p className="text-xs text-slate-500 leading-relaxed">{status}</p>
-                            {saveNotice ? (
-                                <p className="text-xs text-emerald-400/80 leading-relaxed">{saveNotice}</p>
-                            ) : null}
-                            {interviewComplete ? (
-                                <p className="text-xs text-emerald-400/90 leading-relaxed">
-                                    All {maxTurns} questions are done. Results will submit automatically in a few seconds.
-                                </p>
-                            ) : (
-                                <p className="text-xs text-slate-600 leading-relaxed">
-                                    Interview ends after {maxTurns} questions. Speak in English.
-                                </p>
-                            )}
-                            <button
-                                type="button"
-                                onClick={handleEnd}
-                                disabled={ending || isLoading}
-                                className={`w-full py-3 rounded-xl text-sm disabled:opacity-40 ${interviewComplete ? 'btn-primary' : 'btn-secondary border border-surface-border'}`}
-                            >
-                                {ending ? 'Finishing…' : interviewComplete ? 'Submitting results…' : 'End voice interview'}
-                            </button>
-                        </aside>
-                        <main className="flex-1 flex flex-col min-h-0 p-4 sm:p-6">
+                <Shell subtitle={`Phase 2 · Live voice interview · Question ${voiceStep} of ${maxTurns}`} fullWidth footerNote="Use headphones to avoid echo. Allow microphone access.">
+                    <div className="assessment-workspace fade-in portal-lock">
+                        <AssessmentSidebar
+                            phases={voicePhases}
+                            currentStep={voiceStep}
+                            totalSteps={maxTurns}
+                            candidateEmail={candidateEmail || context?.candidate_email}
+                            integrityViolationCount={integrityViolationCount}
+                            pct={pct}
+                            sessionLabel="Phase 2 — live voice communication"
+                            instructions={LIVE_SPEECH_INSTRUCTIONS}
+                            questionLabel="Voice Q"
+                            phaseDone={phaseDone}
+                            extraContent={sidebarExtras}
+                        />
+                        <div className="assessment-main">
                             {cards.length > 0 ? (
-                                <div className="shrink-0 flex items-center gap-1.5 mb-5">
+                                <div className="shrink-0 flex items-center gap-1.5 px-4 sm:px-5 lg:px-6 pt-4">
                                     {Array.from({ length: maxTurns }).map((_, i) => {
                                         const c = cards[i];
                                         const done = c && c.answer;
@@ -1668,7 +1702,29 @@
                                     })}
                                 </div>
                             ) : null}
-                            <div className="flex-1 min-h-0 overflow-y-auto px-1 sm:px-2 flex flex-col">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-surface-border/60">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-1">Phase 2 · Live voice</p>
+                                        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight">
+                                            Question {voiceStep}
+                                        </h1>
+                                        <p className="text-sm text-slate-500 mt-1">
+                                            {isAnswering
+                                                ? 'Mic open — speak clearly in English, then submit'
+                                                : savingAnswer
+                                                ? 'Saving your answer — please wait…'
+                                                : canAnswer
+                                                ? 'Press Answer below to open your mic'
+                                                : 'Listen to the interviewer'}
+                                        </p>
+                                    </div>
+                                    {answerTimerActive && timeLeft != null ? (
+                                        <TimerRing seconds={timeLeft} totalSeconds={answerTimeLimit} prominent />
+                                    ) : null}
+                                </div>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
                                 {(() => {
                                     const card = cards.length ? cards[cards.length - 1] : null;
                                     const questionDisplay = liveQuestionCaption || card?.question || '';
@@ -1747,7 +1803,7 @@
                                 })()}
                                 <div ref={cardsEndRef} />
                             </div>
-                            <div className="shrink-0 pt-4 mt-2 border-t border-surface-border/60">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-t border-surface-border/60">
                                 {interviewComplete ? (
                                     <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3.5 text-center text-sm text-emerald-300 flex items-center justify-center gap-2">
                                         <span className="inline-block w-3.5 h-3.5 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
@@ -1785,7 +1841,7 @@
                                         : 'Mic stays off while the interviewer is speaking.'}
                                 </p>
                             </div>
-                        </main>
+                        </div>
                     </div>
                 </Shell>
             );
@@ -2536,7 +2592,17 @@
                 };
             }
             const { phaseNum } = resume;
-            if (phaseNum > maxQ || stage === 'speech') {
+            if (phaseNum > maxQ || stage === 'speech' || stage === 'live_speech') {
+                if (stage === 'live_speech') {
+                    return {
+                        kind: 'live_speech',
+                        techTotal: maxQ,
+                        speechTotal: speechPhases,
+                        techAnswered: maxQ,
+                        nextPhaseNum: phaseNum,
+                        speechIndex: phaseNum - maxQ,
+                    };
+                }
                 return {
                     kind: phaseNum === maxQ + 1 ? 'speech_intro' : 'speech',
                     techTotal: maxQ,
@@ -3696,8 +3762,14 @@
                     }
 
                     if (modeInfo.mode === 'speech') {
-                        setAssessmentMode('speech');
-                        setView('assessment');
+                        const liveStage = String(data?.assessment_stage || '').toLowerCase() === 'live_speech';
+                        if (liveStage) {
+                            setAssessmentMode('live_speech');
+                            setView('speech-intro');
+                        } else {
+                            setAssessmentMode('speech');
+                            setView('assessment');
+                        }
                     } else {
                         setAssessmentMode('text');
                         setView('assessment');
@@ -4431,6 +4503,8 @@
                                 context={liveSpeechContext}
                                 relayFallback={LIVE_SPEECH_RELAY_FALLBACK}
                                 tabSwitches={integrityViolationCount}
+                                candidateEmail={candidateEmail}
+                                integrityViolationCount={integrityViolationCount}
                                 isLoading={isLoading}
                                 onFinished={handleLiveSpeechFinished}
                                 onError={(msg) => alert(msg || 'Live speech error')}

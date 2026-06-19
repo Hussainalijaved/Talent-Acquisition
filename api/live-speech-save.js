@@ -5,11 +5,24 @@
 // Final     POST: { partial: false, session_id, turns: [all scored], combined_speech_score,
 //                   final_feedback, duration_seconds, email, tab_switches }
 //
-// Required Vercel env vars:
-//   SUPABASE_URL   — https://xxx.supabase.co
-//   SUPABASE_KEY   — service-role key (or anon key with RLS allowing updates)
+// Required Vercel env vars (same names as other portal APIs):
+//   SUPABASE_SERVICE_ROLE_KEY — service-role key for REST writes
+//   SUPABASE_URL (optional)     — defaults to project Supabase URL
 
 const TABLE = 'assessment_sessions';
+const DEFAULT_SUPABASE_URL = 'https://vnxstyadacgntnsvcvzn.supabase.co';
+
+function supabaseEnv() {
+    const url = String(
+        process.env.SUPABASE_URL || process.env.TA_SUPABASE_URL || DEFAULT_SUPABASE_URL
+    ).replace(/\/+$/, '').trim();
+    const key = String(
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_KEY ||
+        ''
+    ).trim();
+    return { url, key };
+}
 
 function parseJsonSafe(raw, fallback) {
     if (raw == null) return fallback;
@@ -84,11 +97,10 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') { res.status(200).end(); return; }
     if (req.method !== 'POST') { res.status(405).json({ error: 'method_not_allowed' }); return; }
 
-    const sbUrl = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '').trim();
-    const sbKey = String(process.env.SUPABASE_KEY || '').trim();
+    const { url: sbUrl, key: sbKey } = supabaseEnv();
 
     if (!sbUrl || !sbKey) {
-        console.error('[live-speech-save] SUPABASE_URL or SUPABASE_KEY not set in Vercel env');
+        console.error('[live-speech-save] SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY) not set in Vercel env');
         res.status(500).json({ error: 'supabase_env_missing' });
         return;
     }

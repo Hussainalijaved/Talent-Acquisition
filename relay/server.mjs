@@ -37,6 +37,16 @@ function sendJson(ws, payload) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
 }
 
+async function waitForPendingTurnSaves(getCount, maxMs = 90000) {
+  const deadline = Date.now() + maxMs;
+  while (getCount() > 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  if (getCount() > 0) {
+    console.warn(`[relay] session.end proceeding with ${getCount()} in-flight turn save(s)`);
+  }
+}
+
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
@@ -105,6 +115,7 @@ wss.on('connection', (clientWs) => {
   let context = null;
   let finishing = false;
   let webhookFired = false; // guard: fire complete webhook at most once per session
+  let pendingTurnSaves = 0;
 
   sendJson(clientWs, { type: 'hello', message: 'Send session.start with n8n live-speech-start context' });
 
@@ -154,53 +165,58 @@ wss.on('connection', (clientWs) => {
           context,
           onEvent: (ev) => sendJson(clientWs, ev),
           onTurnSaved: (turnPair) => {
+            pendingTurnSaves += 1;
             void (async () => {
-              // 1. Save transcript immediately.
-              const unscored = { ...turnPair, score: null };
-              let saved = false;
-              let saveError = '';
               try {
-                await vercelSaveTurn(context, unscored);
-                saved = true;
-              } catch (vercelErr) {
-                console.warn('[relay] Vercel save failed, trying direct Supabase:', vercelErr.message);
+                // 1. Save transcript immediately.
+                const unscored = { ...turnPair, score: null };
+                let saved = false;
+                let saveError = '';
                 try {
-                  await directSavePartialTurn(context, unscored);
+                  await vercelSaveTurn(context, unscored);
                   saved = true;
-                } catch (dbErr) {
-                  saveError = dbErr.message || 'partial_save_failed';
-                  console.error('[relay] ALL partial saves failed:', saveError);
+                } catch (vercelErr) {
+                  console.warn('[relay] Vercel save failed, trying direct Supabase:', vercelErr.message);
+                  try {
+                    await directSavePartialTurn(context, unscored);
+                    saved = true;
+                  } catch (dbErr) {
+                    saveError = dbErr.message || 'partial_save_failed';
+                    console.error('[relay] ALL partial saves failed:', saveError);
+                  }
                 }
-              }
-              sendJson(clientWs, {
-                type: 'turn_saved_status',
-                number: turnPair.voice_question_number,
-                phase: turnPair.phase,
-                saved,
-                error: saveError || undefined,
-              });
-
-              // 2. Score — guaranteed, never null (API → heuristic → zero).
-              const scored = await scoreTurnGuaranteed({
-                apiKey: GEMINI_API_KEY,
-                context,
-                turn: turnPair,
-              });
-              try {
-                await vercelSaveTurn(context, scored);
-              } catch (vercelErr) {
-                await directSavePartialTurn(context, scored).catch((dbErr) => {
-                  console.warn('[relay] scored turn patch failed:', dbErr.message);
+                sendJson(clientWs, {
+                  type: 'turn_saved_status',
+                  number: turnPair.voice_question_number,
+                  phase: turnPair.phase,
+                  saved,
+                  error: saveError || undefined,
                 });
+
+                // 2. Score — guaranteed, never null (API → heuristic → zero).
+                const scored = await scoreTurnGuaranteed({
+                  apiKey: GEMINI_API_KEY,
+                  context,
+                  turn: turnPair,
+                });
+                try {
+                  await vercelSaveTurn(context, scored);
+                } catch (vercelErr) {
+                  await directSavePartialTurn(context, scored).catch((dbErr) => {
+                    console.warn('[relay] scored turn patch failed:', dbErr.message);
+                  });
+                }
+                sendJson(clientWs, {
+                  type: 'turn_scored',
+                  number: turnPair.voice_question_number,
+                  phase: turnPair.phase,
+                  score: scored.score,
+                  feedback: scored.feedback,
+                  soft_skills: scored.soft_skills,
+                });
+              } finally {
+                pendingTurnSaves -= 1;
               }
-              sendJson(clientWs, {
-                type: 'turn_scored',
-                number: turnPair.voice_question_number,
-                phase: turnPair.phase,
-                score: scored.score,
-                feedback: scored.feedback,
-                soft_skills: scored.soft_skills,
-              });
             })();
           },
         });
@@ -232,6 +248,7 @@ wss.on('connection', (clientWs) => {
         if (!bridge || !context) throw new Error('session not started');
 
         bridge.closeGemini();
+        await waitForPendingTurnSaves(() => pendingTurnSaves);
         const rawTurns = bridge.buildTurnPairs();
         const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
 

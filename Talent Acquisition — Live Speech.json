@@ -477,7 +477,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ {\n  ok: true,\n  session_id: $json.session_id,\n  candidate_email: $json.candidate_email,\n  system_instruction: $json.system_instruction,\n  gemini_live_model: $json.gemini_live_model,\n  live_relay_url: $json.live_relay_url,\n  live_complete_webhook: $json.live_complete_webhook,\n  speech_phases: $json.speech_phases,\n  current_phase: $json.current_phase,\n  requisition_title: $json.requisition_title,\n  assessment_mode: \"live_speech\"\n} }}",
+        "responseBody": "={{ {\n  ok: true,\n  session_id: $json.session_id,\n  candidate_email: $json.candidate_email,\n  system_instruction: $json.system_instruction,\n  kickoff_prompt: $json.kickoff_prompt,\n  gemini_live_model: $json.gemini_live_model,\n  live_relay_url: $json.live_relay_url,\n  live_complete_webhook: $json.live_complete_webhook,\n  portal_base_url: $json.portal_base_url,\n  live_save_url: $json.live_save_url,\n  supabase_url: $json.supabase_url,\n  supabase_key: $json.supabase_key,\n  max_questions: $json.max_questions,\n  speech_phases: $json.speech_phases,\n  speech_answer_seconds: $json.speech_answer_seconds,\n  current_phase: $json.current_phase,\n  requisition_title: $json.requisition_title,\n  assessment_mode: \"live_speech\",\n  config: $json.config\n} }}",
         "options": {
           "responseCode": 200
         }

@@ -739,6 +739,21 @@
         const isSessionStartedPortal = (history) =>
             parseInterviewHistoryLite(history).some(isPhaseAnsweredPortal);
 
+        const isSessionFullyComplete = (session) => {
+            if (!session) return false;
+            const history = parseInterviewHistoryLite(session.interview_history);
+            if (!history.some(isPhaseAnsweredPortal)) return false;
+            let cfg = session.config || {};
+            if (typeof cfg === 'string') {
+                try { cfg = JSON.parse(cfg); } catch (_) { cfg = {}; }
+            }
+            const maxQ = Number(session.max_phases) || Number(cfg.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
+            const speechPhases = Number(cfg.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
+            const totalPh = maxQ + speechPhases;
+            const answered = history.filter(isPhaseAnsweredPortal).length;
+            return answered >= totalPh;
+        };
+
         const sessionStatusIsClosed = (status) => {
             const s = String(status || '').toLowerCase();
             return s.includes('completed') || s.includes('terminated') || s.includes('abandoned');
@@ -773,7 +788,20 @@
                     message: 'This assessment session has already been completed.',
                 };
             }
-            if (status.includes('abandoned') || isSessionStartedPortal(session.interview_history)) {
+            if (isSessionFullyComplete(session)) {
+                return {
+                    blocked: true,
+                    message: 'This assessment session has already been completed.',
+                };
+            }
+            if (status.includes('abandoned')) {
+                return {
+                    blocked: true,
+                    message:
+                        'You left this assessment before finishing. Resuming is not allowed for this session. Please contact your recruiter if you need help.',
+                };
+            }
+            if (isSessionStartedPortal(session.interview_history)) {
                 return {
                     blocked: true,
                     message:
@@ -959,7 +987,7 @@
 
                     const block = getPortalSessionBlockReason(data);
                     if (block.blocked) {
-                        if (isSessionStartedPortal(data.interview_history)) {
+                        if (isSessionStartedPortal(data.interview_history) && !isSessionFullyComplete(data)) {
                             await markSessionAbandoned(supabase, data.id);
                         }
                         setErrorMsg(block.message);
@@ -1094,7 +1122,7 @@
                         if (!cancelled && !error && data) {
                             const block = getPortalSessionBlockReason(data);
                             if (block.blocked) {
-                                if (isSessionStartedPortal(data.interview_history)) {
+                                if (isSessionStartedPortal(data.interview_history) && !isSessionFullyComplete(data)) {
                                     await markSessionAbandoned(supabase, data.id || sessionId);
                                 }
                                 setSessionBlockMsg(block.message);
@@ -3862,7 +3890,7 @@
                     const block = getPortalSessionBlockReason(data);
                     if (block.blocked) {
                         sessionStorage.removeItem('assessment_started');
-                        if (isSessionStartedPortal(data.interview_history)) {
+                        if (isSessionStartedPortal(data.interview_history) && !isSessionFullyComplete(data)) {
                             await markSessionAbandoned(supabase, data.id);
                         }
                         setUrlEntryError(block.message);
@@ -3982,7 +4010,7 @@
 
                     const block = getPortalSessionBlockReason(data);
                     if (block.blocked) {
-                        if (isSessionStartedPortal(data.interview_history)) {
+                        if (isSessionStartedPortal(data.interview_history) && !isSessionFullyComplete(data)) {
                             await markSessionAbandoned(supabase, data.id);
                         }
                         throw new Error(block.message);
@@ -4151,7 +4179,7 @@
                         }
                         const block = getPortalSessionBlockReason(data);
                         if (block.blocked) {
-                            if (isSessionStartedPortal(data.interview_history)) {
+                            if (isSessionStartedPortal(data.interview_history) && !isSessionFullyComplete(data)) {
                                 await markSessionAbandoned(supabase, data.id);
                             }
                             setUrlEntryError(block.message);

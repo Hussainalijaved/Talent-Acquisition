@@ -883,6 +883,23 @@
             return { hist, maxPh, withQ, answered };
         }
 
+        function isAssessmentComplete(sess) {
+            if (!sess) return false;
+            const { answered, maxPh } = historyStats(sess);
+            return maxPh > 0 && answered >= maxPh;
+        }
+
+        function sessionDisplayOutcome(sess) {
+            if (!sess) return { score: null, result: null, derived: false };
+            return computeFinalOutcome(sess, parseHistory(sess), parseJson(sess.config));
+        }
+
+        function resultPillHtml(result) {
+            if (result === 'PASS') return '<span class="pill p-pass">PASS</span>';
+            if (result === 'FAIL') return '<span class="pill p-reject">FAIL</span>';
+            return '<span class="c-role">—</span>';
+        }
+
         function assessPill(sess, stage) {
             if (!sess) {
                 if (stage === 'Shortlisted') return '<span class="pill p-pending">Not started</span>';
@@ -891,14 +908,20 @@
             const { answered, maxPh } = historyStats(sess);
             const phaseProgress = (sess.current_phase || 1) + '/' + maxPh;
             const answerProgress = answered > 0 ? answered + '/' + maxPh + ' answered' : '';
-            if (sess.result === 'PASS') return '<span class="pill p-pass">Passed</span>';
-            if (sess.result === 'FAIL') return '<span class="pill p-reject">Failed</span>';
-            if (sess.status === 'completed') {
+            const outcome = sessionDisplayOutcome(sess);
+
+            if (outcome.result === 'PASS') return '<span class="pill p-pass">Passed</span>';
+            if (outcome.result === 'FAIL') return '<span class="pill p-reject">Failed</span>';
+            if (isAssessmentComplete(sess) || sess.status === 'completed') {
                 return '<span class="pill p-assess">Completed</span>' +
                     (answerProgress ? ' <span class="assess-progress">' + answerProgress + '</span>' : '');
             }
             if (sess.status === 'assessment') {
                 return '<span class="pill p-pending">Phase ' + phaseProgress + '</span>' +
+                    (answerProgress ? ' <span class="assess-progress">' + answerProgress + '</span>' : '');
+            }
+            if (sess.status === 'abandoned') {
+                return '<span class="pill p-pending">Abandoned</span>' +
                     (answerProgress ? ' <span class="assess-progress">' + answerProgress + '</span>' : '');
             }
             return '<span class="pill p-assess">' + esc(sess.status || 'Active') + '</span>' +
@@ -964,10 +987,13 @@
                 if (stage === 'Shortlisted') return '<span class="pill p-pending">Not started</span>';
                 return '<span class="c-role">—</span>';
             }
-            if (sess.result === 'PASS') return '<span class="pill p-pass">Pass</span>';
-            if (sess.result === 'FAIL') return '<span class="pill p-reject">Fail</span>';
+            const outcome = sessionDisplayOutcome(sess);
+            if (outcome.result === 'PASS') return '<span class="pill p-pass">Pass</span>';
+            if (outcome.result === 'FAIL') return '<span class="pill p-reject">Fail</span>';
+            if (isAssessmentComplete(sess)) return '<span class="pill p-assess">Completed</span>';
             if (sess.status === 'assessment') return '<span class="pill p-pending">In progress</span>';
             if (sess.status === 'completed') return '<span class="pill p-assess">Completed</span>';
+            if (sess.status === 'abandoned') return '<span class="pill p-pending">Abandoned</span>';
             return '<span class="pill p-assess">' + esc(sess.status || '—') + '</span>';
         }
         const AV_COLORS = ['#475569', '#64748b', '#334155', '#1e40af', '#0369a1', '#0f766e', '#4b5563', '#52525b'];
@@ -1137,9 +1163,10 @@
                 if (m.cvScore != null && Number.isFinite(m.cvScore)) { scoreSum += m.cvScore; scoreN++; }
                 const s = m.session;
                 if (s) {
-                    if (s.result === 'PASS') pass++;
-                    else if (s.result === 'FAIL') fail++;
-                    else if (s.status === 'assessment') inAssess++;
+                    const outcome = sessionDisplayOutcome(s);
+                    if (outcome.result === 'PASS') pass++;
+                    else if (outcome.result === 'FAIL') fail++;
+                    else if (s.status === 'assessment' && !isAssessmentComplete(s)) inAssess++;
                 }
             }
             return { total, short, reject, review, dup, err, inAssess, pass, fail,
@@ -1317,8 +1344,8 @@
                 if (fAssess) {
                     const s = m.session;
                     if (fAssess === 'none' && !(m.stage === 'Shortlisted' && !s)) return false;
-                    if (fAssess === 'PASS' && !(s && s.result === 'PASS')) return false;
-                    if (fAssess === 'FAIL' && !(s && s.result === 'FAIL')) return false;
+                    if (fAssess === 'PASS' && !(s && sessionDisplayOutcome(s).result === 'PASS')) return false;
+                    if (fAssess === 'FAIL' && !(s && sessionDisplayOutcome(s).result === 'FAIL')) return false;
                     if (fAssess === 'assessment' && !(s && s.status === 'assessment')) return false;
                     if (fAssess === 'completed' && !(s && s.status === 'completed')) return false;
                 }
@@ -1351,10 +1378,17 @@
 
         function assessStats() {
             const list = SESSION_LIST || [];
-            const pass = list.filter((s) => s.result === 'PASS').length;
-            const fail = list.filter((s) => s.result === 'FAIL').length;
-            const active = list.filter((s) => s.status === 'assessment').length;
-            const completed = list.filter((s) => s.status === 'completed').length;
+            let pass = 0;
+            let fail = 0;
+            let active = 0;
+            let completed = 0;
+            list.forEach((s) => {
+                const outcome = sessionDisplayOutcome(s);
+                if (outcome.result === 'PASS') pass += 1;
+                else if (outcome.result === 'FAIL') fail += 1;
+                if (s.status === 'completed' || isAssessmentComplete(s)) completed += 1;
+                else if (s.status === 'assessment') active += 1;
+            });
             return { total: list.length, pass, fail, active, completed };
         }
 
@@ -1410,10 +1444,10 @@
                     return hay.includes(q);
                 });
             }
-            if (status === 'assessment') list = list.filter((s) => s.status === 'assessment');
-            else if (status === 'completed') list = list.filter((s) => s.status === 'completed');
-            else if (status === 'PASS') list = list.filter((s) => s.result === 'PASS');
-            else if (status === 'FAIL') list = list.filter((s) => s.result === 'FAIL');
+            if (status === 'assessment') list = list.filter((s) => s.status === 'assessment' && !isAssessmentComplete(s));
+            else if (status === 'completed') list = list.filter((s) => s.status === 'completed' || isAssessmentComplete(s));
+            else if (status === 'PASS') list = list.filter((s) => sessionDisplayOutcome(s).result === 'PASS');
+            else if (status === 'FAIL') list = list.filter((s) => sessionDisplayOutcome(s).result === 'FAIL');
             else if (status === 'started') list = list.filter((s) => historyStats(s).answered > 0);
 
             if (role) {
@@ -1438,15 +1472,14 @@
             const { answered, maxPh } = historyStats(sess);
             const merged = findMergedForSession(sess);
             const stage = merged?.stage || (sess.status === 'completed' ? 'Shortlisted' : '—');
+            const outcome = sessionDisplayOutcome(sess);
             return '<tr data-session-id="' + esc(sess.id) + '">' +
                 '<td><div class="c-email"><span class="avatar" style="background:' + av.color + '">' + esc(av.init) + '</span>' +
                 esc(sess.candidate_email || '—') + '</div></td>' +
                 '<td>' + esc(roleLabel(sessionRoleLabel(sess))) + '</td>' +
                 '<td>' + assessPill(sess, stage) + '</td>' +
-                '<td>' + (sess.result === 'PASS' ? '<span class="pill p-pass">PASS</span>' :
-                    sess.result === 'FAIL' ? '<span class="pill p-reject">FAIL</span>' :
-                    '<span class="c-role">—</span>') + '</td>' +
-                '<td>' + scoreBadge(sess.score) + '</td>' +
+                '<td>' + resultPillHtml(outcome.result) + '</td>' +
+                '<td>' + scoreBadge(outcome.score) + '</td>' +
                 '<td><span class="assess-progress">' + answered + ' / ' + maxPh + '</span></td>' +
                 '<td>' + esc(fmtDate(sessionTimestamp(sess))) + '</td>' +
                 '</tr>';

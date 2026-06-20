@@ -349,6 +349,23 @@
                                         </div>
                                     </section>
 
+                                    <section class="job-form-section">
+                                        <div class="job-form-section-title">Assessment scoring</div>
+                                        <p class="job-form-section-hint">Combined score = 70% technical + 30% live speech. Candidate must meet the pass threshold to receive PASS.</p>
+                                        <div class="job-form-row cols-2">
+                                            <div class="form-group">
+                                                <label for="jobPassThresholdIn">Pass threshold (%)</label>
+                                                <input id="jobPassThresholdIn" type="number" min="0" max="100" step="1" value="60" placeholder="60" />
+                                                <div class="form-hint">Default 60 — raise for senior roles, lower for junior.</div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="jobFailThresholdIn">Fail threshold (%)</label>
+                                                <input id="jobFailThresholdIn" type="number" min="0" max="100" step="1" value="30" placeholder="30" />
+                                                <div class="form-hint">Below this during phased assessment = hard fail.</div>
+                                            </div>
+                                        </div>
+                                    </section>
+
                                     <section class="job-form-section job-form-section-ai">
                                         <div class="job-form-section-title">Screening criteria</div>
                                         <p class="job-form-section-hint">Must-have and nice-to-have lines are expanded into Responsibilities and Requirements.</p>

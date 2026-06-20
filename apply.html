@@ -2051,6 +2051,12 @@
             if (currentJob.interviewer_email) {
                 formData.append('interviewer_email', currentJob.interviewer_email);
             }
+            if (currentJob.pass_score_threshold != null) {
+                formData.append('pass_score_threshold', String(currentJob.pass_score_threshold));
+            }
+            if (currentJob.fail_score_threshold != null) {
+                formData.append('fail_score_threshold', String(currentJob.fail_score_threshold));
+            }
             formData.append('cv_file', file, file.name);
             formData.append('apply_source', 'careers_page');
 

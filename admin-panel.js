@@ -707,6 +707,12 @@
         });
     }
 
+    function parseScoreThreshold(raw, fallback) {
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.min(100, Math.max(0, Math.round(n)));
+    }
+
     function setSelectValue(id, value, fallback) {
         const el = document.getElementById(id);
         if (!el) return;
@@ -750,6 +756,8 @@
         document.getElementById('jobStackIn').value = j.tech_stack || '';
         document.getElementById('jobSalaryIn').value = j.salary_range || '';
         document.getElementById('jobJdIn').value = j.jd_text || '';
+        document.getElementById('jobPassThresholdIn').value = String(parseScoreThreshold(j.pass_score_threshold, 60));
+        document.getElementById('jobFailThresholdIn').value = String(parseScoreThreshold(j.fail_score_threshold, 30));
         setSelectValue('jobDisplayStyleIn', window.TAJobStyles?.normalize(j.display_style) || 'hiring-top', 'hiring-top');
         updateJobDisplayStyleHint();
         clearJobFieldErrors();
@@ -798,6 +806,20 @@
         const display_style = window.TAJobStyles?.normalize(
             document.getElementById('jobDisplayStyleIn')?.value || 'hiring-top'
         ) || 'hiring-top';
+        const pass_score_threshold = parseScoreThreshold(
+            document.getElementById('jobPassThresholdIn')?.value,
+            60
+        );
+        const fail_score_threshold = parseScoreThreshold(
+            document.getElementById('jobFailThresholdIn')?.value,
+            30
+        );
+        if (fail_score_threshold >= pass_score_threshold) {
+            setJobFieldError('jobFailThresholdIn', 'Fail threshold must be lower than pass threshold.');
+            document.getElementById('jobFailThresholdIn')?.focus();
+            deps.banner('Fail threshold must be lower than pass threshold.', 'err');
+            return;
+        }
 
         const row = {
             title,
@@ -812,6 +834,8 @@
             tech_stack,
             salary_range,
             display_style,
+            pass_score_threshold,
+            fail_score_threshold,
             updated_at: new Date().toISOString(),
         };
 
@@ -828,6 +852,8 @@
             delete fallback.tech_stack;
             delete fallback.salary_range;
             delete fallback.display_style;
+            delete fallback.pass_score_threshold;
+            delete fallback.fail_score_threshold;
             const extras = [
                 experience ? 'Experience: ' + experience : '',
                 tech_stack ? 'Tech stack: ' + tech_stack : '',
@@ -855,7 +881,7 @@
         }
         deps.banner(
             usedFallback
-                ? 'Job saved (run supabase_jobs_expand.sql to store experience/stack/salary separately).'
+                ? 'Job saved (run supabase_jobs_expand.sql and supabase_jobs_scoring.sql for full column support).'
                 : 'Job saved.',
             'ok'
         );
@@ -1736,14 +1762,16 @@
         }
     }
 
-    async function screenOneCandidate(webhook, { email, title, requirements, interviewer, file, cvText }) {
+    async function screenOneCandidate(webhook, { email, title, requirements, interviewer, requisitionId, passScoreThreshold, failScoreThreshold, file, cvText }) {
         const fd = new FormData();
         fd.append('candidate_email', email);
         fd.append('requisition_title', title);
         fd.append('requisition_requirements', requirements);
-        fd.append('requisition_id', slugFromTitle(title));
+        fd.append('requisition_id', requisitionId || slugFromTitle(title));
         fd.append('source', 'admin_cv_screen');
         if (interviewer) fd.append('interviewer_email', interviewer);
+        if (passScoreThreshold != null) fd.append('pass_score_threshold', String(passScoreThreshold));
+        if (failScoreThreshold != null) fd.append('fail_score_threshold', String(failScoreThreshold));
         if (file) fd.append('cv_file', file, file.name);
         else if (cvText) fd.append('cv_text', cvText);
         const res = await fetch(webhook, { method: 'POST', body: fd, headers: { 'ngrok-skip-browser-warning': '1' } });
@@ -1776,6 +1804,14 @@
             deps.banner('Valid interviewer email is required.', 'err');
             return;
         }
+
+        const scrJobEl = document.getElementById('scrJob');
+        const linkedJob = JOBS.find((j) => j.id === scrJobEl?.selectedOptions?.[0]?.dataset?.jobId);
+        const screenOpts = {
+            passScoreThreshold: linkedJob ? parseScoreThreshold(linkedJob.pass_score_threshold, 60) : null,
+            failScoreThreshold: linkedJob ? parseScoreThreshold(linkedJob.fail_score_threshold, 30) : null,
+            requisitionId: linkedJob?.job_id || slugFromTitle(title),
+        };
 
         const btn = document.getElementById('scrSubmit');
         const progress = document.getElementById('scrProgress');
@@ -1812,7 +1848,7 @@
                     if (progressFill) progressFill.style.width = Math.round(((i + 0.5) / jobs.length) * 100) + '%';
                     deps.banner('Screening ' + (i + 1) + ' of ' + jobs.length + ': ' + job.file.name + '…', 'ok');
                     try {
-                        await screenOneCandidate(webhook, { email: job.email, title, requirements, interviewer, file: job.file });
+                        await screenOneCandidate(webhook, { email: job.email, title, requirements, interviewer, file: job.file, ...screenOpts });
                         ok++;
                     } catch (err) {
                         fail++;
@@ -1836,7 +1872,7 @@
                     deps.banner('Paste CV text or upload a PDF.', 'err');
                     return;
                 }
-                await screenOneCandidate(webhook, { email, title, requirements, interviewer, file, cvText });
+                await screenOneCandidate(webhook, { email, title, requirements, interviewer, file, cvText, ...screenOpts });
                 deps.banner('CV sent for AI screening — check Candidates in ~30s.', 'ok');
                 document.getElementById('screenForm').reset();
                 setScreenMode('single');
@@ -2669,6 +2705,8 @@
         document.getElementById('jobResetBtn')?.addEventListener('click', () => {
             document.getElementById('jobForm').reset();
             document.getElementById('jobEditId').value = '';
+            document.getElementById('jobPassThresholdIn').value = '60';
+            document.getElementById('jobFailThresholdIn').value = '30';
             setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
             clearJobFieldErrors();
@@ -2681,6 +2719,8 @@
                 return;
             }
             document.getElementById('jobForm')?.reset();
+            document.getElementById('jobPassThresholdIn').value = '60';
+            document.getElementById('jobFailThresholdIn').value = '30';
             setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
             clearJobFieldErrors();

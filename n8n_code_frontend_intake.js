@@ -34,6 +34,15 @@ function pick(body, ...keys) {
   return '';
 }
 
+function pickNum(body, ...keys) {
+  for (const k of keys) {
+    const v = body?.[k];
+    const n = Number(v);
+    if (Number.isFinite(n)) return Math.min(100, Math.max(0, Math.round(n)));
+  }
+  return null;
+}
+
 const pdf = $input.first().json;
 const body = getWebhookPayload();
 
@@ -48,6 +57,8 @@ const candidate_email = pick(body, 'candidate_email', 'email').toLowerCase();
 const cv_text = String(pdf.text || pick(body, 'cv_text') || '').trim();
 const requisition_id = pick(body, 'requisition_id');
 const interviewer_email = pick(body, 'interviewer_email').toLowerCase();
+const pass_score_threshold = pickNum(body, 'pass_score_threshold');
+const fail_score_threshold = pickNum(body, 'fail_score_threshold');
 
 if (!requisition_title) {
   throw new Error(
@@ -75,6 +86,8 @@ return [
       cv_text,
       requisition_id,
       interviewer_email,
+      pass_score_threshold,
+      fail_score_threshold,
       jd_source: 'frontend_form',
     },
   },

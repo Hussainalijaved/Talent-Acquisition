@@ -302,6 +302,12 @@ export default async function handler(req, res) {
         const job = Array.isArray(jobRes.data) ? jobRes.data[0] : null;
         const jdTitle = String(job?.title || notes.requisition_title || requisitionId).trim();
         const jdReq = String(job?.jd_text || notes.requisition_requirements || '').trim();
+        const passScoreThreshold = Number.isFinite(Number(job?.pass_score_threshold))
+            ? Math.min(100, Math.max(0, Math.round(Number(job.pass_score_threshold))))
+            : 60;
+        const failScoreThreshold = Number.isFinite(Number(job?.fail_score_threshold))
+            ? Math.min(100, Math.max(0, Math.round(Number(job.fail_score_threshold))))
+            : 30;
         if (!jdReq) {
             res.status(400).json({ ok: false, error: 'job_description_missing' });
             return;
@@ -375,8 +381,8 @@ export default async function handler(req, res) {
                 max_questions: 5,
                 speech_phases: 5,
                 speech_enabled: true,
-                pass_score_threshold: 60,
-                fail_score_threshold: 30,
+                pass_score_threshold: passScoreThreshold,
+                fail_score_threshold: failScoreThreshold,
                 timer_min_seconds: 60,
                 timer_max_seconds: 600,
             },

@@ -51,6 +51,15 @@ function pick(body, ...keys) {
   return '';
 }
 
+function pickNum(body, ...keys) {
+  for (const k of keys) {
+    const v = body?.[k];
+    const n = Number(v);
+    if (Number.isFinite(n)) return Math.min(100, Math.max(0, Math.round(n)));
+  }
+  return null;
+}
+
 const intake =
   firstJsonFromNodes(
     'CODE - Frontend intake (JD + CV)',
@@ -109,6 +118,16 @@ const config = {
     pick(webhook, 'interviewer_email') ||
     cfg.config?.interviewer_email ||
     '',
+  pass_score_threshold:
+    intake.pass_score_threshold ??
+    pickNum(webhook, 'pass_score_threshold') ??
+    cfg.config?.pass_score_threshold ??
+    60,
+  fail_score_threshold:
+    intake.fail_score_threshold ??
+    pickNum(webhook, 'fail_score_threshold') ??
+    cfg.config?.fail_score_threshold ??
+    30,
 };
 
 return [

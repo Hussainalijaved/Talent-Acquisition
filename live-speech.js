@@ -469,6 +469,31 @@
         };
         this.ws?.addEventListener('message', onMsg);
       });
+
+      if (!result?.result || result?.saved_to_db === false) {
+        const portalBase = this.context?.portal_base_url || this.context?.config?.portal_base_url;
+        const sessionId = this.context?.session_id;
+        if (portalBase && sessionId && global.TA_LIVE?.finalizeLiveSpeech) {
+          try {
+            const fin = await global.TA_LIVE.finalizeLiveSpeech({
+              portalBase,
+              sessionId,
+              maxQuestions: Number(this.context?.max_questions || 5),
+            });
+            if (fin?.ok) {
+              result.result = fin.result || result.result;
+              result.score = fin.score ?? result.score;
+              result.technical_score = fin.technical_score ?? result.technical_score;
+              result.speech_score = fin.speech_score ?? result.speech_score;
+              result.saved_to_db = true;
+              result.save = { ...(result.save || {}), ...fin };
+            }
+          } catch (finErr) {
+            console.warn('[live-speech] client finalize fallback failed:', finErr.message);
+          }
+        }
+      }
+
       this.cleanup();
       this.ended = true;
       return result;
@@ -541,10 +566,30 @@
     return /conclud(e|es|ed|ing).*interview|completes? the voice interview|that concludes|we will be in touch|thank you for your time|end of (the )?interview/.test(t);
   }
 
+  async function finalizeLiveSpeech({ portalBase, sessionId, maxQuestions = 5 }) {
+    const base = String(portalBase || 'https://talent-acquisition-six.vercel.app').replace(/\/+$/, '');
+    const res = await fetch(`${base}/api/live-speech-save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        partial: false,
+        finalize_only: true,
+        session_id: sessionId,
+        max_questions: maxQuestions,
+      }),
+    });
+    const text = await res.text();
+    let json = {};
+    try { json = JSON.parse(text); } catch (_) { json = { raw: text }; }
+    if (!res.ok) throw new Error(`finalize failed (${res.status}): ${text.slice(0, 200)}`);
+    return json;
+  }
+
   global.TA_LIVE = {
     LiveSpeechSession,
     fetchLiveSpeechStart,
     resolveRelayUrl,
+    finalizeLiveSpeech,
     sanitizeDisplayTranscript,
     looksLikeClosingMessage,
   };

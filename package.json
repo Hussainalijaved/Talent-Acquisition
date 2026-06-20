@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node scripts/test-transcript-utils.mjs && node scripts/test_live_speech_save.mjs && node scripts/test_live_speech_merge.mjs && node scripts/test_parse_recovery.mjs && node scripts/test_speech_handoff.mjs",
+    "test": "node scripts/test-transcript-utils.mjs && node scripts/test_final_score.mjs && node scripts/test_live_speech_save.mjs && node scripts/test_live_speech_merge.mjs && node scripts/test_parse_recovery.mjs && node scripts/test_speech_handoff.mjs",
     "test:e2e": "node scripts/e2e-puppeteer.mjs --local",
     "test:e2e:prod": "node scripts/e2e-puppeteer.mjs --base=https://talent-acquisition-six.vercel.app",
     "test:all": "npm run test && npm run test:e2e",

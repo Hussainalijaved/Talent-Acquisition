@@ -1522,6 +1522,48 @@
             return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
         }
 
+        function computeFinalOutcome(sess, hist, cfg) {
+            hist = hist || parseHistory(sess);
+            cfg = cfg || parseJson(sess?.config);
+            const techMax = inferTechMax(hist, cfg, sess);
+            const speechPhases = Number(cfg.speech_phases ?? 5);
+            const techHist = hist.filter((h) => {
+                const ph = Number(h.phase);
+                return ph >= 1 && ph <= techMax;
+            });
+            const speechHist = hist.filter((h) => isSpeechPhaseRow(h, techMax));
+
+            const techAvg = Number(sess?.technical_score) || avgPhaseScore(techHist);
+            const speechAvg = Number(sess?.speech_score) || avgPhaseScore(speechHist);
+            const tw = Number(cfg.technical_weight ?? 0.7);
+            const sw = Number(cfg.speech_weight ?? 0.3);
+            const pt = Number(cfg.pass_score_threshold ?? 60);
+
+            let combined = null;
+            if (techAvg != null && speechAvg != null) {
+                combined = Math.round(techAvg * tw + speechAvg * sw);
+            } else if (speechAvg != null) {
+                combined = speechAvg;
+            } else if (techAvg != null) {
+                combined = techAvg;
+            }
+
+            const voiceAnswered = speechHist.filter((h) => h && String(h.answer_text || '').trim()).length;
+            const voiceDone = speechPhases > 0 && voiceAnswered >= speechPhases;
+            const derived = !sess?.result && voiceDone && combined != null;
+
+            return {
+                score: derived ? combined : (sess?.score ?? combined),
+                result: derived
+                    ? (combined >= pt ? 'PASS' : 'FAIL')
+                    : (sess?.result || null),
+                techAvg,
+                speechAvg,
+                combined,
+                derived,
+            };
+        }
+
         function phaseStatusLabel(h) {
             if (!h) return 'Not started';
             if (h.integrity_terminated) return 'Integrity violation';
@@ -1682,14 +1724,16 @@
         function renderAssessmentReport(sess) {
             const hist = parseHistory(sess);
             const cfg = parseJson(sess.config);
+            const outcome = computeFinalOutcome(sess, hist, cfg);
             const techMax = inferTechMax(hist, cfg, sess);
             const speechMax = Number(cfg.speech_phases || 5);
             const totalPh = techMax + speechMax;
             const techHist = hist.filter((h) => !isSpeechPhaseRow(h, techMax));
             const speechHist = hist.filter((h) => isSpeechPhaseRow(h, techMax));
-            const avg = avgPhaseScore(hist);
-            const techAvg = avgPhaseScore(techHist);
-            const speechAvg = avgPhaseScore(speechHist);
+            const techAvg = outcome.techAvg ?? avgPhaseScore(techHist);
+            const speechAvg = outcome.speechAvg ?? avgPhaseScore(speechHist);
+            const displayScore = outcome.score;
+            const displayResult = outcome.result;
             const answered = hist.filter((h) => h && h.answer_text).length;
 
             let html = '<div class="section assessment-report"><div class="section-h">' +
@@ -1697,8 +1741,10 @@
                 'Interview history</div>';
 
             html += '<div class="assess-summary">' +
-                '<div class="assess-stat">' + assessPill(sess) + '<span class="assess-stat-lbl">Outcome</span></div>' +
-                '<div class="assess-stat">' + scoreBadge(sess.score) + '<span class="assess-stat-lbl">Final score</span></div>' +
+                '<div class="assess-stat">' + (displayResult === 'PASS' ? '<span class="pill p-pass">PASS</span>' :
+                    displayResult === 'FAIL' ? '<span class="pill p-reject">FAIL</span>' : assessPill(sess)) +
+                '<span class="assess-stat-lbl">Outcome</span></div>' +
+                '<div class="assess-stat">' + scoreBadge(displayScore) + '<span class="assess-stat-lbl">Final score</span></div>' +
                 '<div class="assess-stat">' + (techAvg != null ? scoreBadge(techAvg) : '<span class="c-role">—</span>') + '<span class="assess-stat-lbl">Technical avg</span></div>' +
                 '<div class="assess-stat">' + (speechAvg != null ? scoreBadge(speechAvg) : '<span class="c-role">—</span>') + '<span class="assess-stat-lbl">Voice avg</span></div>' +
                 '</div>';
@@ -1750,6 +1796,9 @@
         function buildAssessmentDetailHtml(sess, merged) {
             const cfg = parseJson(sess.config);
             const role = sessionRoleLabel(sess);
+            const outcome = computeFinalOutcome(sess, parseHistory(sess), cfg);
+            const displayResult = outcome.result;
+            const displayScore = outcome.score;
             let html = '<div class="section"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"/><path d="M9 7a3 3 0 0 1 6 0v4H9z"/></svg>' +
                 'Session snapshot</div>' +
@@ -1757,9 +1806,9 @@
                 kv('Candidate email', esc(sess.candidate_email || '—')) +
                 kv('Role', esc(roleLabel(role))) +
                 kv('Portal status', esc(sess.status || '—')) +
-                kv('Result', sess.result === 'PASS' ? '<span class="pill p-pass">PASS</span>' :
-                    sess.result === 'FAIL' ? '<span class="pill p-reject">FAIL</span>' : '<span class="c-role">—</span>') +
-                kv('Final score', scoreBadge(sess.score)) +
+                kv('Result', displayResult === 'PASS' ? '<span class="pill p-pass">PASS</span>' :
+                    displayResult === 'FAIL' ? '<span class="pill p-reject">FAIL</span>' : '<span class="c-role">—</span>') +
+                kv('Final score', scoreBadge(displayScore)) +
                 (sess.scheduling_status ? kv('Scheduling', esc(sess.scheduling_status)) : '') +
                 '</div>';
 

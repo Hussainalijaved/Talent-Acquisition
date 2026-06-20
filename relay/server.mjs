@@ -47,6 +47,21 @@ async function waitForPendingTurnSaves(getCount, maxMs = 90000) {
   }
 }
 
+async function saveFinalWithRetry(saveFn, attempts = 3) {
+  let lastErr;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await saveFn();
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) {
+        await new Promise((r) => setTimeout(r, 1200 * (i + 1)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
@@ -300,26 +315,33 @@ wss.on('connection', (clientWs) => {
         // ── PRIMARY: Vercel API save (always reachable from Railway) ──────────
         let finalResult = { ok: false };
         try {
-          finalResult = await vercelSaveFinal(context, scored.turns, {
-            combinedSpeechScore: scored.combined_speech_score,
-            finalFeedback:       scored.final_feedback,
-            durationSeconds,
-            tabSwitches:         Number(msg.tab_switches || 0),
-          });
+          finalResult = await saveFinalWithRetry(() =>
+            vercelSaveFinal(context, scored.turns, {
+              combinedSpeechScore: scored.combined_speech_score,
+              finalFeedback:       scored.final_feedback,
+              durationSeconds,
+              tabSwitches:         Number(msg.tab_switches || 0),
+            })
+          );
         } catch (vercelErr) {
           console.warn('[relay] Vercel final save failed, trying direct Supabase:', vercelErr.message);
           // ── FALLBACK: direct Supabase ───────────────────────────────────────
           try {
-            finalResult = await directSaveToSupabase(context, scored.turns, {
-              combinedSpeechScore: scored.combined_speech_score,
-              finalFeedback:       scored.final_feedback,
-              durationSeconds,
-            });
+            finalResult = await saveFinalWithRetry(() =>
+              directSaveToSupabase(context, scored.turns, {
+                combinedSpeechScore: scored.combined_speech_score,
+                finalFeedback:       scored.final_feedback,
+                durationSeconds,
+              })
+            );
           } catch (dbErr) {
             console.error('[relay] ALL final saves FAILED:', dbErr.message);
             finalResult = { ok: false, error: dbErr.message };
           }
         }
+
+        const finalScore = finalResult.score ?? finalResult.combined ?? null;
+        const finalOutcome = finalResult.result || null;
 
         // ── SECONDARY: n8n webhook (email / notifications only) ───────────────
         const completePayload = {
@@ -339,6 +361,10 @@ wss.on('connection', (clientWs) => {
           type:                  'session.complete',
           ok:                    finalResult.ok,
           saved_to_db:           finalResult.ok,
+          result:                finalOutcome,
+          score:                 finalScore,
+          technical_score:       finalResult.technical_score ?? finalResult.techAvg ?? null,
+          speech_score:          finalResult.speech_score ?? finalResult.speechAvg ?? scored.combined_speech_score,
           turns:                 scored.turns.length,
           combined_speech_score: scored.combined_speech_score,
           final_feedback:        scored.final_feedback,

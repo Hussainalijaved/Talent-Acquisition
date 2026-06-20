@@ -1367,7 +1367,9 @@
             const save = result?.save || result?.n8n || {};
             return {
                 result: save.result || result?.result || '',
-                score: save.score ?? result?.score ?? result?.combined_speech_score ?? null,
+                score: save.score ?? save.combined ?? result?.score ?? null,
+                technical_score: save.technical_score ?? result?.technical_score ?? null,
+                speech_score: save.speech_score ?? result?.speech_score ?? result?.combined_speech_score ?? null,
                 feedback: save.feedback || result?.final_feedback || result?.feedback || 'Live speech assessment completed.',
                 saved: save.ok !== false && result?.saved_to_db !== false,
             };
@@ -4427,19 +4429,44 @@
                 let score = data?.score;
                 let feedback = data?.feedback || 'Assessment completed.';
 
-                // Prefer fresh DB values — relay UI may only have speech-only score before final PATCH.
+                const portalBase = String(
+                    liveSpeechContext?.portal_base_url ||
+                    liveSpeechContext?.config?.portal_base_url ||
+                    'https://talent-acquisition-six.vercel.app'
+                ).replace(/\/+$/, '');
+
+                // Client finalize if relay did not persist PASS/FAIL + combined score.
+                if (sessionId && (!result || score == null) && window.TA_LIVE?.finalizeLiveSpeech) {
+                    try {
+                        const fin = await window.TA_LIVE.finalizeLiveSpeech({
+                            portalBase,
+                            sessionId,
+                            maxQuestions: Number(liveSpeechContext?.max_questions || 5),
+                        });
+                        if (fin?.result) result = fin.result;
+                        if (fin?.score != null) score = Number(fin.score);
+                    } catch (e) {
+                        console.warn('Live speech finalize fallback failed:', e);
+                    }
+                }
+
                 if (sessionId && supabase) {
                     try {
                         const { data: row } = await supabase
                             .from('assessment_sessions')
-                            .select('result, score, speech_score, status, assessment_stage')
+                            .select('result, score, speech_score, technical_score, status, assessment_stage, interview_history, config')
                             .eq('id', sessionId)
                             .single();
                         if (row) {
                             if (row.result) result = row.result;
                             if (row.score != null) score = Number(row.score);
-                            if (row.status === 'completed' && !result && row.score != null) {
-                                result = Number(row.score) >= 60 ? 'PASS' : 'FAIL';
+                            if (!result && row.status === 'completed' && row.score != null) {
+                                let cfg = row.config;
+                                if (typeof cfg === 'string') {
+                                    try { cfg = JSON.parse(cfg); } catch (_) { cfg = {}; }
+                                }
+                                const pt = Number(cfg?.pass_score_threshold ?? 60);
+                                result = Number(row.score) >= pt ? 'PASS' : 'FAIL';
                             }
                         }
                     } catch (e) {
@@ -4447,9 +4474,10 @@
                     }
                 }
 
+                const passThreshold = Number(liveSpeechContext?.config?.pass_score_threshold ?? 60);
                 setView('finished');
                 sessionStorage.removeItem('assessment_started');
-                setResult(result || (Number(score) >= 60 ? 'PASS' : 'FAIL'));
+                setResult(result || (Number(score) >= passThreshold ? 'PASS' : 'FAIL'));
                 if (score != null) setOverallScore(Number(score));
                 setFeedback(feedback);
                 sessionStorage.removeItem('time_left');

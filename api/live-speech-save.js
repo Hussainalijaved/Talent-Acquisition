@@ -39,6 +39,50 @@ function buildHeaders(key) {
     };
 }
 
+function avgPhaseScores(history, predicate) {
+    const scores = (history || [])
+        .filter(predicate)
+        .map((h) => Number(h.score))
+        .filter((n) => Number.isFinite(n));
+    if (!scores.length) return null;
+    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+}
+
+function computeFinalScores(session, history, maxQ, sessCfg, body = {}) {
+    const speechPhases = Number(sessCfg.speech_phases ?? 5);
+    const techFromHistory = avgPhaseScores(history, (h) => {
+        const ph = Number(h.phase);
+        return ph >= 1 && ph <= maxQ;
+    });
+    const techAvg = Number(session.technical_score) || techFromHistory || 0;
+
+    const speechFromHistory = avgPhaseScores(history, (h) => Number(h.phase) > maxQ);
+    const speechScores = history
+        .filter((h) => Number(h.phase) > maxQ && h.score != null && Number.isFinite(Number(h.score)))
+        .map((h) => Number(h.score));
+    const speechAvg = speechFromHistory
+        ?? (speechScores.length
+            ? Math.round(speechScores.reduce((a, b) => a + b, 0) / speechScores.length)
+            : (Number(body.combined_speech_score) || 0));
+
+    const tw = Number(sessCfg.technical_weight ?? 0.7);
+    const sw = Number(sessCfg.speech_weight ?? 0.3);
+    const pt = Number(sessCfg.pass_score_threshold ?? 60);
+    const combined = techAvg > 0
+        ? Math.round(techAvg * tw + speechAvg * sw)
+        : speechAvg;
+    const result = combined >= pt ? 'PASS' : 'FAIL';
+
+    return {
+        techAvg,
+        speechAvg,
+        combined,
+        result,
+        speechPhases,
+        passThreshold: pt,
+    };
+}
+
 function mergeTurns(history, newTurns, maxQ) {
     const merged = Array.isArray(history) ? [...history] : [];
     const iso = new Date().toISOString();
@@ -108,14 +152,15 @@ export default async function handler(req, res) {
     const body = parseJsonSafe(req.body, {});
     const sessionId = String(body.session_id || '').trim();
     const turns     = Array.isArray(body.turns) ? body.turns : [];
-    const partial   = body.partial !== false; // default partial unless explicitly false
+    const finalizeOnly = body.finalize_only === true;
+    const partial   = finalizeOnly ? false : (body.partial !== false);
     const maxQ      = Number(body.max_questions ?? 5);
 
     if (!sessionId) {
         res.status(400).json({ error: 'session_id required' });
         return;
     }
-    if (!turns.length && partial) {
+    if (!turns.length && partial && !finalizeOnly) {
         res.status(400).json({ error: 'turns[] required for partial save' });
         return;
     }
@@ -162,34 +207,19 @@ export default async function handler(req, res) {
                 status:            'assessment',
             };
         } else {
-            // Final save — compute scores and mark completed.
             const sessCfg = parseJsonSafe(session.config, {});
-            const techAvg  = Number(session.technical_score) || 0;
-            const speechScores = history
-                .filter((h) => Number(h.phase) > maxQ && h.score != null && Number.isFinite(Number(h.score)))
-                .map((h) => Number(h.score));
-            const speechAvg = speechScores.length
-                ? Math.round(speechScores.reduce((a, b) => a + b, 0) / speechScores.length)
-                : (Number(body.combined_speech_score) || 0);
-            const tw  = Number(sessCfg.technical_weight    ?? 0.7);
-            const sw  = Number(sessCfg.speech_weight       ?? 0.3);
-            const pt  = Number(sessCfg.pass_score_threshold ?? 60);
-            const combined = techAvg > 0
-                ? Math.round(techAvg * tw + speechAvg * sw)
-                : speechAvg;
-            const result = combined >= pt ? 'PASS' : 'FAIL';
-            const speechPhases = Number(sessCfg.speech_phases ?? 5);
+            const finals = computeFinalScores(session, history, maxQ, sessCfg, body);
 
             patchBody = {
                 interview_history:            history,
                 updated_at:                   iso,
                 assessment_stage:             'completed',
-                current_phase:                maxQ + speechPhases,
+                current_phase:                maxQ + finals.speechPhases,
                 status:                       'completed',
-                technical_score:              techAvg,
-                speech_score:                 speechAvg,
-                score:                        combined,
-                result,
+                technical_score:              finals.techAvg,
+                speech_score:                 finals.speechAvg,
+                score:                        finals.combined,
+                result:                       finals.result,
                 live_speech_duration_seconds: Number(body.duration_seconds) || null,
                 tab_switches:                 Number(body.tab_switches)     || 0,
             };
@@ -214,7 +244,12 @@ export default async function handler(req, res) {
             session_id: sessionId,
             phase,
             turns_saved: turns.length,
-            ...(partial ? {} : { result: patchBody.result, score: patchBody.score }),
+            ...(partial ? {} : {
+                result: patchBody.result,
+                score: patchBody.score,
+                technical_score: patchBody.technical_score,
+                speech_score: patchBody.speech_score,
+            }),
         });
 
     } catch (err) {

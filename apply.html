@@ -2057,6 +2057,9 @@
             if (currentJob.fail_score_threshold != null) {
                 formData.append('fail_score_threshold', String(currentJob.fail_score_threshold));
             }
+            if (currentJob.cv_shortlist_threshold != null) {
+                formData.append('cv_shortlist_threshold', String(currentJob.cv_shortlist_threshold));
+            }
             formData.append('cv_file', file, file.name);
             formData.append('apply_source', 'careers_page');
 

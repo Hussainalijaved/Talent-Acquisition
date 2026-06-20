@@ -59,6 +59,7 @@ const requisition_id = pick(body, 'requisition_id');
 const interviewer_email = pick(body, 'interviewer_email').toLowerCase();
 const pass_score_threshold = pickNum(body, 'pass_score_threshold');
 const fail_score_threshold = pickNum(body, 'fail_score_threshold');
+const cv_shortlist_threshold = pickNum(body, 'cv_shortlist_threshold');
 
 if (!requisition_title) {
   throw new Error(
@@ -88,6 +89,7 @@ return [
       interviewer_email,
       pass_score_threshold,
       fail_score_threshold,
+      cv_shortlist_threshold,
       jd_source: 'frontend_form',
     },
   },

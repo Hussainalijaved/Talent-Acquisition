@@ -128,6 +128,11 @@ const config = {
     pickNum(webhook, 'fail_score_threshold') ??
     cfg.config?.fail_score_threshold ??
     30,
+  cv_shortlist_threshold:
+    intake.cv_shortlist_threshold ??
+    pickNum(webhook, 'cv_shortlist_threshold') ??
+    cfg.config?.cv_shortlist_threshold ??
+    62,
 };
 
 return [

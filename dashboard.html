@@ -350,6 +350,18 @@
                                     </section>
 
                                     <section class="job-form-section">
+                                        <div class="job-form-section-title">CV screening</div>
+                                        <p class="job-form-section-hint">AI scores CV fit (0–100). Candidates at or above this threshold can be shortlisted for assessment.</p>
+                                        <div class="job-form-row cols-2">
+                                            <div class="form-group">
+                                                <label for="jobCvShortlistIn">CV shortlist threshold (%)</label>
+                                                <input id="jobCvShortlistIn" type="number" min="0" max="100" step="1" value="62" placeholder="62" />
+                                                <div class="form-hint">Default 62 — borderline REVIEW auto-shortlists at +16 (e.g. 78).</div>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <section class="job-form-section">
                                         <div class="job-form-section-title">Assessment scoring</div>
                                         <p class="job-form-section-hint">Combined score = 70% technical + 30% live speech. Candidate must meet the pass threshold to receive PASS.</p>
                                         <div class="job-form-row cols-2">

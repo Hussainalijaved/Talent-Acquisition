@@ -758,6 +758,7 @@
         document.getElementById('jobJdIn').value = j.jd_text || '';
         document.getElementById('jobPassThresholdIn').value = String(parseScoreThreshold(j.pass_score_threshold, 60));
         document.getElementById('jobFailThresholdIn').value = String(parseScoreThreshold(j.fail_score_threshold, 30));
+        document.getElementById('jobCvShortlistIn').value = String(parseScoreThreshold(j.cv_shortlist_threshold, 62));
         setSelectValue('jobDisplayStyleIn', window.TAJobStyles?.normalize(j.display_style) || 'hiring-top', 'hiring-top');
         updateJobDisplayStyleHint();
         clearJobFieldErrors();
@@ -814,6 +815,10 @@
             document.getElementById('jobFailThresholdIn')?.value,
             30
         );
+        const cv_shortlist_threshold = parseScoreThreshold(
+            document.getElementById('jobCvShortlistIn')?.value,
+            62
+        );
         if (fail_score_threshold >= pass_score_threshold) {
             setJobFieldError('jobFailThresholdIn', 'Fail threshold must be lower than pass threshold.');
             document.getElementById('jobFailThresholdIn')?.focus();
@@ -836,6 +841,7 @@
             display_style,
             pass_score_threshold,
             fail_score_threshold,
+            cv_shortlist_threshold,
             updated_at: new Date().toISOString(),
         };
 
@@ -854,6 +860,7 @@
             delete fallback.display_style;
             delete fallback.pass_score_threshold;
             delete fallback.fail_score_threshold;
+            delete fallback.cv_shortlist_threshold;
             const extras = [
                 experience ? 'Experience: ' + experience : '',
                 tech_stack ? 'Tech stack: ' + tech_stack : '',
@@ -881,7 +888,7 @@
         }
         deps.banner(
             usedFallback
-                ? 'Job saved (run supabase_jobs_expand.sql and supabase_jobs_scoring.sql for full column support).'
+                ? 'Job saved (run supabase_jobs_expand.sql, supabase_jobs_scoring.sql, and supabase_jobs_cv_scoring.sql for full column support).'
                 : 'Job saved.',
             'ok'
         );
@@ -1762,7 +1769,7 @@
         }
     }
 
-    async function screenOneCandidate(webhook, { email, title, requirements, interviewer, requisitionId, passScoreThreshold, failScoreThreshold, file, cvText }) {
+    async function screenOneCandidate(webhook, { email, title, requirements, interviewer, requisitionId, passScoreThreshold, failScoreThreshold, cvShortlistThreshold, file, cvText }) {
         const fd = new FormData();
         fd.append('candidate_email', email);
         fd.append('requisition_title', title);
@@ -1772,6 +1779,7 @@
         if (interviewer) fd.append('interviewer_email', interviewer);
         if (passScoreThreshold != null) fd.append('pass_score_threshold', String(passScoreThreshold));
         if (failScoreThreshold != null) fd.append('fail_score_threshold', String(failScoreThreshold));
+        if (cvShortlistThreshold != null) fd.append('cv_shortlist_threshold', String(cvShortlistThreshold));
         if (file) fd.append('cv_file', file, file.name);
         else if (cvText) fd.append('cv_text', cvText);
         const res = await fetch(webhook, { method: 'POST', body: fd, headers: { 'ngrok-skip-browser-warning': '1' } });
@@ -1810,6 +1818,7 @@
         const screenOpts = {
             passScoreThreshold: linkedJob ? parseScoreThreshold(linkedJob.pass_score_threshold, 60) : null,
             failScoreThreshold: linkedJob ? parseScoreThreshold(linkedJob.fail_score_threshold, 30) : null,
+            cvShortlistThreshold: linkedJob ? parseScoreThreshold(linkedJob.cv_shortlist_threshold, 62) : null,
             requisitionId: linkedJob?.job_id || slugFromTitle(title),
         };
 
@@ -2707,6 +2716,7 @@
             document.getElementById('jobEditId').value = '';
             document.getElementById('jobPassThresholdIn').value = '60';
             document.getElementById('jobFailThresholdIn').value = '30';
+            document.getElementById('jobCvShortlistIn').value = '62';
             setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
             clearJobFieldErrors();
@@ -2721,6 +2731,7 @@
             document.getElementById('jobForm')?.reset();
             document.getElementById('jobPassThresholdIn').value = '60';
             document.getElementById('jobFailThresholdIn').value = '30';
+            document.getElementById('jobCvShortlistIn').value = '62';
             setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
             clearJobFieldErrors();

@@ -744,6 +744,7 @@
     </div>
 
     <script src="auth-config.js"></script>
+    <script src="final-score.js"></script>
     <script src="admin-auth.js"></script>
     <script src="job-display-styles.js"></script>
     <script src="admin-panel.js"></script>
@@ -1585,6 +1586,9 @@
         }
 
         function computeFinalOutcome(sess, hist, cfg) {
+            if (window.TAFinalScore?.computeFinalOutcome) {
+                return window.TAFinalScore.computeFinalOutcome(sess, hist, cfg);
+            }
             hist = hist || parseHistory(sess);
             cfg = cfg || parseJson(sess?.config);
             const techMax = inferTechMax(hist, cfg, sess);
@@ -1613,12 +1617,23 @@
             const voiceAnswered = speechHist.filter((h) => h && String(h.answer_text || '').trim()).length;
             const voiceDone = speechPhases > 0 && voiceAnswered >= speechPhases;
             const derived = !sess?.result && voiceDone && combined != null;
+            const hasBothAvgs = techAvg != null && speechAvg != null;
+
+            let score = sess?.score ?? combined;
+            if (combined != null && (derived || hasBothAvgs || sess?.assessment_stage === 'completed')) {
+                score = combined;
+            }
+
+            let result = sess?.result || null;
+            if (derived || (hasBothAvgs && combined != null && !result)) {
+                result = combined >= pt ? 'PASS' : 'FAIL';
+            } else if (hasBothAvgs && combined != null && result) {
+                result = combined >= pt ? 'PASS' : 'FAIL';
+            }
 
             return {
-                score: derived ? combined : (sess?.score ?? combined),
-                result: derived
-                    ? (combined >= pt ? 'PASS' : 'FAIL')
-                    : (sess?.result || null),
+                score,
+                result,
                 techAvg,
                 speechAvg,
                 combined,

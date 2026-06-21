@@ -83,6 +83,105 @@ function computeFinalScores(session, history, maxQ, sessCfg, body = {}) {
     };
 }
 
+async function loadAppConfigValue(sbUrl, sbKey, key) {
+    try {
+        const res = await fetch(
+            `${sbUrl}/rest/v1/app_config?key=eq.${encodeURIComponent(key)}&select=value`,
+            { headers: buildHeaders(sbKey) }
+        );
+        if (!res.ok) return '';
+        const rows = await res.json();
+        return String(Array.isArray(rows) ? rows[0]?.value : rows?.value || '').trim();
+    } catch (_) {
+        return '';
+    }
+}
+
+async function resolveLiveCompleteWebhook(sbUrl, sbKey) {
+    const env = String(
+        process.env.N8N_LIVE_COMPLETE_WEBHOOK || process.env.LIVE_COMPLETE_WEBHOOK || ''
+    ).trim();
+    if (env) return env;
+
+    const direct = await loadAppConfigValue(sbUrl, sbKey, 'live_complete_webhook');
+    if (direct) return direct;
+
+    const n8nBase = await loadAppConfigValue(sbUrl, sbKey, 'n8n_public_url');
+    if (n8nBase) return `${n8nBase.replace(/\/+$/, '')}/webhook/talent/live-speech-complete`;
+
+    return '';
+}
+
+function speechTurnsFromHistory(history, maxQ) {
+    return (history || [])
+        .filter((h) => Number(h.phase) > maxQ)
+        .map((h) => ({
+            phase: h.phase,
+            question_text: h.question_text || h.question || '',
+            answer_text: h.answer_text || h.answer || '',
+            score: h.score,
+            feedback: h.feedback || null,
+            soft_skills: h.soft_skills || null,
+        }))
+        .filter((t) => t.question_text || t.answer_text);
+}
+
+async function triggerSchedulingWebhook({
+    sbUrl, sbKey, sessionId, session, history, finals, body, maxQ,
+}) {
+    if (finals.result !== 'PASS') return;
+
+    const existing = String(session.scheduling_status || '').trim().toLowerCase();
+    if (existing && !['none', 'null', ''].includes(existing)) return;
+
+    const url = await resolveLiveCompleteWebhook(sbUrl, sbKey);
+    if (!url) {
+        console.warn('[live-speech-save] scheduling webhook URL not configured — set N8N_LIVE_COMPLETE_WEBHOOK or app_config.live_complete_webhook');
+        return;
+    }
+
+    const turns = speechTurnsFromHistory(history, maxQ);
+    if (!turns.length) {
+        console.warn('[live-speech-save] scheduling webhook skipped — no speech turns in history');
+        return;
+    }
+
+    const email = String(
+        body.email || body.candidate_email || session.candidate_email || session.email || ''
+    ).trim();
+    const payload = {
+        session_id: sessionId,
+        email,
+        candidate_email: email,
+        turns,
+        combined_speech_score: finals.speechAvg,
+        duration_seconds: Number(body.duration_seconds) || 0,
+        final_feedback: String(body.final_feedback || 'Voice interview completed.'),
+        tab_switches: Number(body.tab_switches) || 0,
+        result: finals.result,
+        score: finals.combined,
+        technical_score: finals.techAvg,
+        speech_score: finals.speechAvg,
+        source: 'vercel_live_speech_save',
+    };
+
+    console.log(`[live-speech-save] POST scheduling webhook → ${url} (${turns.length} turns)`);
+    const whRes = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify(payload),
+    });
+    const whText = await whRes.text();
+    if (!whRes.ok) {
+        console.error('[live-speech-save] scheduling webhook failed', whRes.status, whText.slice(0, 300));
+        return;
+    }
+    console.log('[live-speech-save] scheduling webhook OK');
+}
+
 function mergeTurns(history, newTurns, maxQ) {
     const merged = Array.isArray(history) ? [...history] : [];
     const iso = new Date().toISOString();
@@ -170,7 +269,7 @@ export default async function handler(req, res) {
 
         // 1. Fetch current session row.
         const fetchRes = await fetch(
-            `${sbUrl}/rest/v1/${TABLE}?id=eq.${encodeURIComponent(sessionId)}&select=id,interview_history,technical_score,config`,
+            `${sbUrl}/rest/v1/${TABLE}?id=eq.${encodeURIComponent(sessionId)}&select=id,interview_history,technical_score,config,candidate_email,email,scheduling_status,result,status,speech_score`,
             { headers }
         );
         if (!fetchRes.ok) {
@@ -196,6 +295,7 @@ export default async function handler(req, res) {
             : null;
 
         let patchBody;
+        let finalScores = null;
 
         if (partial) {
             // Per-turn incremental save — keep status as 'assessment'.
@@ -208,21 +308,27 @@ export default async function handler(req, res) {
             };
         } else {
             const sessCfg = parseJsonSafe(session.config, {});
-            const finals = computeFinalScores(session, history, maxQ, sessCfg, body);
+            finalScores = computeFinalScores(session, history, maxQ, sessCfg, body);
 
             patchBody = {
-                interview_history:            history,
+                interview_history: history,
                 updated_at:                   iso,
                 assessment_stage:             'completed',
-                current_phase:                maxQ + finals.speechPhases,
+                current_phase:                maxQ + finalScores.speechPhases,
                 status:                       'completed',
-                technical_score:              finals.techAvg,
-                speech_score:                 finals.speechAvg,
-                score:                        finals.combined,
-                result:                       finals.result,
-                live_speech_duration_seconds: Number(body.duration_seconds) || null,
-                tab_switches:                 Number(body.tab_switches)     || 0,
+                technical_score:              finalScores.techAvg,
+                speech_score:                 finalScores.speechAvg,
+                score:                        finalScores.combined,
+                result:                       finalScores.result,
             };
+
+            if (finalScores.result === 'PASS') {
+                const sched = String(session.scheduling_status || '').trim().toLowerCase();
+                if (!sched || ['none', 'null'].includes(sched)) {
+                    patchBody.scheduling_status = 'pending';
+                    patchBody.scheduling_updated_at = iso;
+                }
+            }
         }
 
         // 2. PATCH session row.
@@ -238,6 +344,24 @@ export default async function handler(req, res) {
 
         const phase = lastPhase || null;
         console.log(`[live-speech-save] ${partial ? 'partial' : 'final'} OK — session ${sessionId} phase ${phase}`);
+
+        if (finalScores) {
+            try {
+                await triggerSchedulingWebhook({
+                    sbUrl,
+                    sbKey,
+                    sessionId,
+                    session,
+                    history,
+                    finals: finalScores,
+                    body,
+                    maxQ,
+                });
+            } catch (whErr) {
+                console.warn('[live-speech-save] scheduling webhook error:', whErr.message);
+            }
+        }
+
         res.status(200).json({
             ok:      true,
             partial: !!partial,

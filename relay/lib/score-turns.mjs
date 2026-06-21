@@ -695,7 +695,7 @@ export async function directSaveToSupabase(context, scoredTurns, {
     `Technical: ${techAvg}/100 | Voice: ${speechAvg}/100 | Combined: ${combined}/100 (pass ${passThreshold}).`,
   ].filter(Boolean).join(' ');
 
-  await patchSessionRow(cfg, {
+  const patch = {
     interview_history:            history,
     updated_at:                   iso,
     assessment_stage:             'completed',
@@ -705,8 +705,13 @@ export async function directSaveToSupabase(context, scoredTurns, {
     speech_score:                 speechAvg,
     score:                        combined,
     result,
-    live_speech_duration_seconds: durationSeconds || null,
-  });
+  };
+  if (result === 'PASS') {
+    patch.scheduling_status = 'pending';
+    patch.scheduling_updated_at = iso;
+  }
+
+  await patchSessionRow(cfg, patch);
 
   console.log(`[relay] directSave OK — session ${cfg.sessionId} | combined=${combined} | result=${result}`);
   return { ok: true, combined, result, speechAvg, techAvg, feedback: feedbackLine };

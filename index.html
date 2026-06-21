@@ -14,6 +14,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
     <script src="live-speech.js"></script>
     <script>
@@ -4462,44 +4463,57 @@
                     liveSpeechContext?.config?.portal_base_url ||
                     'https://talent-acquisition-six.vercel.app'
                 ).replace(/\/+$/, '');
+                const maxQuestions = Number(liveSpeechContext?.max_questions || 5);
 
-                // Client finalize if relay did not persist PASS/FAIL + combined score.
-                if (sessionId && (!result || score == null) && window.TA_LIVE?.finalizeLiveSpeech) {
+                let row = null;
+                if (sessionId && supabase) {
+                    try {
+                        const { data: fetched } = await supabase
+                            .from('assessment_sessions')
+                            .select('result, score, speech_score, technical_score, status, assessment_stage, interview_history, config, scheduling_status')
+                            .eq('id', sessionId)
+                            .single();
+                        row = fetched || null;
+                    } catch (e) {
+                        console.warn('Could not refresh session after live speech:', e);
+                    }
+                }
+
+                const sessionIncomplete = !row
+                    || !row.result
+                    || row.status !== 'completed'
+                    || row.speech_score == null
+                    || row.assessment_stage !== 'completed';
+
+                if (sessionId && sessionIncomplete && window.TA_LIVE?.finalizeLiveSpeech) {
                     try {
                         const fin = await window.TA_LIVE.finalizeLiveSpeech({
                             portalBase,
                             sessionId,
-                            maxQuestions: Number(liveSpeechContext?.max_questions || 5),
+                            maxQuestions,
                         });
                         if (fin?.result) result = fin.result;
                         if (fin?.score != null) score = Number(fin.score);
+                        if (sessionId && supabase) {
+                            const { data: refreshed } = await supabase
+                                .from('assessment_sessions')
+                                .select('result, score, speech_score, technical_score, status, assessment_stage, interview_history, config, scheduling_status')
+                                .eq('id', sessionId)
+                                .single();
+                            row = refreshed || row;
+                        }
                     } catch (e) {
                         console.warn('Live speech finalize fallback failed:', e);
                     }
                 }
 
-                if (sessionId && supabase) {
-                    try {
-                        const { data: row } = await supabase
-                            .from('assessment_sessions')
-                            .select('result, score, speech_score, technical_score, status, assessment_stage, interview_history, config')
-                            .eq('id', sessionId)
-                            .single();
-                        if (row) {
-                            if (row.result) result = row.result;
-                            if (row.score != null) score = Number(row.score);
-                            if (!result && row.status === 'completed' && row.score != null) {
-                                let cfg = row.config;
-                                if (typeof cfg === 'string') {
-                                    try { cfg = JSON.parse(cfg); } catch (_) { cfg = {}; }
-                                }
-                                const pt = Number(cfg?.pass_score_threshold ?? 60);
-                                result = Number(row.score) >= pt ? 'PASS' : 'FAIL';
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('Could not refresh session after live speech:', e);
-                    }
+                if (row && window.TAFinalScore?.computeFinalOutcome) {
+                    const outcome = window.TAFinalScore.computeFinalOutcome(row);
+                    if (outcome?.score != null) score = outcome.score;
+                    if (outcome?.result) result = outcome.result;
+                } else if (!result && score != null) {
+                    const pt = Number(liveSpeechContext?.config?.pass_score_threshold ?? 60);
+                    result = Number(score) >= pt ? 'PASS' : 'FAIL';
                 }
 
                 const passThreshold = Number(liveSpeechContext?.config?.pass_score_threshold ?? 60);

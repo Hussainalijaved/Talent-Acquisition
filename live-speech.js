@@ -470,7 +470,11 @@
         this.ws?.addEventListener('message', onMsg);
       });
 
-      if (!result?.result || result?.saved_to_db === false) {
+      if (
+        !result?.result
+        || result?.saved_to_db === false
+        || result?.speech_score == null
+      ) {
         const portalBase = this.context?.portal_base_url || this.context?.config?.portal_base_url;
         const sessionId = this.context?.session_id;
         if (portalBase && sessionId && global.TA_LIVE?.finalizeLiveSpeech) {

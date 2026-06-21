@@ -13,8 +13,21 @@ function cvThresholds(cfg) {
   };
 }
 
+function pickBaseJson() {
+  const names = ['CODE - CV plain text', 'CODE - CV plain text1'];
+  for (const name of names) {
+    try {
+      const raw = $(name).first().json;
+      if (raw && typeof raw === 'object') return raw;
+    } catch (_) {}
+  }
+  throw new Error(
+    'Parse CV screening: CODE - CV plain text node not found (with or without "1" suffix).'
+  );
+}
+
 const api = $input.first().json;
-const base = $('CODE - CV plain text').first().json;
+const base = pickBaseJson();
 const text = api?.choices?.[0]?.message?.content;
 const httpBad = !(api?.choices && api.choices[0]);
 
@@ -70,6 +83,7 @@ const assessment_status = 'IN_PROGRESS';
 return [{
   json: {
     ...base,
+    // IMPORTANT: spread parsed AI JSON `s` — NEVER use `...$` (n8n internal object).
     screening: {
       ...s,
       cv_thresholds: { shortlistMin, autoShortlist, autoReject },

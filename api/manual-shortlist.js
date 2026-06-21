@@ -157,9 +157,10 @@ async function generatePhase1Question(groqKey, { jdTitle, jdReq, cvContext, scre
 
     const systemText = [
         'You are a senior technical interviewer for a written assessment.',
-        `Generate exactly one Phase 1 conceptual/logic question for a ${targetTier}-level role (${jdTitle}).`,
+        `Generate exactly one Phase 1 CORE CONCEPT question for a ${targetTier}-level role (${jdTitle}).`,
         tierNote,
-        'Ask comparative or "why" questions grounded in the job stack.',
+        'Ask a fundamentals question: comparative ("difference between X and Y"), "why does X matter", or "explain how X works".',
+        'Ground the question in the job stack from the requirements — not generic trivia unrelated to the role.',
         'Pick topics matching BOTH JD and candidate background (never quote CV/company names).',
         'Answers may exist online — test reasoning, not obscure trivia.',
         'FORBIDDEN: coding tasks, system design exercises, step-by-step implementation.',

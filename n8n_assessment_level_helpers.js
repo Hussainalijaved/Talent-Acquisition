@@ -76,30 +76,76 @@ function tierLabel(tier) {
   return 'Mid-level';
 }
 
+function coreConceptHints(jdReq, targetTier) {
+  const jd = String(jdReq || '').toLowerCase();
+  const tier = targetTier === 'junior' || targetTier === 'senior' ? targetTier : 'mid';
+
+  if (/\.net|asp\.net|c#|ef core|entity framework|linq/i.test(jd)) {
+    const byTier = {
+      junior:
+        'OOP basics, HTTP status codes, authentication vs authorization, dependency injection purpose, middleware pipeline, MVC vs Web API, EF Core vs raw SQL, LINQ purpose, GET vs POST, REST statelessness',
+      mid:
+        'DI lifetimes/scopes, middleware vs filters, JWT vs cookie sessions, EF change tracking vs no-tracking, IQueryable vs IEnumerable, async/await purpose, REST idempotency, HTTP 401 vs 403, API versioning basics',
+      senior:
+        'DI composition roots and lifetimes, middleware ordering pitfalls, token refresh/revocation, EF N+1 and query shapes, LINQ deferred execution, async deadlocks/threading, distributed auth, concurrency (optimistic vs pessimistic), cache consistency',
+    };
+    return byTier[tier];
+  }
+  if (/node|javascript|typescript|react/i.test(jd)) {
+    const byTier = {
+      junior:
+        'HTTP verbs/status codes, auth vs authorization, REST statelessness, JSON APIs, npm/modules, sync vs async I/O, middleware purpose, env config basics',
+      mid:
+        'JWT vs sessions, Express/Fastify middleware chain, async error handling, connection pooling, idempotency, CORS purpose, validation layers, 401 vs 403',
+      senior:
+        'Event loop and async pitfalls, backpressure, distributed tracing hooks, token rotation, rate limiting strategies, cache stampede, graceful shutdown',
+    };
+    return byTier[tier];
+  }
+  if (/python|django|flask|fastapi/i.test(jd)) {
+    const byTier = {
+      junior:
+        'HTTP basics, auth vs authorization, REST principles, ORM purpose, virtualenv/packaging, request/response cycle, status codes, JSON APIs',
+      mid:
+        'Django/Flask middleware, ORM lazy loading, migrations purpose, JWT vs sessions, idempotency, WSGI/ASGI basics, 401 vs 403',
+      senior:
+        'ORM N+1 and select_related, transaction isolation, async views/workers, auth middleware layers, caching invalidation, API versioning',
+    };
+    return byTier[tier];
+  }
+  const generic = {
+    junior: 'HTTP basics, auth vs authorization, REST statelessness, CRUD, databases vs APIs, status codes, JSON',
+    mid: 'Auth models (token vs session), idempotency, caching basics, concurrency basics, 401 vs 403, API error design',
+    senior: 'Distributed auth, cache consistency, retry/idempotency at scale, observability hooks, failure modes',
+  };
+  return generic[tier];
+}
+
 function phaseBlueprint(phaseNum, targetTier, jdReq) {
   const stack = stackHints(jdReq);
+  const concepts = coreConceptHints(jdReq, targetTier);
   const lanes = {
     junior: {
-      2: `Fundamentals — one clear comparison from ${stack} (definitions + when to use each).`,
-      3: `Why it matters — explain one core concept from ${stack} in plain language with a simple example.`,
-      4: `Light scenario — a straightforward symptom in ${stack}; name 2–3 likely causes and how you would check.`,
-      5: `Simple judgment — pick between two reasonable options for ${stack} and justify in a few sentences.`,
+      2: `Core concept — pick ONE from: ${concepts}. Ask a clear comparison or definition tied to ${stack}.`,
+      3: `Core concept — explain ONE fundamental idea from: ${concepts}. Plain language + simple example, no code.`,
+      4: `Applied reasoning — light scenario in ${stack}; name 2–3 likely causes and how you would check.`,
+      5: `Core concept judgment — pick between two reasonable options from ${stack} fundamentals and justify briefly.`,
     },
     mid: {
-      2: `Trade-offs — compare two approaches in ${stack}; when would you choose each?`,
-      3: `Mechanism — explain how/why something works in ${stack} (not just what it is).`,
-      4: `Troubleshooting — realistic symptom under normal load in ${stack}; diagnostic reasoning, no code.`,
-      5: `Decision — conceptual scenario with constraints; reasoned choice tied to ${stack}.`,
+      2: `Core concept — compare two related ideas from: ${concepts}. When would you choose each in ${stack}?`,
+      3: `Core concept — explain how/why a mechanism works (from: ${concepts}), not just what it is.`,
+      4: `Applied reasoning — realistic symptom in ${stack}; diagnostic reasoning, no code.`,
+      5: `Core concept + judgment — multi-factor decision using ${stack} fundamentals; reasoned choice with trade-offs.`,
     },
     senior: {
-      2: `Advanced trade-offs — nuanced comparison in ${stack} including failure modes, ops, or scale implications.`,
-      3: `Deep mechanism — explain inner behavior, pitfalls, or production consequences in ${stack}.`,
-      4: `Production incident — ambiguous symptom (load, deploy, intermittent) in ${stack}; prioritized hypotheses and risks.`,
-      5: `Strategic judgment — multi-constraint decision (security, reliability, maintainability) for ${stack}; articulate risks of each path.`,
+      2: `Core concept — advanced trade-offs from: ${concepts}; include failure modes or ops impact in ${stack}.`,
+      3: `Core concept — deep mechanism from: ${concepts}; inner behavior, pitfalls, or production consequences.`,
+      4: `Applied reasoning — production incident in ${stack}; prioritized hypotheses and risks.`,
+      5: `Strategic judgment — multi-constraint decision using ${stack} concepts; articulate risks of each path.`,
     },
   };
   const set = lanes[targetTier] || lanes.mid;
-  return set[phaseNum] || `Follow-up conceptual probe on ${stack} at ${tierLabel(targetTier)} depth.`;
+  return set[phaseNum] || `Core concept follow-up from: ${concepts} — at ${tierLabel(targetTier)} depth for ${stack}.`;
 }
 
 function tierCalibrationBlock(cal) {

@@ -82,6 +82,51 @@ function stackHints(jdReq) {
   return 'REST APIs, HTTP, authentication, databases, backend fundamentals';
 }
 
+function coreConceptHints(jdReq, targetTier) {
+  const jd = String(jdReq || '').toLowerCase();
+  const tier = targetTier === 'junior' || targetTier === 'senior' ? targetTier : 'mid';
+
+  if (/\.net|asp\.net|c#|ef core|entity framework|linq/i.test(jd)) {
+    const byTier = {
+      junior:
+        'OOP basics, HTTP status codes, authentication vs authorization, dependency injection purpose, middleware pipeline, MVC vs Web API, EF Core vs raw SQL, LINQ purpose, GET vs POST, REST statelessness',
+      mid:
+        'DI lifetimes/scopes, middleware vs filters, JWT vs cookie sessions, EF change tracking vs no-tracking, IQueryable vs IEnumerable, async/await purpose, REST idempotency, HTTP 401 vs 403, API versioning basics',
+      senior:
+        'DI composition roots and lifetimes, middleware ordering pitfalls, token refresh/revocation, EF N+1 and query shapes, LINQ deferred execution, async deadlocks/threading, distributed auth, concurrency (optimistic vs pessimistic), cache consistency',
+    };
+    return byTier[tier];
+  }
+  if (/node|javascript|typescript|react/i.test(jd)) {
+    const byTier = {
+      junior:
+        'HTTP verbs/status codes, auth vs authorization, REST statelessness, JSON APIs, npm/modules, sync vs async I/O, middleware purpose, env config basics',
+      mid:
+        'JWT vs sessions, Express/Fastify middleware chain, async error handling, connection pooling, idempotency, CORS purpose, validation layers, 401 vs 403',
+      senior:
+        'Event loop and async pitfalls, backpressure, distributed tracing hooks, token rotation, rate limiting strategies, cache stampede, graceful shutdown',
+    };
+    return byTier[tier];
+  }
+  if (/python|django|flask|fastapi/i.test(jd)) {
+    const byTier = {
+      junior:
+        'HTTP basics, auth vs authorization, REST principles, ORM purpose, virtualenv/packaging, request/response cycle, status codes, JSON APIs',
+      mid:
+        'Django/Flask middleware, ORM lazy loading, migrations purpose, JWT vs sessions, idempotency, WSGI/ASGI basics, 401 vs 403',
+      senior:
+        'ORM N+1 and select_related, transaction isolation, async views/workers, auth middleware layers, caching invalidation, API versioning',
+    };
+    return byTier[tier];
+  }
+  const generic = {
+    junior: 'HTTP basics, auth vs authorization, REST statelessness, CRUD, databases vs APIs, status codes, JSON',
+    mid: 'Auth models (token vs session), idempotency, caching basics, concurrency basics, 401 vs 403, API error design',
+    senior: 'Distributed auth, cache consistency, retry/idempotency at scale, observability hooks, failure modes',
+  };
+  return generic[tier];
+}
+
 const stack = stackHints(jdMust);
 const cvText = String(row.cv_plaintext || '');
 const levelCal = resolveTargetTier(jdTitle, jdMust, cvText);
@@ -111,9 +156,10 @@ const systemText = [
   `- CV signals (topic selection only): ${tierLabel(levelCal.candidateTier)}`,
   tierDepth,
   '',
-  'PHASE 1 QUESTION — must be ONE conceptual/logic question grounded in the role stack:',
+  'PHASE 1 QUESTION — must be ONE core concept question grounded in the role stack:',
   `- Role stack focus: ${stack}`,
-  '- Ask comparative, "why", or "what is the difference" questions that test understanding.',
+  `- Core concepts to choose from (pick ONE not already obvious from CV): ${coreConceptHints(jdMust, targetTier)}`,
+  '- Ask comparative, "why", "what is the difference", or "explain how X works" — test fundamentals, not trivia.',
   '- Pick a topic that matches BOTH the JD requirements and skills evidenced on the CV (silent — never quote CV).',
   '- Answers may exist online — test reasoning and clarity, not obscure trivia.',
   tierTiming,

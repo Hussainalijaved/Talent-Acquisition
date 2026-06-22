@@ -23,12 +23,25 @@
                 extend: {
                     fontFamily: { sans: ['"DM Sans"', 'system-ui', 'sans-serif'] },
                     colors: {
-                        surface: { DEFAULT: '#0f172a', elevated: '#1a2433', border: '#334155' },
-                        accent: { DEFAULT: '#2563eb', hover: '#1d4ed8', muted: 'rgba(37, 99, 235, 0.16)' },
+                        surface: { DEFAULT: '#ffffff', elevated: '#f8fafc', border: '#e2e8f0', muted: '#f1f5f9' },
+                        accent: { DEFAULT: '#2563eb', hover: '#1d4ed8', muted: 'rgba(37, 99, 235, 0.08)' },
                     },
                     boxShadow: {
-                        card: '0 8px 32px -6px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255,255,255,0.05)',
-                        glow: '0 0 48px -10px rgba(37, 99, 235, 0.35)',
+                        card: '0 4px 24px -4px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.04)',
+                        glow: '0 8px 32px -8px rgba(37, 99, 235, 0.22)',
+                        soft: '0 2px 12px rgba(15, 23, 42, 0.06)',
+                    },
+                    animation: {
+                        'fade-up': 'fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+                        'scale-in': 'scaleIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+                        'slide-up': 'slideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards',
+                        'float': 'float 4s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        fadeUp: { from: { opacity: '0', transform: 'translateY(16px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+                        scaleIn: { from: { opacity: '0', transform: 'scale(0.94)' }, to: { opacity: '1', transform: 'scale(1)' } },
+                        slideUp: { from: { opacity: '0', transform: 'translateY(24px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+                        float: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-6px)' } },
                     },
                 },
             },
@@ -36,9 +49,12 @@
     </script>
     <style>
         :root {
-            --bg: #080b10;
-            --text: #f1f5f9;
-            --muted: #94a3b8;
+            --bg: #f0f4fa;
+            --text: #0f172a;
+            --muted: #64748b;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --accent: #2563eb;
         }
 
         * { box-sizing: border-box; }
@@ -70,73 +86,81 @@
         }
 
         ::selection {
-            background: rgba(30, 64, 175, 0.35);
-            color: #fff;
+            background: rgba(37, 99, 235, 0.18);
+            color: #0f172a;
         }
 
         ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #0f1419; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        ::-webkit-scrollbar-track { background: #eef2f7; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
         .app-bg {
             background-color: var(--bg);
+            background-image:
+                radial-gradient(ellipse 90% 60% at 100% -10%, rgba(37, 99, 235, 0.07), transparent 55%),
+                radial-gradient(ellipse 70% 50% at 0% 100%, rgba(99, 102, 241, 0.05), transparent 50%);
+            background-attachment: fixed;
         }
 
         .panel {
-            background: linear-gradient(180deg, rgba(26, 36, 51, 0.95) 0%, rgba(18, 26, 39, 0.98) 100%);
-            border: 1px solid #2a3a4f;
-            box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.03);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 24px -6px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.02);
         }
 
         .panel-elevated {
-            background: #1a2433;
-            border: 1px solid #2a3a4f;
+            background: #f8fafc;
+            border: 1px solid var(--border);
         }
 
         .input-field {
-            background: #0f1620;
-            border: 1px solid #2a3a4f;
-            color: #f1f5f9;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            color: #0f172a;
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
             -webkit-user-select: text;
             user-select: text;
         }
 
-        .input-field::placeholder { color: #64748b; }
+        .input-field::placeholder { color: #94a3b8; }
 
         .input-field:focus {
             outline: none;
-            border-color: #1e40af;
-            box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.22);
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
         }
 
         .btn-primary {
-            background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+            background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
             color: #fff;
             font-weight: 600;
             letter-spacing: 0.01em;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(37, 99, 235, 0.22);
             transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
         }
 
         .btn-primary:hover:not(:disabled) {
-            background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%);
+            background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+            box-shadow: 0 4px 18px rgba(37, 99, 235, 0.28);
+            transform: translateY(-1px);
         }
 
         .btn-primary:active:not(:disabled) { transform: scale(0.98); }
 
         .btn-secondary {
-            background: rgba(15, 22, 32, 0.6);
-            border: 1px solid #2a3a4f;
-            color: #cbd5e1;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            color: #475569;
             font-weight: 500;
-            transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+            transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
         }
 
         .btn-secondary:hover:not(:disabled) {
-            border-color: #475569;
-            background: rgba(26, 36, 51, 0.8);
-            color: #f8fafc;
+            border-color: #cbd5e1;
+            background: #f8fafc;
+            color: #0f172a;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
         }
 
         .badge {
@@ -153,35 +177,52 @@
         }
 
         .badge-accent {
-            background: rgba(30, 64, 175, 0.12);
-            border-color: rgba(30, 64, 175, 0.35);
-            color: #93c5fd;
+            background: rgba(37, 99, 235, 0.08);
+            border-color: rgba(37, 99, 235, 0.18);
+            color: #1d4ed8;
         }
 
         .badge-success {
-            background: rgba(16, 185, 129, 0.12);
-            border-color: rgba(16, 185, 129, 0.35);
-            color: #6ee7b7;
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.22);
+            color: #047857;
         }
 
         .badge-warning {
-            background: rgba(245, 158, 11, 0.12);
-            border-color: rgba(245, 158, 11, 0.35);
-            color: #fcd34d;
+            background: rgba(245, 158, 11, 0.1);
+            border-color: rgba(245, 158, 11, 0.22);
+            color: #b45309;
         }
 
         .onboarding-hero {
-            background: #141c28;
-            border: 1px solid #2a3a4f;
-            border-radius: 1rem;
-            box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.35);
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 1.25rem;
+            box-shadow: 0 8px 40px -12px rgba(15, 23, 42, 0.12);
         }
 
-        .fade-in { animation: fadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+        .fade-in { animation: fadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+        .stagger-1 { animation: fadeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both; }
+        .stagger-2 { animation: fadeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both; }
+        .stagger-3 { animation: fadeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both; }
+        .stagger-4 { animation: fadeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.28s both; }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-hero-gradient {
+            background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 50%, #ffffff 100%);
+        }
+
+        .review-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+
+        .review-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.1);
         }
 
         .assessment-lock, .portal-lock {
@@ -210,8 +251,8 @@
             user-select: none;
         }
 
-        .timer-ring-track { stroke: #1e293b; }
-        .timer-ring-progress { stroke: #1e40af; transition: stroke-dashoffset 1s linear; }
+        .timer-ring-track { stroke: #e2e8f0; }
+        .timer-ring-progress { stroke: #2563eb; transition: stroke-dashoffset 1s linear; }
         .timer-ring-progress.low { stroke: #f59e0b; }
         .timer-ring-progress.critical { stroke: #ef4444; }
 
@@ -230,8 +271,8 @@
         .assessment-sidebar {
             flex-shrink: 0;
             width: 100%;
-            border-bottom: 1px solid #2a3a4f;
-            background: linear-gradient(180deg, #0c121a 0%, #0a0f16 100%);
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
             padding: 1rem 1.25rem;
             overflow-y: auto;
             max-height: 32vh;
@@ -248,7 +289,7 @@
                 max-height: none;
                 height: 100%;
                 border-bottom: none;
-                border-right: 1px solid #2a3a4f;
+                border-right: 1px solid var(--border);
                 padding: 1.25rem 1rem 1.5rem;
             }
         }
@@ -260,7 +301,7 @@
         .sidebar-section {
             padding-bottom: 1.125rem;
             margin-bottom: 1.125rem;
-            border-bottom: 1px solid rgba(42, 58, 79, 0.65);
+            border-bottom: 1px solid rgba(226, 232, 240, 0.95);
         }
 
         .sidebar-section:last-child {
@@ -274,7 +315,7 @@
             font-weight: 700;
             letter-spacing: 0.12em;
             text-transform: uppercase;
-            color: #64748b;
+            color: #94a3b8;
             margin-bottom: 0.75rem;
         }
 
@@ -291,8 +332,9 @@
         .phase-list-item:last-child { margin-bottom: 0; }
 
         .phase-list-item.active {
-            border-color: rgba(30, 64, 175, 0.45);
-            background: rgba(30, 64, 175, 0.1);
+            border-color: rgba(37, 99, 235, 0.25);
+            background: rgba(37, 99, 235, 0.06);
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
         }
 
         .phase-list-item.done { opacity: 0.7; }
@@ -586,7 +628,7 @@
 
         const FullscreenRequiredOverlay = ({ onRestore, onSecurityKeyDown }) => (
             <div
-                className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-[#080b10]/95 backdrop-blur-2xl px-4 portal-lock"
+                className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-white/95 backdrop-blur-2xl px-4 portal-lock animate-fade-up"
                 onContextMenu={(e) => e.preventDefault()}
                 onCopy={(e) => e.preventDefault()}
                 onCut={(e) => e.preventDefault()}
@@ -605,7 +647,7 @@
                         </svg>
                     </div>
                     <span className="badge badge-warning mb-4">Session paused</span>
-                    <h2 className="text-xl font-bold text-white mb-3 tracking-tight">Fullscreen required</h2>
+                    <h2 className="text-xl font-bold text-slate-900 mb-3 tracking-tight">Fullscreen required</h2>
                     <p className="text-sm text-slate-400 leading-relaxed mb-2">
                         You cannot exit or go back during this session. Developer Tools, Snipping Tool, screenshots, and browser menus are blocked until you return.
                     </p>
@@ -633,16 +675,16 @@
 
         const Shell = ({ children, subtitle, footerNote, fullWidth = false, headerExtra = null }) => (
             <div className="min-h-screen flex flex-col w-full">
-                <header className="sticky top-0 z-40 border-b border-surface-border/80 bg-[#070a0f]/88 backdrop-blur-xl w-full">
+                <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/85 backdrop-blur-xl w-full shadow-sm">
                     <div className={`w-full h-16 flex items-center justify-between gap-3 ${fullWidth ? 'px-4 lg:px-5' : 'max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8'}`}>
                         <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent/35 to-accent/5 border border-accent/35 flex items-center justify-center shrink-0 shadow-glow">
-                                <svg className="w-5 h-5 text-sky-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-glow animate-scale-in">
+                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                                 </svg>
                             </div>
                             <div className="min-w-0">
-                                <p className="text-lg font-extrabold text-white tracking-tight leading-tight">CONVO</p>
+                                <p className="text-lg font-extrabold text-slate-900 tracking-tight leading-tight">CONVO</p>
                                 {subtitle && <p className="text-xs text-slate-500 truncate leading-tight mt-0.5">{subtitle}</p>}
                             </div>
                         </div>
@@ -652,7 +694,7 @@
                             </div>
                         ) : (
                             <span className="badge badge-accent shrink-0 hidden sm:inline-flex">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
                                 Secure session
                             </span>
                         )}
@@ -660,8 +702,8 @@
                 </header>
                 <main className={`flex-1 w-full ${fullWidth ? 'min-h-0 flex flex-col' : ''}`}>{children}</main>
                 {footerNote && (
-                    <footer className="border-t border-surface-border/60 py-4">
-                        <p className="text-center text-xs text-slate-600 max-w-xl mx-auto px-4 leading-relaxed">{footerNote}</p>
+                    <footer className="border-t border-slate-200/80 py-4 bg-white/60">
+                        <p className="text-center text-xs text-slate-500 max-w-xl mx-auto px-4 leading-relaxed">{footerNote}</p>
                     </footer>
                 )}
             </div>
@@ -680,15 +722,15 @@
             const progClass = critical ? 'timer-ring-progress critical' : low ? 'timer-ring-progress low' : 'timer-ring-progress';
             const mm = seconds != null ? `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}` : '—';
             const wrapClass = prominent
-                ? 'flex items-center gap-3 shrink-0 rounded-xl border border-accent/30 bg-[#0f1620]/95 px-3.5 py-2.5 shadow-glow'
+                ? 'flex items-center gap-3 shrink-0 rounded-xl border border-blue-100 bg-white px-3.5 py-2.5 shadow-soft animate-scale-in'
                 : compact
-                ? 'flex items-center gap-2.5 shrink-0 rounded-lg border border-surface-border bg-[#0f1620]/80 px-3 py-2'
+                ? 'flex items-center gap-2.5 shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm'
                 : 'flex items-center gap-4 panel rounded-xl px-5 py-3 shrink-0';
             const timeClass = prominent
-                ? `font-mono text-xl font-bold tabular-nums ${critical ? 'text-red-400' : low ? 'text-amber-400' : 'text-white'}`
+                ? `font-mono text-xl font-bold tabular-nums ${critical ? 'text-red-600' : low ? 'text-amber-600' : 'text-slate-900'}`
                 : compact
-                ? `font-mono text-lg font-bold tabular-nums ${critical ? 'text-red-400' : low ? 'text-amber-400' : 'text-white'}`
-                : `font-mono text-2xl font-bold tabular-nums tracking-tight ${critical ? 'text-red-400' : low ? 'text-amber-400' : 'text-white'}`;
+                ? `font-mono text-lg font-bold tabular-nums ${critical ? 'text-red-600' : low ? 'text-amber-600' : 'text-slate-900'}`
+                : `font-mono text-2xl font-bold tabular-nums tracking-tight ${critical ? 'text-red-600' : low ? 'text-amber-600' : 'text-slate-900'}`;
             return (
                 <div className={wrapClass}>
                     <svg width={size} height={size} className="-rotate-90 shrink-0" aria-hidden="true">
@@ -856,14 +898,14 @@
             <aside className="assessment-sidebar" aria-label="Assessment sidebar">
                 <div className="sidebar-section">
                     <p className="sidebar-label">Question count</p>
-                    <p className="text-3xl font-bold text-white tabular-nums leading-none">
+                    <p className="text-3xl font-bold text-slate-900 tabular-nums leading-none">
                         {currentStep}
-                        <span className="text-slate-500 text-xl font-semibold"> / {totalSteps}</span>
+                        <span className="text-slate-400 text-xl font-semibold"> / {totalSteps}</span>
                     </p>
-                    <p className="text-sm text-slate-400 mt-2">{sessionLabel}</p>
-                    <div className="h-1.5 bg-surface-elevated rounded-full overflow-hidden mt-4">
+                    <p className="text-sm text-slate-500 mt-2">{sessionLabel}</p>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-4">
                         <div
-                            className="h-full bg-gradient-to-r from-accent to-indigo-400 rounded-full transition-all duration-500"
+                            className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500 ease-out"
                             style={{ width: `${pct}%` }}
                         />
                     </div>
@@ -885,7 +927,7 @@
                                     aria-current={active ? 'step' : undefined}
                                 >
                                     <span
-                                        className={`phase-list-num ${active ? 'bg-accent text-white' : done ? 'bg-slate-600 text-white' : 'bg-[#0f1620] text-slate-500 border border-surface-border'}`}
+                                        className={`phase-list-num ${active ? 'bg-blue-600 text-white shadow-sm' : done ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}
                                     >
                                         {done ? (
                                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -896,10 +938,10 @@
                                         )}
                                     </span>
                                     <div className="min-w-0 flex-1 pt-0.5">
-                                        <p className={`text-sm font-semibold leading-tight ${active ? 'text-white' : 'text-slate-300'}`}>
+                                        <p className={`text-sm font-semibold leading-tight ${active ? 'text-slate-900' : 'text-slate-600'}`}>
                                             {questionLabel} {p}
                                         </p>
-                                        <p className={`text-xs mt-1 ${active ? 'text-indigo-300' : 'text-slate-500'}`}>{statusLabel}</p>
+                                        <p className={`text-xs mt-1 ${active ? 'text-blue-600' : 'text-slate-400'}`}>{statusLabel}</p>
                                     </div>
                                 </li>
                             );
@@ -915,17 +957,17 @@
                     <p className="sidebar-label">Session</p>
                     {candidateEmail ? (
                         <div className="mb-3">
-                            <p className="text-xs text-slate-500 mb-1">Candidate</p>
-                            <p className="text-sm text-slate-200 break-all leading-snug">{candidateEmail}</p>
+                            <p className="text-xs text-slate-400 mb-1">Candidate</p>
+                            <p className="text-sm text-slate-700 break-all leading-snug">{candidateEmail}</p>
                         </div>
                     ) : null}
                     <div>
-                        <p className="text-xs text-slate-500 mb-1">Integrity monitor</p>
-                        <p className="text-sm text-slate-200 tabular-nums">
-                            <span className={integrityViolationCount > 0 ? 'text-amber-400 font-semibold' : 'font-medium'}>
+                        <p className="text-xs text-slate-400 mb-1">Integrity monitor</p>
+                        <p className="text-sm text-slate-700 tabular-nums">
+                            <span className={integrityViolationCount > 0 ? 'text-amber-600 font-semibold' : 'font-medium'}>
                                 {integrityViolationCount}
                             </span>
-                            <span className="text-slate-500"> / {MAX_INTEGRITY_VIOLATIONS - 1} warnings</span>
+                            <span className="text-slate-400"> / {MAX_INTEGRITY_VIOLATIONS - 1} warnings</span>
                         </p>
                     </div>
                 </div>
@@ -934,8 +976,8 @@
                     <p className="sidebar-label">Instructions</p>
                     <ul className="space-y-2.5 m-0 p-0 list-none">
                         {instructions.map((line, i) => (
-                            <li key={i} className="flex gap-2.5 text-xs text-slate-400 leading-relaxed">
-                                <span className="text-accent font-bold shrink-0 mt-px">{i + 1}.</span>
+                            <li key={i} className="flex gap-2.5 text-xs text-slate-500 leading-relaxed">
+                                <span className="text-blue-600 font-bold shrink-0 mt-px">{i + 1}.</span>
                                 <span>{line}</span>
                             </li>
                         ))}
@@ -947,10 +989,10 @@
         const scoreTone = (score) => {
             const n = Number(score);
             if (!Number.isFinite(n)) return 'text-slate-400';
-            if (n >= 75) return 'text-emerald-400';
-            if (n >= 60) return 'text-indigo-300';
-            if (n >= 40) return 'text-amber-400';
-            return 'text-red-400';
+            if (n >= 75) return 'text-emerald-600';
+            if (n >= 60) return 'text-blue-600';
+            if (n >= 40) return 'text-amber-600';
+            return 'text-red-600';
         };
 
         const LoginView = ({ sessionId, setSessionId, setView, supabase, linkSessionReady }) => {
@@ -1021,28 +1063,28 @@
                         <div className="onboarding-hero max-w-lg w-full rounded-2xl p-8 sm:p-10">
                             <p className="badge badge-accent mb-4">Enterprise screening</p>
                             <div className="flex items-start gap-3 mb-4">
-                                <div className="h-10 w-10 rounded-lg bg-surface-elevated border border-surface-border flex items-center justify-center shrink-0">
-                                    <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <div className="h-10 w-10 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
+                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                                     </svg>
                                 </div>
                                 <div>
-                                    <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">Welcome</h1>
-                                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-tight">Welcome</h1>
+                                    <p className="text-sm text-slate-600 mt-2 leading-relaxed">
                                         Enter the session ID from your invitation email. You will review how the two-phase assessment works, then begin Phase 1 (written technical questions) in fullscreen.
                                     </p>
                                 </div>
                             </div>
-                            <div className="rounded-lg border border-surface-border bg-surface/60 p-4 mb-6">
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 mb-6">
                                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">What happens next</p>
                                 <ul className="space-y-2.5">
                                     {steps.map((s, i) => (
                                         <li key={i} className="flex gap-3 text-sm">
-                                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/15 text-[10px] font-bold text-accent">
+                                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-blue-100 text-[10px] font-bold text-blue-700">
                                                 {i + 1}
                                             </span>
                                             <span>
-                                                <span className="font-medium text-slate-200">{s.t}</span>
+                                                <span className="font-medium text-slate-800">{s.t}</span>
                                                 <span className="text-slate-500"> — {s.d}</span>
                                             </span>
                                         </li>
@@ -1054,12 +1096,12 @@
                                 className="space-y-4"
                             >
                                 {linkSessionReady && sessionId ? (
-                                    <div className="text-emerald-300/90 text-xs font-medium bg-emerald-950/30 border border-emerald-800/40 rounded-lg p-3 mb-1">
+                                    <div className="text-emerald-700 text-xs font-medium bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-1">
                                         Session linked from your invitation. Confirm the ID below, then continue to guidelines.
                                     </div>
                                 ) : null}
                                 <div>
-                                    <label htmlFor="session" className="block text-xs font-medium text-slate-400 mb-2">Session identifier</label>
+                                    <label htmlFor="session" className="block text-xs font-medium text-slate-600 mb-2">Session identifier</label>
                                     <input
                                         id="session"
                                         required
@@ -1073,7 +1115,7 @@
                                     />
                                 </div>
                                 {errorMsg && (
-                                    <div className="text-red-400 text-xs font-medium bg-red-950/30 border border-red-900/50 rounded-lg p-3">
+                                    <div className="text-red-600 text-xs font-medium bg-red-50 border border-red-200 rounded-lg p-3">
                                         {errorMsg}
                                     </div>
                                 )}
@@ -1215,12 +1257,12 @@
                 <Shell subtitle="Guidelines & integrity" footerNote="By starting, you agree to proctored session rules below">
                     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in portal-lock">
                         <div className="onboarding-hero max-w-2xl w-full rounded-2xl overflow-hidden">
-                            <div className="p-8 sm:p-10 border-b border-surface-border bg-surface-elevated/40">
+                            <div className="p-8 sm:p-10 border-b border-slate-100 bg-gradient-to-br from-blue-50/50 to-white">
                                 <p className="badge badge-accent mb-3">{isSpeechResume ? 'Phase 1 complete' : 'Before you begin'}</p>
-                                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
                                     {isSpeechResume ? 'Continue to Phase 2' : 'Two-phase assessment'}
                                 </h1>
-                                <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                                <p className="text-sm text-slate-600 mt-2 leading-relaxed">
                                     {introLead}
                                 </p>
                                 {isSpeechResume ? (
@@ -1234,69 +1276,69 @@
                                     </p>
                                 ) : null}
                                 <div className="mt-6 grid sm:grid-cols-2 gap-3 sm:gap-4">
-                                    <div className="rounded-xl border border-accent/25 bg-accent/5 px-4 py-4 sm:px-5 sm:py-5">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-2">Phase 1</p>
-                                        <h2 className="text-base sm:text-lg font-semibold text-white">Written technical assessment</h2>
+                                    <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-4 sm:px-5 sm:py-5">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700 mb-2">Phase 1</p>
+                                        <h2 className="text-base sm:text-lg font-semibold text-slate-900">Written technical assessment</h2>
                                         <p className="text-sm text-slate-400 mt-2 leading-relaxed">
                                             {techCount} questions · typed answers · timed per question
                                         </p>
                                     </div>
-                                    <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 px-4 py-4 sm:px-5 sm:py-5">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">Phase 2</p>
-                                        <h2 className="text-base sm:text-lg font-semibold text-white">Voice communication interview</h2>
+                                    <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-4 sm:px-5 sm:py-5">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-2">Phase 2</p>
+                                        <h2 className="text-base sm:text-lg font-semibold text-slate-900">Voice communication interview</h2>
                                         <p className="text-sm text-slate-400 mt-2 leading-relaxed">
                                             {speechCount} questions · speech-to-speech · microphone required
                                         </p>
                                     </div>
                                 </div>
                                 <div className="mt-5 flex flex-col sm:flex-row gap-3">
-                                    <div className="flex-1 rounded-lg border border-surface-border bg-surface/50 px-4 py-3">
+                                    <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">You {isSpeechResume || isTechResume ? 'resume with' : 'start with'}</p>
-                                        <p className="text-sm text-slate-200 mt-0.5">{youStartWith}</p>
+                                        <p className="text-sm text-slate-800 mt-0.5">{youStartWith}</p>
                                     </div>
-                                    <div className="flex-1 rounded-lg border border-surface-border bg-surface/50 px-4 py-3">
+                                    <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                                         <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Help</p>
-                                        <p className="text-sm text-slate-200 mt-0.5">Contact your recruiter for access issues</p>
+                                        <p className="text-sm text-slate-800 mt-0.5">Contact your recruiter for access issues</p>
                                     </div>
                                 </div>
                             </div>
-                            <div className="p-8 sm:p-10 space-y-3 bg-surface/30">
+                            <div className="p-8 sm:p-10 space-y-3 bg-slate-50/50">
                                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Rules &amp; integrity</p>
                                 {rules.map((rule, i) => (
                                     <div
                                         key={i}
-                                        className="flex gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg border border-surface-border bg-surface-elevated/50"
+                                        className="flex gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-slate-200 bg-white hover:shadow-soft transition-all duration-200"
                                     >
-                                        <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 border border-accent/20 text-accent">
+                                        <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 border border-blue-100 text-blue-600">
                                             <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                                 {rule.icon}
                                             </svg>
                                         </div>
                                         <div className="min-w-0 pt-0.5">
-                                            <p className="text-sm font-medium text-white">
-                                                <span className="text-slate-500 font-normal tabular-nums mr-1.5">{i + 1}.</span>
+                                            <p className="text-sm font-medium text-slate-900">
+                                                <span className="text-slate-400 font-normal tabular-nums mr-1.5">{i + 1}.</span>
                                                 {rule.title}
                                             </p>
-                                            <p className="text-sm text-slate-400 mt-1 leading-relaxed">{rule.body}</p>
+                                            <p className="text-sm text-slate-600 mt-1 leading-relaxed">{rule.body}</p>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                             <div className="px-8 sm:px-10 pb-8 sm:pb-10 pt-2 space-y-5">
                                 {sessionBlockMsg ? (
-                                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 leading-relaxed">
+                                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 leading-relaxed">
                                         {sessionBlockMsg}
                                     </div>
                                 ) : null}
-                                <label className={`flex items-start gap-3 group rounded-lg p-2 -m-2 transition-colors ${sessionBlockMsg ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-surface-elevated/30'}`}>
+                                <label className={`flex items-start gap-3 group rounded-lg p-2 -m-2 transition-colors ${sessionBlockMsg ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50'}`}>
                                     <input
                                         type="checkbox"
-                                        className="mt-0.5 w-4 h-4 rounded border-surface-border bg-surface-elevated text-accent focus:ring-accent focus:ring-offset-0 focus:ring-2 shrink-0"
+                                        className="mt-0.5 w-4 h-4 rounded border-slate-300 bg-white text-blue-600 focus:ring-blue-500 focus:ring-offset-0 focus:ring-2 shrink-0"
                                         checked={agreed}
                                         disabled={!!sessionBlockMsg}
                                         onChange={(e) => setAgreed(e.target.checked)}
                                     />
-                                    <span className="text-sm text-slate-400 group-hover:text-slate-300 leading-relaxed">
+                                    <span className="text-sm text-slate-600 group-hover:text-slate-800 leading-relaxed">
                                         I have read and agree to follow these guidelines for the duration of the assessment.
                                     </span>
                                 </label>
@@ -1324,46 +1366,46 @@
             <Shell subtitle="Phase 2 · Voice communication interview" footerNote="Microphone access will be requested when you begin">
                 <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in portal-lock">
                     <div className="onboarding-hero max-w-2xl w-full rounded-2xl overflow-hidden">
-                        <div className="p-8 sm:p-10 border-b border-surface-border bg-surface-elevated/40">
+                        <div className="p-8 sm:p-10 border-b border-slate-100 bg-gradient-to-br from-indigo-50/50 to-white">
                             <p className="badge badge-accent mb-3">Phase 1 complete</p>
-                            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
                                 Welcome to Phase 2
                             </h1>
-                            <p className="text-sm text-slate-400 mt-3 leading-relaxed">
+                            <p className="text-sm text-slate-600 mt-3 leading-relaxed">
                                 Thank you for completing the written technical assessment ({techSteps} questions).
-                                You are now entering the <strong className="text-slate-200 font-medium">voice communication interview</strong> — a professional speech-to-speech round.
+                                You are now entering the <strong className="text-slate-900 font-medium">voice communication interview</strong> — a professional speech-to-speech round.
                             </p>
                         </div>
-                        <div className="p-8 sm:p-10 space-y-4 bg-surface/30">
-                            <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 px-5 py-5">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-3">How this phase works</p>
-                                <ul className="space-y-3 text-sm text-slate-300 leading-relaxed list-none p-0 m-0">
+                        <div className="p-8 sm:p-10 space-y-4 bg-slate-50/50">
+                            <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-5 py-5">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-3">How this phase works</p>
+                                <ul className="space-y-3 text-sm text-slate-700 leading-relaxed list-none p-0 m-0">
                                     <li className="flex gap-3">
-                                        <span className="text-indigo-400 font-bold shrink-0">1.</span>
+                                        <span className="text-indigo-600 font-bold shrink-0">1.</span>
                                         <span>Each question is read aloud — listen carefully before you respond.</span>
                                     </li>
                                     <li className="flex gap-3">
-                                        <span className="text-indigo-400 font-bold shrink-0">2.</span>
+                                        <span className="text-indigo-600 font-bold shrink-0">2.</span>
                                         <span>You will have a live voice conversation with the AI interviewer — listen and respond naturally.</span>
                                     </li>
                                     <li className="flex gap-3">
-                                        <span className="text-indigo-400 font-bold shrink-0">3.</span>
+                                        <span className="text-indigo-600 font-bold shrink-0">3.</span>
                                         <span>Live captions show what you and the interviewer say. Click End when the conversation is finished.</span>
                                     </li>
                                     <li className="flex gap-3">
-                                        <span className="text-indigo-400 font-bold shrink-0">4.</span>
+                                        <span className="text-indigo-600 font-bold shrink-0">4.</span>
                                         <span>Use a quiet space and allow microphone access when prompted.</span>
                                     </li>
                                 </ul>
                             </div>
                             <div className="grid sm:grid-cols-2 gap-3">
-                                <div className="rounded-lg border border-surface-border bg-surface-elevated/50 px-4 py-3">
+                                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
                                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Phase 2 questions</p>
-                                    <p className="text-sm text-slate-200 mt-0.5">{speechSteps} voice questions · individually timed</p>
+                                    <p className="text-sm text-slate-800 mt-0.5">{speechSteps} voice questions · individually timed</p>
                                 </div>
-                                <div className="rounded-lg border border-surface-border bg-surface-elevated/50 px-4 py-3">
+                                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
                                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Evaluated on</p>
-                                    <p className="text-sm text-slate-200 mt-0.5">Clarity, confidence, professionalism &amp; relevance</p>
+                                    <p className="text-sm text-slate-800 mt-0.5">Clarity, confidence, professionalism &amp; relevance</p>
                                 </div>
                             </div>
                             <button
@@ -1434,11 +1476,15 @@
             const [isInterviewerSpeaking, setIsInterviewerSpeaking] = React.useState(false);
             const [answerTimerActive, setAnswerTimerActive] = React.useState(false);
             const [saveNotice, setSaveNotice] = React.useState('');
-            const answerTimeLimit = Number(context?.speech_answer_seconds || context?.config?.speech_answer_seconds || 120);
+            const defaultAnswerSeconds = Number(context?.speech_answer_seconds || context?.config?.speech_answer_seconds || 120);
+            const [questionTimeLimit, setQuestionTimeLimit] = React.useState(defaultAnswerSeconds);
             const [timeLeft, setTimeLeft] = React.useState(null);
             const timerRef = React.useRef(null);
+            const questionTimeLimitRef = React.useRef(defaultAnswerSeconds);
             const isAnsweringRef = React.useRef(false);
             const canAnswerRef = React.useRef(false);
+
+            React.useEffect(() => { questionTimeLimitRef.current = questionTimeLimit; }, [questionTimeLimit]);
 
             React.useEffect(() => { isAnsweringRef.current = isAnswering; }, [isAnswering]);
             React.useEffect(() => { canAnswerRef.current = canAnswer; }, [canAnswer]);
@@ -1571,7 +1617,12 @@
                                 setAnswerTimerActive(false);
                                 setTimeLeft(null);
                             },
-                            onAwaitingAnswer: () => {
+                            onAwaitingAnswer: ({ time_limit_seconds }) => {
+                                const limit = Number(time_limit_seconds);
+                                const nextLimit = Number.isFinite(limit) && limit > 0
+                                    ? limit
+                                    : defaultAnswerSeconds;
+                                setQuestionTimeLimit(nextLimit);
                                 setCanAnswer(true);
                                 setIsAnswering(false);
                                 setSavingAnswer(false);
@@ -1579,7 +1630,17 @@
                                 setLiveQuestionCaption('');
                                 setIsInterviewerSpeaking(false);
                                 setAnswerTimerActive(true);
-                                setTimeLeft(answerTimeLimit);
+                                setTimeLeft(nextLimit);
+                            },
+                            onTimeLimitUpdate: ({ time_limit_seconds }) => {
+                                const limit = Number(time_limit_seconds);
+                                if (!Number.isFinite(limit) || limit <= 0) return;
+                                setQuestionTimeLimit(limit);
+                                setTimeLeft((prev) => {
+                                    if (prev == null) return limit;
+                                    const elapsed = Math.max(0, questionTimeLimitRef.current - prev);
+                                    return Math.max(10, limit - elapsed);
+                                });
                             },
                             onMicOpen: () => {
                                 setIsAnswering(true);
@@ -1654,7 +1715,7 @@
                     if (!isAnswering) setTimeLeft(null);
                     return undefined;
                 }
-                if (timeLeft == null) setTimeLeft(answerTimeLimit);
+                if (timeLeft == null) setTimeLeft(questionTimeLimit);
                 timerRef.current = setInterval(() => {
                     setTimeLeft((prev) => {
                         if (prev == null || prev <= 1) {
@@ -1684,7 +1745,7 @@
                     if (timerRef.current) clearInterval(timerRef.current);
                     timerRef.current = null;
                 };
-            }, [answerTimerActive, answerTimeLimit, savingAnswer, ending, interviewComplete]);
+            }, [answerTimerActive, questionTimeLimit, savingAnswer, ending, interviewComplete]);
 
             // Safety: never leave the UI stuck on "Saving…" if the next question is delayed.
             React.useEffect(() => {
@@ -1743,21 +1804,21 @@
                 <>
                     <div>
                         <p className="text-xs text-slate-500 mb-2">Mic level</p>
-                        <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
                             <div className="h-full bg-emerald-500 transition-all duration-75" style={{ width: `${Math.round(micLevel * 100)}%` }} />
                         </div>
                     </div>
                     <div>
                         <p className="text-xs text-slate-500 mb-1">Status</p>
-                        <p className="text-xs text-slate-300 leading-relaxed">{status}</p>
+                        <p className="text-xs text-slate-600 leading-relaxed">{status}</p>
                         {saveNotice ? (
-                            <p className={`text-xs mt-2 leading-relaxed ${saveNotice.includes('saved') ? 'text-emerald-400/90' : 'text-amber-400/90'}`}>
+                            <p className={`text-xs mt-2 leading-relaxed ${saveNotice.includes('saved') ? 'text-emerald-600' : 'text-amber-600'}`}>
                                 {saveNotice}
                             </p>
                         ) : null}
                     </div>
                     {interviewComplete ? (
-                        <p className="text-xs text-emerald-400/90 leading-relaxed">
+                        <p className="text-xs text-emerald-600 leading-relaxed">
                             All {maxTurns} questions complete — submitting results…
                         </p>
                     ) : null}
@@ -1765,7 +1826,7 @@
                         type="button"
                         onClick={handleEnd}
                         disabled={ending || isLoading}
-                        className={`w-full py-2.5 rounded-xl text-sm disabled:opacity-40 ${interviewComplete ? 'btn-primary' : 'btn-secondary border border-surface-border'}`}
+                        className={`w-full py-2.5 rounded-xl text-sm disabled:opacity-40 transition-all duration-200 ${interviewComplete ? 'btn-primary' : 'btn-secondary'}`}
                     >
                         {ending ? 'Finishing…' : interviewComplete ? 'Submitting results…' : 'End voice interview'}
                     </button>
@@ -1796,16 +1857,16 @@
                                         const done = c && c.answer;
                                         const active = i === cards.length - 1 && !interviewComplete;
                                         return (
-                                            <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${done ? 'bg-emerald-500' : active ? 'bg-indigo-400' : 'bg-surface-border'}`} />
+                                            <div key={i} className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${done ? 'bg-emerald-500' : active ? 'bg-indigo-500' : 'bg-slate-200'}`} />
                                         );
                                     })}
                                 </div>
                             ) : null}
-                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-surface-border/60">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-slate-200 bg-white/80">
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-1">Phase 2 · Live voice</p>
-                                        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Phase 2 · Live voice</p>
+                                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-tight">
                                             Question {voiceStep}
                                         </h1>
                                         <p className="text-sm text-slate-500 mt-1">
@@ -1823,7 +1884,7 @@
                                     {answerTimerActive && timeLeft != null ? (
                                         <TimerRing
                                             seconds={timeLeft}
-                                            totalSeconds={answerTimeLimit}
+                                            totalSeconds={questionTimeLimit}
                                             prominent
                                         />
                                     ) : null}
@@ -1831,18 +1892,18 @@
                             </div>
                             <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
                                 {interviewComplete ? (
-                                    <div className="fade-in rounded-2xl border border-emerald-500/30 bg-emerald-500/5 overflow-hidden shadow-lg shadow-emerald-500/5">
+                                    <div className="fade-in rounded-2xl border border-emerald-200 bg-emerald-50 overflow-hidden shadow-soft animate-scale-in">
                                         <div className="px-6 py-8 text-center">
-                                            <div className="w-14 h-14 rounded-full border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-center text-emerald-300 text-2xl mx-auto mb-4">✓</div>
-                                            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-300 mb-2">Interview complete</p>
-                                            <p className="text-lg text-emerald-50 leading-relaxed max-w-lg mx-auto">
+                                            <div className="w-14 h-14 rounded-full border border-emerald-200 bg-white flex items-center justify-center text-emerald-600 text-2xl mx-auto mb-4 animate-float">✓</div>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 mb-2">Interview complete</p>
+                                            <p className="text-lg text-slate-800 leading-relaxed max-w-lg mx-auto">
                                                 {closingCaption || 'Thank you for your time — that completes the voice interview.'}
                                                 {isInterviewerSpeaking ? (
-                                                    <span className="inline-block w-1.5 h-4 bg-emerald-400/70 ml-0.5 align-middle animate-pulse" />
+                                                    <span className="inline-block w-1.5 h-4 bg-emerald-500/70 ml-0.5 align-middle animate-pulse" />
                                                 ) : null}
                                             </p>
-                                            <p className="text-sm text-slate-400 mt-4 flex items-center justify-center gap-2">
-                                                <span className="inline-block w-3.5 h-3.5 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                                            <p className="text-sm text-slate-500 mt-4 flex items-center justify-center gap-2">
+                                                <span className="inline-block w-3.5 h-3.5 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
                                                 Submitting your results…
                                             </p>
                                         </div>
@@ -1853,8 +1914,8 @@
                                     if (!card && !questionDisplay) {
                                         return (
                                             <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
-                                                <div className="w-14 h-14 rounded-full border border-surface-border flex items-center justify-center text-indigo-300 text-2xl">🎧</div>
-                                                <p className="text-sm max-w-sm">The interviewer will ask each question out loud. Your mic opens a few seconds after they finish — speak in English, then press <span className="text-slate-300 font-medium">Submit</span>.</p>
+                                                <div className="w-14 h-14 rounded-full border border-indigo-100 bg-indigo-50 flex items-center justify-center text-indigo-600 text-2xl animate-float">🎧</div>
+                                                <p className="text-sm max-w-sm text-slate-600">The interviewer will ask each question out loud. Your mic opens a few seconds after they finish — speak in English, then press <span className="text-slate-900 font-medium">Submit</span>.</p>
                                             </div>
                                         );
                                     }
@@ -1865,15 +1926,15 @@
                                     const waitingNext = answered && !interviewComplete && !recording && !saving;
                                     const qNum = card?.number || currentQuestionNum || 1;
                                     return (
-                                        <div key={qNum} className="fade-in rounded-2xl border border-indigo-500/30 bg-surface-elevated/40 overflow-hidden shadow-lg shadow-indigo-500/5">
-                                            <div className="px-6 py-5 border-b border-surface-border/70 bg-indigo-500/[0.06]">
+                                        <div key={qNum} className="fade-in rounded-2xl border border-indigo-100 bg-white overflow-hidden shadow-card animate-slide-up">
+                                            <div className="px-6 py-5 border-b border-indigo-50 bg-gradient-to-r from-indigo-50 to-blue-50">
                                                 <div className="flex flex-wrap items-start justify-between gap-4">
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300/90">Interviewer · Question {qNum} of {maxTurns}</p>
-                                                        <p className="text-lg text-indigo-50 mt-2 leading-relaxed">
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700">Interviewer · Question {qNum} of {maxTurns}</p>
+                                                        <p className="text-lg text-slate-900 mt-2 leading-relaxed">
                                                             {questionDisplay || '…'}
                                                             {isInterviewerSpeaking ? (
-                                                                <span className="inline-block w-1.5 h-4 bg-indigo-400/70 ml-0.5 align-middle animate-pulse" />
+                                                                <span className="inline-block w-1.5 h-4 bg-indigo-500/70 ml-0.5 align-middle animate-pulse" />
                                                             ) : null}
                                                         </p>
                                                     </div>
@@ -1883,7 +1944,7 @@
                                                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Your response</p>
                                                 {recording ? (
                                                     <div className="py-1">
-                                                        <div className="flex items-center gap-2.5 text-emerald-300">
+                                                        <div className="flex items-center gap-2.5 text-emerald-700">
                                                             <span className="flex gap-1 items-end h-5">
                                                                 <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '60%' }} />
                                                                 <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '100%', animationDelay: '120ms' }} />
@@ -1893,7 +1954,7 @@
                                                             <span className="text-sm">{liveCaption ? 'Listening…' : 'Listening — speak your answer now…'}</span>
                                                         </div>
                                                         {liveCaption ? (
-                                                            <p className="text-[15px] text-slate-100 leading-relaxed mt-3 border-l-2 border-emerald-500/50 pl-3">
+                                                            <p className="text-[15px] text-slate-800 leading-relaxed mt-3 border-l-2 border-emerald-400 pl-3">
                                                                 {liveCaption}
                                                                 <span className="inline-block w-1.5 h-4 bg-emerald-400/70 ml-0.5 align-middle animate-pulse" />
                                                             </p>
@@ -1901,10 +1962,10 @@
                                                     </div>
                                                 ) : answered ? (
                                                     <div className="py-1">
-                                                        <p className="text-[15px] text-slate-100 leading-relaxed">{card?.answer}</p>
+                                                        <p className="text-[15px] text-slate-800 leading-relaxed">{card?.answer}</p>
                                                         {saving ? (
-                                                            <p className="text-sm text-amber-300/90 flex items-center gap-2 mt-3">
-                                                                <span className="inline-block w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />
+                                                            <p className="text-sm text-amber-700 flex items-center gap-2 mt-3">
+                                                                <span className="inline-block w-3.5 h-3.5 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin" />
                                                                 Saving your answer…
                                                             </p>
                                                         ) : null}
@@ -1912,10 +1973,10 @@
                                                 ) : saving ? (
                                                     <div className="py-1">
                                                         {displayAnswer && !/^\[(no spoken|non-english)/i.test(displayAnswer) ? (
-                                                            <p className="text-[15px] text-slate-100 leading-relaxed mb-2">{displayAnswer}</p>
+                                                            <p className="text-[15px] text-slate-800 leading-relaxed mb-2">{displayAnswer}</p>
                                                         ) : null}
-                                                        <p className="text-sm text-amber-300/90 flex items-center gap-2">
-                                                            <span className="inline-block w-3.5 h-3.5 border-2 border-amber-300/40 border-t-amber-300 rounded-full animate-spin" />
+                                                        <p className="text-sm text-amber-700 flex items-center gap-2">
+                                                            <span className="inline-block w-3.5 h-3.5 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin" />
                                                             Saving your answer…
                                                         </p>
                                                     </div>
@@ -1925,24 +1986,24 @@
                                                     <p className="text-sm text-slate-500 italic py-2">Listen to the interviewer…</p>
                                                 )}
                                                 {waitingNext ? (
-                                                    <p className="text-xs text-indigo-300/80 mt-4 flex items-center gap-2 pt-3 border-t border-surface-border/60">
-                                                        <span className="inline-block w-3 h-3 border-2 border-indigo-300/40 border-t-indigo-300 rounded-full animate-spin" />
+                                                    <p className="text-xs text-indigo-600 mt-4 flex items-center gap-2 pt-3 border-t border-slate-100">
+                                                        <span className="inline-block w-3 h-3 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
                                                         Moving to question {turn + 1}…
                                                     </p>
                                                 ) : null}
                                                 {card?.score != null && Number.isFinite(Number(card.score)) ? (
-                                                    <div className="mt-4 pt-3 border-t border-surface-border/60">
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">Communication score</p>
-                                                        <p className="text-lg font-bold text-indigo-200 tabular-nums">{card.score}<span className="text-sm text-slate-500 font-medium">/100</span></p>
+                                                    <div className="mt-4 pt-3 border-t border-slate-100">
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-2">Communication score</p>
+                                                        <p className="text-lg font-bold text-indigo-700 tabular-nums">{card.score}<span className="text-sm text-slate-500 font-medium">/100</span></p>
                                                         {card.soft_skills ? (
                                                             <div className="grid grid-cols-2 gap-2 mt-3">
                                                                 {SPEECH_SKILL_DIMS.map(([label, key, legacy]) => {
                                                                     const val = getSpeechSkillValue(card.soft_skills, key, legacy);
                                                                     if (val == null) return null;
                                                                     return (
-                                                                        <div key={label} className="text-xs text-slate-400">
+                                                                        <div key={label} className="text-xs text-slate-500">
                                                                             <span>{label}: </span>
-                                                                            <span className="text-slate-200 font-semibold tabular-nums">{val}</span>
+                                                                            <span className="text-slate-800 font-semibold tabular-nums">{val}</span>
                                                                         </div>
                                                                     );
                                                                 })}
@@ -1956,10 +2017,10 @@
                                 })()}
                                 <div ref={cardsEndRef} />
                             </div>
-                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-t border-surface-border/60">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-t border-slate-200 bg-white/80">
                                 {interviewComplete ? (
-                                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3.5 text-center text-sm text-emerald-300 flex items-center justify-center gap-2">
-                                        <span className="inline-block w-3.5 h-3.5 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-center text-sm text-emerald-700 flex items-center justify-center gap-2">
+                                        <span className="inline-block w-3.5 h-3.5 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
                                         All {maxTurns} questions complete — submitting your results…
                                     </div>
                                 ) : (
@@ -2143,11 +2204,11 @@
                         />
 
                         <div className="assessment-main">
-                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-surface-border/60">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-slate-200 bg-white/80">
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">Phase 1 · Written</p>
-                                        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1">Phase 1 · Written</p>
+                                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-tight">
                                             Question {currentStep}
                                         </h1>
                                         <p className="text-sm text-slate-500 mt-1">Type your answer below — reviewed after you submit</p>
@@ -2163,25 +2224,25 @@
                                 </div>
 
                             <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
-                            <div className="flex-1 min-h-[280px] flex flex-col rounded-xl border border-surface-border bg-[#0f1419]/80 relative">
+                            <div className="flex-1 min-h-[280px] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-soft relative animate-fade-up">
                                     {isLoading && (
-                                        <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
-                                            <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
-                                            <p className="text-sm text-slate-400">Processing your response…</p>
+                                        <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 rounded-2xl flex flex-col items-center justify-center gap-4">
+                                            <div className="w-10 h-10 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                                            <p className="text-sm text-slate-500">Processing your response…</p>
                                         </div>
                                     )}
-                                <div className="shrink-0 px-5 sm:px-6 pt-5 pb-4 border-b border-surface-border/80">
+                                <div className="shrink-0 px-5 sm:px-6 pt-5 pb-4 border-b border-slate-100">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Question</p>
                                     {contentMasked ? (
-                                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-5 py-8 text-center">
-                                            <p className="text-base font-semibold text-amber-100 mb-2">Content protected</p>
-                                            <p className="text-sm text-slate-400 leading-relaxed">
+                                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-8 text-center">
+                                            <p className="text-base font-semibold text-amber-800 mb-2">Content protected</p>
+                                            <p className="text-sm text-slate-600 leading-relaxed">
                                                 Return to fullscreen and close developer tools to continue.
                                             </p>
                                         </div>
                                     ) : (
                                         <div
-                                            className="question-protected text-base sm:text-lg text-slate-100 leading-relaxed"
+                                            className="question-protected text-base sm:text-lg text-slate-800 leading-relaxed"
                                             onCopy={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
                                             onCut={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
                                             onContextMenu={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
@@ -2210,7 +2271,7 @@
                                         disabled={contentMasked || isLoading}
                                     />
                                 </div>
-                                <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-surface-border bg-[#0c121a]/50 rounded-b-xl">
+                                <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/80 rounded-b-2xl">
                                     <div>
                                         <p className="text-xs text-slate-500">
                                             {canSubmit ? 'Ready to submit' : 'Type at least 5 characters'}
@@ -2471,11 +2532,11 @@
                             sessionLabel="Phase 2 — voice communication questions"
                         />
                         <div className="assessment-main">
-                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-surface-border/60">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-slate-200 bg-white/80">
                                 <div className="speech-phase-header gap-4">
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-1">Phase 2 · Voice</p>
-                                        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight leading-tight">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Phase 2 · Voice</p>
+                                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-tight">
                                             Question {speechIndex}
                                         </h1>
                                         <p className="text-sm text-slate-500 mt-1">
@@ -2487,8 +2548,8 @@
                                     {showTimer ? (
                                         <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} prominent />
                                     ) : isSpeaking ? (
-                                        <div className="shrink-0 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-center">
-                                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Playing question</p>
+                                        <div className="shrink-0 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-center animate-pulse">
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700">Playing question</p>
                                             <p className="text-xs text-slate-400 mt-1">Timer not started yet</p>
                                         </div>
                                     ) : null}
@@ -2497,23 +2558,23 @@
 
                             <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
                                 {speechIndex === 1 ? (
-                                    <div className="mb-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 px-4 py-3 sm:px-5 sm:py-4 shrink-0">
-                                        <p className="text-sm text-indigo-100 font-medium">You are now in Phase 2 — voice communication interview</p>
+                                    <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 sm:px-5 sm:py-4 shrink-0 animate-fade-up">
+                                        <p className="text-sm text-indigo-900 font-medium">You are now in Phase 2 — voice communication interview</p>
                                         <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                                             This is a speech-to-speech round. Take a moment to settle in a quiet space before recording.
                                         </p>
                                     </div>
                                 ) : null}
 
-                                <div className="speech-answer-panel flex-1 min-h-0 flex flex-col rounded-xl border border-surface-border bg-[#0f1419]/80 relative">
+                                <div className="speech-answer-panel flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-200 bg-white shadow-soft relative animate-fade-up">
                                     {isLoading && (
-                                        <div className="absolute inset-0 bg-surface/85 backdrop-blur-sm z-10 rounded-xl flex flex-col items-center justify-center gap-4">
-                                            <div className="w-10 h-10 border-2 border-surface-border border-t-accent rounded-full animate-spin" />
-                                            <p className="text-sm text-slate-400">Processing your response…</p>
+                                        <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 rounded-2xl flex flex-col items-center justify-center gap-4">
+                                            <div className="w-10 h-10 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                                            <p className="text-sm text-slate-500">Processing your response…</p>
                                         </div>
                                     )}
 
-                                    <div className="shrink-0 px-5 sm:px-6 pt-5 pb-4 border-b border-surface-border/80">
+                                    <div className="shrink-0 px-5 sm:px-6 pt-5 pb-4 border-b border-slate-100">
                                         <div className="flex items-start justify-between gap-3 mb-3">
                                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Question</p>
                                             <button
@@ -2526,17 +2587,17 @@
                                             </button>
                                         </div>
                                         {contentMasked ? (
-                                            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-5 py-8 text-center">
-                                                <p className="text-base font-semibold text-amber-100 mb-2">Content protected</p>
+                                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-8 text-center">
+                                                <p className="text-base font-semibold text-amber-800 mb-2">Content protected</p>
                                                 <p className="text-sm text-slate-400 leading-relaxed">
                                                     Return to fullscreen and close developer tools to continue.
                                                 </p>
                                             </div>
                                         ) : (
-                                            <div className="question-protected text-base sm:text-lg text-slate-100 leading-relaxed min-h-[3.5rem]">
+                                            <div className="question-protected text-base sm:text-lg text-slate-800 leading-relaxed min-h-[3.5rem]">
                                                 {typedQuestion || (isSpeaking ? '' : question)}
                                                 {isSpeaking ? (
-                                                    <span className="inline-block w-0.5 h-[1.1em] bg-accent ml-0.5 align-middle animate-pulse" aria-hidden="true" />
+                                                    <span className="inline-block w-0.5 h-[1.1em] bg-blue-600 ml-0.5 align-middle animate-pulse" aria-hidden="true" />
                                                 ) : null}
                                             </div>
                             )}
@@ -2548,10 +2609,10 @@
                                         </label>
                                         <div
                                             className={`input-field speech-transcript-box w-full px-4 py-4 rounded-lg text-sm sm:text-base leading-relaxed ${
-                                                isRecording ? 'border-accent/40 bg-accent/5' : ''
+                                                isRecording ? 'border-blue-300 bg-blue-50/50' : ''
                                             }`}
                                         >
-                                            <p className="text-slate-200 whitespace-pre-wrap break-words">
+                                            <p className="text-slate-800 whitespace-pre-wrap break-words">
                                                 {transcript || (isRecording
                                                     ? 'Listening… speak now — words appear here live.'
                                                     : isStopping
@@ -2567,11 +2628,11 @@
                                             <div className="mt-4 shrink-0">
                                                 <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
                                                     <span className="font-medium uppercase tracking-wide">Microphone level</span>
-                                                    <span className={micLevel > 0.05 ? 'text-emerald-400' : 'text-amber-400'}>
+                                                    <span className={micLevel > 0.05 ? 'text-emerald-600' : 'text-amber-600'}>
                                                         {micLevel > 0.05 ? 'Receiving audio' : 'Speak now — waiting for voice'}
                                                     </span>
                                                 </div>
-                                                <div className="h-2.5 rounded-full bg-surface-border overflow-hidden">
+                                                <div className="h-2.5 rounded-full bg-slate-200 overflow-hidden">
                                                     <div
                                                         className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-[width] duration-75 ease-out"
                                                         style={{ width: `${Math.round(micLevel * 100)}%` }}
@@ -2601,21 +2662,21 @@
                                                 </button>
                                             )}
                                             {isRecording ? (
-                                                <span className="inline-flex items-center gap-2 text-xs text-red-300">
+                                                <span className="inline-flex items-center gap-2 text-xs text-red-600">
                                                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" aria-hidden="true" />
                                                     Recording in progress
                                                 </span>
                                             ) : null}
                                         </div>
 
-                                        {recordError ? <p className="text-sm text-red-400 mt-3">{recordError}</p> : null}
+                                        {recordError ? <p className="text-sm text-red-600 mt-3">{recordError}</p> : null}
                                         {!recordError && isRecording ? (
                                             <p className="text-xs text-slate-500 mt-2">Tip: use headphones so the mic does not pick up the question audio.</p>
                                         ) : null}
                                         {audioHint ? <p className="text-xs text-slate-500 mt-2">{audioHint}</p> : null}
                                     </div>
 
-                                    <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-surface-border bg-[#0c121a]/50 rounded-b-xl">
+                                    <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/80 rounded-b-2xl">
                                         <div>
                                             <p className="text-xs text-slate-500">
                                                 {canSubmit
@@ -2924,13 +2985,13 @@
             return (
                         <div>
                     <div className="flex justify-between text-xs mb-1.5">
-                        <span className="text-slate-400">{label}</span>
+                        <span className="text-slate-600 font-medium">{label}</span>
                         <span className={`font-semibold tabular-nums ${scoreTone(v)}`}>
                             {Number.isFinite(v) ? v : '—'}
                         </span>
                         </div>
-                    <div className="h-2 rounded-full bg-surface-border overflow-hidden">
-                        <div className={`h-full ${barTone} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div className={`h-full ${barTone} rounded-full transition-all duration-700 ease-out`} style={{ width: `${pct}%` }} />
                     </div>
                 </div>
             );
@@ -2951,9 +3012,9 @@
             return (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {items.map(([label, val]) => (
-                        <div key={label} className="rounded-lg border border-surface-border bg-surface-elevated/40 px-3 py-2.5">
+                        <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
-                            <p className="text-sm font-semibold text-slate-200 tabular-nums mt-0.5">{val}</p>
+                            <p className="text-sm font-semibold text-slate-800 tabular-nums mt-0.5">{val}</p>
                                 </div>
                     ))}
                 </div>
@@ -2974,8 +3035,8 @@
             return (
                 <div className="space-y-4">
                     {hasSkills ? (
-                        <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 p-4 sm:p-5 space-y-3">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">Communication skills</p>
+                        <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 sm:p-5 space-y-3">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700">Communication skills</p>
                             {skillRows.map(([label, val]) => (
                                 <SkillBar key={label} label={label} value={val} />
                             ))}
@@ -2988,7 +3049,7 @@
                                         </div>
                     ) : null}
                     {audioUrl ? (
-                        <div className="rounded-xl border border-surface-border bg-surface-elevated/30 p-4">
+                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">Voice recording</p>
                             <audio controls preload="metadata" className="w-full h-10" src={audioUrl}>
                                 Your browser does not support audio playback.
@@ -3010,11 +3071,11 @@
                 .map(([label, key, legacy]) => [label, avgSpeechSkill(speechRows, key) ?? avgSpeechSkill(speechRows, legacy)])
                 .filter(([, v]) => v != null);
             return (
-                <div className="panel rounded-2xl p-6 mb-8 border border-indigo-500/20 bg-indigo-500/5">
+                <div className="panel rounded-2xl p-6 mb-8 border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white animate-fade-up">
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
                                     <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-1">Voice round summary</p>
-                            <p className="text-sm text-slate-300">{speechRows.length} voice question{speechRows.length === 1 ? '' : 's'} completed</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-1">Voice round summary</p>
+                            <p className="text-sm text-slate-600">{speechRows.length} voice question{speechRows.length === 1 ? '' : 's'} completed</p>
                                         </div>
                         {avgScore != null ? (
                             <p className={`text-2xl font-bold tabular-nums ${scoreTone(avgScore)}`}>{avgScore}<span className="text-sm text-slate-500 font-medium">/100</span></p>
@@ -3037,10 +3098,10 @@
             const voiceLabel = speechTotal > 0 ? `Voice Q${speechIndex} of ${speechTotal}` : `Voice Q${speechIndex}`;
             const hasAnswer = Boolean(String(item.answer_text || '').trim());
             return (
-                <article className={`panel rounded-2xl p-6 sm:p-8 ${isSpeech ? 'border border-indigo-500/15' : ''}`}>
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-surface-border">
+                <article className={`review-card panel rounded-2xl p-6 sm:p-8 animate-fade-up ${isSpeech ? 'border-l-4 border-l-indigo-500 border border-slate-200' : 'border border-slate-200'}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100">
                         <div className="flex flex-wrap items-center gap-2">
-                            <span className={`badge ${isSpeech ? 'bg-indigo-500/15 text-indigo-200 border border-indigo-500/30' : 'badge-accent'}`}>
+                            <span className={`badge ${isSpeech ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'badge-accent'}`}>
                                 {phaseLabel}
                             </span>
                             {isSpeech ? (
@@ -3061,13 +3122,13 @@
                     <div className="grid gap-5">
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Question</p>
-                            <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{item.question_text}</p>
+                            <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">{item.question_text}</p>
                         </div>
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
                                 {isSpeech ? 'Spoken transcript' : 'Your answer'}
                             </p>
-                            <p className={`text-sm leading-relaxed whitespace-pre-wrap panel-elevated rounded-xl p-4 ${hasAnswer ? 'text-slate-200' : 'text-slate-500 italic'}`}>
+                            <p className={`text-sm leading-relaxed whitespace-pre-wrap panel-elevated rounded-xl p-4 ${hasAnswer ? 'text-slate-700' : 'text-slate-400 italic'}`}>
                                 {hasAnswer ? item.answer_text : (isSpeech ? 'No transcript captured for this question.' : '—')}
                             </p>
                             {isSpeech && item.stt_source ? (
@@ -3076,15 +3137,15 @@
                         </div>
                         {isSpeech ? <SpeechPhaseInsights item={item} /> : null}
                         {item.feedback && item.feedback !== '—' && (
-                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-400/90 mb-2">Evaluator feedback</p>
-                                <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{item.feedback}</p>
+                            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700 mb-2">Evaluator feedback</p>
+                                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{item.feedback}</p>
                             </div>
                         )}
                         {!isSpeech && item.suggested_answer && item.suggested_answer !== '—' && (
-                            <div className="rounded-xl border border-surface-border bg-surface-elevated/40 p-4">
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Reference answer</p>
-                                <p className="text-sm text-slate-400 leading-relaxed whitespace-pre-wrap">{item.suggested_answer}</p>
+                                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{item.suggested_answer}</p>
                             </div>
                         )}
                                 </div>
@@ -3177,43 +3238,54 @@
             return (
             <Shell subtitle="Assessment complete">
                 <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in">
-                    <div className="panel max-w-xl w-full rounded-2xl p-8 sm:p-12 text-center shadow-card">
-                        <div className={`w-16 h-16 mx-auto mb-6 rounded-2xl flex items-center justify-center ${passed ? 'bg-emerald-500/15 border border-emerald-500/30' : 'bg-slate-700/30 border border-surface-border'}`}>
-                            {passed ? (
-                                <svg className="w-9 h-9 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                            ) : (
-                                <svg className="w-9 h-9 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <div className="max-w-lg w-full rounded-3xl overflow-hidden shadow-card border border-slate-200/80 bg-white animate-scale-in">
+                        <div className={`result-hero-gradient px-8 sm:px-10 pt-10 pb-8 text-center border-b border-slate-100 ${passed ? '' : ''}`}>
+                            <div className={`w-20 h-20 mx-auto mb-5 rounded-2xl flex items-center justify-center animate-float ${passed ? 'bg-emerald-100 border border-emerald-200 shadow-sm' : 'bg-slate-100 border border-slate-200'}`}>
+                                {passed ? (
+                                    <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
+                                ) : (
+                                    <svg className="w-10 h-10 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                )}
+                            </div>
+                            <span className={`badge mb-4 ${passed ? 'badge-success' : 'badge-warning'}`}>
+                                {passed ? 'Proceed to next stage' : 'Under review'}
+                            </span>
+                            {showScore && (
+                                <p className={`text-5xl font-bold tabular-nums mb-1 animate-fade-up ${scoreTone(scoreNum)}`}>
+                                    {Math.round(scoreNum)}<span className="text-xl text-slate-400 font-semibold">/100</span>
+                                </p>
                             )}
+                            {(Number.isFinite(scoreBreakdown.technical) || Number.isFinite(scoreBreakdown.speech)) && (
+                                <div className="flex flex-wrap justify-center gap-2 mt-3 mb-1 stagger-2">
+                                    {Number.isFinite(scoreBreakdown.technical) ? (
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/80 border border-slate-200 text-xs font-semibold text-slate-600">
+                                            Technical <span className="text-blue-600 tabular-nums">{Math.round(scoreBreakdown.technical)}</span>
+                                        </span>
+                                    ) : null}
+                                    {Number.isFinite(scoreBreakdown.speech) ? (
+                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/80 border border-slate-200 text-xs font-semibold text-slate-600">
+                                            Voice <span className="text-indigo-600 tabular-nums">{Math.round(scoreBreakdown.speech)}</span>
+                                        </span>
+                                    ) : null}
+                                </div>
+                            )}
+                            <h1 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight stagger-2">
+                                {passed ? 'Strong performance' : 'Thank you for completing'}
+                            </h1>
+                            <p className="text-sm text-slate-600 leading-relaxed max-w-md mx-auto stagger-3">
+                                {passed
+                                    ? 'You met the screening bar. Next step: pick your interview time as soon as slots are ready.'
+                                    : 'Your responses have been recorded. The hiring team will review your submission.'}
+                            </p>
                         </div>
-                        <span className={`badge mb-4 ${passed ? 'badge-success' : 'badge-warning'}`}>
-                            {passed ? 'Proceed to next stage' : 'Under review'}
-                        </span>
-                        {showScore && (
-                            <p className={`text-4xl font-bold tabular-nums mb-2 ${scoreTone(scoreNum)}`}>
-                                {Math.round(scoreNum)}<span className="text-lg text-slate-500 font-medium">/100</span>
-                            </p>
-                        )}
-                        {(Number.isFinite(scoreBreakdown.technical) || Number.isFinite(scoreBreakdown.speech)) && (
-                            <p className="text-xs text-slate-500 mb-4 tabular-nums">
-                                {Number.isFinite(scoreBreakdown.technical) ? `Technical ${Math.round(scoreBreakdown.technical)}` : ''}
-                                {Number.isFinite(scoreBreakdown.technical) && Number.isFinite(scoreBreakdown.speech) ? ' · ' : ''}
-                                {Number.isFinite(scoreBreakdown.speech) ? `Communication ${Math.round(scoreBreakdown.speech)}` : ''}
-                            </p>
-                        )}
-                        <h1 className="text-2xl font-bold text-white mb-3 tracking-tight">
-                            {passed ? 'Strong performance' : 'Thank you for completing'}
-                        </h1>
-                        <p className="text-sm text-slate-400 leading-relaxed mb-6 max-w-md mx-auto">
-                            {passed
-                                ? 'You met the screening bar. Next step: pick your interview time as soon as slots are ready.'
-                                : 'Your responses have been recorded. The hiring team will review your submission.'}
-                        </p>
+
+                        <div className="px-8 sm:px-10 py-8 space-y-5">
                         {passed && sessionId && (
-                            <div className="text-left mb-8 p-5 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-300 mb-2">Interview scheduling</p>
+                            <div className="text-left p-5 rounded-2xl border border-emerald-200 bg-emerald-50/80 stagger-3">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 mb-2">Interview scheduling</p>
                                 {schedState === 'slots_ready' ? (
                                     <>
-                                        <p className="text-sm text-slate-200 mb-4">
+                                        <p className="text-sm text-slate-700 mb-4">
                                             {slotCount} time option{slotCount === 1 ? '' : 's'} ready — choose one now.
                                         </p>
                                         <a
@@ -3224,12 +3296,12 @@
                                         </a>
                                     </>
                                 ) : schedState === 'confirmed' ? (
-                                    <p className="text-sm text-slate-200">
+                                    <p className="text-sm text-slate-700">
                                         Your interview time is confirmed. Check your email for calendar details.
                                     </p>
                                 ) : schedWaitMode === 'choose' ? (
                                     <>
-                                        <p className="text-sm text-slate-200 mb-4">
+                                        <p className="text-sm text-slate-700 mb-4">
                                             We notified your interviewer. They may send time options soon — choose how you would like to proceed.
                                         </p>
                                         <div className="flex flex-col gap-3">
@@ -3256,11 +3328,11 @@
                                     </>
                                 ) : (
                                     <>
-                                        <p className="text-sm text-slate-200 mb-3">
+                                        <p className="text-sm text-slate-700 mb-3">
                                             Waiting for your interviewer to propose interview times. This page will update automatically.
                                         </p>
-                                        <div className="flex items-center gap-2 text-xs text-slate-400 mb-4">
-                                            <span className="w-3 h-3 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" />
+                                        <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
+                                            <span className="w-3 h-3 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
                                             Checking for slots…
                                         </div>
                                         <button
@@ -3277,20 +3349,20 @@
                             </div>
                         )}
                         {feedback && String(feedback).trim() && feedback !== 'Assessment completed.' && (
-                            <div className="text-left mb-8 p-5 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">Evaluator notes</p>
-                                <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{feedback}</p>
+                            <div className="text-left p-5 rounded-2xl border border-indigo-100 bg-indigo-50/60 stagger-4">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-2">Evaluator notes</p>
+                                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{feedback}</p>
                             </div>
                         )}
                         <button
                             type="button"
                             onClick={onReview}
                             disabled={isLoading}
-                            className="btn-primary w-full py-3.5 rounded-xl text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60"
+                            className="btn-primary w-full py-3.5 rounded-xl text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 stagger-4"
                         >
                             {isLoading ? (
                                 <>
-                                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                                     Loading review…
                                 </>
                             ) : (
@@ -3300,6 +3372,7 @@
                                 </>
                             )}
                         </button>
+                        </div>
                     </div>
                 </div>
             </Shell>
@@ -3319,7 +3392,7 @@
                     <div className="space-y-4">
                         <div className="flex items-end justify-between gap-3 pt-2">
                             <div>
-                                <h3 className="text-lg font-semibold text-white">{title}</h3>
+                                <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
                                 <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>
                             </div>
                             <span className={`badge ${badgeClass}`}>
@@ -3347,27 +3420,32 @@
             return (
             <Shell subtitle="Response review">
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10 fade-in">
-                    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
-                        <div>
-                            <h2 className="text-2xl font-bold text-white tracking-tight">Your responses</h2>
-                            <p className="text-sm text-slate-400 mt-1">Technical answers, voice scores, recordings, and evaluator feedback.</p>
+                    <div className="rounded-3xl border border-slate-200 bg-white shadow-card overflow-hidden mb-8 animate-scale-in">
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 sm:px-8 py-8 text-white">
+                            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                                <div>
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100 mb-2">Assessment review</p>
+                                    <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Your responses</h2>
+                                    <p className="text-sm text-blue-100/90 mt-2">Technical answers, voice scores, recordings, and evaluator feedback.</p>
+                                </div>
+                                <button type="button" onClick={onBack} className="bg-white/15 hover:bg-white/25 border border-white/25 text-white px-5 py-2.5 rounded-xl text-sm self-start sm:self-auto transition-all duration-200">
+                                    Back to results
+                                </button>
+                            </div>
                         </div>
-                        <button type="button" onClick={onBack} className="btn-secondary px-5 py-2.5 rounded-xl text-sm self-start sm:self-auto">
-                            Back to results
-                        </button>
                     </div>
 
                     {overallFeedback && (
-                        <div className="panel rounded-2xl p-6 mb-8 border border-indigo-500/20 bg-indigo-500/5">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 mb-2">Overall feedback</p>
-                            <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{overallFeedback}</p>
+                        <div className="panel rounded-2xl p-6 mb-8 border border-indigo-100 bg-indigo-50/40 animate-slide-up">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-2">Overall feedback</p>
+                            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{overallFeedback}</p>
                         </div>
                     )}
 
                     <SpeechSummaryCard speechRows={speechRows} />
 
                     {history.length === 0 ? (
-                        <div className="panel rounded-2xl p-12 text-center text-slate-400 text-sm">
+                        <div className="panel rounded-2xl p-12 text-center text-slate-500 text-sm">
                             No response history for this session.
                         </div>
                     ) : (
@@ -3382,14 +3460,14 @@
                                 'Voice communication interview',
                                 'Soft skills, delivery metrics, and audio playback',
                                 speechRows,
-                                'bg-indigo-500/15 text-indigo-200 border border-indigo-500/30',
+                                'bg-indigo-50 text-indigo-700 border border-indigo-200',
                                 true
                             )}
                         </div>
                     )}
 
                     <div className="text-center py-12 mt-8">
-                        <button type="button" onClick={() => window.location.reload()} className="btn-secondary px-8 py-3 rounded-xl text-sm">
+                        <button type="button" onClick={() => window.location.reload()} className="btn-secondary px-8 py-3 rounded-xl text-sm hover:shadow-soft transition-all">
                             Exit portal
                         </button>
                     </div>
@@ -4815,14 +4893,14 @@
             const hasUrlBootstrap = /[?&](session|email)=/i.test(window.location.search);
 
             return (
-                <div className="min-h-screen w-full max-w-full app-bg text-slate-200 antialiased">
+                <div className="min-h-screen w-full max-w-full app-bg text-slate-800 antialiased">
                     {urlEntryError && view === 'login' && (
                         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] max-w-md w-[calc(100%-2rem)] p-4 rounded-xl border border-red-500/40 bg-red-950/90 text-red-100 text-sm shadow-lg">
                             {urlEntryError}
                         </div>
                     )}
                     {isLoading && view === 'login' && hasUrlBootstrap && (
-                        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#080b10]/88 backdrop-blur-sm px-6">
+                        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm px-6">
                             <div className="w-10 h-10 rounded-full border-2 border-accent/30 border-t-accent animate-spin mb-4" aria-hidden="true" />
                             <p className="text-sm text-slate-300" data-bootstrap-wait>Loading your assessment portal…</p>
                         </div>

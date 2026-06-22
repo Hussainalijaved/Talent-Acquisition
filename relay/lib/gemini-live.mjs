@@ -7,6 +7,12 @@ import {
   isEnglishTranscript,
   sanitizeTranscript,
 } from './transcript-utils.mjs';
+import {
+  aiDeriveQuestionTimeLimit,
+  buildTimerConfig,
+  deriveTimeLimitSeconds,
+  fallbackTimeLimit,
+} from './time-limit.mjs';
 
 const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
@@ -81,6 +87,59 @@ export class GeminiLiveBridge {
     this.maxQuestions = Number(context.max_questions || 5);
     this.prematureClosingReprompts = 0;
     this.nextQuestionWatchdog = null;
+    this.questionTimeLimits = {};
+    this.timerRefineTokens = {};
+  }
+
+  timerConfig() {
+    return buildTimerConfig(this.context);
+  }
+
+  syncQuestionTimeLimit(questionText) {
+    return deriveTimeLimitSeconds(null, null, questionText, this.timerConfig());
+  }
+
+  emitAwaitingAnswer(qNum, questionText) {
+    const limits = this.syncQuestionTimeLimit(questionText);
+    this.questionTimeLimits[qNum] = limits;
+    this.onEvent({
+      type: 'awaiting_answer',
+      number: qNum,
+      maxTurns: this.maxTurns,
+      time_limit_seconds: limits.seconds,
+      complexity_tier: limits.tier,
+    });
+    this.refineQuestionTimeLimit(qNum, questionText);
+  }
+
+  refineQuestionTimeLimit(qNum, questionText) {
+    const token = Symbol('timer_refine');
+    this.timerRefineTokens[qNum] = token;
+    void aiDeriveQuestionTimeLimit({
+      apiKey: this.apiKey,
+      questionText,
+      config: this.context,
+      role: String(this.context.requisition_title || 'the role'),
+      previousLimit: qNum > 1 ? this.questionTimeLimits[qNum - 1] : null,
+    })
+      .then((refined) => {
+        if (this.closed || this.timerRefineTokens[qNum] !== token) return;
+        const prev = this.questionTimeLimits[qNum];
+        if (!prev || prev.seconds === refined.seconds) {
+          this.questionTimeLimits[qNum] = refined;
+          return;
+        }
+        this.questionTimeLimits[qNum] = refined;
+        this.onEvent({
+          type: 'time_limit_update',
+          number: qNum,
+          time_limit_seconds: refined.seconds,
+          complexity_tier: refined.tier,
+        });
+      })
+      .catch((err) => {
+        console.warn(`[relay] Q${qNum} timer AI refine skipped:`, err.message);
+      });
   }
 
   buildNextQuestionPrompt(aNum, nextQ) {
@@ -119,7 +178,7 @@ export class GeminiLiveBridge {
       this.roundQuestionEmitted = true;
       this.onEvent({ type: 'transcript', speaker: 'model', text: fallback, partial: false, number: nextQ });
       this.onEvent({ type: 'question', number: nextQ, text: fallback });
-      this.onEvent({ type: 'awaiting_answer', number: nextQ, maxTurns: this.maxTurns });
+      this.emitAwaitingAnswer(nextQ, fallback);
     }, 12000);
   }
 
@@ -446,6 +505,7 @@ export class GeminiLiveBridge {
 
     this.answers.push(userText);
     const aNum = this.answers.length;
+    const qLimits = this.questionTimeLimits[aNum] || fallbackTimeLimit(this.questions[aNum - 1] || '', this.context);
     const turnPair = {
       phase: this.maxQuestions + aNum,
       voice_question_number: aNum,
@@ -453,6 +513,8 @@ export class GeminiLiveBridge {
       answer_text: userText,
       sent_at: new Date(this.startedAt + (aNum - 1) * 60000).toISOString(),
       received_at: new Date().toISOString(),
+      time_limit_seconds: qLimits.seconds,
+      complexity_tier: qLimits.tier,
     };
 
     // 1. Show the answer on the frontend immediately (instant UX).
@@ -527,7 +589,7 @@ export class GeminiLiveBridge {
       this.clearNextQuestionWatchdog();
       this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
       this.onEvent({ type: 'question', number: qNum, text: modelText });
-      this.onEvent({ type: 'awaiting_answer', number: qNum, maxTurns: this.maxTurns });
+      this.emitAwaitingAnswer(qNum, modelText);
     } else if (this.roundQuestionEmitted && this.questions.length) {
       const idx = this.questions.length - 1;
       this.questions[idx] = `${this.questions[idx]} ${modelText}`.replace(/\s+/g, ' ').trim();

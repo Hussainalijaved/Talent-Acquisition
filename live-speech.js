@@ -66,6 +66,7 @@
       this.onQuestion = options.onQuestion || (() => {});
       this.onAnswer = options.onAnswer || (() => {});
       this.onAwaitingAnswer = options.onAwaitingAnswer || (() => {});
+      this.onTimeLimitUpdate = options.onTimeLimitUpdate || (() => {});
       this.onNextQuestionReady = options.onNextQuestionReady || (() => {});
       this.onPrematureClosing = options.onPrematureClosing || (() => {});
       this.onMicOpen = options.onMicOpen || (() => {});
@@ -292,9 +293,21 @@
         this.cancelMicOpen();
         this.forceEndAnswer();
         this.processingAnswer = false;
-        this.onAwaitingAnswer({ number: msg.number, maxTurns: msg.maxTurns });
+        this.onAwaitingAnswer({
+          number: msg.number,
+          maxTurns: msg.maxTurns,
+          time_limit_seconds: msg.time_limit_seconds,
+          complexity_tier: msg.complexity_tier,
+        });
         void this.scheduleMicAfterPlayback();
         this.setStatus(`Question ${msg.number} — listen, then speak when the mic opens`);
+      }
+      if (msg.type === 'time_limit_update') {
+        this.onTimeLimitUpdate?.({
+          number: msg.number,
+          time_limit_seconds: msg.time_limit_seconds,
+          complexity_tier: msg.complexity_tier,
+        });
       }
       if (msg.type === 'output_audio' && msg.data) {
         // Only block interviewer audio while the candidate's mic is open.

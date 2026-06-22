@@ -166,77 +166,59 @@ body.admin-body {
     box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.12);
 }
 
-/* ── Assessment portal (index.html) ── */
+/* ── Assessment portal (index.html) — light theme ── */
 .app-bg {
-    background-color: #070a0f;
+    background-color: #f0f4fa;
     background-image:
-        radial-gradient(ellipse 100% 80% at 50% -30%, rgba(30, 64, 175, 0.14), transparent 55%),
-        radial-gradient(ellipse 60% 40% at 100% 50%, rgba(59, 130, 246, 0.06), transparent 50%),
-        radial-gradient(ellipse 50% 35% at 0% 80%, rgba(15, 23, 42, 0.5), transparent 45%);
+        radial-gradient(ellipse 100% 80% at 50% -30%, rgba(37, 99, 235, 0.06), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 100% 50%, rgba(99, 102, 241, 0.04), transparent 50%);
     background-attachment: fixed;
 }
 
 .app-bg > header,
 .app-bg header.sticky {
     backdrop-filter: blur(16px) saturate(1.25);
-    background: rgba(7, 10, 15, 0.82) !important;
-    border-bottom-color: rgba(51, 65, 85, 0.45) !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.88) !important;
+    border-bottom-color: rgba(226, 232, 240, 0.95) !important;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
 }
 
 .panel {
-    backdrop-filter: blur(8px);
-    border-color: rgba(51, 65, 85, 0.55);
-    box-shadow:
-        0 4px 32px rgba(0, 0, 0, 0.35),
-        0 0 0 1px rgba(255, 255, 255, 0.04),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    border-color: rgba(226, 232, 240, 0.95);
+    box-shadow: 0 4px 24px -6px rgba(15, 23, 42, 0.08);
 }
 
 .onboarding-hero {
-    background: linear-gradient(165deg, rgba(20, 28, 40, 0.98) 0%, rgba(12, 18, 26, 0.99) 100%);
-    border-color: rgba(51, 65, 85, 0.6);
-    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-.btn-primary {
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(30, 64, 175, 0.35);
-}
-
-.btn-primary:hover:not(:disabled) {
-    box-shadow: 0 4px 20px rgba(30, 64, 175, 0.45);
-    transform: translateY(-1px);
+    background: #ffffff;
+    border-color: rgba(226, 232, 240, 0.95);
+    box-shadow: 0 8px 40px -12px rgba(15, 23, 42, 0.1);
 }
 
 .assessment-sidebar {
-    background: linear-gradient(180deg, #0a1018 0%, #070b10 100%);
-    border-color: rgba(51, 65, 85, 0.5);
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border-color: rgba(226, 232, 240, 0.95);
 }
 
 .phase-list-item {
-    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
 }
 
 .phase-list-item.active {
-    border-color: rgba(30, 64, 175, 0.5) !important;
-    background: rgba(30, 64, 175, 0.12) !important;
-    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.08);
+    border-color: rgba(37, 99, 235, 0.22) !important;
+    background: rgba(37, 99, 235, 0.06) !important;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
 }
 
 .phase-list-item.done {
-    opacity: 0.78;
+    opacity: 0.85;
 }
 
 .input-field:focus {
-    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.28), 0 0 20px rgba(30, 64, 175, 0.08);
-}
-
-.badge {
-    backdrop-filter: blur(4px);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
 }
 
 .app-bg footer {
-    background: rgba(7, 10, 15, 0.5);
+    background: rgba(255, 255, 255, 0.7);
 }
 
 /* Assessment question workspace */

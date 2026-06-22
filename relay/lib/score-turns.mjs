@@ -554,6 +554,14 @@ function mergeTurnsIntoHistory(history, turns, maxQ, iso = new Date().toISOStrin
       stt_source: 'gemini_live',
       scoring_source: 'gemini_live_relay',
     };
+    if (turn.time_limit_seconds != null && Number.isFinite(Number(turn.time_limit_seconds))) {
+      patch.time_limit_seconds = Math.round(Number(turn.time_limit_seconds));
+    } else if (existing.time_limit_seconds != null) {
+      patch.time_limit_seconds = existing.time_limit_seconds;
+    }
+    if (turn.complexity_tier || existing.complexity_tier) {
+      patch.complexity_tier = turn.complexity_tier || existing.complexity_tier;
+    }
     if (idx >= 0) merged[idx] = { ...existing, ...patch };
     else merged.push(patch);
   }

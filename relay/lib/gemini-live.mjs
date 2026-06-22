@@ -93,6 +93,19 @@ export class GeminiLiveBridge {
     this.timerRefineTokens = {};
     this.streamingQuestionText = '';
     this.streamingQuestionNum = 0;
+
+    // Silence / follow-up / coaching (Micro1-style)
+    this.silenceNudgeCount = 0;
+    this.inNudgePlayback = false;
+    this.followUpUsed = {};
+    this.inFollowUpFor = 0;
+    this.lastAnswerMeta = null;
+    this.coachingConfig = {
+      weakScoreThreshold: Number(context.weak_score_threshold ?? 55),
+      coachingScoreThreshold: Number(context.coaching_score_threshold ?? 60),
+      followUpEnabled: context.follow_up_enabled !== false,
+      coachingEnabled: context.coaching_enabled !== false,
+    };
   }
 
   timerConfig() {
@@ -147,16 +160,53 @@ export class GeminiLiveBridge {
   }
 
   buildNextQuestionPrompt(aNum, nextQ) {
+    let coaching = '';
+    const meta = this.lastAnswerMeta;
+    if (
+      this.coachingConfig.coachingEnabled &&
+      meta &&
+      meta.qNum === aNum &&
+      meta.score != null &&
+      meta.score < this.coachingConfig.coachingScoreThreshold
+    ) {
+      coaching =
+        ' Before question ' +
+        nextQ +
+        ', give ONE brief supportive coaching line (never mention scores or say they failed) — e.g. encourage a specific example or clearer structure — then ask the next question. Keep coaching + question within 3 sentences total. ';
+    }
+
     if (nextQ >= this.maxTurns) {
       return (
+        coaching +
         `The candidate finished answering question ${aNum}. You MUST ask interview question ${nextQ} of ${this.maxTurns} now — this is the LAST question before the interview ends. ` +
         'Ask exactly one new behavioural interview question in clear English. Do NOT thank the candidate. Do NOT say the interview is complete. Do NOT say goodbye or "we will be in touch". Ask the question only, then stop and wait.'
       );
     }
     return (
+      coaching +
       `The candidate finished answering question ${aNum}. Now ask interview question ${nextQ} of ${this.maxTurns} in clear English. ` +
       'Ask exactly one question, then stop talking and wait for the candidate. Do not thank or close the interview yet.'
     );
+  }
+
+  buildFollowUpPrompt(qNum, questionText, answerText, scored) {
+    const hint = String(scored?.feedback || '').slice(0, 160);
+    return (
+      `The candidate's answer to question ${qNum} was incomplete or unclear (internal note — never mention scoring). ` +
+      `Original question: "${String(questionText || '').slice(0, 220)}" ` +
+      `Their answer: "${String(answerText || '').slice(0, 280)}" ` +
+      (hint ? `Internal feedback: ${hint}. ` : '') +
+      `Ask ONE short follow-up probe on the SAME topic so they can clarify or give a concrete example. ` +
+      `Do NOT move to question ${qNum + 1} yet. One follow-up only, then stop and wait.`
+    );
+  }
+
+  isWeakAnswer(userText, score) {
+    const t = String(userText || '').trim();
+    if (/^\[(no spoken|non-english|no speech|noise)/i.test(t)) return false;
+    if (t.split(/\s+/).filter(Boolean).length < 8) return true;
+    if (Number.isFinite(Number(score)) && Number(score) < this.coachingConfig.weakScoreThreshold) return true;
+    return false;
   }
 
   buildClosingReprompt(expectedQ) {
@@ -189,7 +239,7 @@ export class GeminiLiveBridge {
     }, 12000);
   }
 
-  commitQuestionText(qNum, text) {
+  commitQuestionText(qNum, text, opts = {}) {
     const modelText = String(text || '').trim();
     if (!modelText || qNum < 1 || qNum > this.maxTurns) return;
 
@@ -216,7 +266,12 @@ export class GeminiLiveBridge {
     }
     this.clearNextQuestionWatchdog();
     this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
-    this.onEvent({ type: 'question', number: qNum, text: modelText });
+    this.onEvent({
+      type: 'question',
+      number: qNum,
+      text: modelText,
+      follow_up: !!opts.follow_up,
+    });
     this.emitAwaitingAnswer(qNum, modelText);
   }
 
@@ -468,6 +523,13 @@ export class GeminiLiveBridge {
   }
 
   onModelTurnComplete() {
+    if (this.inNudgePlayback) {
+      this.inNudgePlayback = false;
+      this.modelBuf = '';
+      this.blockModelOutput = false;
+      return;
+    }
+
     if (this.awaitingAnswer) {
       this.scheduleFinalizeAnswer();
       return;
@@ -528,8 +590,6 @@ export class GeminiLiveBridge {
     }
 
     this.awaitingAnswer = false;
-    // Keep model output blocked until this turn is saved AND the next prompt is sent,
-    // so the interviewer never speaks the next question before the current one is saved.
     this.blockModelOutput = true;
     if (this.answerTimer) {
       clearTimeout(this.answerTimer);
@@ -537,14 +597,29 @@ export class GeminiLiveBridge {
     }
 
     this.modelBuf = '';
+    this.silenceNudgeCount = 0;
 
     const combined = `${this.userBuf}${this.lateUserBuf}`.trim();
     this.userBuf = '';
     this.lateUserBuf = '';
-    const userText = cleanUserAnswer(combined) || '[No spoken response captured]';
+    let userText = cleanUserAnswer(combined) || '[No spoken response captured]';
 
-    this.answers.push(userText);
-    const aNum = this.answers.length;
+    let aNum;
+    let isFollowUpResponse = false;
+
+    if (this.inFollowUpFor && this.inFollowUpFor === this.answers.length) {
+      isFollowUpResponse = true;
+      aNum = this.inFollowUpFor;
+      const idx = aNum - 1;
+      const merged = `${this.answers[idx]}\n\n[Follow-up] ${userText}`.trim();
+      this.answers[idx] = merged;
+      userText = merged;
+      this.inFollowUpFor = 0;
+    } else {
+      this.answers.push(userText);
+      aNum = this.answers.length;
+    }
+
     const qLimits = this.questionTimeLimits[aNum] || fallbackTimeLimit(this.questions[aNum - 1] || '', this.context);
     const turnPair = {
       phase: this.maxQuestions + aNum,
@@ -555,39 +630,92 @@ export class GeminiLiveBridge {
       received_at: new Date().toISOString(),
       time_limit_seconds: qLimits.seconds,
       complexity_tier: qLimits.tier,
+      is_follow_up: isFollowUpResponse,
     };
 
-    // 1. Show the answer on the frontend immediately (instant UX).
     this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
-    this.onEvent({ type: 'answer', number: aNum, text: userText });
+    this.onEvent({ type: 'answer', number: aNum, text: userText, follow_up: isFollowUpResponse });
     this.onEvent({
       type: 'turn_complete',
       turn: aNum,
       maxTurns: this.maxTurns,
       answersGiven: aNum,
+      follow_up: isFollowUpResponse,
     });
 
-    // 2. Save in background — never block the next question.
-    this.onEvent({ type: 'saving_turn', number: aNum });
-    void Promise.resolve(this.onTurnSaved(turnPair)).catch((err) => {
-      console.warn('[relay] incremental turn save failed:', err.message);
-    });
+    this.onEvent({ type: 'saving_turn', number: aNum, follow_up: isFollowUpResponse });
+    let scored = null;
+    try {
+      scored = await Promise.resolve(this.onTurnSaved(turnPair));
+    } catch (err) {
+      console.warn('[relay] turn save/score failed:', err.message);
+    }
+
+    await this.afterAnswerScored(aNum, userText, turnPair, scored);
+  }
+
+  async afterAnswerScored(aNum, userText, turnPair, scored) {
+    const score = Number(scored?.score);
+    const hasScore = Number.isFinite(score);
 
     this.roundQuestionEmitted = false;
     this.streamingQuestionText = '';
     this.streamingQuestionNum = 0;
 
-    // 3. Last question? Close the interview with a thank-you message.
+    if (
+      this.coachingConfig.followUpEnabled &&
+      !turnPair.is_follow_up &&
+      !this.followUpUsed[aNum] &&
+      this.isWeakAnswer(userText, hasScore ? score : null)
+    ) {
+      this.followUpUsed[aNum] = true;
+      this.inFollowUpFor = aNum;
+      this.onEvent({ type: 'follow_up_probe', number: aNum, maxTurns: this.maxTurns });
+      this.askFollowUp(aNum, turnPair.question_text, userText, scored);
+      return;
+    }
+
+    this.lastAnswerMeta = {
+      score: hasScore ? score : null,
+      feedback: scored?.feedback || '',
+      question: turnPair.question_text,
+      answer: userText,
+      qNum: aNum,
+    };
+
     if (aNum >= this.maxTurns) {
       this.finishInterview();
       return;
     }
 
-    // 4. Ask the next question immediately (do not wait for save/score).
     const nextQ = aNum + 1;
     this.onEvent({ type: 'next_question_ready', number: nextQ });
+    this.proceedToNextQuestion(aNum, nextQ);
+  }
 
-    // 5. Prompt Gemini for the next question right away.
+  askFollowUp(qNum, questionText, answerText, scored) {
+    this.modelBuf = '';
+    this.allowModelAudio = true;
+    this.pendingAudioChunks = [];
+    this.blockModelOutput = false;
+    this.awaitingAnswer = false;
+    this.roundQuestionEmitted = true;
+    this.sendClientText(this.buildFollowUpPrompt(qNum, questionText, answerText, scored), true);
+    this.scheduleFollowUpWatchdog(qNum);
+  }
+
+  scheduleFollowUpWatchdog(qNum) {
+    if (this.nextQuestionWatchdog) clearTimeout(this.nextQuestionWatchdog);
+    this.nextQuestionWatchdog = setTimeout(() => {
+      this.nextQuestionWatchdog = null;
+      if (this.interviewEnded || this.closed || this.inFollowUpFor !== qNum || this.awaitingAnswer) return;
+      const fallback =
+        `Could you walk me through a specific example related to your previous answer on question ${qNum}?`;
+      this.commitQuestionText(qNum, fallback, { follow_up: true });
+    }, 12000);
+  }
+
+  proceedToNextQuestion(aNum, nextQ) {
     this.modelBuf = '';
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];
@@ -596,10 +724,55 @@ export class GeminiLiveBridge {
     this.scheduleNextQuestionWatchdog(nextQ);
   }
 
+  handleCandidateSilent({ stage } = {}) {
+    if (!this.awaitingAnswer || this.interviewEnded || this.closed) return;
+    if (!this.userTurnActive) return;
+
+    if (stage === 'auto_submit') {
+      void this.completeAnswerTurn();
+      return;
+    }
+
+    if (this.silenceNudgeCount >= 1) return;
+    this.silenceNudgeCount += 1;
+    const text = "Take your time — when you're ready, please share your thoughts.";
+    this.onEvent({ type: 'silence_nudge', text, stage: 'nudge' });
+    this.playInterviewerNudge(text);
+  }
+
+  playInterviewerNudge(nudgeText) {
+    if (this.inNudgePlayback || !this.geminiWs || this.geminiWs.readyState !== WebSocket.OPEN) return;
+    this.inNudgePlayback = true;
+    this.blockModelOutput = false;
+    this.allowModelAudio = true;
+    this.sendClientText(
+      `[INTERVIEWER NUDGE — the candidate has been silent for 5 seconds. Say ONLY this one warm professional English sentence, nothing else: "${nudgeText}"]`,
+      true
+    );
+  }
+
   emitQuestionFromBuffer() {
     let modelText = sanitizeTranscript(this.modelBuf, 'model');
     this.modelBuf = '';
     if (!modelText) return;
+
+    if (this.inFollowUpFor) {
+      const qNum = this.inFollowUpFor;
+      const streamed = this.streamingQuestionNum === qNum ? this.streamingQuestionText : '';
+      modelText = resolveCommittedQuestionText(streamed, modelText);
+      if (this.questions.length >= qNum) {
+        this.questions[qNum - 1] = modelText;
+      } else {
+        while (this.questions.length < qNum - 1) this.questions.push('');
+        this.questions.push(modelText);
+      }
+      this.roundQuestionEmitted = true;
+      this.clearNextQuestionWatchdog();
+      this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
+      this.onEvent({ type: 'question', number: qNum, text: modelText, follow_up: true });
+      this.emitAwaitingAnswer(qNum, modelText);
+      return;
+    }
 
     const expectedQ = this.questions.length + 1;
     const streamed = this.streamingQuestionNum === expectedQ ? this.streamingQuestionText : '';
@@ -726,6 +899,7 @@ export class GeminiLiveBridge {
     this.userTurnActive = true;
     this.userBuf = '';
     this.lateUserBuf = '';
+    this.silenceNudgeCount = 0;
     this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
   }
 

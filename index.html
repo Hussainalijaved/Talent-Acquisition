@@ -1670,6 +1670,8 @@
             const [isInterviewerSpeaking, setIsInterviewerSpeaking] = React.useState(false);
             const [answerTimerActive, setAnswerTimerActive] = React.useState(false);
             const [saveNotice, setSaveNotice] = React.useState('');
+            const [silenceHint, setSilenceHint] = React.useState('');
+            const [followUpActive, setFollowUpActive] = React.useState(false);
             const liveQuestionCaptionRef = React.useRef('');
             const defaultAnswerSeconds = Number(context?.speech_answer_seconds || context?.config?.speech_answer_seconds || 120);
             const [questionTimeLimit, setQuestionTimeLimit] = React.useState(defaultAnswerSeconds);
@@ -1791,7 +1793,7 @@
                                 setTurn((prev) => Math.max(Number(prev) || 0, capped));
                                 if (m) setMaxTurns(m);
                             },
-                            onQuestion: ({ number, text, partial }) => {
+                            onQuestion: ({ number, text, partial, follow_up }) => {
                                 const clean = cleanText(text, 'model');
                                 if (partial) {
                                     setIsInterviewerSpeaking(true);
@@ -1807,6 +1809,21 @@
                                 setIsInterviewerSpeaking(false);
                                 setSavingAnswer(false);
                                 setLiveCaption('');
+                                setFollowUpActive(!!follow_up);
+                            },
+                            onFollowUpProbe: () => {
+                                setFollowUpActive(true);
+                                setSavingAnswer(false);
+                                setCanAnswer(false);
+                                setIsAnswering(false);
+                                setSilenceHint('');
+                            },
+                            onSilenceNudge: ({ stage, text }) => {
+                                if (stage === 'auto_submit') {
+                                    setSilenceHint('No response detected — submitting your answer…');
+                                    return;
+                                }
+                                setSilenceHint(text || 'The interviewer is encouraging you to speak…');
                             },
                             onAnswer: ({ number, text }) => {
                                 setAnswerForQuestion(number, text);
@@ -1816,6 +1833,7 @@
                                 setLiveCaption('');
                                 setAnswerTimerActive(false);
                                 setTimeLeft(null);
+                                setSilenceHint('');
                             },
                             onAwaitingAnswer: ({ time_limit_seconds }) => {
                                 const limit = Number(time_limit_seconds);
@@ -1831,6 +1849,7 @@
                                 setIsInterviewerSpeaking(false);
                                 setAnswerTimerActive(true);
                                 setTimeLeft(nextLimit);
+                                setSilenceHint('');
                             },
                             onTimeLimitUpdate: ({ time_limit_seconds }) => {
                                 const limit = Number(time_limit_seconds);
@@ -1845,6 +1864,7 @@
                             onMicOpen: () => {
                                 setIsAnswering(true);
                                 setCanAnswer(true);
+                                setSilenceHint('');
                             },
                             onNextQuestionReady: ({ number }) => {
                                 setSavingAnswer(false);
@@ -2064,14 +2084,20 @@
                                             Question {voiceStep}
                                         </h1>
                                         <p className="text-sm text-slate-500 mt-1">
-                                            {isAnswering
+                                            {silenceHint
+                                                ? silenceHint
+                                                : isAnswering
                                                 ? 'Mic open — speak clearly in English, then submit'
+                                                : savingAnswer && followUpActive
+                                                ? 'Follow-up recorded — preparing next step…'
                                                 : savingAnswer && cards[cards.length - 1]?.answer
                                                 ? 'Answer recorded — preparing the next question…'
                                                 : savingAnswer
                                                 ? 'Saving your answer — please wait…'
                                                 : canAnswer
                                                 ? 'Mic will open when the interviewer finishes'
+                                                : followUpActive
+                                                ? 'Listen to the follow-up question'
                                                 : 'Listen to the interviewer'}
                                         </p>
                                     </div>
@@ -2133,7 +2159,10 @@
                                                 <div className="relative z-10">
                                                     <div className="flex items-center gap-2 mb-3">
                                                         <span className="flex h-5 w-5 items-center justify-center rounded-md bg-indigo-600 text-[9px] font-bold text-white">{qNum}</span>
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Interviewer · Question {qNum} of {maxTurns}</p>
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">
+                                                            Interviewer · Question {qNum} of {maxTurns}
+                                                            {followUpActive ? ' · Follow-up' : ''}
+                                                        </p>
                                                         {isInterviewerSpeaking && (
                                                             <span className="flex gap-0.5 items-end h-3.5 ml-1">
                                                                 <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '50%', animationDelay: '0ms' }} />
@@ -2194,11 +2223,16 @@
                                                             {recording ? 'Recording — tap to submit' : 'Tap to start recording'}
                                                         </p>
                                                         {recording && (
-                                                            <div className="flex items-center gap-1.5 mt-2">
-                                                                <span className={`w-2 h-2 rounded-full animate-pulse ${micLevel > 0.05 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                                                                <span className={`text-xs ${micLevel > 0.05 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                                    {micLevel > 0.05 ? 'Receiving audio' : 'Waiting for voice…'}
-                                                                </span>
+                                                            <div className="flex flex-col items-center gap-1.5 mt-2">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className={`w-2 h-2 rounded-full animate-pulse ${micLevel > 0.05 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                                    <span className={`text-xs ${micLevel > 0.05 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                                        {micLevel > 0.05 ? 'Receiving audio' : 'Waiting for voice…'}
+                                                                    </span>
+                                                                </div>
+                                                                {silenceHint ? (
+                                                                    <p className="text-xs text-amber-700 text-center max-w-xs">{silenceHint}</p>
+                                                                ) : null}
                                                             </div>
                                                         )}
                                                     </div>

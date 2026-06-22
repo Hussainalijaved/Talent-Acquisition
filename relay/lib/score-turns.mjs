@@ -618,6 +618,22 @@ export async function vercelSaveTurn(context, turn) {
   return json;
 }
 
+export function resolveCompleteWebhookUrl(context = {}) {
+  const cfg = context.config && typeof context.config === 'object' ? context.config : {};
+  const direct = String(
+    context.live_complete_webhook ||
+      process.env.LIVE_COMPLETE_WEBHOOK ||
+      cfg.live_complete_webhook ||
+      ''
+  ).trim();
+  if (direct) return direct;
+
+  const n8nBase = String(context.n8n_public_url || cfg.n8n_public_url || '').trim().replace(/\/+$/, '');
+  if (n8nBase) return `${n8nBase}/webhook/talent/live-speech-complete`;
+
+  return '';
+}
+
 export async function vercelSaveFinal(context, scoredTurns, {
   combinedSpeechScore = 0,
   finalFeedback = '',
@@ -627,18 +643,29 @@ export async function vercelSaveFinal(context, scoredTurns, {
   const url = getVercelSaveUrl(context);
   if (!url) throw new Error('vercelSaveFinal: live_save_url / portal_base_url not set in context');
 
+  const completeWebhook = resolveCompleteWebhookUrl(context);
+  const n8nPublic = String(
+    context.n8n_public_url ||
+      context.config?.n8n_public_url ||
+      (completeWebhook ? completeWebhook.replace(/\/webhook\/talent\/live-speech-complete\/?$/i, '') : '')
+  ).trim();
+
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       partial: false,
       session_id: String(context.session_id || ''),
+      email: String(context.candidate_email || ''),
+      candidate_email: String(context.candidate_email || ''),
       max_questions: Number(context.max_questions || 5),
       turns: scoredTurns,
       combined_speech_score: combinedSpeechScore,
       final_feedback: finalFeedback,
       duration_seconds: durationSeconds,
       tab_switches: tabSwitches,
+      live_complete_webhook: completeWebhook,
+      n8n_public_url: n8nPublic,
     }),
   });
   const text = await res.text();
@@ -722,11 +749,22 @@ export async function directSaveToSupabase(context, scoredTurns, {
   await patchSessionRow(cfg, patch);
 
   console.log(`[relay] directSave OK — session ${cfg.sessionId} | combined=${combined} | result=${result}`);
-  return { ok: true, combined, result, speechAvg, techAvg, feedback: feedbackLine };
+  return {
+    ok: true,
+    combined,
+    result,
+    speechAvg,
+    techAvg,
+    technical_score: techAvg,
+    speech_score: speechAvg,
+    score: combined,
+    feedback: feedbackLine,
+    complete_webhook_ok: false,
+  };
 }
 
 export async function postCompleteWebhook(context, payload) {
-  const url = String(context.live_complete_webhook || process.env.LIVE_COMPLETE_WEBHOOK || '').trim();
+  const url = resolveCompleteWebhookUrl(context);
   if (!url) {
     // This is always a misconfiguration — fail loudly so relay logs show it.
     throw new Error(

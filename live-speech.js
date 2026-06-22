@@ -7,6 +7,9 @@
 
   const INPUT_RATE = 16000;
   const OUTPUT_RATE = 24000;
+  const SPEECH_LEVEL_THRESHOLD = 0.05;
+  const DEFAULT_SILENCE_NUDGE_MS = 5000;
+  const DEFAULT_SILENCE_AUTO_SUBMIT_MS = 5000;
 
   function floatTo16BitPcm(float32) {
     const out = new Int16Array(float32.length);
@@ -70,6 +73,8 @@
       this.onNextQuestionReady = options.onNextQuestionReady || (() => {});
       this.onPrematureClosing = options.onPrematureClosing || (() => {});
       this.onMicOpen = options.onMicOpen || (() => {});
+      this.onSilenceNudge = options.onSilenceNudge || (() => {});
+      this.onFollowUpProbe = options.onFollowUpProbe || (() => {});
       this.onError = options.onError || (() => {});
       this.tabSwitches = Number(options.tabSwitches || 0);
 
@@ -87,6 +92,65 @@
       this.processingAnswer = false;
       this.autoEndTimer = null;
       this.micOpenTimer = null;
+      this.silenceTimer = null;
+      this.lastSpeechAt = 0;
+      this.silenceNudged = false;
+      this.silenceNudgeAt = 0;
+      this.silenceNudgeMs = DEFAULT_SILENCE_NUDGE_MS;
+      this.silenceAutoSubmitMs = DEFAULT_SILENCE_AUTO_SUBMIT_MS;
+      this.allowInterviewerDuringAnswer = false;
+    }
+
+    clearSilenceMonitoring() {
+      if (this.silenceTimer) {
+        clearInterval(this.silenceTimer);
+        this.silenceTimer = null;
+      }
+      this.silenceNudged = false;
+      this.silenceNudgeAt = 0;
+    }
+
+    startSilenceMonitoring() {
+      this.clearSilenceMonitoring();
+      const cfg = this.context?.config || this.context || {};
+      const nudgeSec = Number(cfg.silence_nudge_seconds ?? this.context?.silence_nudge_seconds ?? 5);
+      const autoSec = Number(cfg.silence_auto_submit_seconds ?? this.context?.silence_auto_submit_seconds ?? 5);
+      this.silenceNudgeMs = Number.isFinite(nudgeSec) && nudgeSec > 0 ? nudgeSec * 1000 : DEFAULT_SILENCE_NUDGE_MS;
+      this.silenceAutoSubmitMs = Number.isFinite(autoSec) && autoSec > 0 ? autoSec * 1000 : DEFAULT_SILENCE_AUTO_SUBMIT_MS;
+      this.lastSpeechAt = Date.now();
+      this.silenceTimer = setInterval(() => this.tickSilence(), 500);
+    }
+
+    tickSilence() {
+      if (!this.answering || this.processingAnswer || this.ended || this.interviewEnded) return;
+      const now = Date.now();
+      const sinceSpeech = now - this.lastSpeechAt;
+
+      if (!this.silenceNudged && sinceSpeech >= this.silenceNudgeMs) {
+        this.silenceNudged = true;
+        this.silenceNudgeAt = now;
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: 'candidate_silent', stage: 'nudge' }));
+        }
+        this.onSilenceNudge?.({ stage: 'nudge', silentMs: sinceSpeech });
+        return;
+      }
+
+      if (this.silenceNudged && now - this.silenceNudgeAt >= this.silenceAutoSubmitMs) {
+        this.clearSilenceMonitoring();
+        this.onSilenceNudge?.({ stage: 'auto_submit', silentMs: sinceSpeech });
+        this.submitAnswer();
+      }
+    }
+
+    markSpeechActivity(level) {
+      if (level > SPEECH_LEVEL_THRESHOLD) {
+        this.lastSpeechAt = Date.now();
+        if (this.silenceNudged) {
+          this.silenceNudged = false;
+          this.silenceNudgeAt = 0;
+        }
+      }
     }
 
     cancelMicOpen() {
@@ -125,6 +189,7 @@
     forceEndAnswer() {
       if (!this.answering) return;
       this.answering = false;
+      this.clearSilenceMonitoring();
       this.onLevel(0);
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'user_turn_end' }));
@@ -139,6 +204,7 @@
         this.ws.send(JSON.stringify({ type: 'user_turn_start' }));
       }
       this.onMicOpen();
+      this.startSilenceMonitoring();
       this.setStatus('Listening — speak your answer now');
     }
 
@@ -147,6 +213,7 @@
       if (!this.answering) return;
       this.answering = false;
       this.processingAnswer = true;
+      this.clearSilenceMonitoring();
       this.onLevel(0);
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'user_turn_end' }));
@@ -263,14 +330,30 @@
         this.cancelMicOpen();
         this.forceEndAnswer();
         this.processingAnswer = false;
-        this.onQuestion({ number: msg.number, text: msg.text, partial: false });
+        this.onQuestion({ number: msg.number, text: msg.text, partial: false, follow_up: !!msg.follow_up });
       }
       if (msg.type === 'answer') {
-        this.onAnswer({ number: msg.number, text: msg.text });
+        this.onAnswer({ number: msg.number, text: msg.text, follow_up: !!msg.follow_up });
       }
       if (msg.type === 'saving_turn') {
         this.processingAnswer = true;
-        this.setStatus(`Answer ${msg.number} captured — saving in background…`);
+        this.setStatus(
+          msg.follow_up
+            ? `Follow-up answer ${msg.number} captured — saving…`
+            : `Answer ${msg.number} captured — saving in background…`
+        );
+      }
+      if (msg.type === 'follow_up_probe') {
+        this.processingAnswer = false;
+        this.onFollowUpProbe?.({ number: msg.number, maxTurns: msg.maxTurns });
+        this.setStatus(`Follow-up on question ${msg.number} — listen to the interviewer…`);
+      }
+      if (msg.type === 'silence_nudge') {
+        this.allowInterviewerDuringAnswer = true;
+        setTimeout(() => {
+          this.allowInterviewerDuringAnswer = false;
+        }, 10000);
+        this.onSilenceNudge?.({ stage: msg.stage || 'nudge', text: msg.text });
       }
       if (msg.type === 'next_question_ready') {
         this.cancelMicOpen();
@@ -281,12 +364,18 @@
       }
       if (msg.type === 'turn_saved_status') {
         this.onTurn({ savedStatus: { number: msg.number, saved: !!msg.saved, error: msg.error } });
-        // Whether or not DB save succeeded, the relay is about to ask the next question.
-        this.processingAnswer = false;
-        if (msg.saved) {
-          this.setStatus(`Answer ${msg.number} saved — the interviewer will ask the next question…`);
+        if (msg.follow_up) {
+          this.setStatus(
+            msg.saved
+              ? `Follow-up saved — the interviewer will continue…`
+              : `Follow-up recorded — the interviewer will continue…`
+          );
         } else {
-          this.setStatus(`Answer ${msg.number} recorded — the interviewer will ask the next question…`);
+          this.setStatus(
+            msg.saved
+              ? `Answer ${msg.number} saved — preparing next step…`
+              : `Answer ${msg.number} recorded — preparing next step…`
+          );
         }
       }
       if (msg.type === 'awaiting_answer') {
@@ -310,9 +399,8 @@
         });
       }
       if (msg.type === 'output_audio' && msg.data) {
-        // Only block interviewer audio while the candidate's mic is open.
-        // Do NOT block during save — that was preventing Q2+ voice from playing.
-        if (this.answering) return;
+        // Allow interviewer nudge audio while mic is open; block normal question audio.
+        if (this.answering && !this.allowInterviewerDuringAnswer) return;
         if (!this.answering) this.setStatus('Interviewer is speaking…');
         this.enqueuePlayback(msg.data, msg.mimeType || `audio/pcm;rate=${OUTPUT_RATE}`);
       }
@@ -397,7 +485,9 @@
         const input = e.inputBuffer.getChannelData(0);
         let sum = 0;
         for (let i = 0; i < input.length; i += 1) sum += Math.abs(input[i]);
-        this.onLevel(Math.min(1, (sum / input.length) * 8));
+        const level = Math.min(1, (sum / input.length) * 8);
+        this.markSpeechActivity(level);
+        this.onLevel(level);
 
         const down = downsample(input, inRate, INPUT_RATE);
         const pcm = floatTo16BitPcm(down);

@@ -64,6 +64,18 @@ SESSION FLOW (critical):
 SCORING (internal only — never say scores aloud):
 - After each answer, mentally score 0-100 on relevance, clarity, confidence, professionalism.
 
+SILENCE & ENGAGEMENT:
+- If the candidate is silent, the system may prompt them to speak. When prompted, say ONE short encouraging sentence only (e.g. "Take your time — please share your thoughts when you're ready.").
+- Do NOT repeat the full question during a silence nudge.
+
+CROSS-QUESTIONING (follow-up):
+- When instructed to ask a follow-up, ask ONE short probe on the SAME topic so the candidate can clarify or give a concrete example.
+- Follow-ups do NOT count as a new numbered question — stay on the same question number until the follow-up is answered.
+
+COACHING (weak answers):
+- When moving to the next question after a weak answer, you may give ONE brief supportive coaching line before the next question (never mention scores or failure).
+- Example tone: "That's okay — try to use a specific example next time." Then ask the next question.
+
 QUESTION STYLE:
 - Conceptual, scenario, and behavioural questions relevant to the role. Avoid yes/no questions.
 - Spread across these themes (one per question): communication under pressure, motivation for this role, collaboration and teamwork, handling setbacks or conflict, growth mindset and self-reflection.
@@ -111,6 +123,12 @@ return [
       max_questions: maxQ,
             speech_phases: speechTurns,
       speech_answer_seconds: Number(cfg.speech_answer_seconds || sessCfg.speech_answer_seconds || 120),
+      silence_nudge_seconds: Number(cfg.silence_nudge_seconds || sessCfg.silence_nudge_seconds || 5),
+      silence_auto_submit_seconds: Number(cfg.silence_auto_submit_seconds || sessCfg.silence_auto_submit_seconds || 5),
+      weak_score_threshold: Number(cfg.weak_score_threshold || sessCfg.weak_score_threshold || 55),
+      coaching_score_threshold: Number(cfg.coaching_score_threshold || sessCfg.coaching_score_threshold || 60),
+      follow_up_enabled: cfg.follow_up_enabled !== false,
+      coaching_enabled: cfg.coaching_enabled !== false,
       current_phase: Number(session.current_phase || maxQ + 1),
       requisition_title: jdTitle,
       system_instruction: systemInstruction,
@@ -130,7 +148,10 @@ return [
         supabase_url: supabaseUrl,
         supabase_key: supabaseKey,
         portal_base_url: portalBase,
+        n8n_public_url: String(cfg.n8n_public_url || sessCfg.n8n_public_url || '').replace(/\/+$/, ''),
+        live_complete_webhook: completeWebhook,
       },
+      n8n_public_url: String(cfg.n8n_public_url || '').replace(/\/+$/, ''),
       session,
     },
   },

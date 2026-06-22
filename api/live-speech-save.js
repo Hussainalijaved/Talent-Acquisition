@@ -97,17 +97,38 @@ async function loadAppConfigValue(sbUrl, sbKey, key) {
     }
 }
 
-async function resolveLiveCompleteWebhook(sbUrl, sbKey) {
+function webhookFromN8nBase(base) {
+    const b = String(base || '').trim().replace(/\/+$/, '');
+    if (!b) return '';
+    return `${b}/webhook/talent/live-speech-complete`;
+}
+
+async function resolveLiveCompleteWebhook(sbUrl, sbKey, body = {}, session = {}) {
+    // Relay passes URL from live-speech-start (no Vercel env required).
+    const fromBody = String(body.live_complete_webhook || '').trim();
+    if (fromBody) return fromBody;
+
     const env = String(
         process.env.N8N_LIVE_COMPLETE_WEBHOOK || process.env.LIVE_COMPLETE_WEBHOOK || ''
     ).trim();
     if (env) return env;
 
+    const sessCfg = parseJsonSafe(session?.config, {});
+    const fromSessionDirect = String(sessCfg.live_complete_webhook || '').trim();
+    if (fromSessionDirect) return fromSessionDirect;
+
+    const fromSessionN8n = webhookFromN8nBase(sessCfg.n8n_public_url);
+    if (fromSessionN8n) return fromSessionN8n;
+
     const direct = await loadAppConfigValue(sbUrl, sbKey, 'live_complete_webhook');
     if (direct) return direct;
 
     const n8nBase = await loadAppConfigValue(sbUrl, sbKey, 'n8n_public_url');
-    if (n8nBase) return `${n8nBase.replace(/\/+$/, '')}/webhook/talent/live-speech-complete`;
+    const fromAppConfig = webhookFromN8nBase(n8nBase);
+    if (fromAppConfig) return fromAppConfig;
+
+    const fromBodyN8n = webhookFromN8nBase(body.n8n_public_url);
+    if (fromBodyN8n) return fromBodyN8n;
 
     return '';
 }
@@ -129,9 +150,11 @@ function speechTurnsFromHistory(history, maxQ) {
 async function triggerCompleteWebhook({
     sbUrl, sbKey, sessionId, session, history, finals, body, maxQ,
 }) {
-    const url = await resolveLiveCompleteWebhook(sbUrl, sbKey);
+    const url = await resolveLiveCompleteWebhook(sbUrl, sbKey, body, session);
     if (!url) {
-        console.warn('[live-speech-save] complete webhook URL not configured — set N8N_LIVE_COMPLETE_WEBHOOK or app_config.live_complete_webhook');
+        console.warn(
+            '[live-speech-save] complete webhook URL not configured — relay should pass live_complete_webhook on finalize, or set N8N_LIVE_COMPLETE_WEBHOOK / app_config.n8n_public_url'
+        );
         return false;
     }
 

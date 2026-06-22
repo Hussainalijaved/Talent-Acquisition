@@ -166,21 +166,21 @@ body.admin-body {
     box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.12);
 }
 
-/* ── Assessment portal (index.html) — light theme ── */
+/* ── Assessment portal (index.html) — light + violet theme ── */
 .app-bg {
-    background-color: #f0f4fa;
+    background-color: #f1f5fb;
     background-image:
-        radial-gradient(ellipse 100% 80% at 50% -30%, rgba(37, 99, 235, 0.06), transparent 55%),
-        radial-gradient(ellipse 60% 40% at 100% 50%, rgba(99, 102, 241, 0.04), transparent 50%);
+        radial-gradient(ellipse 100% 80% at 60% -30%, rgba(79, 70, 229, 0.07), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 0% 100%, rgba(37, 99, 235, 0.04), transparent 50%);
     background-attachment: fixed;
 }
 
 .app-bg > header,
 .app-bg header.sticky {
     backdrop-filter: blur(16px) saturate(1.25);
-    background: rgba(255, 255, 255, 0.88) !important;
-    border-bottom-color: rgba(226, 232, 240, 0.95) !important;
-    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+    background: rgba(255, 255, 255, 0.92) !important;
+    border-bottom-color: rgba(226, 232, 240, 0.9) !important;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04), 0 2px 8px rgba(79, 70, 229, 0.04);
 }
 
 .panel {
@@ -190,8 +190,8 @@ body.admin-body {
 
 .onboarding-hero {
     background: #ffffff;
-    border-color: rgba(226, 232, 240, 0.95);
-    box-shadow: 0 8px 40px -12px rgba(15, 23, 42, 0.1);
+    border-color: rgba(199, 210, 254, 0.7);
+    box-shadow: 0 12px 48px -12px rgba(79, 70, 229, 0.16), 0 0 0 1px rgba(79, 70, 229, 0.05);
 }
 
 .assessment-sidebar {
@@ -204,9 +204,9 @@ body.admin-body {
 }
 
 .phase-list-item.active {
-    border-color: rgba(37, 99, 235, 0.22) !important;
-    background: rgba(37, 99, 235, 0.06) !important;
-    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+    border-color: rgba(79, 70, 229, 0.22) !important;
+    background: rgba(79, 70, 229, 0.06) !important;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.08);
 }
 
 .phase-list-item.done {
@@ -214,7 +214,8 @@ body.admin-body {
 }
 
 .input-field:focus {
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    border-color: #4f46e5 !important;
 }
 
 .app-bg footer {
@@ -222,18 +223,21 @@ body.admin-body {
 }
 
 /* Assessment question workspace */
-.assessment-main .panel,
 .assessment-main textarea.input-field {
-    border-radius: 1rem;
-}
-
-.assessment-main textarea.input-field {
-    line-height: 1.65;
+    line-height: 1.7;
     min-height: 10rem;
+    font-size: 0.9375rem;
 }
 
-@media (min-width: 1024px) {
-    .assessment-main {
-        padding: 1.5rem 1.75rem 1.75rem;
-    }
+/* Timer ring — violet accent */
+.timer-ring-progress { stroke: #4f46e5 !important; }
+
+/* Scrollbar — subtle violet tint */
+.assessment-main::-webkit-scrollbar-thumb { background: #c7d2fe; }
+.assessment-main::-webkit-scrollbar-thumb:hover { background: #a5b4fc; }
+
+/* Submit button hover in the voice action bar */
+.voice-submit-pill {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
 }

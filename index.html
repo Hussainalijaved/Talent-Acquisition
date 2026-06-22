@@ -12,7 +12,7 @@
     <script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
@@ -21,27 +21,36 @@
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: { sans: ['"DM Sans"', 'system-ui', 'sans-serif'] },
+                    fontFamily: {
+                        sans: ['Inter', '"DM Sans"', 'system-ui', 'sans-serif'],
+                        display: ['Inter', '"DM Sans"', 'system-ui', 'sans-serif'],
+                    },
                     colors: {
                         surface: { DEFAULT: '#ffffff', elevated: '#f8fafc', border: '#e2e8f0', muted: '#f1f5f9' },
-                        accent: { DEFAULT: '#2563eb', hover: '#1d4ed8', muted: 'rgba(37, 99, 235, 0.08)' },
+                        accent: { DEFAULT: '#4f46e5', hover: '#4338ca', muted: 'rgba(79, 70, 229, 0.08)' },
+                        brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
                     },
                     boxShadow: {
-                        card: '0 4px 24px -4px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.04)',
-                        glow: '0 8px 32px -8px rgba(37, 99, 235, 0.22)',
+                        card: '0 4px 24px -4px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(15, 23, 42, 0.04)',
+                        glow: '0 8px 32px -8px rgba(79, 70, 229, 0.3)',
                         soft: '0 2px 12px rgba(15, 23, 42, 0.06)',
+                        hero: '0 20px 60px -12px rgba(79, 70, 229, 0.18)',
                     },
                     animation: {
                         'fade-up': 'fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards',
                         'scale-in': 'scaleIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards',
                         'slide-up': 'slideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards',
                         'float': 'float 4s ease-in-out infinite',
+                        'mic-ring': 'micRing 2s ease-out infinite',
+                        'mic-ring-2': 'micRing 2s ease-out 0.66s infinite',
+                        'mic-ring-3': 'micRing 2s ease-out 1.33s infinite',
                     },
                     keyframes: {
                         fadeUp: { from: { opacity: '0', transform: 'translateY(16px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
                         scaleIn: { from: { opacity: '0', transform: 'scale(0.94)' }, to: { opacity: '1', transform: 'scale(1)' } },
                         slideUp: { from: { opacity: '0', transform: 'translateY(24px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
                         float: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-6px)' } },
+                        micRing: { '0%': { transform: 'scale(1)', opacity: '0.7' }, '100%': { transform: 'scale(2.8)', opacity: '0' } },
                     },
                 },
             },
@@ -49,12 +58,14 @@
     </script>
     <style>
         :root {
-            --bg: #f0f4fa;
+            --bg: #f1f5fb;
             --text: #0f172a;
             --muted: #64748b;
             --surface: #ffffff;
             --border: #e2e8f0;
-            --accent: #2563eb;
+            --accent: #4f46e5;
+            --accent-blue: #2563eb;
+            --font-main: 'Inter', 'DM Sans', system-ui, sans-serif;
         }
 
         * { box-sizing: border-box; }
@@ -67,7 +78,7 @@
         }
 
         body {
-            font-family: 'DM Sans', system-ui, sans-serif;
+            font-family: var(--font-main);
             background: var(--bg);
             color: var(--text);
             width: 100%;
@@ -77,6 +88,7 @@
             overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+            font-feature-settings: 'cv11', 'ss01';
         }
 
         #root {
@@ -98,8 +110,8 @@
         .app-bg {
             background-color: var(--bg);
             background-image:
-                radial-gradient(ellipse 90% 60% at 100% -10%, rgba(37, 99, 235, 0.07), transparent 55%),
-                radial-gradient(ellipse 70% 50% at 0% 100%, rgba(99, 102, 241, 0.05), transparent 50%);
+                radial-gradient(ellipse 90% 60% at 100% -10%, rgba(79, 70, 229, 0.07), transparent 55%),
+                radial-gradient(ellipse 70% 50% at 0% 100%, rgba(37, 99, 235, 0.05), transparent 50%);
             background-attachment: fixed;
         }
 
@@ -116,33 +128,35 @@
 
         .input-field {
             background: #ffffff;
-            border: 1px solid var(--border);
+            border: 1.5px solid var(--border);
             color: #0f172a;
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
             -webkit-user-select: text;
             user-select: text;
+            font-family: var(--font-main);
         }
 
         .input-field::placeholder { color: #94a3b8; }
 
         .input-field:focus {
             outline: none;
-            border-color: #2563eb;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
         }
 
         .btn-primary {
-            background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 50%, #4338ca 100%);
             color: #fff;
             font-weight: 600;
+            font-family: var(--font-main);
             letter-spacing: 0.01em;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(37, 99, 235, 0.22);
-            transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(79, 70, 229, 0.28);
+            transition: all 0.15s ease;
         }
 
         .btn-primary:hover:not(:disabled) {
-            background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
-            box-shadow: 0 4px 18px rgba(37, 99, 235, 0.28);
+            background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+            box-shadow: 0 6px 22px rgba(79, 70, 229, 0.38);
             transform: translateY(-1px);
         }
 
@@ -150,16 +164,17 @@
 
         .btn-secondary {
             background: #ffffff;
-            border: 1px solid var(--border);
+            border: 1.5px solid var(--border);
             color: #475569;
             font-weight: 500;
-            transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+            font-family: var(--font-main);
+            transition: all 0.15s ease;
         }
 
         .btn-secondary:hover:not(:disabled) {
-            border-color: #cbd5e1;
-            background: #f8fafc;
-            color: #0f172a;
+            border-color: #c7d2fe;
+            background: #f5f3ff;
+            color: #4338ca;
             box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
         }
 
@@ -167,9 +182,9 @@
             display: inline-flex;
             align-items: center;
             gap: 0.35rem;
-            padding: 0.25rem 0.65rem;
+            padding: 0.3rem 0.75rem;
             font-size: 0.6875rem;
-            font-weight: 600;
+            font-weight: 700;
             letter-spacing: 0.06em;
             text-transform: uppercase;
             border-radius: 9999px;
@@ -177,9 +192,9 @@
         }
 
         .badge-accent {
-            background: rgba(37, 99, 235, 0.08);
-            border-color: rgba(37, 99, 235, 0.18);
-            color: #1d4ed8;
+            background: rgba(79, 70, 229, 0.08);
+            border-color: rgba(79, 70, 229, 0.2);
+            color: #4338ca;
         }
 
         .badge-success {
@@ -196,9 +211,9 @@
 
         .onboarding-hero {
             background: #ffffff;
-            border: 1px solid var(--border);
-            border-radius: 1.25rem;
-            box-shadow: 0 8px 40px -12px rgba(15, 23, 42, 0.12);
+            border: 1px solid #e0e7ff;
+            border-radius: 1.5rem;
+            box-shadow: 0 8px 40px -12px rgba(79, 70, 229, 0.14), 0 0 0 1px rgba(79, 70, 229, 0.04);
         }
 
         .fade-in { animation: fadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
@@ -208,12 +223,100 @@
         .stagger-4 { animation: fadeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.28s both; }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
+            from { opacity: 0; transform: translateY(12px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* ─── Login hero left panel ─────────────────────────────────── */
+        .login-hero-panel {
+            background: linear-gradient(145deg, #4f46e5 0%, #6366f1 40%, #818cf8 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-hero-panel::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(255,255,255,0.15), transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(99,102,241,0.4), transparent 50%);
+            pointer-events: none;
+        }
+
+        .login-hero-panel::after {
+            content: '';
+            position: absolute;
+            bottom: -40px;
+            right: -40px;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.06);
+            pointer-events: none;
+        }
+
+        /* ─── Mic pulse rings ───────────────────────────────────────── */
+        .mic-btn-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mic-ring {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(79, 70, 229, 0.18);
+            pointer-events: none;
+        }
+
+        .mic-ring-1 { width: 80px; height: 80px; animation: micRipple 2s ease-out infinite; }
+        .mic-ring-2 { width: 80px; height: 80px; animation: micRipple 2s ease-out 0.65s infinite; }
+        .mic-ring-3 { width: 80px; height: 80px; animation: micRipple 2s ease-out 1.3s infinite; }
+
+        @keyframes micRipple {
+            0%   { transform: scale(1);   opacity: 0.7; }
+            100% { transform: scale(3.0); opacity: 0; }
+        }
+
+        .mic-btn-active .mic-ring {
+            background: rgba(16, 185, 129, 0.2);
+        }
+
+        /* ─── Assessment question prominence ────────────────────────── */
+        .question-text {
+            font-size: 1.0625rem;
+            line-height: 1.7;
+            color: #0f172a;
+            font-weight: 450;
+            letter-spacing: -0.01em;
+        }
+
+        @media (min-width: 640px) {
+            .question-text { font-size: 1.125rem; }
+        }
+
+        /* ─── Live transcript streaming ─────────────────────────────── */
+        .transcript-stream {
+            font-size: 1rem;
+            line-height: 1.75;
+            color: #1e293b;
+            font-weight: 400;
+        }
+
+        .transcript-stream .word-new {
+            animation: wordAppear 0.2s ease-out both;
+        }
+
+        @keyframes wordAppear {
+            from { opacity: 0; transform: translateY(4px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ─── result + review ───────────────────────────────────────── */
         .result-hero-gradient {
-            background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 50%, #ffffff 100%);
+            background: linear-gradient(135deg, #eef2ff 0%, #f0fdf4 55%, #ffffff 100%);
         }
 
         .review-card {
@@ -222,7 +325,16 @@
 
         .review-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.1);
+            box-shadow: 0 12px 32px -8px rgba(79, 70, 229, 0.12);
+        }
+
+        /* ─── Instructions step cards ───────────────────────────────── */
+        .rule-card {
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+        .rule-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px -4px rgba(79, 70, 229, 0.12);
         }
 
         .assessment-lock, .portal-lock {
@@ -251,8 +363,8 @@
             user-select: none;
         }
 
-        .timer-ring-track { stroke: #e2e8f0; }
-        .timer-ring-progress { stroke: #2563eb; transition: stroke-dashoffset 1s linear; }
+        .timer-ring-track { stroke: #e0e7ff; }
+        .timer-ring-progress { stroke: #4f46e5; transition: stroke-dashoffset 1s linear; }
         .timer-ring-progress.low { stroke: #f59e0b; }
         .timer-ring-progress.critical { stroke: #ef4444; }
 
@@ -678,7 +790,7 @@
                 <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/85 backdrop-blur-xl w-full shadow-sm">
                     <div className={`w-full h-16 flex items-center justify-between gap-3 ${fullWidth ? 'px-4 lg:px-5' : 'max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8'}`}>
                         <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-glow animate-scale-in">
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-glow animate-scale-in">
                                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                                 </svg>
@@ -722,7 +834,7 @@
             const progClass = critical ? 'timer-ring-progress critical' : low ? 'timer-ring-progress low' : 'timer-ring-progress';
             const mm = seconds != null ? `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}` : '—';
             const wrapClass = prominent
-                ? 'flex items-center gap-3 shrink-0 rounded-xl border border-blue-100 bg-white px-3.5 py-2.5 shadow-soft animate-scale-in'
+                ? 'flex items-center gap-3 shrink-0 rounded-xl border border-violet-100 bg-white px-3.5 py-2.5 shadow-soft animate-scale-in'
                 : compact
                 ? 'flex items-center gap-2.5 shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm'
                 : 'flex items-center gap-4 panel rounded-xl px-5 py-3 shrink-0';
@@ -903,9 +1015,9 @@
                         <span className="text-slate-400 text-xl font-semibold"> / {totalSteps}</span>
                     </p>
                     <p className="text-sm text-slate-500 mt-2">{sessionLabel}</p>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-4">
+                    <div className="h-1.5 bg-violet-100 rounded-full overflow-hidden mt-4">
                         <div
-                            className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500 ease-out"
+                            className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-500 ease-out"
                             style={{ width: `${pct}%` }}
                         />
                     </div>
@@ -927,7 +1039,7 @@
                                     aria-current={active ? 'step' : undefined}
                                 >
                                     <span
-                                        className={`phase-list-num ${active ? 'bg-blue-600 text-white shadow-sm' : done ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}
+                                        className={`phase-list-num ${active ? 'bg-violet-600 text-white shadow-sm' : done ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}
                                     >
                                         {done ? (
                                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -941,7 +1053,7 @@
                                         <p className={`text-sm font-semibold leading-tight ${active ? 'text-slate-900' : 'text-slate-600'}`}>
                                             {questionLabel} {p}
                                         </p>
-                                        <p className={`text-xs mt-1 ${active ? 'text-blue-600' : 'text-slate-400'}`}>{statusLabel}</p>
+                                        <p className={`text-xs mt-1 ${active ? 'text-violet-600' : 'text-slate-400'}`}>{statusLabel}</p>
                                     </div>
                                 </li>
                             );
@@ -1051,6 +1163,12 @@
                 }
             };
 
+            const features = [
+                { icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z', label: 'Proctored & Secure', desc: 'Fullscreen enforcement with integrity monitoring' },
+                { icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'AI-Timed Questions', desc: 'Each question adapts to its complexity level' },
+                { icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z', label: 'Two-Phase Assessment', desc: 'Written technical + live voice interview' },
+            ];
+
             const steps = [
                 { t: 'Guidelines', d: 'Short checklist before timed questions.' },
                 { t: 'Phases', d: 'Answer each prompt; stay in this tab.' },
@@ -1059,80 +1177,119 @@
 
             return (
                 <Shell subtitle="Candidate access" footerNote="Encrypted session · Proctored environment · Do not share your session ID">
-                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in portal-lock">
-                        <div className="onboarding-hero max-w-lg w-full rounded-2xl p-8 sm:p-10">
-                            <p className="badge badge-accent mb-4">Enterprise screening</p>
-                            <div className="flex items-start gap-3 mb-4">
-                                <div className="h-10 w-10 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0">
-                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                                    </svg>
+                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 sm:p-8 fade-in portal-lock">
+                        <div className="onboarding-hero w-full max-w-4xl overflow-hidden flex flex-col lg:flex-row">
+                            {/* Left hero panel */}
+                            <div className="login-hero-panel lg:w-2/5 p-8 sm:p-10 flex flex-col justify-between relative">
+                                <div className="relative z-10">
+                                    <div className="flex items-center gap-3 mb-8">
+                                        <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+                                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                            </svg>
+                                        </div>
+                                        <span className="text-white/90 font-semibold text-sm tracking-wide">CONVO · TALENT</span>
+                                    </div>
+                                    <h1 className="text-3xl sm:text-4xl font-bold text-white leading-tight mb-4">
+                                        Your assessment<br />starts here.
+                                    </h1>
+                                    <p className="text-white/75 text-sm leading-relaxed mb-8">
+                                        A professional two-phase evaluation designed to fairly assess your technical skills and communication abilities.
+                                    </p>
+                                    <div className="space-y-4">
+                                        {features.map((f, i) => (
+                                            <div key={i} className="flex items-start gap-3.5">
+                                                <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center shrink-0 mt-0.5">
+                                                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={f.icon} />
+                                                    </svg>
+                                                </div>
+                                                <div>
+                                                    <p className="text-white font-semibold text-sm">{f.label}</p>
+                                                    <p className="text-white/65 text-xs mt-0.5 leading-relaxed">{f.desc}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div>
-                                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-tight">Welcome</h1>
-                                    <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-                                        Enter the session ID from your invitation email. You will review how the two-phase assessment works, then begin Phase 1 (written technical questions) in fullscreen.
+                                <div className="relative z-10 mt-8 pt-6 border-t border-white/15">
+                                    <p className="text-white/50 text-xs leading-relaxed">
+                                        Your session is encrypted and proctored. Do not share your session ID.
                                     </p>
                                 </div>
                             </div>
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 mb-6">
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">What happens next</p>
-                                <ul className="space-y-2.5">
-                                    {steps.map((s, i) => (
-                                        <li key={i} className="flex gap-3 text-sm">
-                                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-blue-100 text-[10px] font-bold text-blue-700">
-                                                {i + 1}
-                                            </span>
-                                            <span>
-                                                <span className="font-medium text-slate-800">{s.t}</span>
-                                                <span className="text-slate-500"> — {s.d}</span>
-                                            </span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                            <form
-                                onSubmit={handleLoginSubmit}
-                                className="space-y-4"
-                            >
-                                {linkSessionReady && sessionId ? (
-                                    <div className="text-emerald-700 text-xs font-medium bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-1">
-                                        Session linked from your invitation. Confirm the ID below, then continue to guidelines.
-                                    </div>
-                                ) : null}
-                                <div>
-                                    <label htmlFor="session" className="block text-xs font-medium text-slate-600 mb-2">Session identifier</label>
-                                    <input
-                                        id="session"
-                                        required
-                                        autoComplete="off"
-                                        spellCheck="false"
-                                        className="input-field w-full px-4 py-3.5 rounded-xl text-sm font-mono"
-                                        placeholder="Paste your session ID"
-                                        value={sessionId}
-                                        onChange={(e) => setSessionId(e.target.value)}
-                                        disabled={localLoading}
-                                    />
+
+                            {/* Right form panel */}
+                            <div className="lg:w-3/5 p-8 sm:p-10 flex flex-col justify-center">
+                                <div className="mb-6">
+                                    <p className="badge badge-accent mb-4">Enterprise screening</p>
+                                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Welcome back</h2>
+                                    <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">
+                                        Enter the session ID from your invitation email to begin your assessment.
+                                    </p>
                                 </div>
-                                {errorMsg && (
-                                    <div className="text-red-600 text-xs font-medium bg-red-50 border border-red-200 rounded-lg p-3">
-                                        {errorMsg}
+
+                                <div className="rounded-xl border border-violet-100 bg-violet-50/50 p-4 mb-6">
+                                    <p className="text-[10px] font-bold text-violet-700 uppercase tracking-widest mb-3">What happens next</p>
+                                    <ul className="space-y-2.5">
+                                        {steps.map((s, i) => (
+                                            <li key={i} className="flex gap-3 text-sm items-start">
+                                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-[10px] font-bold text-white mt-0.5">
+                                                    {i + 1}
+                                                </span>
+                                                <span>
+                                                    <span className="font-semibold text-slate-800">{s.t}</span>
+                                                    <span className="text-slate-500"> — {s.d}</span>
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+
+                                <form onSubmit={handleLoginSubmit} className="space-y-4">
+                                    {linkSessionReady && sessionId ? (
+                                        <div className="text-emerald-700 text-xs font-medium bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                                            Session linked from your invitation. Confirm the ID below, then continue to guidelines.
+                                        </div>
+                                    ) : null}
+                                    <div>
+                                        <label htmlFor="session" className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Session identifier</label>
+                                        <input
+                                            id="session"
+                                            required
+                                            autoComplete="off"
+                                            spellCheck="false"
+                                            className="input-field w-full px-4 py-3.5 rounded-xl text-sm font-mono tracking-wide"
+                                            placeholder="Paste your session ID here"
+                                            value={sessionId}
+                                            onChange={(e) => setSessionId(e.target.value)}
+                                            disabled={localLoading}
+                                        />
                                     </div>
-                                )}
-                                <button type="submit" disabled={localLoading} className="btn-primary w-full py-3.5 rounded-xl text-sm flex items-center justify-center gap-2">
-                                    {localLoading ? (
-                                        <>
-                                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                            </svg>
-                                            Verifying...
-                                        </>
-                                    ) : (
-                                        'Continue to guidelines'
+                                    {errorMsg && (
+                                        <div className="text-red-600 text-xs font-medium bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                                            <svg className="w-3.5 h-3.5 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                                            {errorMsg}
+                                        </div>
                                     )}
-                                </button>
-                            </form>
+                                    <button type="submit" disabled={localLoading} className="btn-primary w-full py-4 rounded-xl text-sm flex items-center justify-center gap-2.5">
+                                        {localLoading ? (
+                                            <>
+                                                <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                </svg>
+                                                Verifying session…
+                                            </>
+                                        ) : (
+                                            <>
+                                                Continue to guidelines
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                                            </>
+                                        )}
+                                    </button>
+                                </form>
+                            </div>
                         </div>
                     </div>
                 </Shell>
@@ -1255,85 +1412,111 @@
             ];
             return (
                 <Shell subtitle="Guidelines & integrity" footerNote="By starting, you agree to proctored session rules below">
-                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in portal-lock">
-                        <div className="onboarding-hero max-w-2xl w-full rounded-2xl overflow-hidden">
-                            <div className="p-8 sm:p-10 border-b border-slate-100 bg-gradient-to-br from-blue-50/50 to-white">
-                                <p className="badge badge-accent mb-3">{isSpeechResume ? 'Phase 1 complete' : 'Before you begin'}</p>
-                                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-                                    {isSpeechResume ? 'Continue to Phase 2' : 'Two-phase assessment'}
-                                </h1>
-                                <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-                                    {introLead}
-                                </p>
-                                {isSpeechResume ? (
-                                    <p className="text-sm text-emerald-300/90 mt-3 rounded-lg border border-emerald-800/40 bg-emerald-950/25 px-4 py-3 leading-relaxed">
-                                        Phase 1 saved — {techCount} written questions completed. You are resuming at the voice communication round.
+                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 sm:p-8 fade-in portal-lock">
+                        <div className="onboarding-hero w-full max-w-3xl overflow-hidden">
+                            {/* Header */}
+                            <div className="p-8 sm:p-10 border-b border-violet-100 bg-gradient-to-br from-violet-50 via-indigo-50/40 to-white relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-violet-100/40 -translate-y-1/2 translate-x-1/4 pointer-events-none" />
+                                <div className="relative z-10">
+                                    <p className="badge badge-accent mb-4">{isSpeechResume ? 'Phase 1 complete' : 'Before you begin'}</p>
+                                    <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                                        {isSpeechResume ? 'Continue to Phase 2' : 'Two-phase assessment'}
+                                    </h1>
+                                    <p className="text-sm sm:text-base text-slate-600 mt-2.5 leading-relaxed max-w-xl">
+                                        {introLead}
                                     </p>
-                                ) : null}
-                                {sessionId ? (
-                                    <p className="text-xs text-slate-500 mt-3 break-all">
-                                        Session ID: <span className="text-slate-300 font-mono">{sessionId}</span>
-                                    </p>
-                                ) : null}
-                                <div className="mt-6 grid sm:grid-cols-2 gap-3 sm:gap-4">
-                                    <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-4 sm:px-5 sm:py-5">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700 mb-2">Phase 1</p>
-                                        <h2 className="text-base sm:text-lg font-semibold text-slate-900">Written technical assessment</h2>
-                                        <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                                            {techCount} questions · typed answers · timed per question
+                                    {isSpeechResume ? (
+                                        <p className="text-sm text-emerald-700 mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 leading-relaxed">
+                                            Phase 1 saved — {techCount} written questions completed. You are resuming at the voice communication round.
+                                        </p>
+                                    ) : null}
+                                    {sessionId ? (
+                                        <p className="text-xs text-slate-400 mt-3 break-all">
+                                            Session: <span className="text-slate-500 font-mono">{sessionId}</span>
+                                        </p>
+                                    ) : null}
+                                </div>
+                            </div>
+
+                            {/* Phase cards */}
+                            <div className="px-8 sm:px-10 pt-7 pb-5">
+                                <div className="grid sm:grid-cols-2 gap-4 mb-5">
+                                    <div className="rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-white p-5 relative overflow-hidden">
+                                        <div className="absolute top-3 right-3 w-14 h-14 rounded-full bg-violet-100/60 pointer-events-none" />
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-violet-700 mb-2">Phase 1</p>
+                                        <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">Written technical assessment</h2>
+                                        <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+                                            {techCount} questions · typed answers · AI-timed per question
                                         </p>
                                     </div>
-                                    <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-4 sm:px-5 sm:py-5">
+                                    <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 relative overflow-hidden">
+                                        <div className="absolute top-3 right-3 w-14 h-14 rounded-full bg-indigo-100/60 pointer-events-none" />
                                         <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-2">Phase 2</p>
-                                        <h2 className="text-base sm:text-lg font-semibold text-slate-900">Voice communication interview</h2>
-                                        <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                                            {speechCount} questions · speech-to-speech · microphone required
+                                        <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">Voice communication interview</h2>
+                                        <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+                                            {speechCount} questions · speech-to-speech · mic required
                                         </p>
                                     </div>
                                 </div>
-                                <div className="mt-5 flex flex-col sm:flex-row gap-3">
-                                    <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">You {isSpeechResume || isTechResume ? 'resume with' : 'start with'}</p>
-                                        <p className="text-sm text-slate-800 mt-0.5">{youStartWith}</p>
+                                <div className="flex flex-col sm:flex-row gap-3">
+                                    <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3.5 flex items-center gap-3">
+                                        <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+                                            <svg className="w-3.5 h-3.5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">You {isSpeechResume || isTechResume ? 'resume with' : 'start with'}</p>
+                                            <p className="text-sm font-medium text-slate-800">{youStartWith}</p>
+                                        </div>
                                     </div>
-                                    <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Help</p>
-                                        <p className="text-sm text-slate-800 mt-0.5">Contact your recruiter for access issues</p>
+                                    <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3.5 flex items-center gap-3">
+                                        <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                                            <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3v-3z" /></svg>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Help</p>
+                                            <p className="text-sm font-medium text-slate-800">Contact your recruiter for issues</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <div className="p-8 sm:p-10 space-y-3 bg-slate-50/50">
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Rules &amp; integrity</p>
-                                {rules.map((rule, i) => (
-                                    <div
-                                        key={i}
-                                        className="flex gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-slate-200 bg-white hover:shadow-soft transition-all duration-200"
-                                    >
-                                        <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 border border-blue-100 text-blue-600">
-                                            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                {rule.icon}
-                                            </svg>
+
+                            {/* Rules */}
+                            <div className="px-8 sm:px-10 py-5 bg-slate-50/60 border-t border-slate-100">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Rules &amp; integrity</p>
+                                <div className="grid sm:grid-cols-2 gap-3">
+                                    {rules.map((rule, i) => (
+                                        <div
+                                            key={i}
+                                            className="rule-card flex gap-3 p-3.5 rounded-xl border border-slate-200 bg-white"
+                                        >
+                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 border border-violet-100 text-violet-600">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                    {rule.icon}
+                                                </svg>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-bold text-slate-800 leading-snug">
+                                                    {rule.title}
+                                                </p>
+                                                <p className="text-xs text-slate-500 mt-1 leading-relaxed">{rule.body}</p>
+                                            </div>
                                         </div>
-                                        <div className="min-w-0 pt-0.5">
-                                            <p className="text-sm font-medium text-slate-900">
-                                                <span className="text-slate-400 font-normal tabular-nums mr-1.5">{i + 1}.</span>
-                                                {rule.title}
-                                            </p>
-                                            <p className="text-sm text-slate-600 mt-1 leading-relaxed">{rule.body}</p>
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
-                            <div className="px-8 sm:px-10 pb-8 sm:pb-10 pt-2 space-y-5">
+
+                            {/* Confirm + start */}
+                            <div className="px-8 sm:px-10 pb-8 sm:pb-10 pt-5 space-y-4">
                                 {sessionBlockMsg ? (
-                                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 leading-relaxed">
+                                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 leading-relaxed flex items-start gap-2">
+                                        <svg className="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
                                         {sessionBlockMsg}
                                     </div>
                                 ) : null}
-                                <label className={`flex items-start gap-3 group rounded-lg p-2 -m-2 transition-colors ${sessionBlockMsg ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50'}`}>
+                                <label className={`flex items-start gap-3 group rounded-xl p-3.5 border transition-all duration-150 ${agreed ? 'border-violet-200 bg-violet-50/60' : 'border-slate-200 bg-slate-50/50'} ${sessionBlockMsg ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-violet-200 hover:bg-violet-50/40'}`}>
                                     <input
                                         type="checkbox"
-                                        className="mt-0.5 w-4 h-4 rounded border-slate-300 bg-white text-blue-600 focus:ring-blue-500 focus:ring-offset-0 focus:ring-2 shrink-0"
+                                        className="mt-0.5 w-4 h-4 rounded border-slate-300 bg-white text-violet-600 focus:ring-violet-500 focus:ring-offset-0 focus:ring-2 shrink-0 accent-violet-600"
                                         checked={agreed}
                                         disabled={!!sessionBlockMsg}
                                         onChange={(e) => setAgreed(e.target.checked)}
@@ -1346,11 +1529,21 @@
                                     type="button"
                                     onClick={() => onStart()}
                                     disabled={!agreed || progressLoading || !!sessionBlockMsg}
-                                    className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent"
+                                    className="btn-primary w-full py-4 rounded-xl text-sm flex items-center justify-center gap-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
-                                    {startButtonLabel}
+                                    {progressLoading ? (
+                                        <>
+                                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                                            Checking your progress…
+                                        </>
+                                    ) : (
+                                        <>
+                                            {startButtonLabel}
+                                            {!sessionBlockMsg && agreed && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>}
+                                        </>
+                                    )}
                                 </button>
-                                <p className="text-xs text-center text-slate-600 leading-relaxed">
+                                <p className="text-xs text-center text-slate-500 leading-relaxed">
                                     {sessionBlockMsg
                                         ? 'Each assessment must be completed in one sitting. Contact your recruiter for assistance.'
                                         : 'Complete the assessment in one sitting — resuming later is not supported.'}
@@ -1803,13 +1996,7 @@
             const sidebarExtras = (
                 <>
                     <div>
-                        <p className="text-xs text-slate-500 mb-2">Mic level</p>
-                        <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
-                            <div className="h-full bg-emerald-500 transition-all duration-75" style={{ width: `${Math.round(micLevel * 100)}%` }} />
-                        </div>
-                    </div>
-                    <div>
-                        <p className="text-xs text-slate-500 mb-1">Status</p>
+                        <p className="text-xs text-slate-400 mb-1">Status</p>
                         <p className="text-xs text-slate-600 leading-relaxed">{status}</p>
                         {saveNotice ? (
                             <p className={`text-xs mt-2 leading-relaxed ${saveNotice.includes('saved') ? 'text-emerald-600' : 'text-amber-600'}`}>
@@ -1926,46 +2113,103 @@
                                     const waitingNext = answered && !interviewComplete && !recording && !saving;
                                     const qNum = card?.number || currentQuestionNum || 1;
                                     return (
-                                        <div key={qNum} className="fade-in rounded-2xl border border-indigo-100 bg-white overflow-hidden shadow-card animate-slide-up">
-                                            <div className="px-6 py-5 border-b border-indigo-50 bg-gradient-to-r from-indigo-50 to-blue-50">
-                                                <div className="flex flex-wrap items-start justify-between gap-4">
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700">Interviewer · Question {qNum} of {maxTurns}</p>
-                                                        <p className="text-lg text-slate-900 mt-2 leading-relaxed">
-                                                            {questionDisplay || '…'}
-                                                            {isInterviewerSpeaking ? (
-                                                                <span className="inline-block w-1.5 h-4 bg-indigo-500/70 ml-0.5 align-middle animate-pulse" />
-                                                            ) : null}
-                                                        </p>
+                                        <div key={qNum} className="fade-in rounded-2xl border-2 border-indigo-100 bg-white overflow-hidden shadow-card animate-slide-up">
+                                            {/* Question section */}
+                                            <div className="px-6 py-5 border-b border-indigo-50 bg-gradient-to-r from-indigo-50/80 via-violet-50/40 to-white relative overflow-hidden">
+                                                <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-indigo-100/30 -translate-y-1/2 translate-x-1/4 pointer-events-none" />
+                                                <div className="relative z-10">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <span className="flex h-5 w-5 items-center justify-center rounded-md bg-indigo-600 text-[9px] font-bold text-white">{qNum}</span>
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Interviewer · Question {qNum} of {maxTurns}</p>
+                                                        {isInterviewerSpeaking && (
+                                                            <span className="flex gap-0.5 items-end h-3.5 ml-1">
+                                                                <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '50%', animationDelay: '0ms' }} />
+                                                                <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '100%', animationDelay: '150ms' }} />
+                                                                <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '70%', animationDelay: '300ms' }} />
+                                                            </span>
+                                                        )}
                                                     </div>
+                                                    <p className="transcript-stream text-slate-900">
+                                                        {questionDisplay || (isInterviewerSpeaking ? '' : '…')}
+                                                        {isInterviewerSpeaking && !questionDisplay && (
+                                                            <span className="inline-block w-1.5 h-5 bg-indigo-400/60 ml-0.5 align-middle animate-pulse rounded-sm" />
+                                                        )}
+                                                        {isInterviewerSpeaking && questionDisplay && (
+                                                            <span className="inline-block w-1.5 h-5 bg-indigo-400/80 ml-0.5 align-middle animate-pulse rounded-sm" />
+                                                        )}
+                                                    </p>
                                                 </div>
                                             </div>
-                                            <div className="px-6 py-5">
-                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Your response</p>
-                                                {recording ? (
-                                                    <div className="py-1">
-                                                        <div className="flex items-center gap-2.5 text-emerald-700">
-                                                            <span className="flex gap-1 items-end h-5">
-                                                                <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '60%' }} />
-                                                                <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '100%', animationDelay: '120ms' }} />
-                                                                <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '45%', animationDelay: '240ms' }} />
-                                                                <span className="w-1 bg-emerald-400 rounded-full animate-pulse" style={{ height: '80%', animationDelay: '360ms' }} />
-                                                            </span>
-                                                            <span className="text-sm">{liveCaption ? 'Listening…' : 'Listening — speak your answer now…'}</span>
+
+                                            {/* Mic + response section */}
+                                            <div className="px-6 py-6">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-5">Your response</p>
+
+                                                {/* Centered mic button with rings */}
+                                                {(recording || (canAnswer && !answered && !saving)) && (
+                                                    <div className="flex flex-col items-center mb-5">
+                                                        <div className={`mic-btn-wrap mb-3 ${recording ? 'mic-btn-active' : ''}`} onClick={recording ? undefined : handleAnswerToggle} style={{ cursor: recording ? 'default' : canAnswer ? 'pointer' : 'default' }}>
+                                                            {recording && (
+                                                                <>
+                                                                    <div className="mic-ring mic-ring-1" style={{ background: micLevel > 0.05 ? 'rgba(16,185,129,0.18)' : 'rgba(79,70,229,0.15)' }} />
+                                                                    <div className="mic-ring mic-ring-2" style={{ background: micLevel > 0.05 ? 'rgba(16,185,129,0.14)' : 'rgba(79,70,229,0.12)' }} />
+                                                                    <div className="mic-ring mic-ring-3" style={{ background: micLevel > 0.05 ? 'rgba(16,185,129,0.1)' : 'rgba(79,70,229,0.08)' }} />
+                                                                </>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleAnswerToggle}
+                                                                disabled={(!canAnswer && !recording) || saving}
+                                                                className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-4 shadow-lg disabled:opacity-50 ${
+                                                                    recording
+                                                                        ? 'bg-red-500 hover:bg-red-600 focus:ring-red-200 shadow-red-200'
+                                                                        : 'bg-gradient-to-br from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 focus:ring-indigo-200 shadow-indigo-200'
+                                                                }`}
+                                                            >
+                                                                {recording ? (
+                                                                    <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                                                        <rect x="6" y="6" width="12" height="12" rx="2" />
+                                                                    </svg>
+                                                                ) : (
+                                                                    <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                                                        <path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4zm0 2a2 2 0 00-2 2v6a2 2 0 004 0V5a2 2 0 00-2-2zm-1 15.93V21h2v-2.07A8.001 8.001 0 0020 11h-2a6 6 0 01-12 0H4a8.001 8.001 0 007 7.93z" />
+                                                                    </svg>
+                                                                )}
+                                                            </button>
                                                         </div>
-                                                        {liveCaption ? (
-                                                            <p className="text-[15px] text-slate-800 leading-relaxed mt-3 border-l-2 border-emerald-400 pl-3">
-                                                                {liveCaption}
-                                                                <span className="inline-block w-1.5 h-4 bg-emerald-400/70 ml-0.5 align-middle animate-pulse" />
-                                                            </p>
-                                                        ) : null}
+                                                        <p className={`text-sm font-semibold ${recording ? 'text-red-600' : 'text-indigo-600'}`}>
+                                                            {recording ? 'Recording — tap to submit' : 'Tap to start recording'}
+                                                        </p>
+                                                        {recording && (
+                                                            <div className="flex items-center gap-1.5 mt-2">
+                                                                <span className={`w-2 h-2 rounded-full animate-pulse ${micLevel > 0.05 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                                <span className={`text-xs ${micLevel > 0.05 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                                    {micLevel > 0.05 ? 'Receiving audio' : 'Waiting for voice…'}
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                ) : answered ? (
-                                                    <div className="py-1">
-                                                        <p className="text-[15px] text-slate-800 leading-relaxed">{card?.answer}</p>
+                                                )}
+
+                                                {/* Live transcript */}
+                                                {recording && liveCaption ? (
+                                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3.5 mb-2">
+                                                        <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-1.5">Live transcript</p>
+                                                        <p className="transcript-stream text-slate-800">
+                                                            {liveCaption}
+                                                            <span className="inline-block w-1 h-4 bg-emerald-500/70 ml-0.5 align-middle animate-pulse rounded-sm" />
+                                                        </p>
+                                                    </div>
+                                                ) : null}
+
+                                                {/* Answered / saving */}
+                                                {answered ? (
+                                                    <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3.5">
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Your answer</p>
+                                                        <p className="transcript-stream text-slate-700">{card?.answer}</p>
                                                         {saving ? (
-                                                            <p className="text-sm text-amber-700 flex items-center gap-2 mt-3">
-                                                                <span className="inline-block w-3.5 h-3.5 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin" />
+                                                            <p className="text-xs text-amber-700 flex items-center gap-2 mt-3">
+                                                                <span className="inline-block w-3 h-3 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin" />
                                                                 Saving your answer…
                                                             </p>
                                                         ) : null}
@@ -1973,18 +2217,26 @@
                                                 ) : saving ? (
                                                     <div className="py-1">
                                                         {displayAnswer && !/^\[(no spoken|non-english)/i.test(displayAnswer) ? (
-                                                            <p className="text-[15px] text-slate-800 leading-relaxed mb-2">{displayAnswer}</p>
+                                                            <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3.5 mb-2">
+                                                                <p className="transcript-stream text-slate-700">{displayAnswer}</p>
+                                                            </div>
                                                         ) : null}
-                                                        <p className="text-sm text-amber-700 flex items-center gap-2">
-                                                            <span className="inline-block w-3.5 h-3.5 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin" />
+                                                        <p className="text-xs text-amber-700 flex items-center gap-2">
+                                                            <span className="inline-block w-3 h-3 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin" />
                                                             Saving your answer…
                                                         </p>
                                                     </div>
-                                                ) : answerTimerActive ? (
-                                                    <p className="text-sm text-slate-400 italic py-2">Mic opens shortly after the interviewer finishes speaking.</p>
-                                                ) : (
-                                                    <p className="text-sm text-slate-500 italic py-2">Listen to the interviewer…</p>
-                                                )}
+                                                ) : !recording && !canAnswer && !answered ? (
+                                                    <div className="flex items-center gap-3 py-3">
+                                                        <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+                                                            <svg className="w-4 h-4 text-indigo-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                                                        </div>
+                                                        <p className="text-sm text-slate-500">
+                                                            {answerTimerActive ? 'Mic opens shortly — listen to the question…' : 'Listen to the interviewer…'}
+                                                        </p>
+                                                    </div>
+                                                ) : null}
+
                                                 {waitingNext ? (
                                                     <p className="text-xs text-indigo-600 mt-4 flex items-center gap-2 pt-3 border-t border-slate-100">
                                                         <span className="inline-block w-3 h-3 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
@@ -2017,43 +2269,36 @@
                                 })()}
                                 <div ref={cardsEndRef} />
                             </div>
-                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-t border-slate-200 bg-white/80">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-3.5 border-t border-slate-100 bg-white/90 backdrop-blur-sm">
                                 {interviewComplete ? (
-                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-center text-sm text-emerald-700 flex items-center justify-center gap-2">
+                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-700 flex items-center justify-center gap-2">
                                         <span className="inline-block w-3.5 h-3.5 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
                                         All {maxTurns} questions complete — submitting your results…
                                     </div>
                                 ) : (
-                                    <button
-                                        type="button"
-                                        onClick={handleAnswerToggle}
-                                        disabled={(!canAnswer && !isAnswering) || ending || isLoading || savingAnswer}
-                                        className={`w-full py-4 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 ${isAnswering ? 'bg-red-500 hover:bg-red-600 text-white' : 'btn-primary'}`}
-                                    >
-                                        {savingAnswer ? (
-                                            <>
-                                                <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                                                Saving…
-                                            </>
-                                        ) : isAnswering ? (
-                                            <>
-                                                <span className="inline-block w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
-                                                Submit answer
-                                            </>
-                                        ) : (
-                                            <span className="flex items-center gap-2"><span>🎤</span> Waiting for mic…</span>
-                                        )}
-                                    </button>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-xs text-slate-500 leading-relaxed flex-1">
+                                            {savingAnswer
+                                                ? 'Saving — preparing the next question…'
+                                                : isAnswering
+                                                ? 'Mic is open — speak clearly, then tap the mic to submit.'
+                                                : canAnswer
+                                                ? 'Tap the microphone above to record your answer.'
+                                                : 'Listen to the interviewer — mic activates after they finish.'}
+                                        </p>
+                                        {isAnswering ? (
+                                            <button
+                                                type="button"
+                                                onClick={handleAnswerToggle}
+                                                disabled={ending || isLoading || savingAnswer}
+                                                className="shrink-0 px-5 py-2.5 rounded-xl text-sm font-semibold bg-red-500 hover:bg-red-600 text-white transition-all disabled:opacity-40 flex items-center gap-2"
+                                            >
+                                                <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                                                Submit
+                                            </button>
+                                        ) : null}
+                                    </div>
                                 )}
-                                <p className="text-[11px] text-slate-500 text-center mt-2.5">
-                                    {savingAnswer
-                                        ? 'Please wait — the interviewer is preparing the next question.'
-                                        : isAnswering
-                                        ? 'Mic is open — speak clearly in English, then press Submit.'
-                                        : canAnswer
-                                        ? 'Mic opens automatically when the interviewer finishes.'
-                                        : 'Mic stays off while the interviewer is speaking.'}
-                                </p>
                             </div>
                         </div>
                     </div>
@@ -2204,35 +2449,38 @@
                         />
 
                         <div className="assessment-main">
-                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-slate-200 bg-white/80">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-slate-100 bg-white/90 backdrop-blur-sm">
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-1">Phase 1 · Written</p>
-                                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-tight">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-1">Phase 1 · Written assessment</p>
+                                        <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight leading-tight">
                                             Question {currentStep}
                                         </h1>
-                                        <p className="text-sm text-slate-500 mt-1">Type your answer below — reviewed after you submit</p>
-                                        </div>
+                                        <p className="text-sm text-slate-400 mt-1">Type your answer — reviewed after you submit</p>
+                                    </div>
                                     {phaseTimeLimit != null && timeLeft != null ? (
                                         <TimerRing
                                             seconds={timeLeft}
                                             totalSeconds={phaseTimeLimit}
                                             prominent
                                         />
-                                        ) : null}
-                                        </div>
+                                    ) : null}
                                 </div>
+                            </div>
 
-                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
-                            <div className="flex-1 min-h-[280px] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-soft relative animate-fade-up">
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-5 flex flex-col">
+                            <div className="flex-1 min-h-[280px] flex flex-col rounded-2xl border-2 border-slate-100 bg-white shadow-card relative animate-fade-up">
                                     {isLoading && (
                                         <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 rounded-2xl flex flex-col items-center justify-center gap-4">
-                                            <div className="w-10 h-10 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                                            <div className="w-10 h-10 border-2 border-violet-100 border-t-violet-600 rounded-full animate-spin" />
                                             <p className="text-sm text-slate-500">Processing your response…</p>
                                         </div>
                                     )}
-                                <div className="shrink-0 px-5 sm:px-6 pt-5 pb-4 border-b border-slate-100">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Question</p>
+                                <div className="shrink-0 px-5 sm:px-6 pt-6 pb-5 border-b border-slate-100">
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-600 text-[10px] font-bold text-white shrink-0">{currentStep}</span>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Question</p>
+                                    </div>
                                     {contentMasked ? (
                                         <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-8 text-center">
                                             <p className="text-base font-semibold text-amber-800 mb-2">Content protected</p>
@@ -2242,7 +2490,7 @@
                                         </div>
                                     ) : (
                                         <div
-                                            className="question-protected text-base sm:text-lg text-slate-800 leading-relaxed"
+                                            className="question-protected question-text"
                                             onCopy={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
                                             onCut={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
                                             onContextMenu={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
@@ -2252,11 +2500,11 @@
                                     </div>
                                     )}
                                 </div>
-                                <div className="flex-1 flex flex-col min-h-0 px-5 sm:px-6 py-4">
-                                    <label htmlFor="answer" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Your answer</label>
+                                <div className="flex-1 flex flex-col min-h-0 px-5 sm:px-6 py-5">
+                                    <label htmlFor="answer" className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Your answer</label>
                                     <textarea
                                         id="answer"
-                                        className="input-field w-full flex-1 min-h-[180px] px-4 py-4 rounded-lg text-sm sm:text-base leading-relaxed resize-none"
+                                        className="input-field w-full flex-1 min-h-[180px] px-4 py-4 rounded-xl text-sm sm:text-base leading-relaxed resize-none"
                                         placeholder="Type your answer here."
                                         value={answer}
                                         onChange={(e) => setAnswer(e.target.value)}
@@ -2271,12 +2519,12 @@
                                         disabled={contentMasked || isLoading}
                                     />
                                 </div>
-                                <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/80 rounded-b-2xl">
+                                <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/60 rounded-b-2xl">
                                     <div>
-                                        <p className="text-xs text-slate-500">
-                                            {canSubmit ? 'Ready to submit' : 'Type at least 5 characters'}
+                                        <p className={`text-xs font-medium ${canSubmit ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                            {canSubmit ? '✓ Ready to submit' : 'Type at least 5 characters'}
                                         </p>
-                                        <p className="text-xs text-slate-600 mt-0.5 tabular-nums">{charCount} characters</p>
+                                        <p className="text-xs text-slate-400 mt-0.5 tabular-nums">{charCount} characters</p>
                                     </div>
                                         <button
                                             type="button"
@@ -2532,58 +2780,71 @@
                             sessionLabel="Phase 2 — voice communication questions"
                         />
                         <div className="assessment-main">
-                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-slate-200 bg-white/80">
+                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-slate-100 bg-white/90 backdrop-blur-sm">
                                 <div className="speech-phase-header gap-4">
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Phase 2 · Voice</p>
-                                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-tight">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Phase 2 · Voice interview</p>
+                                        <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight leading-tight">
                                             Question {speechIndex}
                                         </h1>
-                                        <p className="text-sm text-slate-500 mt-1">
+                                        <p className="text-sm text-slate-400 mt-1">
                                             {isSpeaking
                                                 ? 'Listen to the question — timer starts when playback finishes'
-                                                : 'Record your spoken answer below, then submit'}
+                                                : 'Record your spoken answer, then submit'}
                                         </p>
                                     </div>
                                     {showTimer ? (
                                         <TimerRing seconds={timeLeft} totalSeconds={phaseTimeLimit} prominent />
                                     ) : isSpeaking ? (
-                                        <div className="shrink-0 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-center animate-pulse">
+                                        <div className="shrink-0 rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-violet-50 px-4 py-3 text-center">
+                                            <div className="flex items-center gap-1.5 justify-center mb-1">
+                                                <span className="w-1 h-3 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                                <span className="w-1 h-4 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                                                <span className="w-1 h-3 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                                            </div>
                                             <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700">Playing question</p>
-                                            <p className="text-xs text-slate-400 mt-1">Timer not started yet</p>
                                         </div>
                                     ) : null}
                                 </div>
                             </div>
 
-                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-5 flex flex-col">
                                 {speechIndex === 1 ? (
-                                    <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 sm:px-5 sm:py-4 shrink-0 animate-fade-up">
-                                        <p className="text-sm text-indigo-900 font-medium">You are now in Phase 2 — voice communication interview</p>
-                                        <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                                            This is a speech-to-speech round. Take a moment to settle in a quiet space before recording.
-                                        </p>
+                                    <div className="mb-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/80 to-violet-50/40 px-5 py-4 shrink-0 animate-fade-up flex items-start gap-3">
+                                        <div className="w-8 h-8 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center shrink-0">
+                                            <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-800">Phase 2 — Voice communication interview</p>
+                                            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                                                This is a speech-to-speech round. Take a moment to settle in a quiet space before recording.
+                                            </p>
+                                        </div>
                                     </div>
                                 ) : null}
 
-                                <div className="speech-answer-panel flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-200 bg-white shadow-soft relative animate-fade-up">
+                                <div className="speech-answer-panel flex-1 min-h-0 flex flex-col rounded-2xl border-2 border-slate-100 bg-white shadow-card relative animate-fade-up">
                                     {isLoading && (
                                         <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 rounded-2xl flex flex-col items-center justify-center gap-4">
-                                            <div className="w-10 h-10 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+                                            <div className="w-10 h-10 border-2 border-violet-100 border-t-violet-600 rounded-full animate-spin" />
                                             <p className="text-sm text-slate-500">Processing your response…</p>
                                         </div>
                                     )}
 
-                                    <div className="shrink-0 px-5 sm:px-6 pt-5 pb-4 border-b border-slate-100">
-                                        <div className="flex items-start justify-between gap-3 mb-3">
-                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Question</p>
+                                    <div className="shrink-0 px-5 sm:px-6 pt-6 pb-5 border-b border-slate-100">
+                                        <div className="flex items-center justify-between gap-3 mb-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-600 text-[9px] font-bold text-white">{speechIndex}</span>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Question</p>
+                                            </div>
                                             <button
                                                 type="button"
                                                 onClick={startQuestionPlayback}
                                                 disabled={contentMasked || isLoading || isRecording}
-                                                className="btn-secondary px-3 py-1.5 rounded-lg text-xs shrink-0"
+                                                className="btn-secondary px-3 py-1.5 rounded-xl text-xs shrink-0 flex items-center gap-1.5"
                                             >
-                                                {isSpeaking ? 'Playing…' : 'Replay question'}
+                                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
+                                                {isSpeaking ? 'Playing…' : 'Replay'}
                                             </button>
                                         </div>
                                         {contentMasked ? (
@@ -2594,25 +2855,25 @@
                                                 </p>
                                             </div>
                                         ) : (
-                                            <div className="question-protected text-base sm:text-lg text-slate-800 leading-relaxed min-h-[3.5rem]">
+                                            <div className="question-protected question-text min-h-[3.5rem]">
                                                 {typedQuestion || (isSpeaking ? '' : question)}
                                                 {isSpeaking ? (
-                                                    <span className="inline-block w-0.5 h-[1.1em] bg-blue-600 ml-0.5 align-middle animate-pulse" aria-hidden="true" />
+                                                    <span className="inline-block w-1.5 h-5 bg-indigo-400/80 ml-0.5 align-middle animate-pulse rounded-sm" aria-hidden="true" />
                                                 ) : null}
                                             </div>
-                            )}
-                        </div>
+                                        )}
+                                    </div>
 
-                                    <div className="flex-1 flex flex-col min-h-0 px-4 sm:px-5 lg:px-6 py-4">
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">
+                                    <div className="flex-1 flex flex-col min-h-0 px-4 sm:px-5 lg:px-6 py-5">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">
                                             Your spoken answer
                                         </label>
                                         <div
-                                            className={`input-field speech-transcript-box w-full px-4 py-4 rounded-lg text-sm sm:text-base leading-relaxed ${
-                                                isRecording ? 'border-blue-300 bg-blue-50/50' : ''
+                                            className={`input-field speech-transcript-box w-full px-4 py-4 rounded-xl text-sm sm:text-base leading-relaxed ${
+                                                isRecording ? 'border-emerald-300 bg-emerald-50/30' : ''
                                             }`}
                                         >
-                                            <p className="text-slate-800 whitespace-pre-wrap break-words">
+                                            <p className="text-slate-800 whitespace-pre-wrap break-words transcript-stream">
                                                 {transcript || (isRecording
                                                     ? 'Listening… speak now — words appear here live.'
                                                     : isStopping
@@ -2624,49 +2885,48 @@
                                             </p>
                                         </div>
 
-                                        {isRecording ? (
-                                            <div className="mt-4 shrink-0">
-                                                <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-                                                    <span className="font-medium uppercase tracking-wide">Microphone level</span>
-                                                    <span className={micLevel > 0.05 ? 'text-emerald-600' : 'text-amber-600'}>
-                                                        {micLevel > 0.05 ? 'Receiving audio' : 'Speak now — waiting for voice'}
-                                                    </span>
-                                                </div>
-                                                <div className="h-2.5 rounded-full bg-slate-200 overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-[width] duration-75 ease-out"
-                                                        style={{ width: `${Math.round(micLevel * 100)}%` }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        ) : null}
-
-                                        <div className="mt-4 speech-action-row shrink-0">
-                                            {!isRecording ? (
+                                        {/* Mic animation + record button */}
+                                        <div className="mt-5 flex flex-col items-center gap-3 shrink-0">
+                                            <div className={`mic-btn-wrap ${isRecording ? 'mic-btn-active' : ''}`}>
+                                                {isRecording && (
+                                                    <>
+                                                        <div className="mic-ring mic-ring-1" style={{ background: micLevel > 0.05 ? 'rgba(16,185,129,0.18)' : 'rgba(79,70,229,0.15)' }} />
+                                                        <div className="mic-ring mic-ring-2" style={{ background: micLevel > 0.05 ? 'rgba(16,185,129,0.14)' : 'rgba(79,70,229,0.12)' }} />
+                                                        <div className="mic-ring mic-ring-3" style={{ background: micLevel > 0.05 ? 'rgba(16,185,129,0.1)' : 'rgba(79,70,229,0.08)' }} />
+                                                    </>
+                                                )}
                                                 <button
                                                     type="button"
-                                                    onClick={startRecording}
-                                                    disabled={contentMasked || isLoading || isStopping || isSpeaking}
-                                                    className="btn-primary px-6 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-40 w-full sm:w-auto"
+                                                    onClick={isRecording ? stopRecording : startRecording}
+                                                    disabled={contentMasked || isLoading || isStopping || (!isRecording && isSpeaking)}
+                                                    className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-4 shadow-lg disabled:opacity-40 ${
+                                                        isRecording
+                                                            ? 'bg-red-500 hover:bg-red-600 focus:ring-red-200 shadow-red-200'
+                                                            : 'bg-gradient-to-br from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 focus:ring-indigo-200 shadow-indigo-200'
+                                                    }`}
                                                 >
-                                                    {isStopping ? 'Saving…' : 'Start recording'}
-                        </button>
-                                            ) : (
-                                                <button
-                                                    type="button"
-                                                    onClick={stopRecording}
-                                                    disabled={isStopping}
-                                                    className="px-6 py-2.5 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-500 text-white w-full sm:w-auto"
-                                                >
-                                                    Stop recording
+                                                    {isStopping ? (
+                                                        <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                                    ) : isRecording ? (
+                                                        <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+                                                    ) : (
+                                                        <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4zm0 2a2 2 0 00-2 2v6a2 2 0 004 0V5a2 2 0 00-2-2zm-1 15.93V21h2v-2.07A8.001 8.001 0 0020 11h-2a6 6 0 01-12 0H4a8.001 8.001 0 007 7.93z" /></svg>
+                                                    )}
                                                 </button>
-                                            )}
-                                            {isRecording ? (
-                                                <span className="inline-flex items-center gap-2 text-xs text-red-600">
-                                                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" aria-hidden="true" />
-                                                    Recording in progress
-                                                </span>
-                                            ) : null}
+                                            </div>
+                                            <div className="flex flex-col items-center gap-1">
+                                                <p className={`text-sm font-semibold ${isRecording ? 'text-red-600' : isStopping ? 'text-amber-600' : 'text-indigo-600'}`}>
+                                                    {isStopping ? 'Saving recording…' : isRecording ? 'Recording — tap to stop' : 'Tap to start recording'}
+                                                </p>
+                                                {isRecording && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`w-2 h-2 rounded-full animate-pulse ${micLevel > 0.05 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                        <span className={`text-xs ${micLevel > 0.05 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                            {micLevel > 0.05 ? 'Receiving audio' : 'Waiting for voice…'}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
 
                                         {recordError ? <p className="text-sm text-red-600 mt-3">{recordError}</p> : null}
@@ -2676,28 +2936,29 @@
                                         {audioHint ? <p className="text-xs text-slate-500 mt-2">{audioHint}</p> : null}
                                     </div>
 
-                                    <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/80 rounded-b-2xl">
+                                    <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/50 rounded-b-2xl">
                                         <div>
-                                            <p className="text-xs text-slate-500">
+                                            <p className={`text-xs font-medium ${canSubmit ? 'text-emerald-600' : 'text-slate-400'}`}>
                                                 {canSubmit
-                                                    ? 'Ready to submit'
+                                                    ? '✓ Ready to submit'
                                                     : isRecording
                                                         ? 'Stop recording when you finish speaking'
                                                         : isStopping
                                                             ? 'Saving your recording…'
                                                             : isRefiningTranscript
-                                                                ? 'You can submit now — refining transcript in background'
+                                                                ? 'You can submit — transcript is being refined'
                                                                 : 'Record at least a few words before submitting'}
                                             </p>
-                                            <p className="text-xs text-slate-600 mt-0.5 tabular-nums">{wordCount} words</p>
+                                            <p className="text-xs text-slate-400 mt-0.5 tabular-nums">{wordCount} words</p>
                                         </div>
                                         <button
                                             type="button"
                                             onClick={handleSubmit}
                                             disabled={!canSubmit}
-                                            className="btn-primary px-10 py-3.5 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed w-full sm:w-auto"
+                                            className="btn-primary px-10 py-3.5 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed w-full sm:w-auto flex items-center justify-center gap-2"
                                         >
                                             Submit answer
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
                                         </button>
                                     </div>
                                 </div>

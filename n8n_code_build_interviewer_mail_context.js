@@ -56,13 +56,19 @@ function loadWorkflowConfig() {
     'CFG - Workflow',
     'CFG - Assessment Config',
     'CFG - Assessment Config1',
+    'CFG - Live Speech Config (complete)',
+    'CFG - Live Speech Config (start)',
     'CFG - Reply track (merge)',
     'CODE - Normalize Data',
     'CODE - Normalize Data1',
+    'CODE - Normalize Live Speech Complete',
     'CODE - Prep scheduling from PASS',
     'CODE - Prep scheduling from PASS1',
     'CODE - Parse Result',
     'CODE - Parse Result1',
+    'CODE - Parse Live Speech Result',
+    'CODE - Pick Parse Result',
+    'CODE - Pick Parse Result1',
   ];
   const rows = names.map((n) => pickNodeJson(n)).filter(Boolean);
   return mergeConfig(...rows);
@@ -73,10 +79,15 @@ function pickAssessmentContext() {
   const names = [
     'CODE - Prep scheduling from PASS',
     'CODE - Prep scheduling from PASS1',
+    'CODE - Parse Live Speech Result',
+    'CODE - Pick Parse Result',
+    'CODE - Pick Parse Result1',
     'CODE - Parse Result',
     'CODE - Parse Result1',
     'CODE - Normalize Data',
     'CODE - Normalize Data1',
+    'CODE - Normalize Live Speech Complete',
+    'HTTP - Fetch Session Complete',
     'HTTP - SB PATCH session interview_history',
     'HTTP - SB PATCH session interview_history1',
     'CODE - Update interview_history',
@@ -156,7 +167,15 @@ if (!candidateEmail) {
 }
 
 if (!interviewerEmail) {
-  throw new Error('interviewer_email missing — set in CFG or job/recruiter intake.');
+  throw new Error(
+    'interviewer_email missing — set on the job (apply/admin) so it is stored in session.config.interviewer_email.'
+  );
+}
+
+if (interviewerEmail.toLowerCase() === candidateEmail.toLowerCase()) {
+  throw new Error(
+    'interviewer_email equals candidate_email — update the job interviewer in admin panel and session.config (old test value may be cached on this session row).'
+  );
 }
 
 if (!sessionId) {
@@ -166,9 +185,8 @@ if (!sessionId) {
 const schedulingLink =
   interviewerPortal + '?session=' + encodeURIComponent(sessionId);
 
-const mailSubject =
-  base.mail_subject ||
-  `Schedule interview — ${candidateName} (${role})`;
+// Do not reuse session.mail_subject — that is the candidate thread subject (CV shortlist).
+const mailSubject = `Schedule interview — ${candidateName} (${role})`;
 
 const mailBody =
   `Hello,\n\n` +

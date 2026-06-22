@@ -383,9 +383,12 @@ const connections = {
     ],
   },
   'IF - Assessment finished?': {
+    main: [[{ node: 'IF - Result PASS?', type: 'main', index: 0 }], []],
+  },
+  'IF - Result PASS?': {
     main: [
+      [{ node: 'CODE - Prep scheduling from PASS', type: 'main', index: 0 }],
       [{ node: 'CODE - Build assessment result mail', type: 'main', index: 0 }],
-      [],
     ],
   },
   'CODE - Build assessment result mail': {
@@ -398,10 +401,7 @@ const connections = {
     main: [[{ node: 'HTTP - PATCH candidate gmail (result)', type: 'main', index: 0 }]],
   },
   'HTTP - PATCH candidate gmail (result)': {
-    main: [[{ node: 'IF - Result PASS?', type: 'main', index: 0 }]],
-  },
-  'IF - Result PASS?': {
-    main: [[{ node: 'CODE - Prep scheduling from PASS', type: 'main', index: 0 }], []],
+    main: [[]],
   },
   'CODE - Prep scheduling from PASS': {
     main: [[{ node: 'CODE - Build interviewer mail context', type: 'main', index: 0 }]],

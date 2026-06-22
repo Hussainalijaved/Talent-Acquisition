@@ -135,7 +135,11 @@ const fetchRaw = $input.first().json;
 const session = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;
 if (!session?.id) throw new Error('Session not found for live speech complete');
 
-const sessCfg = { ...parseJson(session.config, {}), ...cfg };
+const sessionCfg = parseJson(session.config, {});
+const sessCfg = { ...sessionCfg, ...cfg };
+// JD intake stores interviewer on session.config — do not let blank n8n CFG wipe it.
+const sessionInterviewer = String(sessionCfg.interviewer_email || '').trim();
+if (sessionInterviewer) sessCfg.interviewer_email = sessionInterviewer;
 const maxQ = Number(sessCfg.max_questions || cfg.max_questions || 5);
 const speechPhases = Number(cfg.speech_phases || sessCfg.speech_phases || 5);
 const passThreshold = Number(cfg.pass_score_threshold ?? 60);

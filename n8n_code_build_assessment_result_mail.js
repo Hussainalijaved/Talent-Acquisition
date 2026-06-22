@@ -87,23 +87,29 @@ const org = String(cfg.organization_name || 'Talent Acquisition Team');
 const feedback = String(parse.feedback || '').trim();
 const sessionId = String(parse.session_id || session.id || '');
 
-const sectionTitle = passed ? 'Assessment Passed' : 'Assessment Result';
-const headline = passed
-  ? `Congratulations — you passed the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`
-  : `Thank you for completing the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`;
+// PASS: do not email the candidate here — interviewer pitch runs first; candidate gets
+// slot options only after POST /webhook/talent/scheduling-slots (Build candidate slot mail).
+if (passed) {
+  return [
+    {
+      json: {
+        ...parse,
+        session_id: sessionId,
+        skip_candidate_result_mail: true,
+        mail_stage: 'pass_deferred_to_scheduling',
+        result,
+        candidate_email: parse.candidate_email || session.candidate_email,
+        config: cfg,
+      },
+    },
+  ];
+}
 
-const portalBase = String(
-  cfg.portal_base_url || 'https://talent-acquisition-six.vercel.app'
-).replace(/\/+$/, '');
-const schedulingWaitLink = sessionId
-  ? `${portalBase}/scheduling-wait.html?session=${encodeURIComponent(sessionId)}`
-  : portalBase;
+const sectionTitle = 'Assessment Result';
+const headline = `Thank you for completing the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`;
 
-const nextStep = passed
-  ? `<p>Next step: schedule your interview. Open this page to pick a time as soon as slots are ready (you can leave and return later):</p>
-     <p style="text-align:center;margin:20px 0;"><a href="${schedulingWaitLink}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">Schedule interview</a></p>
-     <p style="font-size:13px;color:#64748b;">If the interviewer is not available right now, they may add slots later — we will email you when options are ready.</p>`
-  : '<p>Unfortunately you did not meet the pass threshold for this role at this time.</p>';
+const nextStep =
+  '<p>Unfortunately you did not meet the pass threshold for this role at this time.</p>';
 
 const mailBodyHtml = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
@@ -134,7 +140,7 @@ return [
       gmail_message_id: msgId,
       mail_subject: session.mail_subject || parse.mail_subject || '',
       mail_body_html: mailBodyHtml,
-      mail_stage: passed ? 'pass' : 'fail',
+      mail_stage: 'fail',
       candidate_email: parse.candidate_email || session.candidate_email,
       config: cfg,
     },

@@ -126,24 +126,19 @@ function speechTurnsFromHistory(history, maxQ) {
         .filter((t) => t.question_text || t.answer_text);
 }
 
-async function triggerSchedulingWebhook({
+async function triggerCompleteWebhook({
     sbUrl, sbKey, sessionId, session, history, finals, body, maxQ,
 }) {
-    if (finals.result !== 'PASS') return;
-
-    const existing = String(session.scheduling_status || '').trim().toLowerCase();
-    if (existing && !['none', 'null', ''].includes(existing)) return;
-
     const url = await resolveLiveCompleteWebhook(sbUrl, sbKey);
     if (!url) {
-        console.warn('[live-speech-save] scheduling webhook URL not configured — set N8N_LIVE_COMPLETE_WEBHOOK or app_config.live_complete_webhook');
-        return;
+        console.warn('[live-speech-save] complete webhook URL not configured — set N8N_LIVE_COMPLETE_WEBHOOK or app_config.live_complete_webhook');
+        return false;
     }
 
     const turns = speechTurnsFromHistory(history, maxQ);
     if (!turns.length) {
-        console.warn('[live-speech-save] scheduling webhook skipped — no speech turns in history');
-        return;
+        console.warn('[live-speech-save] complete webhook skipped — no speech turns in history');
+        return false;
     }
 
     const email = String(
@@ -165,7 +160,7 @@ async function triggerSchedulingWebhook({
         source: 'vercel_live_speech_save',
     };
 
-    console.log(`[live-speech-save] POST scheduling webhook → ${url} (${turns.length} turns)`);
+    console.log(`[live-speech-save] POST complete webhook → ${url} (${turns.length} turns, result=${finals.result})`);
     const whRes = await fetch(url, {
         method: 'POST',
         headers: {
@@ -176,10 +171,11 @@ async function triggerSchedulingWebhook({
     });
     const whText = await whRes.text();
     if (!whRes.ok) {
-        console.error('[live-speech-save] scheduling webhook failed', whRes.status, whText.slice(0, 300));
-        return;
+        console.error('[live-speech-save] complete webhook failed', whRes.status, whText.slice(0, 300));
+        return false;
     }
-    console.log('[live-speech-save] scheduling webhook OK');
+    console.log('[live-speech-save] complete webhook OK');
+    return true;
 }
 
 function mergeTurns(history, newTurns, maxQ) {
@@ -354,8 +350,9 @@ export default async function handler(req, res) {
         console.log(`[live-speech-save] ${partial ? 'partial' : 'final'} OK — session ${sessionId} phase ${phase}`);
 
         if (finalScores) {
+            let completeWebhookOk = false;
             try {
-                await triggerSchedulingWebhook({
+                completeWebhookOk = await triggerCompleteWebhook({
                     sbUrl,
                     sbKey,
                     sessionId,
@@ -366,8 +363,22 @@ export default async function handler(req, res) {
                     maxQ,
                 });
             } catch (whErr) {
-                console.warn('[live-speech-save] scheduling webhook error:', whErr.message);
+                console.warn('[live-speech-save] complete webhook error:', whErr.message);
             }
+
+            res.status(200).json({
+                ok:      true,
+                partial: false,
+                session_id: sessionId,
+                phase: lastPhase,
+                turns_saved: turns.length,
+                result: patchBody.result,
+                score: patchBody.score,
+                technical_score: patchBody.technical_score,
+                speech_score: patchBody.speech_score,
+                complete_webhook_ok: completeWebhookOk,
+            });
+            return;
         }
 
         res.status(200).json({
@@ -376,12 +387,6 @@ export default async function handler(req, res) {
             session_id: sessionId,
             phase,
             turns_saved: turns.length,
-            ...(partial ? {} : {
-                result: patchBody.result,
-                score: patchBody.score,
-                technical_score: patchBody.technical_score,
-                speech_score: patchBody.speech_score,
-            }),
         });
 
     } catch (err) {

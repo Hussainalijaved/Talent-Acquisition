@@ -1637,6 +1637,7 @@
                 speech_score: save.speech_score ?? result?.speech_score ?? result?.combined_speech_score ?? null,
                 feedback: save.feedback || result?.final_feedback || result?.feedback || 'Live speech assessment completed.',
                 saved: save.ok !== false && result?.saved_to_db !== false,
+                complete_webhook_ok: save.complete_webhook_ok ?? result?.complete_webhook_ok ?? null,
             };
         }
 
@@ -1669,6 +1670,7 @@
             const [isInterviewerSpeaking, setIsInterviewerSpeaking] = React.useState(false);
             const [answerTimerActive, setAnswerTimerActive] = React.useState(false);
             const [saveNotice, setSaveNotice] = React.useState('');
+            const liveQuestionCaptionRef = React.useRef('');
             const defaultAnswerSeconds = Number(context?.speech_answer_seconds || context?.config?.speech_answer_seconds || 120);
             const [questionTimeLimit, setQuestionTimeLimit] = React.useState(defaultAnswerSeconds);
             const [timeLeft, setTimeLeft] = React.useState(null);
@@ -1678,6 +1680,7 @@
             const canAnswerRef = React.useRef(false);
 
             React.useEffect(() => { questionTimeLimitRef.current = questionTimeLimit; }, [questionTimeLimit]);
+            React.useEffect(() => { liveQuestionCaptionRef.current = liveQuestionCaption; }, [liveQuestionCaption]);
 
             React.useEffect(() => { isAnsweringRef.current = isAnswering; }, [isAnswering]);
             React.useEffect(() => { canAnswerRef.current = canAnswer; }, [canAnswer]);
@@ -1793,12 +1796,13 @@
                                 if (partial) {
                                     setIsInterviewerSpeaking(true);
                                     setLiveQuestionCaption(clean || '');
-                                    // Do NOT call addQuestion here — card.question must only be set
-                                    // from the final (non-partial) event so it never shows incomplete text.
                                     return;
                                 }
-                                // Final confirmed question text — store it and stop streaming.
-                                addQuestion(number, text);
+                                const heard = liveQuestionCaptionRef.current;
+                                const committed = window.TA_LIVE?.chooseQuestionText
+                                    ? window.TA_LIVE.chooseQuestionText(heard, clean)
+                                    : clean;
+                                addQuestion(number, committed || clean);
                                 setLiveQuestionCaption('');
                                 setIsInterviewerSpeaking(false);
                                 setSavingAnswer(false);
@@ -2106,7 +2110,7 @@
                                     // This prevents the "full text → short partial → growing" jump.
                                     const questionDisplay = isInterviewerSpeaking
                                         ? liveQuestionCaption
-                                        : (card?.question || liveQuestionCaption || '');
+                                        : (liveQuestionCaption || card?.question || '');
                                     if (!card && !questionDisplay && !isInterviewerSpeaking) {
                                         return (
                                             <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
@@ -4834,7 +4838,7 @@
                     || row.speech_score == null
                     || row.assessment_stage !== 'completed';
 
-                if (sessionId && sessionIncomplete && window.TA_LIVE?.finalizeLiveSpeech) {
+                if (sessionId && (sessionIncomplete || data?.complete_webhook_ok === false) && window.TA_LIVE?.finalizeLiveSpeech) {
                     try {
                         const fin = await window.TA_LIVE.finalizeLiveSpeech({
                             portalBase,

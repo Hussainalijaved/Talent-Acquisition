@@ -343,22 +343,23 @@
       }
       if (msg.type === 'interview_complete') {
         this.stopMic();
-        // Allow the closing thank-you audio to play (no longer "processing" a save).
         this.processingAnswer = false;
         this.interviewEnded = true;
         this.setStatus(`All ${msg.maxTurns || 5} questions complete — the interviewer is wrapping up…`);
         this.onInterviewComplete(msg);
-        if (!this.autoEndTimer) {
-          // Wait long enough for the spoken thank-you to finish before submitting.
+        if (!this.autoEndTimer && !this.ended) {
           this.autoEndTimer = setTimeout(() => {
-            if (!this.ended) {
-              this.setStatus('Submitting your results…');
-              this.end()
-                .then((result) => {
-                  if (result) this.onComplete(result);
-                })
-                .catch((e) => this.onError(e));
-            }
+            this.autoEndTimer = null;
+            if (this.ended) return;
+            this.setStatus('Submitting your results…');
+            this.end()
+              .then((result) => {
+                if (result && !this.ended) this.onComplete(result);
+              })
+              .catch((e) => {
+                console.warn('[live-speech] auto end failed:', e.message);
+                this.onError(e);
+              });
           }, 9000);
         }
       }
@@ -487,6 +488,7 @@
         !result?.result
         || result?.saved_to_db === false
         || result?.speech_score == null
+        || result?.complete_webhook_ok === false
       ) {
         const portalBase = this.context?.portal_base_url || this.context?.config?.portal_base_url;
         const sessionId = this.context?.session_id;
@@ -503,6 +505,7 @@
               result.technical_score = fin.technical_score ?? result.technical_score;
               result.speech_score = fin.speech_score ?? result.speech_score;
               result.saved_to_db = true;
+              result.complete_webhook_ok = fin.complete_webhook_ok ?? result.complete_webhook_ok;
               result.save = { ...(result.save || {}), ...fin };
             }
           } catch (finErr) {
@@ -602,6 +605,20 @@
     return json;
   }
 
+  function chooseQuestionText(streamed, final) {
+    const streamRaw = String(streamed || '').replace(/\s+/g, ' ').trim();
+    const finRaw = String(final || '').replace(/\s+/g, ' ').trim();
+    if (!streamRaw) return finRaw;
+    if (!finRaw || finRaw === '…') return streamRaw;
+    const norm = (s) => s.toLowerCase().replace(/[^\w\s?]/g, '').replace(/\s+/g, ' ').trim();
+    if (norm(streamRaw) === norm(finRaw)) return streamRaw;
+    if (norm(finRaw).includes(norm(streamRaw)) || norm(streamRaw).includes(norm(finRaw))) {
+      return streamRaw.length >= finRaw.length ? streamRaw : finRaw;
+    }
+    if (streamRaw.includes('?') && streamRaw.split(/\s+/).filter(Boolean).length >= 6) return streamRaw;
+    return finRaw.length >= streamRaw.length ? finRaw : streamRaw;
+  }
+
   global.TA_LIVE = {
     LiveSpeechSession,
     fetchLiveSpeechStart,
@@ -609,5 +626,6 @@
     finalizeLiveSpeech,
     sanitizeDisplayTranscript,
     looksLikeClosingMessage,
+    chooseQuestionText,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -2,9 +2,11 @@ import WebSocket from 'ws';
 import {
   cleanUserAnswerText,
   displayUserTranscript,
+  extractInterviewQuestion,
   fallbackInterviewQuestion,
-  isClosingMessage,
+  isClosingOnlyMessage,
   isEnglishTranscript,
+  resolveCommittedQuestionText,
   sanitizeTranscript,
 } from './transcript-utils.mjs';
 import {
@@ -89,6 +91,8 @@ export class GeminiLiveBridge {
     this.nextQuestionWatchdog = null;
     this.questionTimeLimits = {};
     this.timerRefineTokens = {};
+    this.streamingQuestionText = '';
+    this.streamingQuestionNum = 0;
   }
 
   timerConfig() {
@@ -168,18 +172,52 @@ export class GeminiLiveBridge {
     this.nextQuestionWatchdog = setTimeout(() => {
       this.nextQuestionWatchdog = null;
       if (this.interviewEnded || this.closed || this.questions.length >= nextQ) return;
+      const streamed = this.streamingQuestionNum === nextQ ? this.streamingQuestionText : '';
+      const streamQ = extractInterviewQuestion(streamed) || streamed;
+      if (streamQ.includes('?') && streamQ.split(/\s+/).filter(Boolean).length >= 6) {
+        console.warn(`[relay] next-question watchdog — committing streamed Q${nextQ}`);
+        this.commitQuestionText(nextQ, streamQ);
+        return;
+      }
       console.warn(`[relay] next-question watchdog — Q${nextQ} not received, injecting fallback`);
       this.roundQuestionEmitted = false;
       this.modelBuf = '';
       this.blockModelOutput = false;
       this.allowModelAudio = true;
       const fallback = fallbackInterviewQuestion(nextQ, this.maxTurns);
-      this.questions.push(fallback);
-      this.roundQuestionEmitted = true;
-      this.onEvent({ type: 'transcript', speaker: 'model', text: fallback, partial: false, number: nextQ });
-      this.onEvent({ type: 'question', number: nextQ, text: fallback });
-      this.emitAwaitingAnswer(nextQ, fallback);
+      this.commitQuestionText(nextQ, fallback);
     }, 12000);
+  }
+
+  commitQuestionText(qNum, text) {
+    const modelText = String(text || '').trim();
+    if (!modelText || qNum < 1 || qNum > this.maxTurns) return;
+
+    if (!this.roundQuestionEmitted && this.questions.length < qNum) {
+      while (this.questions.length < qNum - 1) {
+        this.questions.push('');
+      }
+      if (this.questions.length === qNum - 1) {
+        this.questions.push(modelText);
+      } else if (this.questions.length >= qNum) {
+        this.questions[qNum - 1] = modelText;
+      }
+      this.roundQuestionEmitted = true;
+    } else if (this.questions.length >= qNum) {
+      this.questions[qNum - 1] = modelText;
+    } else {
+      this.questions.push(modelText);
+      this.roundQuestionEmitted = true;
+    }
+
+    if (this.kickoffWatchdog) {
+      clearTimeout(this.kickoffWatchdog);
+      this.kickoffWatchdog = null;
+    }
+    this.clearNextQuestionWatchdog();
+    this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
+    this.onEvent({ type: 'question', number: qNum, text: modelText });
+    this.emitAwaitingAnswer(qNum, modelText);
   }
 
   clearNextQuestionWatchdog() {
@@ -402,7 +440,7 @@ export class GeminiLiveBridge {
     if (this.blockModelOutput || this.interviewEnded) return;
     let modelText = sanitizeTranscript(this.modelBuf, 'model');
     if (!modelText) return;
-    if (isClosingMessage(modelText) && this.answers.length < this.maxTurns) {
+    if (isClosingOnlyMessage(modelText) && this.answers.length < this.maxTurns) {
       this.onEvent({ type: 'interview_closing_premature', text: modelText });
       return;
     }
@@ -425,6 +463,8 @@ export class GeminiLiveBridge {
       number: qNum,
     });
     this.onEvent({ type: 'question_partial', number: qNum, text: modelText });
+    this.streamingQuestionText = modelText;
+    this.streamingQuestionNum = qNum;
   }
 
   onModelTurnComplete() {
@@ -534,6 +574,8 @@ export class GeminiLiveBridge {
     });
 
     this.roundQuestionEmitted = false;
+    this.streamingQuestionText = '';
+    this.streamingQuestionNum = 0;
 
     // 3. Last question? Close the interview with a thank-you message.
     if (aNum >= this.maxTurns) {
@@ -559,26 +601,36 @@ export class GeminiLiveBridge {
     this.modelBuf = '';
     if (!modelText) return;
 
+    const expectedQ = this.questions.length + 1;
+    const streamed = this.streamingQuestionNum === expectedQ ? this.streamingQuestionText : '';
+    modelText = resolveCommittedQuestionText(streamed, modelText);
+    if (this.questions.length === 0) {
+      modelText = stripLeadingGreeting(modelText) || modelText;
+    }
+
     // Gemini sometimes closes early (e.g. thank-you as "Q5") — reject and re-prompt.
-    if (!this.interviewEnded && isClosingMessage(modelText) && this.answers.length < this.maxTurns) {
-      const expectedQ = this.questions.length + 1;
-      this.prematureClosingReprompts += 1;
-      console.warn(
-        `[relay] premature closing at Q${expectedQ} (answers=${this.answers.length}), reprompt #${this.prematureClosingReprompts}`
-      );
-      this.roundQuestionEmitted = false;
-      if (this.prematureClosingReprompts <= 3) {
-        this.blockModelOutput = false;
-        this.allowModelAudio = true;
-        this.sendClientText(this.buildClosingReprompt(expectedQ), true);
-        return;
+    if (!this.interviewEnded && isClosingOnlyMessage(modelText) && this.answers.length < this.maxTurns) {
+      const streamQ = extractInterviewQuestion(streamed) || streamed;
+      if (streamQ.includes('?') && streamQ.split(/\s+/).filter(Boolean).length >= 6) {
+        modelText = streamQ;
+      } else {
+        this.prematureClosingReprompts += 1;
+        console.warn(
+          `[relay] premature closing at Q${expectedQ} (answers=${this.answers.length}), reprompt #${this.prematureClosingReprompts}`
+        );
+        this.roundQuestionEmitted = false;
+        if (this.prematureClosingReprompts <= 3) {
+          this.blockModelOutput = false;
+          this.allowModelAudio = true;
+          this.sendClientText(this.buildClosingReprompt(expectedQ), true);
+          return;
+        }
+        modelText = fallbackInterviewQuestion(expectedQ, this.maxTurns);
+        console.warn(`[relay] using fallback question for Q${expectedQ}`);
       }
-      modelText = fallbackInterviewQuestion(expectedQ, this.maxTurns);
-      console.warn(`[relay] using fallback question for Q${expectedQ}`);
     }
 
     if (!this.roundQuestionEmitted && this.questions.length < this.maxTurns) {
-      if (this.questions.length === 0) modelText = stripLeadingGreeting(modelText) || modelText;
       this.questions.push(modelText);
       this.roundQuestionEmitted = true;
       if (this.kickoffWatchdog) {
@@ -592,7 +644,11 @@ export class GeminiLiveBridge {
       this.emitAwaitingAnswer(qNum, modelText);
     } else if (this.roundQuestionEmitted && this.questions.length) {
       const idx = this.questions.length - 1;
-      this.questions[idx] = `${this.questions[idx]} ${modelText}`.replace(/\s+/g, ' ').trim();
+      const merged = resolveCommittedQuestionText(
+        `${this.questions[idx]} ${streamed}`.trim(),
+        `${this.questions[idx]} ${modelText}`.replace(/\s+/g, ' ').trim()
+      );
+      this.questions[idx] = merged;
       this.onEvent({ type: 'question', number: idx + 1, text: this.questions[idx] });
       this.onEvent({
         type: 'transcript',

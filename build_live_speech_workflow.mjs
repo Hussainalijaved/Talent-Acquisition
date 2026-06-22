@@ -48,7 +48,8 @@ const cfgAssignments = [
   { id: 'ls-cfg-9', name: 'pass_score_threshold', value: 60, type: 'number' },
   { id: 'ls-cfg-10', name: 'fail_score_threshold', value: 30, type: 'number' },
   { id: 'ls-cfg-11', name: 'organization_name', value: 'Convo Pvt Ltd', type: 'string' },
-  { id: 'ls-cfg-12', name: 'interviewer_email', value: 'hussainalijaved712@gmail.com', type: 'string' },
+  // interviewer_email comes from session.config (JD / apply form) — leave blank in n8n CFG
+  { id: 'ls-cfg-12', name: 'interviewer_email', value: '', type: 'string' },
   { id: 'ls-cfg-13', name: 'portal_base_url', value: 'https://talent-acquisition-six.vercel.app', type: 'string' },
   { id: 'ls-cfg-14', name: 'n8n_public_url', value: 'https://randy-gaunt-bradley.ngrok-free.dev', type: 'string' },
   { id: 'ls-cfg-15', name: 'live_relay_url', value: 'wss://YOUR-LIVE-RELAY.example.com/live', type: 'string' },
@@ -280,12 +281,144 @@ const workflow = {
       position: [1920, 760],
     },
     {
+      parameters: {
+        conditions: {
+          options: {
+            caseSensitive: true,
+            leftValue: '',
+            typeValidation: 'loose',
+            version: 2,
+          },
+          conditions: [
+            {
+              id: 'pass-check',
+              leftValue: '={{ $("CODE - Pick Parse Result").first().json.result }}',
+              rightValue: 'PASS',
+              operator: {
+                type: 'string',
+                operation: 'equals',
+              },
+            },
+          ],
+          combinator: 'and',
+        },
+        options: {},
+      },
+      id: 'ls-if-pass',
+      name: 'IF - Result PASS?',
+      type: 'n8n-nodes-base.if',
+      typeVersion: 2.2,
+      position: [2160, 680],
+    },
+    {
+      parameters: {
+        content:
+          '## PASS branch\nWire **IF - Result PASS? (true)** → `CODE - Prep scheduling from PASS` → interviewer mail.\nCandidate slot mail runs later via **POST /webhook/talent/scheduling-slots** — not here.',
+        height: 160,
+        width: 420,
+      },
+      id: 'ls-note-pass',
+      name: 'NOTE - PASS scheduling',
+      type: 'n8n-nodes-base.stickyNote',
+      typeVersion: 1,
+      position: [2400, 520],
+    },
+    {
+      parameters: { jsCode: readJs('n8n_code_prep_scheduling_from_pass.js') },
+      id: 'ls-prep-sched',
+      name: 'CODE - Prep scheduling from PASS',
+      type: 'n8n-nodes-base.code',
+      typeVersion: 2,
+      position: [2400, 680],
+    },
+    {
+      parameters: { jsCode: readJs('n8n_code_build_interviewer_mail_context.js') },
+      id: 'ls-interviewer-ctx',
+      name: 'CODE - Build interviewer mail context',
+      type: 'n8n-nodes-base.code',
+      typeVersion: 2,
+      position: [2640, 680],
+    },
+    {
+      parameters: {
+        sendTo: '={{ $json.interviewer_email }}',
+        subject: '={{ $json.mail_subject }}',
+        emailType: 'html',
+        message: '={{ $json.mail_body_html }}',
+        options: {},
+      },
+      id: 'ls-interviewer-mail',
+      name: 'MAIL - Interviewer pitch mail',
+      type: 'n8n-nodes-base.gmail',
+      typeVersion: 2.1,
+      position: [2880, 680],
+      credentials: { gmailOAuth2: { name: 'Gmail account' } },
+    },
+    {
+      parameters: { jsCode: readJs('n8n_code_merge_gmail_interviewer_response.js') },
+      id: 'ls-interviewer-merge',
+      name: 'CODE - Merge Gmail interviewer send',
+      type: 'n8n-nodes-base.code',
+      typeVersion: 2,
+      position: [3120, 680],
+    },
+    {
+      parameters: {
+        method: 'PATCH',
+        url: '={{ $json._interviewer_patch_url }}',
+        sendHeaders: true,
+        headerParameters: {
+          parameters: [
+            { name: 'apikey', value: "={{ $('CFG - Live Speech Config (complete)').first().json.supabase_key }}" },
+            { name: 'Authorization', value: "=Bearer {{ $('CFG - Live Speech Config (complete)').first().json.supabase_key }}" },
+            { name: 'Content-Type', value: 'application/json' },
+            { name: 'Prefer', value: 'return=minimal' },
+          ],
+        },
+        sendBody: true,
+        specifyBody: 'json',
+        jsonBody: '={{ $json._interviewer_patch_body }}',
+        options: {},
+      },
+      id: 'ls-interviewer-patch',
+      name: 'HTTP - PATCH interviewer thread (pitch)',
+      type: 'n8n-nodes-base.httpRequest',
+      typeVersion: 4.2,
+      position: [3360, 680],
+      onError: 'continueRegularOutput',
+    },
+    {
+      parameters: {
+        method: 'PATCH',
+        url: '={{ $json._scheduling_patch_url }}',
+        sendHeaders: true,
+        headerParameters: {
+          parameters: [
+            { name: 'apikey', value: "={{ $('CFG - Live Speech Config (complete)').first().json.supabase_key }}" },
+            { name: 'Authorization', value: "=Bearer {{ $('CFG - Live Speech Config (complete)').first().json.supabase_key }}" },
+            { name: 'Content-Type', value: 'application/json' },
+            { name: 'Prefer', value: 'return=minimal' },
+          ],
+        },
+        sendBody: true,
+        specifyBody: 'json',
+        jsonBody: '={{ $json._scheduling_patch_body }}',
+        options: {},
+      },
+      id: 'ls-scheduling-patch',
+      name: 'HTTP - PATCH scheduling pending',
+      type: 'n8n-nodes-base.httpRequest',
+      typeVersion: 4.2,
+      position: [2640, 820],
+      onError: 'continueRegularOutput',
+    },
+    {
       parameters: { jsCode: buildMailJs },
       id: 'ls-mail-build',
       name: 'CODE - Build assessment result mail',
       type: 'n8n-nodes-base.code',
       typeVersion: 2,
-      position: [2160, 760],
+      position: [2400, 880],
     },
     {
       parameters: {
@@ -301,7 +434,7 @@ const workflow = {
       name: 'MAIL - Reply candidate (assessment result)',
       type: 'n8n-nodes-base.gmail',
       typeVersion: 2.1,
-      position: [2400, 760],
+      position: [2640, 880],
       credentials: { gmailOAuth2: { name: 'Gmail account' } },
     },
   ],
@@ -344,7 +477,30 @@ const workflow = {
       ],
     },
     'IF - Assessment finished?': {
-      main: [[{ node: 'CODE - Build assessment result mail', type: 'main', index: 0 }], []],
+      main: [[{ node: 'IF - Result PASS?', type: 'main', index: 0 }], []],
+    },
+    'IF - Result PASS?': {
+      main: [
+        [{ node: 'CODE - Prep scheduling from PASS', type: 'main', index: 0 }],
+        [{ node: 'CODE - Build assessment result mail', type: 'main', index: 0 }],
+      ],
+    },
+    'CODE - Prep scheduling from PASS': {
+      main: [
+        [
+          { node: 'CODE - Build interviewer mail context', type: 'main', index: 0 },
+          { node: 'HTTP - PATCH scheduling pending', type: 'main', index: 0 },
+        ],
+      ],
+    },
+    'CODE - Build interviewer mail context': {
+      main: [[{ node: 'MAIL - Interviewer pitch mail', type: 'main', index: 0 }]],
+    },
+    'MAIL - Interviewer pitch mail': {
+      main: [[{ node: 'CODE - Merge Gmail interviewer send', type: 'main', index: 0 }]],
+    },
+    'CODE - Merge Gmail interviewer send': {
+      main: [[{ node: 'HTTP - PATCH interviewer thread (pitch)', type: 'main', index: 0 }]],
     },
     'CODE - Build assessment result mail': {
       main: [[{ node: 'MAIL - Reply candidate (assessment result)', type: 'main', index: 0 }]],

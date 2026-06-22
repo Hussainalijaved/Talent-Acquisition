@@ -3,8 +3,11 @@ import {
   cleanUserAnswerText,
   displayUserTranscript,
   extractEnglishAnswer,
-  isEnglishTranscript,
+  extractInterviewQuestion,
+  isClosingOnlyMessage,
   isClosingMessage,
+  isEnglishTranscript,
+  resolveCommittedQuestionText,
 } from '../relay/lib/transcript-utils.mjs';
 
 let failures = 0;
@@ -38,6 +41,27 @@ check('arabic false', !isEnglishTranscript('مرحبا'));
 console.log('\n=== isClosingMessage ===');
 check('thank you detected', isClosingMessage('Thank you for your time — that completes the voice interview.'));
 check('question not closing', !isClosingMessage('What motivates you about this role?'));
+
+console.log('\n=== isClosingOnlyMessage ===');
+check('question with thank-you prefix is not closing-only', !isClosingOnlyMessage(
+  'Thank you. Describe a time you had to collaborate with someone who disagreed with your approach. How did you handle it?'
+));
+check('pure closing is closing-only', isClosingOnlyMessage('Thank you for your time — that completes the voice interview.'));
+
+console.log('\n=== extractInterviewQuestion ===');
+check('strips leading thank you', extractInterviewQuestion(
+  'Thank you. Describe a time you had to collaborate with someone who disagreed. How did you handle it?'
+)?.includes('collaborate'));
+check('strips trailing closing', extractInterviewQuestion(
+  'What motivates you about this role? Thank you for your time.'
+)?.includes('motivates'));
+
+console.log('\n=== resolveCommittedQuestionText ===');
+check('prefers streamed over fallback', resolveCommittedQuestionText(
+  'That is good to know. Can you describe a setback you learned from?',
+  'Describe a time you had to collaborate with someone who disagreed with your approach. How did you handle it?'
+)?.includes('setback'));
+check('uses final when no stream', resolveCommittedQuestionText('', 'What is your greatest strength?')?.includes('strength'));
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURES'}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -103,6 +103,54 @@ export function mergeQuestionChunks(chunks) {
   return parts.join(' ').replace(/\s+/g, ' ').trim();
 }
 
+/** Pull the actual interview question out of acknowledgments / trailing closings. */
+export function extractInterviewQuestion(text) {
+  let t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+
+  t = t.replace(
+    /\s*(?:thank you(?: for your time)?|thanks(?: for your time)?|we will be in touch|we'll be in touch|that completes the voice interview|that concludes(?: the interview)?|have a (?:great|good|nice) day)[^.?!]*[.?!]?\s*$/gi,
+    ''
+  ).trim();
+
+  const leadStrip = t.replace(
+    /^(?:(?:hi|hello|hey|welcome|good (?:morning|afternoon|evening)|thanks for joining|thank you for joining|thank you|thanks|understood|that(?:'s| is) good to know|great|okay|ok|right|sure|perfect)[,!.\s-]+)+/i,
+    ''
+  ).trim();
+  if (leadStrip.length >= 20) t = leadStrip;
+
+  const sentences = t.split(/(?<=[.?!])\s+/).filter((s) => s.length > 3);
+  const firstQIdx = sentences.findIndex((s) => s.includes('?'));
+  if (firstQIdx >= 0) {
+    let start = 0;
+    while (start < firstQIdx && sentences[start].split(/\s+/).filter(Boolean).length < 4) start += 1;
+    return sentences.slice(start, firstQIdx + 1).join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length >= 8) return t;
+  return t.length >= 20 ? t : '';
+}
+
+/** Prefer streamed caption when final text diverges (matches what the candidate heard). */
+export function resolveCommittedQuestionText(streamed, final) {
+  const streamRaw = String(streamed || '').replace(/\s+/g, ' ').trim();
+  let finRaw = String(final || '').replace(/\s+/g, ' ').trim();
+  if (!streamRaw) return extractInterviewQuestion(finRaw) || finRaw;
+  if (!finRaw || finRaw === '…') return extractInterviewQuestion(streamRaw) || streamRaw;
+
+  const streamQ = extractInterviewQuestion(streamRaw) || streamRaw;
+  const finalQ = extractInterviewQuestion(finRaw) || finRaw;
+  const norm = (s) => s.toLowerCase().replace(/[^\w\s?]/g, '').replace(/\s+/g, ' ').trim();
+
+  if (norm(streamQ) === norm(finalQ)) return streamQ;
+  if (norm(finalQ).includes(norm(streamQ)) || norm(streamQ).includes(norm(finalQ))) {
+    return streamQ.length >= finalQ.length ? streamQ : finalQ;
+  }
+  if (streamQ.includes('?') && streamQ.split(/\s+/).length >= 6) return streamQ;
+  return finalQ.length >= streamQ.length ? finalQ : streamQ;
+}
+
 /** True when the model spoke a closing/thank-you instead of an interview question. */
 export function isClosingMessage(text) {
   const t = String(text || '').trim().toLowerCase();
@@ -122,6 +170,17 @@ export function isClosingMessage(text) {
     /wrapping up/,
   ];
   return patterns.some((re) => re.test(t));
+}
+
+/** Closing/thank-you with no substantive interview question in the same utterance. */
+export function isClosingOnlyMessage(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  const question = extractInterviewQuestion(t);
+  if (question && question.includes('?') && question.split(/\s+/).filter(Boolean).length >= 6) {
+    return false;
+  }
+  return isClosingMessage(t);
 }
 
 const FALLBACK_QUESTIONS = [

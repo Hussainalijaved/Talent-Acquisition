@@ -35,6 +35,14 @@ function modelCandidates(context) {
   return [...new Set([preferred, ...MODEL_FALLBACKS, DEFAULT_MODEL].filter(Boolean))];
 }
 
+// Strip "Question 1:", "Question 1 -", "Q1:", etc. that Gemini sometimes prefixes.
+function stripQuestionNumbering(text) {
+  return String(text || '').replace(
+    /^(?:(?:interview\s+)?question\s*\d+\s*[:\-–—]?\s*|q\s*\d+\s*[:\-–—]\s*)/i,
+    ''
+  ).trim();
+}
+
 function stripLeadingGreeting(text) {
   // Only strip a short standalone greeting sentence, not the question body.
   const t = String(text || '').trim();
@@ -94,18 +102,42 @@ export class GeminiLiveBridge {
     this.streamingQuestionText = '';
     this.streamingQuestionNum = 0;
 
-    // Silence / follow-up / coaching (Micro1-style)
-    this.silenceNudgeCount = 0;
-    this.inNudgePlayback = false;
+    // Follow-up / coaching (Micro1-style). Decisions are heuristic on the
+    // transcript so the next question is never delayed by the scoring API.
     this.followUpUsed = {};
     this.inFollowUpFor = 0;
-    this.lastAnswerMeta = null;
+    this.lastAnswerWeak = false;
     this.coachingConfig = {
-      weakScoreThreshold: Number(context.weak_score_threshold ?? 55),
-      coachingScoreThreshold: Number(context.coaching_score_threshold ?? 60),
+      minWords: Number(context.followup_min_words ?? 12),
       followUpEnabled: context.follow_up_enabled !== false,
       coachingEnabled: context.coaching_enabled !== false,
     };
+
+    // Relay-side silence detection. Driven by transcript growth (authoritative)
+    // rather than client mic level, so a quiet-but-speaking candidate is never
+    // cut off. nudge → speak; sustained silence after the nudge → auto-submit.
+    this.inNudgePlayback = false;
+    this.lastUserActivityAt = 0;
+    this.silenceMonitor = null;
+    this.silenceNudged = false;
+    this.silenceNudgedAt = 0;
+    const nudgeSec = Number(context.silence_nudge_seconds ?? 5);
+    const autoSec = Number(context.silence_auto_submit_seconds ?? 6);
+    this.silenceConfig = {
+      nudgeMs: Number.isFinite(nudgeSec) && nudgeSec > 0 ? nudgeSec * 1000 : 5000,
+      autoMs: Number.isFinite(autoSec) && autoSec > 0 ? autoSec * 1000 : 6000,
+      enabled: context.silence_handling_enabled !== false,
+    };
+
+    // Two-phase warm-up:
+    //   'mic_check' (-1) — AI asks candidate to say anything to verify mic.
+    //                       Auto-advances as soon as ANY speech is transcribed.
+    //   'intro'     (0)  — AI asks candidate to introduce themselves.
+    //                       Candidate presses Submit when done; no auto-submit.
+    //   null             — actual numbered interview questions.
+    this.warmupPhase = context.intro_enabled !== false ? 'mic_check' : null;
+    this.micCheckAdvanceTimer = null;
+    this.introQuestionAsked = false;
   }
 
   timerConfig() {
@@ -159,20 +191,37 @@ export class GeminiLiveBridge {
       });
   }
 
+  buildMicCheckPrompt() {
+    const org = String(this.context.organization_name || 'CONVO');
+    return (
+      this.context.mic_check_prompt ||
+      `Greet the candidate warmly in one short sentence, welcome them to ${org}. Then tell them you want to do a quick microphone check and ask them to say just a few words — anything at all — so you can confirm you can hear them clearly. Do NOT ask them to introduce themselves yet. Stop after the microphone check request and wait.`
+    );
+  }
+
+  buildIntroPrompt() {
+    const role = String(this.context.requisition_title || 'this role');
+    return (
+      this.context.intro_prompt ||
+      `The microphone is working. Now please ask the candidate to briefly introduce themselves — their name, their background, and what brings them to apply for ${role}. Keep your prompt warm and to one or two sentences. Then stop and wait for their answer.`
+    );
+  }
+
+  buildFirstQuestionPrompt() {
+    return (
+      `The candidate has finished their introduction. Now begin the interview. Ask interview question 1 of ${this.maxTurns} in clear, professional English. ` +
+      'Do NOT thank them or repeat anything from the introduction — start the question directly. ' +
+      'Do NOT say "Question 1" or any number aloud. Ask exactly one behavioural or scenario-based question, then stop talking and wait.'
+    );
+  }
+
   buildNextQuestionPrompt(aNum, nextQ) {
     let coaching = '';
-    const meta = this.lastAnswerMeta;
-    if (
-      this.coachingConfig.coachingEnabled &&
-      meta &&
-      meta.qNum === aNum &&
-      meta.score != null &&
-      meta.score < this.coachingConfig.coachingScoreThreshold
-    ) {
+    if (this.coachingConfig.coachingEnabled && this.lastAnswerWeak) {
       coaching =
-        ' Before question ' +
+        ' The candidate\'s previous answer was brief or unclear. Before question ' +
         nextQ +
-        ', give ONE brief supportive coaching line (never mention scores or say they failed) — e.g. encourage a specific example or clearer structure — then ask the next question. Keep coaching + question within 3 sentences total. ';
+        ', give ONE short supportive coaching line (never mention scores or say they failed) — e.g. gently encourage them to use a specific example or more detail — then ask the next question. Keep coaching + question within 3 sentences total. ';
     }
 
     if (nextQ >= this.maxTurns) {
@@ -189,23 +238,24 @@ export class GeminiLiveBridge {
     );
   }
 
-  buildFollowUpPrompt(qNum, questionText, answerText, scored) {
-    const hint = String(scored?.feedback || '').slice(0, 160);
+  buildFollowUpPrompt(qNum, questionText, answerText) {
     return (
-      `The candidate's answer to question ${qNum} was incomplete or unclear (internal note — never mention scoring). ` +
+      `The candidate's answer to question ${qNum} was brief or unclear (internal note — never mention scoring). ` +
       `Original question: "${String(questionText || '').slice(0, 220)}" ` +
       `Their answer: "${String(answerText || '').slice(0, 280)}" ` +
-      (hint ? `Internal feedback: ${hint}. ` : '') +
       `Ask ONE short follow-up probe on the SAME topic so they can clarify or give a concrete example. ` +
       `Do NOT move to question ${qNum + 1} yet. One follow-up only, then stop and wait.`
     );
   }
 
-  isWeakAnswer(userText, score) {
+  // Heuristic only — runs instantly so the next question is never blocked on the
+  // scoring API. A genuinely empty/no-response answer does NOT trigger a follow-up.
+  isWeakAnswer(userText) {
     const t = String(userText || '').trim();
-    if (/^\[(no spoken|non-english|no speech|noise)/i.test(t)) return false;
-    if (t.split(/\s+/).filter(Boolean).length < 8) return true;
-    if (Number.isFinite(Number(score)) && Number(score) < this.coachingConfig.weakScoreThreshold) return true;
+    if (!t || /^\[(no spoken|non-english|no speech|noise)/i.test(t)) return false;
+    const words = t.split(/\s+/).filter(Boolean).length;
+    if (words < this.coachingConfig.minWords) return true;
+    if (/^(i don'?t know|not sure|no idea|i'?m not sure|pass)\b/i.test(t)) return true;
     return false;
   }
 
@@ -215,6 +265,27 @@ export class GeminiLiveBridge {
       `Ask interview question ${expectedQ} of ${this.maxTurns} now — one clear behavioural question only. ` +
       'Do NOT thank the candidate. Do NOT say the interview is complete. Then stop and wait.'
     );
+  }
+
+  scheduleWarmupWatchdog(phase) {
+    if (this.nextQuestionWatchdog) clearTimeout(this.nextQuestionWatchdog);
+    this.nextQuestionWatchdog = setTimeout(() => {
+      this.nextQuestionWatchdog = null;
+      if (this.interviewEnded || this.closed || this.warmupPhase !== phase) return;
+      console.warn(`[relay] warmup watchdog — ${phase} not received from AI, injecting fallback`);
+      this.modelBuf = '';
+      this.blockModelOutput = false;
+      this.allowModelAudio = true;
+      const fallbackNum = phase === 'mic_check' ? -1 : 0;
+      const fallbackText = phase === 'mic_check'
+        ? 'Please say a few words so I can confirm your microphone is working.'
+        : 'Could you please tell me a bit about yourself — your name, background, and interest in this role?';
+      this.onEvent({ type: 'transcript', speaker: 'model', text: fallbackText, partial: false, number: fallbackNum });
+      this.onEvent({ type: 'question', number: fallbackNum, text: fallbackText, warmup: phase });
+      const limit = Number(this.context.intro_answer_seconds || 90);
+      this.questionTimeLimits[fallbackNum] = { seconds: limit, tier: 'warmup' };
+      this.onEvent({ type: 'awaiting_answer', number: fallbackNum, maxTurns: this.maxTurns, time_limit_seconds: limit, complexity_tier: 'warmup', warmup: phase });
+    }, 14000);
   }
 
   scheduleNextQuestionWatchdog(nextQ) {
@@ -240,7 +311,7 @@ export class GeminiLiveBridge {
   }
 
   commitQuestionText(qNum, text, opts = {}) {
-    const modelText = String(text || '').trim();
+    const modelText = stripQuestionNumbering(String(text || '').trim());
     if (!modelText || qNum < 1 || qNum > this.maxTurns) return;
 
     if (!this.roundQuestionEmitted && this.questions.length < qNum) {
@@ -428,6 +499,7 @@ export class GeminiLiveBridge {
     if (msg.inputTranscription?.text) {
       if (this.userTurnActive) {
         this.userBuf += msg.inputTranscription.text;
+        this.noteUserActivity();
       } else if (this.awaitingAnswer) {
         // Transcription can arrive after activityEnd — keep for this answer turn.
         this.lateUserBuf += msg.inputTranscription.text;
@@ -441,6 +513,7 @@ export class GeminiLiveBridge {
     if (server.inputTranscription?.text) {
       if (this.userTurnActive) {
         this.userBuf += server.inputTranscription.text;
+        this.noteUserActivity();
       } else if (this.awaitingAnswer) {
         this.lateUserBuf += server.inputTranscription.text;
       }
@@ -492,9 +565,20 @@ export class GeminiLiveBridge {
 
   // Stream the interviewer's question text as Gemini speaks (output transcription).
   emitModelPartialTranscript() {
-    if (this.blockModelOutput || this.interviewEnded) return;
+    if (this.blockModelOutput || this.interviewEnded || this.inNudgePlayback) return;
     let modelText = sanitizeTranscript(this.modelBuf, 'model');
     if (!modelText) return;
+
+    // Warmup phases: emit partial streaming for the active warmup step.
+    if (this.warmupPhase === 'mic_check' || this.warmupPhase === 'intro') {
+      const wNum = this.warmupPhase === 'mic_check' ? -1 : 0;
+      this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: true, number: wNum });
+      this.onEvent({ type: 'question_partial', number: wNum, text: modelText, warmup: this.warmupPhase });
+      this.streamingQuestionText = modelText;
+      this.streamingQuestionNum = wNum;
+      return;
+    }
+
     if (isClosingOnlyMessage(modelText) && this.answers.length < this.maxTurns) {
       this.onEvent({ type: 'interview_closing_premature', text: modelText });
       return;
@@ -508,6 +592,7 @@ export class GeminiLiveBridge {
     if (this.questions.length === 0 && !this.roundQuestionEmitted) {
       modelText = stripLeadingGreeting(modelText) || modelText;
     }
+    modelText = stripQuestionNumbering(modelText);
     if (!modelText) return;
 
     this.onEvent({
@@ -524,9 +609,15 @@ export class GeminiLiveBridge {
 
   onModelTurnComplete() {
     if (this.inNudgePlayback) {
+      // Nudge finished speaking — re-open the mic and start the auto-submit
+      // window. If the candidate stays silent through it, we auto-submit.
       this.inNudgePlayback = false;
       this.modelBuf = '';
       this.blockModelOutput = false;
+      if (this.userTurnActive && this.geminiWs?.readyState === WebSocket.OPEN) {
+        this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
+      }
+      this.silenceNudgedAt = Date.now();
       return;
     }
 
@@ -575,8 +666,9 @@ export class GeminiLiveBridge {
     this.pendingFinalize = setTimeout(tick, 600);
   }
 
-  async completeAnswerTurn() {
+  completeAnswerTurn() {
     if (!this.awaitingAnswer) return;
+    this.stopSilenceMonitor();
 
     // Mic may still be open (auto-open) — close activity so transcription flushes.
     if (this.userTurnActive) {
@@ -597,12 +689,52 @@ export class GeminiLiveBridge {
     }
 
     this.modelBuf = '';
-    this.silenceNudgeCount = 0;
+    if (this.micCheckAdvanceTimer) {
+      clearTimeout(this.micCheckAdvanceTimer);
+      this.micCheckAdvanceTimer = null;
+    }
 
     const combined = `${this.userBuf}${this.lateUserBuf}`.trim();
     this.userBuf = '';
     this.lateUserBuf = '';
     let userText = cleanUserAnswer(combined) || '[No spoken response captured]';
+
+    // ── Mic check phase: any speech = mic confirmed → advance to intro ──
+    if (this.warmupPhase === 'mic_check') {
+      this.warmupPhase = 'intro';
+      this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
+      this.onEvent({ type: 'answer', number: -1, text: userText, warmup: 'mic_check' });
+      this.onEvent({ type: 'warmup_phase', phase: 'intro' });
+      this.roundQuestionEmitted = false;
+      this.streamingQuestionText = '';
+      this.streamingQuestionNum = 0;
+      this.modelBuf = '';
+      this.allowModelAudio = true;
+      this.pendingAudioChunks = [];
+      this.blockModelOutput = false;
+      this.sendClientText(this.buildIntroPrompt(), true);
+      this.scheduleWarmupWatchdog('intro');
+      return;
+    }
+
+    // ── Intro phase: candidate answered intro → start real questions ──
+    if (this.warmupPhase === 'intro') {
+      this.warmupPhase = null;
+      this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
+      this.onEvent({ type: 'answer', number: 0, text: userText, warmup: 'intro' });
+      this.roundQuestionEmitted = false;
+      this.streamingQuestionText = '';
+      this.streamingQuestionNum = 0;
+      this.onEvent({ type: 'warmup_phase', phase: null });
+      this.onEvent({ type: 'next_question_ready', number: 1 });
+      this.modelBuf = '';
+      this.allowModelAudio = true;
+      this.pendingAudioChunks = [];
+      this.blockModelOutput = false;
+      this.sendClientText(this.buildFirstQuestionPrompt(), true);
+      this.scheduleNextQuestionWatchdog(1);
+      return;
+    }
 
     let aNum;
     let isFollowUpResponse = false;
@@ -643,45 +775,40 @@ export class GeminiLiveBridge {
       follow_up: isFollowUpResponse,
     });
 
+    // Save + score in the background — NEVER block the next question on it.
     this.onEvent({ type: 'saving_turn', number: aNum, follow_up: isFollowUpResponse });
-    let scored = null;
-    try {
-      scored = await Promise.resolve(this.onTurnSaved(turnPair));
-    } catch (err) {
+    void Promise.resolve(this.onTurnSaved(turnPair)).catch((err) => {
       console.warn('[relay] turn save/score failed:', err.message);
-    }
+    });
 
-    await this.afterAnswerScored(aNum, userText, turnPair, scored);
+    this.proceedAfterAnswer(aNum, userText, turnPair);
   }
 
-  async afterAnswerScored(aNum, userText, turnPair, scored) {
-    const score = Number(scored?.score);
-    const hasScore = Number.isFinite(score);
-
+  // Decide next step using a fast transcript heuristic (no score wait):
+  //  - weak/short answer (not already followed-up) → one cross-question
+  //  - otherwise → next numbered question (with optional coaching) or finish
+  proceedAfterAnswer(aNum, userText, turnPair) {
     this.roundQuestionEmitted = false;
     this.streamingQuestionText = '';
     this.streamingQuestionNum = 0;
+
+    const weak = this.isWeakAnswer(userText);
 
     if (
       this.coachingConfig.followUpEnabled &&
       !turnPair.is_follow_up &&
       !this.followUpUsed[aNum] &&
-      this.isWeakAnswer(userText, hasScore ? score : null)
+      weak
     ) {
       this.followUpUsed[aNum] = true;
       this.inFollowUpFor = aNum;
       this.onEvent({ type: 'follow_up_probe', number: aNum, maxTurns: this.maxTurns });
-      this.askFollowUp(aNum, turnPair.question_text, userText, scored);
+      this.askFollowUp(aNum, turnPair.question_text, userText);
       return;
     }
 
-    this.lastAnswerMeta = {
-      score: hasScore ? score : null,
-      feedback: scored?.feedback || '',
-      question: turnPair.question_text,
-      answer: userText,
-      qNum: aNum,
-    };
+    // Coaching on the NEXT question reflects whether this answer was weak.
+    this.lastAnswerWeak = weak;
 
     if (aNum >= this.maxTurns) {
       this.finishInterview();
@@ -693,14 +820,14 @@ export class GeminiLiveBridge {
     this.proceedToNextQuestion(aNum, nextQ);
   }
 
-  askFollowUp(qNum, questionText, answerText, scored) {
+  askFollowUp(qNum, questionText, answerText) {
     this.modelBuf = '';
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];
     this.blockModelOutput = false;
     this.awaitingAnswer = false;
     this.roundQuestionEmitted = true;
-    this.sendClientText(this.buildFollowUpPrompt(qNum, questionText, answerText, scored), true);
+    this.sendClientText(this.buildFollowUpPrompt(qNum, questionText, answerText), true);
     this.scheduleFollowUpWatchdog(qNum);
   }
 
@@ -724,29 +851,105 @@ export class GeminiLiveBridge {
     this.scheduleNextQuestionWatchdog(nextQ);
   }
 
-  handleCandidateSilent({ stage } = {}) {
-    if (!this.awaitingAnswer || this.interviewEnded || this.closed) return;
-    if (!this.userTurnActive) return;
+  // ---- Relay-side silence handling (transcript-driven) -------------------
+  // Mark the candidate as active whenever new speech is transcribed. This is
+  // the authoritative "are they speaking?" signal — far more reliable than the
+  // client's raw mic level, which stays low for soft-spoken candidates.
+  noteUserActivity() {
+    this.lastUserActivityAt = Date.now();
+    if (this.silenceNudged) {
+      this.silenceNudged = false;
+      this.silenceNudgedAt = 0;
+    }
+    // Mic check: the moment any speech is transcribed, schedule auto-advance.
+    // We give 1.5s buffer so the candidate can finish even one short phrase.
+    if (
+      this.warmupPhase === 'mic_check' &&
+      this.userTurnActive &&
+      !this.micCheckAdvanceTimer &&
+      this.userBuf.trim().length > 0
+    ) {
+      this.micCheckAdvanceTimer = setTimeout(() => {
+        this.micCheckAdvanceTimer = null;
+        if (this.warmupPhase === 'mic_check' && this.userTurnActive) {
+          this.stopSilenceMonitor();
+          this.endUserTurn();
+        }
+      }, 1500);
+    }
+  }
 
-    if (stage === 'auto_submit') {
-      void this.completeAnswerTurn();
+  startSilenceMonitor() {
+    this.stopSilenceMonitor();
+    // During mic-check the advancement is handled by noteUserActivity — no timer needed.
+    if (!this.silenceConfig.enabled || this.warmupPhase === 'mic_check') return;
+    this.lastUserActivityAt = Date.now();
+    this.silenceNudged = false;
+    this.silenceNudgedAt = 0;
+    this.silenceMonitor = setInterval(() => this.tickSilence(), 700);
+  }
+
+  stopSilenceMonitor() {
+    if (this.silenceMonitor) {
+      clearInterval(this.silenceMonitor);
+      this.silenceMonitor = null;
+    }
+    this.silenceNudged = false;
+    this.silenceNudgedAt = 0;
+  }
+
+  tickSilence() {
+    if (this.interviewEnded || this.closed) {
+      this.stopSilenceMonitor();
+      return;
+    }
+    // Only watch while the mic is genuinely open and we are not mid-nudge.
+    if (!this.userTurnActive || this.inNudgePlayback) return;
+
+    const now = Date.now();
+    const sinceActivity = now - this.lastUserActivityAt;
+
+    if (!this.silenceNudged) {
+      if (sinceActivity >= this.silenceConfig.nudgeMs) {
+        this.speakSilenceNudge();
+      }
       return;
     }
 
-    if (this.silenceNudgeCount >= 1) return;
-    this.silenceNudgeCount += 1;
-    const text = "Take your time — when you're ready, please share your thoughts.";
-    this.onEvent({ type: 'silence_nudge', text, stage: 'nudge' });
-    this.playInterviewerNudge(text);
+    // Already nudged. Auto-submit only if they stayed silent through the nudge.
+    // During the intro warm-up, we never auto-submit — candidate must press Submit.
+    if (
+      this.warmupPhase !== 'intro' &&
+      this.silenceNudgedAt &&
+      now - this.silenceNudgedAt >= this.silenceConfig.autoMs &&
+      this.lastUserActivityAt <= this.silenceNudgedAt
+    ) {
+      this.stopSilenceMonitor();
+      this.onEvent({ type: 'silence_nudge', stage: 'auto_submit' });
+      this.endUserTurn();
+    }
   }
 
-  playInterviewerNudge(nudgeText) {
+  // Speak the nudge in the interviewer's own voice. We briefly close the user
+  // activity window so Gemini produces a clean spoken turn, then re-open it.
+  speakSilenceNudge() {
     if (this.inNudgePlayback || !this.geminiWs || this.geminiWs.readyState !== WebSocket.OPEN) return;
+    this.silenceNudged = true;
     this.inNudgePlayback = true;
+    const nudgeText = this.context.silence_nudge_text ||
+      "Take your time — whenever you're ready, please go ahead and share your answer.";
+
+    if (this.userTurnActive && this.geminiWs.readyState === WebSocket.OPEN) {
+      this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
+    }
+    this.modelBuf = '';
     this.blockModelOutput = false;
     this.allowModelAudio = true;
+    this.pendingAudioChunks = [];
+    // Tell the client to allow interviewer audio even though the mic is "open".
+    this.onEvent({ type: 'silence_nudge', stage: 'nudge', text: nudgeText });
     this.sendClientText(
-      `[INTERVIEWER NUDGE — the candidate has been silent for 5 seconds. Say ONLY this one warm professional English sentence, nothing else: "${nudgeText}"]`,
+      `[SILENCE NUDGE — the candidate has gone quiet. Say ONLY this one warm, professional English sentence and nothing else: "${nudgeText}"]`,
       true
     );
   }
@@ -756,10 +959,36 @@ export class GeminiLiveBridge {
     this.modelBuf = '';
     if (!modelText) return;
 
+    // ── Warmup phases ────────────────────────────────────────────────────────
+    if (this.warmupPhase === 'mic_check' || this.warmupPhase === 'intro') {
+      const wNum = this.warmupPhase === 'mic_check' ? -1 : 0;
+      if (this.warmupPhase === 'intro') this.introQuestionAsked = true;
+      if (this.kickoffWatchdog) {
+        clearTimeout(this.kickoffWatchdog);
+        this.kickoffWatchdog = null;
+      }
+      this.clearNextQuestionWatchdog();
+      this.streamingQuestionText = '';
+      this.streamingQuestionNum = 0;
+      this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: wNum });
+      this.onEvent({ type: 'question', number: wNum, text: modelText, warmup: this.warmupPhase });
+      const warmupLimit = Number(this.context.intro_answer_seconds || 90);
+      this.questionTimeLimits[wNum] = { seconds: warmupLimit, tier: 'warmup' };
+      this.onEvent({
+        type: 'awaiting_answer',
+        number: wNum,
+        maxTurns: this.maxTurns,
+        time_limit_seconds: warmupLimit,
+        complexity_tier: 'warmup',
+        warmup: this.warmupPhase,
+      });
+      return;
+    }
+
     if (this.inFollowUpFor) {
       const qNum = this.inFollowUpFor;
       const streamed = this.streamingQuestionNum === qNum ? this.streamingQuestionText : '';
-      modelText = resolveCommittedQuestionText(streamed, modelText);
+      modelText = stripQuestionNumbering(resolveCommittedQuestionText(streamed, modelText));
       if (this.questions.length >= qNum) {
         this.questions[qNum - 1] = modelText;
       } else {
@@ -777,6 +1006,7 @@ export class GeminiLiveBridge {
     const expectedQ = this.questions.length + 1;
     const streamed = this.streamingQuestionNum === expectedQ ? this.streamingQuestionText : '';
     modelText = resolveCommittedQuestionText(streamed, modelText);
+    modelText = stripQuestionNumbering(modelText);
     if (this.questions.length === 0) {
       modelText = stripLeadingGreeting(modelText) || modelText;
     }
@@ -874,21 +1104,33 @@ export class GeminiLiveBridge {
   kickoffInterview() {
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];
-    const prompt = String(this.context.kickoff_prompt || DEFAULT_KICKOFF).trim();
+    let prompt;
+    if (this.warmupPhase === 'mic_check') {
+      prompt = this.buildMicCheckPrompt();
+    } else if (this.warmupPhase === 'intro') {
+      prompt = this.buildIntroPrompt();
+    } else {
+      prompt = String(this.context.kickoff_prompt || DEFAULT_KICKOFF).trim();
+    }
     this.sendClientText(prompt, true);
     this.onEvent({ type: 'interviewer_started' });
 
     if (this.kickoffWatchdog) clearTimeout(this.kickoffWatchdog);
     this.kickoffWatchdog = setTimeout(() => {
-      if (this.questions.length > 0 || this.interviewEnded || this.closed) return;
-      console.warn('[relay] kickoff watchdog — no Q1 yet, retrying');
+      // Still waiting on the very first interviewer turn?
+      const firstTurnDone = (this.warmupPhase === 'intro' && !this.introQuestionAsked) ||
+        this.introQuestionAsked || this.questions.length > 0;
+      if (firstTurnDone || this.interviewEnded || this.closed) return;
+      console.warn('[relay] kickoff watchdog — no opening turn yet, retrying');
       this.modelBuf = '';
       this.allowModelAudio = true;
       this.blockModelOutput = false;
-      this.sendClientText(
-        'You have not asked question 1 yet. Greet the candidate in one short English sentence, then ask interview question 1. Ask exactly one question and stop talking.',
-        true
-      );
+      const retryPrompt = this.warmupPhase === 'mic_check'
+        ? 'Greet the candidate in one short English sentence, then ask them to say a few words to confirm the microphone. Stop after that and wait.'
+        : this.warmupPhase === 'intro'
+          ? 'Ask the candidate to briefly introduce themselves in one short sentence, then stop and wait.'
+          : 'You have not asked question 1 yet. Ask interview question 1 now — one question only — then stop talking.';
+      this.sendClientText(retryPrompt, true);
     }, 18000);
   }
 
@@ -899,14 +1141,15 @@ export class GeminiLiveBridge {
     this.userTurnActive = true;
     this.userBuf = '';
     this.lateUserBuf = '';
-    this.silenceNudgeCount = 0;
     this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
+    this.startSilenceMonitor();
   }
 
   endUserTurn() {
     if (!this.ready || this.closed || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
     if (!this.userTurnActive) return;
+    this.stopSilenceMonitor();
     this.userTurnActive = false;
     this.awaitingAnswer = true;
     this.blockModelOutput = true;
@@ -925,6 +1168,29 @@ export class GeminiLiveBridge {
     if (!this.ready || this.closed || this.interviewEnded || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
     if (!this.userTurnActive) return;
+    // While the interviewer is speaking the silence nudge we have paused the
+    // user activity window — don't forward mic audio until it resumes.
+    if (this.inNudgePlayback) return;
+
+    // Measure RMS energy of the PCM chunk. If above background-noise level
+    // (~300 / 32767 ≈ -41 dBFS), treat it as the candidate speaking and reset
+    // the silence timer. This is the authoritative "still speaking" signal —
+    // transcription from Gemini can lag by 2-4 s which makes the timer fire
+    // prematurely and cuts off mid-sentence transcription.
+    try {
+      const pcmBuf = Buffer.from(base64Pcm, 'base64');
+      const samples = pcmBuf.length >> 1;
+      if (samples > 0) {
+        let sumSq = 0;
+        for (let i = 0; i < samples; i++) {
+          const s = pcmBuf.readInt16LE(i * 2);
+          sumSq += s * s;
+        }
+        const rms = Math.sqrt(sumSq / samples);
+        if (rms > 350) this.noteUserActivity();
+      }
+    } catch (_) { /* decoding failure — ignore */ }
+
     this.geminiWs.send(
       JSON.stringify({ realtimeInput: { audio: { mimeType, data: base64Pcm } } })
     );
@@ -932,6 +1198,11 @@ export class GeminiLiveBridge {
 
   closeGemini() {
     this.clearNextQuestionWatchdog();
+    this.stopSilenceMonitor();
+    if (this.micCheckAdvanceTimer) {
+      clearTimeout(this.micCheckAdvanceTimer);
+      this.micCheckAdvanceTimer = null;
+    }
     if (this.answerTimer) {
       clearTimeout(this.answerTimer);
       this.answerTimer = null;

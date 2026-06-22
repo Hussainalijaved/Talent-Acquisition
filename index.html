@@ -1672,6 +1672,11 @@
             const [saveNotice, setSaveNotice] = React.useState('');
             const [silenceHint, setSilenceHint] = React.useState('');
             const [followUpActive, setFollowUpActive] = React.useState(false);
+            // 'mic_check' | 'intro' | null
+            const [warmupPhase, setWarmupPhase] = React.useState('mic_check');
+            const [warmupQuestion, setWarmupQuestion] = React.useState('');
+            const [warmupCaption, setWarmupCaption] = React.useState('');
+            const [warmupAnswer, setWarmupAnswer] = React.useState('');
             const liveQuestionCaptionRef = React.useRef('');
             const defaultAnswerSeconds = Number(context?.speech_answer_seconds || context?.config?.speech_answer_seconds || 120);
             const [questionTimeLimit, setQuestionTimeLimit] = React.useState(defaultAnswerSeconds);
@@ -1683,6 +1688,8 @@
 
             React.useEffect(() => { questionTimeLimitRef.current = questionTimeLimit; }, [questionTimeLimit]);
             React.useEffect(() => { liveQuestionCaptionRef.current = liveQuestionCaption; }, [liveQuestionCaption]);
+            const warmupCaptionRef = React.useRef('');
+            React.useEffect(() => { warmupCaptionRef.current = warmupCaption; }, [warmupCaption]);
 
             React.useEffect(() => { isAnsweringRef.current = isAnswering; }, [isAnswering]);
             React.useEffect(() => { canAnswerRef.current = canAnswer; }, [canAnswer]);
@@ -1776,6 +1783,19 @@
                                 }
                             },
                             onLevel: setMicLevel,
+                            onWarmupPhase: ({ phase }) => {
+                                setWarmupPhase(phase);
+                                if (phase === 'intro') {
+                                    setWarmupQuestion('');
+                                    setWarmupAnswer('');
+                                    setWarmupCaption('');
+                                    setIsAnswering(false);
+                                    setCanAnswer(false);
+                                    setLiveCaption('');
+                                    setSilenceHint('');
+                                    setIsInterviewerSpeaking(true);
+                                }
+                            },
                             onTurn: (payload) => {
                                 if (payload?.savedStatus) {
                                     const { number, saved, error } = payload.savedStatus;
@@ -1793,17 +1813,36 @@
                                 setTurn((prev) => Math.max(Number(prev) || 0, capped));
                                 if (m) setMaxTurns(m);
                             },
-                            onQuestion: ({ number, text, partial, follow_up }) => {
+                            onQuestion: ({ number, text, partial, follow_up, warmup }) => {
                                 const clean = cleanText(text, 'model');
+                                const isWarmup = warmup != null || number <= 0;
                                 if (partial) {
                                     setIsInterviewerSpeaking(true);
-                                    setLiveQuestionCaption(clean || '');
+                                    if (isWarmup) {
+                                        setWarmupCaption(clean || '');
+                                    } else {
+                                        setLiveQuestionCaption(clean || '');
+                                    }
+                                    return;
+                                }
+                                if (isWarmup) {
+                                    const heard = warmupCaptionRef.current;
+                                    const committed = window.TA_LIVE?.chooseQuestionText
+                                        ? window.TA_LIVE.chooseQuestionText(heard, clean)
+                                        : clean;
+                                    setWarmupQuestion(committed || clean);
+                                    setWarmupCaption('');
+                                    setWarmupAnswer('');
+                                    setIsInterviewerSpeaking(false);
+                                    setSavingAnswer(false);
+                                    setLiveCaption('');
                                     return;
                                 }
                                 const heard = liveQuestionCaptionRef.current;
                                 const committed = window.TA_LIVE?.chooseQuestionText
                                     ? window.TA_LIVE.chooseQuestionText(heard, clean)
                                     : clean;
+                                setWarmupPhase(null);
                                 addQuestion(number, committed || clean);
                                 setLiveQuestionCaption('');
                                 setIsInterviewerSpeaking(false);
@@ -1825,7 +1864,17 @@
                                 }
                                 setSilenceHint(text || 'The interviewer is encouraging you to speak…');
                             },
-                            onAnswer: ({ number, text }) => {
+                            onAnswer: ({ number, text, warmup }) => {
+                                if (warmup != null || number <= 0) {
+                                    setWarmupAnswer(cleanText(text, 'user') || '(no response captured)');
+                                    setIsAnswering(false);
+                                    setCanAnswer(false);
+                                    setLiveCaption('');
+                                    setAnswerTimerActive(false);
+                                    setTimeLeft(null);
+                                    setSilenceHint('');
+                                    return;
+                                }
                                 setAnswerForQuestion(number, text);
                                 setIsAnswering(false);
                                 setSavingAnswer(true);
@@ -1835,7 +1884,7 @@
                                 setTimeLeft(null);
                                 setSilenceHint('');
                             },
-                            onAwaitingAnswer: ({ time_limit_seconds }) => {
+                            onAwaitingAnswer: ({ time_limit_seconds, warmup }) => {
                                 const limit = Number(time_limit_seconds);
                                 const nextLimit = Number.isFinite(limit) && limit > 0
                                     ? limit
@@ -1846,6 +1895,7 @@
                                 setSavingAnswer(false);
                                 setLiveCaption('');
                                 setLiveQuestionCaption('');
+                                setWarmupCaption('');
                                 setIsInterviewerSpeaking(false);
                                 setAnswerTimerActive(true);
                                 setTimeLeft(nextLimit);
@@ -1870,11 +1920,15 @@
                                 setSavingAnswer(false);
                                 setCanAnswer(false);
                                 setIsAnswering(false);
-                                setTurn(number);
+                                setSilenceHint('');
+                                if (number >= 1) {
+                                    setWarmupPhase(null);
+                                    setTurn(number);
+                                    addQuestion(number, '…');
+                                }
                                 setIsInterviewerSpeaking(true);
                                 setLiveQuestionCaption('');
-                                setStatus(`Question ${number} — the interviewer is speaking…`);
-                                addQuestion(number, '…');
+                                setStatus(number >= 1 ? `Question ${number} — the interviewer is speaking…` : 'The interviewer is speaking…');
                             },
                             onPrematureClosing: () => {
                                 setSavingAnswer(false);
@@ -2048,7 +2102,7 @@
             );
 
             return (
-                <Shell subtitle={`Phase 2 · Live voice interview · Question ${voiceStep} of ${maxTurns}`} fullWidth footerNote="Use headphones to avoid echo. Allow microphone access.">
+                <Shell subtitle={warmupPhase === 'mic_check' ? 'Phase 2 · Warm-up · Microphone check' : warmupPhase === 'intro' ? 'Phase 2 · Warm-up · Introduction' : `Phase 2 · Live voice interview · Question ${voiceStep} of ${maxTurns}`} fullWidth footerNote="Use headphones to avoid echo. Allow microphone access.">
                     <div className="assessment-workspace fade-in portal-lock">
                         <AssessmentSidebar
                             phases={voicePhases}
@@ -2079,13 +2133,23 @@
                             <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-slate-200 bg-white/80">
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Phase 2 · Live voice</p>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">
+                                            {warmupPhase ? 'Phase 2 · Warm-up' : 'Phase 2 · Live voice'}
+                                        </p>
                                         <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-tight">
-                                            Question {voiceStep}
+                                            {warmupPhase === 'mic_check' ? 'Microphone check' : warmupPhase === 'intro' ? 'Introduction' : `Question ${voiceStep}`}
                                         </h1>
                                         <p className="text-sm text-slate-500 mt-1">
                                             {silenceHint
                                                 ? silenceHint
+                                                : warmupPhase === 'mic_check' && isAnswering
+                                                ? 'Mic open — say a few words to test your microphone'
+                                                : warmupPhase === 'mic_check'
+                                                ? 'The interviewer will ask you to say a few words to test your mic'
+                                                : warmupPhase === 'intro' && isAnswering
+                                                ? 'Mic open — introduce yourself in English, then press Submit'
+                                                : warmupPhase === 'intro'
+                                                ? 'The interviewer will ask you to introduce yourself'
                                                 : isAnswering
                                                 ? 'Mic open — speak clearly in English, then submit'
                                                 : savingAnswer && followUpActive
@@ -2101,7 +2165,7 @@
                                                 : 'Listen to the interviewer'}
                                         </p>
                                     </div>
-                                    {answerTimerActive && timeLeft != null ? (
+                                    {answerTimerActive && timeLeft != null && !warmupPhase ? (
                                         <TimerRing
                                             seconds={timeLeft}
                                             totalSeconds={questionTimeLimit}
@@ -2128,7 +2192,102 @@
                                             </p>
                                         </div>
                                     </div>
-                                ) : (() => {
+                                ) : warmupPhase ? (() => {
+                                    // ── Dedicated warmup cards (mic check / intro) ──────────────
+                                    const isMicCheck = warmupPhase === 'mic_check';
+                                    const warmupDisplay = isInterviewerSpeaking
+                                        ? warmupCaption
+                                        : (warmupCaption || warmupQuestion);
+                                    return (
+                                        <div className="fade-in rounded-2xl border-2 border-amber-100 bg-white overflow-hidden shadow-card animate-slide-up">
+                                            <div className="px-6 py-5 border-b border-amber-50 bg-gradient-to-r from-amber-50/80 via-orange-50/40 to-white relative overflow-hidden">
+                                                <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-amber-100/30 -translate-y-1/2 translate-x-1/4 pointer-events-none" />
+                                                <div className="relative z-10">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <span className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-500 text-[10px] font-bold text-white">{isMicCheck ? '🎤' : '👋'}</span>
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700">
+                                                            {isMicCheck ? 'Microphone check' : 'Introduction — tell us about yourself'}
+                                                        </p>
+                                                        {isInterviewerSpeaking && (
+                                                            <span className="flex gap-0.5 items-end h-3.5 ml-1">
+                                                                <span className="w-0.5 bg-amber-400 rounded-full animate-bounce" style={{ height: '50%', animationDelay: '0ms' }} />
+                                                                <span className="w-0.5 bg-amber-400 rounded-full animate-bounce" style={{ height: '100%', animationDelay: '150ms' }} />
+                                                                <span className="w-0.5 bg-amber-400 rounded-full animate-bounce" style={{ height: '70%', animationDelay: '300ms' }} />
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="transcript-stream text-slate-900">
+                                                        {warmupDisplay || (isInterviewerSpeaking ? '' : (isMicCheck ? 'The interviewer is about to greet you and ask you to say a few words…' : 'The interviewer will ask you to introduce yourself…'))}
+                                                        {isInterviewerSpeaking && (
+                                                            <span className="inline-block w-1.5 h-5 bg-amber-400/80 ml-0.5 align-middle animate-pulse rounded-sm" />
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="px-6 py-6">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-5">{isMicCheck ? 'Say anything to test your mic' : 'Your introduction'}</p>
+                                                {(isAnswering || (canAnswer && !warmupAnswer)) && (
+                                                    <div className="flex flex-col items-center mb-5">
+                                                        <div className={`mic-btn-wrap mb-3 ${isAnswering ? 'mic-btn-active' : ''}`}>
+                                                            {isAnswering && (
+                                                                <>
+                                                                    <div className="mic-ring mic-ring-1" style={{ background: micLevel > 0.05 ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.12)' }} />
+                                                                    <div className="mic-ring mic-ring-2" style={{ background: micLevel > 0.05 ? 'rgba(245,158,11,0.14)' : 'rgba(245,158,11,0.08)' }} />
+                                                                    <div className="mic-ring mic-ring-3" style={{ background: micLevel > 0.05 ? 'rgba(245,158,11,0.1)' : 'rgba(245,158,11,0.05)' }} />
+                                                                </>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleAnswerToggle}
+                                                                disabled={(!canAnswer && !isAnswering)}
+                                                                className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-4 shadow-lg disabled:opacity-50 ${
+                                                                    isAnswering
+                                                                        ? 'bg-red-500 hover:bg-red-600 focus:ring-red-200 shadow-red-200'
+                                                                        : 'bg-gradient-to-br from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 focus:ring-amber-200 shadow-amber-200'
+                                                                }`}
+                                                            >
+                                                                {isAnswering ? (
+                                                                    <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+                                                                ) : (
+                                                                    <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4zm0 2a2 2 0 00-2 2v6a2 2 0 004 0V5a2 2 0 00-2-2zm-1 15.93V21h2v-2.07A8.001 8.001 0 0020 11h-2a6 6 0 01-12 0H4a8.001 8.001 0 007 7.93z" /></svg>
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                        <p className={`text-sm font-semibold ${isAnswering ? 'text-red-600' : 'text-amber-600'}`}>
+                                                            {isAnswering
+                                                                ? (isMicCheck ? 'Mic on — say anything…' : 'Recording — tap to submit')
+                                                                : (isMicCheck ? 'Tap to start mic check' : 'Tap to start speaking')}
+                                                        </p>
+                                                        {isAnswering && (
+                                                            <div className="flex flex-col items-center gap-1.5 mt-2">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className={`w-2 h-2 rounded-full animate-pulse ${micLevel > 0.05 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                                    <span className={`text-xs ${micLevel > 0.05 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                                        {micLevel > 0.05 ? 'Audio detected' : 'Waiting for audio…'}
+                                                                    </span>
+                                                                </div>
+                                                                {silenceHint ? <p className="text-xs text-amber-700 text-center">{silenceHint}</p> : null}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {isAnswering && liveCaption ? (
+                                                    <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 mb-2">
+                                                        <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-1">Live transcript</p>
+                                                        <p className="transcript-stream text-slate-800">{liveCaption}<span className="inline-block w-1 h-4 bg-amber-500/70 ml-0.5 align-middle animate-pulse rounded-sm" /></p>
+                                                    </div>
+                                                ) : null}
+                                                {warmupAnswer ? (
+                                                    <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{isMicCheck ? 'Mic confirmed' : 'Your introduction'}</p>
+                                                        <p className="transcript-stream text-slate-700">{warmupAnswer}</p>
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    );
+                                })() : (() => {
+                                    // ── Actual interview question cards ───────────────────────
                                     const card = cards.length ? cards[cards.length - 1] : null;
                                     // While AI is speaking: show ONLY the growing partial caption
                                     // (so text streams in word-by-word as AI talks).
@@ -2160,8 +2319,7 @@
                                                     <div className="flex items-center gap-2 mb-3">
                                                         <span className="flex h-5 w-5 items-center justify-center rounded-md bg-indigo-600 text-[9px] font-bold text-white">{qNum}</span>
                                                         <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">
-                                                            Interviewer · Question {qNum} of {maxTurns}
-                                                            {followUpActive ? ' · Follow-up' : ''}
+                                                            {`Interviewer · Question ${qNum} of ${maxTurns}${followUpActive ? ' · Follow-up' : ''}`}
                                                         </p>
                                                         {isInterviewerSpeaking && (
                                                             <span className="flex gap-0.5 items-end h-3.5 ml-1">
@@ -2290,7 +2448,7 @@
                                                         Moving to question {turn + 1}…
                                                     </p>
                                                 ) : null}
-                                                {card?.score != null && Number.isFinite(Number(card.score)) ? (
+                                                {card?.score != null && Number.isFinite(Number(card.score)) && !followUpActive ? (
                                                     <div className="mt-4 pt-3 border-t border-slate-100">
                                                         <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-2">Communication score</p>
                                                         <p className="text-lg font-bold text-indigo-700 tabular-nums">{card.score}<span className="text-sm text-slate-500 font-medium">/100</span></p>

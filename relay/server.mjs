@@ -259,12 +259,6 @@ wss.on('connection', (clientWs) => {
         return;
       }
 
-      if (msg.type === 'candidate_silent') {
-        if (!bridge) throw new Error('session not started');
-        bridge.handleCandidateSilent?.({ stage: msg.stage });
-        return;
-      }
-
       if (msg.type === 'input_audio') {
         if (!bridge) throw new Error('session not started');
         bridge.sendAudio(msg.data, msg.mimeType || 'audio/pcm;rate=16000');

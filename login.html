@@ -13,18 +13,21 @@
             min-height: 100vh;
             display: grid;
             place-items: center;
-            background: linear-gradient(160deg, #063d78 0%, #0b5cab 45%, #f8fafc 45%);
+            background:
+                radial-gradient(ellipse 80% 60% at 20% 0%, rgba(59, 130, 246, 0.15), transparent 50%),
+                linear-gradient(165deg, #0c4a8a 0%, #1e40af 38%, #f1f5f9 38%, #f8fafc 100%);
             padding: 24px;
         }
         .login-card {
             width: 100%;
             max-width: 420px;
             background: #fff;
-            border-radius: 16px;
-            padding: 36px 32px;
-            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+            border-radius: 20px;
+            padding: 40px 36px;
+            border: 1px solid rgba(226, 232, 240, 0.9);
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14), 0 0 0 1px rgba(255, 255, 255, 0.6);
         }
-        .login-brand { font-size: 28px; font-weight: 800; color: #0b5cab; letter-spacing: -0.04em; }
+        .login-brand { font-size: 28px; font-weight: 800; color: #1e40af; letter-spacing: -0.04em; }
         .login-sub { color: #64748b; font-size: 14px; margin: 6px 0 28px; }
         .field { margin-bottom: 16px; }
         .field label { display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px; }
@@ -35,8 +38,14 @@
         .field input:focus { outline: none; border-color: #0b5cab; box-shadow: 0 0 0 3px rgba(11, 92, 171, 0.12); }
         .btn-login {
             width: 100%; padding: 13px; border: none; border-radius: 10px; cursor: pointer;
-            background: linear-gradient(135deg, #0b5cab, #084a8f); color: #fff;
+            background: linear-gradient(135deg, #1e40af, #1e3a8a); color: #fff;
             font-size: 15px; font-weight: 700; font-family: inherit; margin-top: 8px;
+            box-shadow: 0 2px 10px rgba(30, 64, 175, 0.28);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .btn-login:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(30, 64, 175, 0.32);
         }
         .btn-login:disabled { opacity: 0.65; cursor: wait; }
         .msg { margin-top: 14px; font-size: 13px; padding: 10px 12px; border-radius: 8px; display: none; }

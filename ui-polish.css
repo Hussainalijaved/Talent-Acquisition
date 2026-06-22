@@ -1,0 +1,257 @@
+/**
+ * CONVO UI polish — visual layer only (no behavior changes).
+ * Load after page-specific stylesheets.
+ */
+
+/* ── Shared foundations ── */
+body.convo-body,
+body.admin-body,
+.convo-portal-page {
+    background-image:
+        radial-gradient(ellipse 120% 80% at 100% -20%, rgba(30, 64, 175, 0.06), transparent 55%),
+        radial-gradient(ellipse 80% 50% at 0% 100%, rgba(15, 23, 42, 0.04), transparent 50%);
+    background-attachment: fixed;
+}
+
+/* ── Careers / apply / convo pages ── */
+.convo-nav {
+    backdrop-filter: blur(12px) saturate(1.15);
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+}
+
+.convo-hero {
+    background:
+        linear-gradient(135deg, #0f172a 0%, #1e293b 48%, #172554 100%);
+    position: relative;
+    overflow: hidden;
+}
+
+.convo-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 85% 15%, rgba(59, 130, 246, 0.18), transparent 42%),
+        radial-gradient(circle at 10% 90%, rgba(30, 64, 175, 0.12), transparent 38%);
+    pointer-events: none;
+}
+
+.convo-hero-inner { position: relative; z-index: 1; }
+
+.convo-card,
+.convo-job,
+.convo-auth-card,
+.convo-flow-card {
+    transition: border-color 0.2s ease, box-shadow 0.25s ease, transform 0.2s ease;
+}
+
+.convo-card:hover,
+.convo-job:hover {
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(30, 64, 175, 0.08);
+}
+
+.convo-btn-primary {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 4px 14px rgba(30, 64, 175, 0.22);
+}
+
+.convo-btn-primary:hover:not(:disabled) {
+    box-shadow: 0 4px 18px rgba(30, 64, 175, 0.28);
+    transform: translateY(-1px);
+}
+
+.convo-input:focus,
+.convo-textarea:focus,
+.convo-auth-field input:focus {
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.14);
+}
+
+.convo-file-zone {
+    border-radius: 14px;
+    background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
+}
+
+.convo-badge {
+    border: 1px solid rgba(30, 64, 175, 0.12);
+}
+
+.convo-nav-link.primary {
+    box-shadow: 0 2px 8px rgba(30, 64, 175, 0.2);
+}
+
+/* ── Admin dashboard ── */
+body.admin-body {
+    background: #eef2f7;
+}
+
+.sidebar {
+    background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+    box-shadow: 4px 0 24px rgba(15, 23, 42, 0.06);
+}
+
+.brand-mark {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.topbar {
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.88) !important;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+}
+
+.kpi,
+.card,
+.section {
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    box-shadow: var(--shadow-card, 0 1px 3px rgba(15, 23, 42, 0.06));
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.kpi:hover,
+.card:hover {
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.07);
+}
+
+.sidebar .nav-item.active,
+.sidebar .nav-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-primary,
+.btn-success {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 3px 10px rgba(37, 99, 235, 0.18);
+}
+
+.btn-primary:hover:not(:disabled),
+.btn-success:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.table-card tbody tr {
+    transition: background 0.12s ease;
+}
+
+.table-card tbody tr:hover {
+    background: rgba(239, 246, 255, 0.65);
+}
+
+.pill {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+/* ── Scheduling / portal pages ── */
+.convo-portal-card {
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(15, 23, 42, 0.07), 0 0 0 1px rgba(15, 23, 42, 0.03);
+    transition: box-shadow 0.2s ease;
+}
+
+.convo-portal-btn {
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    box-shadow: 0 2px 10px rgba(30, 64, 175, 0.2);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.convo-portal-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(30, 64, 175, 0.26);
+}
+
+.convo-portal-field input:focus,
+.convo-portal-field select:focus,
+.convo-portal-field textarea:focus {
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.12);
+}
+
+/* ── Assessment portal (index.html) ── */
+.app-bg {
+    background-color: #070a0f;
+    background-image:
+        radial-gradient(ellipse 100% 80% at 50% -30%, rgba(30, 64, 175, 0.14), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 100% 50%, rgba(59, 130, 246, 0.06), transparent 50%),
+        radial-gradient(ellipse 50% 35% at 0% 80%, rgba(15, 23, 42, 0.5), transparent 45%);
+    background-attachment: fixed;
+}
+
+.app-bg > header,
+.app-bg header.sticky {
+    backdrop-filter: blur(16px) saturate(1.25);
+    background: rgba(7, 10, 15, 0.82) !important;
+    border-bottom-color: rgba(51, 65, 85, 0.45) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.panel {
+    backdrop-filter: blur(8px);
+    border-color: rgba(51, 65, 85, 0.55);
+    box-shadow:
+        0 4px 32px rgba(0, 0, 0, 0.35),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.onboarding-hero {
+    background: linear-gradient(165deg, rgba(20, 28, 40, 0.98) 0%, rgba(12, 18, 26, 0.99) 100%);
+    border-color: rgba(51, 65, 85, 0.6);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.btn-primary {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(30, 64, 175, 0.35);
+}
+
+.btn-primary:hover:not(:disabled) {
+    box-shadow: 0 4px 20px rgba(30, 64, 175, 0.45);
+    transform: translateY(-1px);
+}
+
+.assessment-sidebar {
+    background: linear-gradient(180deg, #0a1018 0%, #070b10 100%);
+    border-color: rgba(51, 65, 85, 0.5);
+}
+
+.phase-list-item {
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.phase-list-item.active {
+    border-color: rgba(30, 64, 175, 0.5) !important;
+    background: rgba(30, 64, 175, 0.12) !important;
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.08);
+}
+
+.phase-list-item.done {
+    opacity: 0.78;
+}
+
+.input-field:focus {
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.28), 0 0 20px rgba(30, 64, 175, 0.08);
+}
+
+.badge {
+    backdrop-filter: blur(4px);
+}
+
+.app-bg footer {
+    background: rgba(7, 10, 15, 0.5);
+}
+
+/* Assessment question workspace */
+.assessment-main .panel,
+.assessment-main textarea.input-field {
+    border-radius: 1rem;
+}
+
+.assessment-main textarea.input-field {
+    line-height: 1.65;
+    min-height: 10rem;
+}
+
+@media (min-width: 1024px) {
+    .assessment-main {
+        padding: 1.5rem 1.75rem 1.75rem;
+    }
+}

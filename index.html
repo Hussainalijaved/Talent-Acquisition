@@ -1751,13 +1751,14 @@
                                         setIsInterviewerSpeaking(true);
                                         return;
                                     }
+                                    // Only track speaking state here.
+                                    // liveQuestionCaption is managed exclusively by onQuestion
+                                    // (question_partial / question events) to prevent text conflicts.
                                     if (partial) {
                                         setIsInterviewerSpeaking(true);
-                                        setLiveQuestionCaption(clean);
                                         setAnswerTimerActive(false);
                                         setTimeLeft(null);
                                     } else {
-                                        setLiveQuestionCaption('');
                                         setIsInterviewerSpeaking(false);
                                     }
                                     return;
@@ -1792,9 +1793,11 @@
                                 if (partial) {
                                     setIsInterviewerSpeaking(true);
                                     setLiveQuestionCaption(clean || '');
-                                    if (clean) addQuestion(number, clean);
+                                    // Do NOT call addQuestion here — card.question must only be set
+                                    // from the final (non-partial) event so it never shows incomplete text.
                                     return;
                                 }
+                                // Final confirmed question text — store it and stop streaming.
                                 addQuestion(number, text);
                                 setLiveQuestionCaption('');
                                 setIsInterviewerSpeaking(false);
@@ -2097,8 +2100,14 @@
                                     </div>
                                 ) : (() => {
                                     const card = cards.length ? cards[cards.length - 1] : null;
-                                    const questionDisplay = liveQuestionCaption || card?.question || '';
-                                    if (!card && !questionDisplay) {
+                                    // While AI is speaking: show ONLY the growing partial caption
+                                    // (so text streams in word-by-word as AI talks).
+                                    // After AI finishes: show the committed full question text.
+                                    // This prevents the "full text → short partial → growing" jump.
+                                    const questionDisplay = isInterviewerSpeaking
+                                        ? liveQuestionCaption
+                                        : (card?.question || liveQuestionCaption || '');
+                                    if (!card && !questionDisplay && !isInterviewerSpeaking) {
                                         return (
                                             <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
                                                 <div className="w-14 h-14 rounded-full border border-indigo-100 bg-indigo-50 flex items-center justify-center text-indigo-600 text-2xl animate-float">🎧</div>

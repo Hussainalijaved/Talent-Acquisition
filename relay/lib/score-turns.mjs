@@ -619,19 +619,189 @@ export async function vercelSaveTurn(context, turn) {
 }
 
 export function resolveCompleteWebhookUrl(context = {}) {
+  const urls = resolveCompleteWebhookUrls(context);
+  return urls[0] || '';
+}
+
+function webhookFromN8nBase(base) {
+  const b = String(base || '').trim().replace(/\/+$/, '');
+  if (!b) return '';
+  return `${b}/webhook/talent/live-speech-complete`;
+}
+
+function uniqueUrls(urls) {
+  const seen = new Set();
+  return urls.filter((u) => {
+    const key = String(u || '').trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function resolveCompleteWebhookUrls(context = {}) {
   const cfg = context.config && typeof context.config === 'object' ? context.config : {};
-  const direct = String(
-    context.live_complete_webhook ||
-      process.env.LIVE_COMPLETE_WEBHOOK ||
-      cfg.live_complete_webhook ||
-      ''
-  ).trim();
-  if (direct) return direct;
+  return uniqueUrls([
+    process.env.N8N_LIVE_COMPLETE_WEBHOOK,
+    process.env.LIVE_COMPLETE_WEBHOOK,
+    context.live_complete_webhook,
+    cfg.live_complete_webhook,
+    webhookFromN8nBase(context.n8n_public_url),
+    webhookFromN8nBase(cfg.n8n_public_url),
+  ].map((u) => String(u || '').trim()).filter(Boolean));
+}
 
-  const n8nBase = String(context.n8n_public_url || cfg.n8n_public_url || '').trim().replace(/\/+$/, '');
-  if (n8nBase) return `${n8nBase}/webhook/talent/live-speech-complete`;
+async function loadAppConfigValue(cfg, key) {
+  try {
+    const res = await fetch(
+      `${cfg.supabaseUrl}/rest/v1/app_config?key=eq.${encodeURIComponent(key)}&select=value`,
+      { headers: cfg.headers }
+    );
+    if (!res.ok) return '';
+    const rows = await res.json();
+    return String(Array.isArray(rows) ? rows[0]?.value : rows?.value || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
 
-  return '';
+export async function resolveCompleteWebhookUrlsAsync(context = {}) {
+  const base = resolveCompleteWebhookUrls(context);
+  try {
+    const cfg = getSupabaseConfig(context);
+    const fromAppDirect = await loadAppConfigValue(cfg, 'live_complete_webhook');
+    const fromAppBase = webhookFromN8nBase(await loadAppConfigValue(cfg, 'n8n_public_url'));
+    return uniqueUrls([...base, fromAppDirect, fromAppBase]);
+  } catch (_) {
+    return base;
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function postJsonWithTimeout(url, payload, timeoutMs = 90000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    return { ok: res.ok, status: res.status, text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function schedulingStatusAdvanced(status) {
+  const s = String(status || '').trim().toLowerCase();
+  return Boolean(s && !['none', 'null', 'pending', ''].includes(s));
+}
+
+export async function fetchSchedulingStatus(context) {
+  const cfg = getSupabaseConfig(context);
+  const fetchUrl =
+    `${cfg.supabaseUrl}/rest/v1/${cfg.table}?id=eq.${encodeURIComponent(cfg.sessionId)}` +
+    '&select=scheduling_status';
+  const fetchRes = await fetch(fetchUrl, { headers: cfg.headers });
+  if (!fetchRes.ok) return '';
+  const rows = await fetchRes.json();
+  const session = Array.isArray(rows) ? rows[0] : rows;
+  return String(session?.scheduling_status || '').trim();
+}
+
+export async function postCompleteWebhook(context, payload) {
+  const ok = await postCompleteWebhookWithRetry(context, payload);
+  if (!ok) {
+    throw new Error(
+      'live_complete_webhook failed after retries — set live_complete_webhook (or n8n_public_url) in CFG / app_config / Vercel env'
+    );
+  }
+  return { ok: true };
+}
+
+export async function postCompleteWebhookWithRetry(context, payload) {
+  const urls = await resolveCompleteWebhookUrlsAsync(context);
+  if (!urls.length) {
+    console.error(
+      '[relay] live_complete_webhook missing — set in CFG - Live Speech Config, app_config, or LIVE_COMPLETE_WEBHOOK env'
+    );
+    return false;
+  }
+
+  const maxAttempts = 3;
+  for (const url of urls) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        console.log(
+          `[relay] POST complete webhook → ${url} ` +
+          `(attempt ${attempt}/${maxAttempts}, ${payload.turns?.length ?? 0} turns, result=${payload.result || '?'})`
+        );
+        const res = await postJsonWithTimeout(url, payload, 90000);
+        if (res.ok) {
+          console.log(`[relay] complete webhook OK — HTTP ${res.status}`);
+          return true;
+        }
+        console.error(`[relay] complete webhook HTTP ${res.status}: ${res.text.slice(0, 400)}`);
+      } catch (err) {
+        console.error('[relay] complete webhook error:', err.message);
+      }
+      if (attempt < maxAttempts) await sleep(1500 * attempt);
+    }
+  }
+  return false;
+}
+
+/**
+ * Ensure n8n live-speech-complete runs after a PASS — even when Vercel returned
+ * complete_webhook_ok:true but scheduling_status is still stuck at "pending".
+ */
+export async function ensureSchedulingWebhook(context, payload, { vercelReportedOk = false } = {}) {
+  if (String(payload.result || '').toUpperCase() !== 'PASS') {
+    if (vercelReportedOk) return true;
+    return postCompleteWebhookWithRetry(context, payload);
+  }
+
+  let status = '';
+  try {
+    status = await fetchSchedulingStatus(context);
+  } catch (err) {
+    console.warn('[relay] could not read scheduling_status:', err.message);
+  }
+
+  if (schedulingStatusAdvanced(status)) {
+    console.log(`[relay] scheduling already advanced (${status}) — webhook skip`);
+    return true;
+  }
+
+  if (vercelReportedOk) {
+    console.warn(
+      `[relay] Vercel reported webhook OK but scheduling_status is still "${status || 'none'}" — re-firing n8n`
+    );
+  }
+
+  const ok = await postCompleteWebhookWithRetry(context, payload);
+  if (!ok) return false;
+
+  await sleep(2500);
+  try {
+    status = await fetchSchedulingStatus(context);
+    if (schedulingStatusAdvanced(status)) {
+      console.log(`[relay] scheduling advanced after webhook retry (${status})`);
+      return true;
+    }
+  } catch (_) { /* ignore */ }
+
+  // Webhook accepted — n8n may still be running async (Gmail send).
+  return ok;
 }
 
 export async function vercelSaveFinal(context, scoredTurns, {
@@ -763,38 +933,4 @@ export async function directSaveToSupabase(context, scoredTurns, {
   };
 }
 
-export async function postCompleteWebhook(context, payload) {
-  const url = resolveCompleteWebhookUrl(context);
-  if (!url) {
-    // This is always a misconfiguration — fail loudly so relay logs show it.
-    throw new Error(
-      'live_complete_webhook missing — set live_complete_webhook (or n8n_public_url) in CFG - Live Speech Config so the interview result can be saved. ' +
-      'URL format: https://your-n8n-instance.com/webhook/talent/live-speech-complete'
-    );
-  }
-
-  console.log(`[relay] POST complete webhook → ${url} (${payload.turns?.length ?? 0} turns)`);
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'ngrok-skip-browser-warning': 'true',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const text = await res.text();
-  let json = null;
-  try {
-    json = JSON.parse(text);
-  } catch (_) {
-    json = { raw: text };
-  }
-
-  if (!res.ok) {
-    console.error(`[relay] complete webhook HTTP ${res.status}: ${text.slice(0, 400)}`);
-    throw new Error(`complete_webhook_failed ${res.status}: ${text.slice(0, 300)}`);
-  }
-  console.log(`[relay] complete webhook saved — HTTP ${res.status}`);
-  return { ok: true, status: res.status, body: json };
-}
+// resolveCompleteWebhookUrl + postCompleteWebhook live above vercelSaveFinal.

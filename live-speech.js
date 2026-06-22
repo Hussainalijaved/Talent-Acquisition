@@ -561,6 +561,7 @@
               portalBase,
               sessionId,
               maxQuestions: Number(this.context?.max_questions || 5),
+              liveSpeechContext: this.context,
             });
             if (fin?.ok) {
               result.result = fin.result || result.result;
@@ -649,8 +650,9 @@
     return /conclud(e|es|ed|ing).*interview|completes? the voice interview|that concludes|we will be in touch|thank you for your time|end of (the )?interview/.test(t);
   }
 
-  async function finalizeLiveSpeech({ portalBase, sessionId, maxQuestions = 5 }) {
+  async function finalizeLiveSpeech({ portalBase, sessionId, maxQuestions = 5, liveSpeechContext = null }) {
     const base = String(portalBase || 'https://talent-acquisition-six.vercel.app').replace(/\/+$/, '');
+    const ctx = liveSpeechContext && typeof liveSpeechContext === 'object' ? liveSpeechContext : {};
     const res = await fetch(`${base}/api/live-speech-save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -659,6 +661,10 @@
         finalize_only: true,
         session_id: sessionId,
         max_questions: maxQuestions,
+        email: ctx.candidate_email || ctx.email,
+        candidate_email: ctx.candidate_email || ctx.email,
+        live_complete_webhook: ctx.live_complete_webhook || ctx.config?.live_complete_webhook || '',
+        n8n_public_url: ctx.n8n_public_url || ctx.config?.n8n_public_url || '',
       }),
     });
     const text = await res.text();

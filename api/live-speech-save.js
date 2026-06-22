@@ -103,34 +103,59 @@ function webhookFromN8nBase(base) {
     return `${b}/webhook/talent/live-speech-complete`;
 }
 
-async function resolveLiveCompleteWebhook(sbUrl, sbKey, body = {}, session = {}) {
-    // Relay passes URL from live-speech-start (no Vercel env required).
-    const fromBody = String(body.live_complete_webhook || '').trim();
-    if (fromBody) return fromBody;
+function uniqueUrls(urls) {
+    const seen = new Set();
+    return urls.filter((u) => {
+        const key = String(u || '').trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
 
-    const env = String(
-        process.env.N8N_LIVE_COMPLETE_WEBHOOK || process.env.LIVE_COMPLETE_WEBHOOK || ''
-    ).trim();
-    if (env) return env;
-
+async function resolveLiveCompleteWebhookUrls(sbUrl, sbKey, body = {}, session = {}) {
     const sessCfg = parseJsonSafe(session?.config, {});
-    const fromSessionDirect = String(sessCfg.live_complete_webhook || '').trim();
-    if (fromSessionDirect) return fromSessionDirect;
+    const candidates = [
+        // Stable sources first — session-start ngrok URLs go stale quickly.
+        process.env.N8N_LIVE_COMPLETE_WEBHOOK,
+        process.env.LIVE_COMPLETE_WEBHOOK,
+        await loadAppConfigValue(sbUrl, sbKey, 'live_complete_webhook'),
+        webhookFromN8nBase(await loadAppConfigValue(sbUrl, sbKey, 'n8n_public_url')),
+        sessCfg.live_complete_webhook,
+        webhookFromN8nBase(sessCfg.n8n_public_url),
+        body.live_complete_webhook,
+        webhookFromN8nBase(body.n8n_public_url),
+    ];
+    return uniqueUrls(candidates.map((u) => String(u || '').trim()).filter(Boolean));
+}
 
-    const fromSessionN8n = webhookFromN8nBase(sessCfg.n8n_public_url);
-    if (fromSessionN8n) return fromSessionN8n;
+async function resolveLiveCompleteWebhook(sbUrl, sbKey, body = {}, session = {}) {
+    const urls = await resolveLiveCompleteWebhookUrls(sbUrl, sbKey, body, session);
+    return urls[0] || '';
+}
 
-    const direct = await loadAppConfigValue(sbUrl, sbKey, 'live_complete_webhook');
-    if (direct) return direct;
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-    const n8nBase = await loadAppConfigValue(sbUrl, sbKey, 'n8n_public_url');
-    const fromAppConfig = webhookFromN8nBase(n8nBase);
-    if (fromAppConfig) return fromAppConfig;
-
-    const fromBodyN8n = webhookFromN8nBase(body.n8n_public_url);
-    if (fromBodyN8n) return fromBodyN8n;
-
-    return '';
+async function postJsonWithTimeout(url, payload, timeoutMs = 90000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+        });
+        const text = await res.text();
+        return { ok: res.ok, status: res.status, text };
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 function speechTurnsFromHistory(history, maxQ) {
@@ -150,10 +175,10 @@ function speechTurnsFromHistory(history, maxQ) {
 async function triggerCompleteWebhook({
     sbUrl, sbKey, sessionId, session, history, finals, body, maxQ,
 }) {
-    const url = await resolveLiveCompleteWebhook(sbUrl, sbKey, body, session);
-    if (!url) {
+    const urls = await resolveLiveCompleteWebhookUrls(sbUrl, sbKey, body, session);
+    if (!urls.length) {
         console.warn(
-            '[live-speech-save] complete webhook URL not configured — relay should pass live_complete_webhook on finalize, or set N8N_LIVE_COMPLETE_WEBHOOK / app_config.n8n_public_url'
+            '[live-speech-save] complete webhook URL not configured — set N8N_LIVE_COMPLETE_WEBHOOK on Vercel or app_config.n8n_public_url in Supabase'
         );
         return false;
     }
@@ -183,22 +208,31 @@ async function triggerCompleteWebhook({
         source: 'vercel_live_speech_save',
     };
 
-    console.log(`[live-speech-save] POST complete webhook → ${url} (${turns.length} turns, result=${finals.result})`);
-    const whRes = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
-        },
-        body: JSON.stringify(payload),
-    });
-    const whText = await whRes.text();
-    if (!whRes.ok) {
-        console.error('[live-speech-save] complete webhook failed', whRes.status, whText.slice(0, 300));
-        return false;
+    const maxAttempts = 3;
+    for (const url of urls) {
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            try {
+                console.log(
+                    `[live-speech-save] POST complete webhook → ${url} ` +
+                    `(attempt ${attempt}/${maxAttempts}, ${turns.length} turns, result=${finals.result})`
+                );
+                const whRes = await postJsonWithTimeout(url, payload, 90000);
+                if (whRes.ok) {
+                    console.log('[live-speech-save] complete webhook OK');
+                    return true;
+                }
+                console.error(
+                    '[live-speech-save] complete webhook failed',
+                    whRes.status,
+                    whRes.text.slice(0, 300)
+                );
+            } catch (err) {
+                console.error('[live-speech-save] complete webhook error:', err.message);
+            }
+            if (attempt < maxAttempts) await sleep(1500 * attempt);
+        }
     }
-    console.log('[live-speech-save] complete webhook OK');
-    return true;
+    return false;
 }
 
 function mergeTurns(history, newTurns, maxQ) {

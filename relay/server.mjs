@@ -7,7 +7,7 @@ import {
   directSavePartialTurn,
   directSaveToSupabase,
   enrichTurnsFromDb,
-  postCompleteWebhook,
+  ensureSchedulingWebhook,
   postPartialTurnWebhook,
   scoreTurnsSequential,
   scoreTurnGuaranteed,
@@ -350,30 +350,32 @@ wss.on('connection', (clientWs) => {
 
         const finalScore = finalResult.score ?? finalResult.combined ?? null;
         const finalOutcome = finalResult.result || null;
-        const completeWebhookOk = finalResult.complete_webhook_ok === true;
+        const vercelWebhookOk = finalResult.complete_webhook_ok === true;
 
-        // ── n8n webhook (result mail / scheduling) — fallback if Vercel API did not trigger it ──
-        if (!completeWebhookOk) {
-          const completePayload = {
-            session_id:            context.session_id,
-            email:                 context.candidate_email || msg.email,
-            turns:                 scored.turns,
-            combined_speech_score: scored.combined_speech_score,
-            duration_seconds:      durationSeconds,
-            final_feedback:        scored.final_feedback,
-            tab_switches:          Number(msg.tab_switches || 0),
-            result:                finalOutcome,
-            score:                 finalScore,
-            technical_score:       finalResult.technical_score ?? finalResult.techAvg ?? null,
-            speech_score:          finalResult.speech_score ?? finalResult.speechAvg ?? scored.combined_speech_score,
-          };
-          try {
-            await postCompleteWebhook(context, completePayload);
-          } catch (whErr) {
-            console.error('[relay] n8n complete webhook fallback FAILED:', whErr.message);
-          }
-        } else {
-          console.log('[relay] n8n complete webhook already triggered by Vercel save');
+        const completePayload = {
+          session_id:            context.session_id,
+          email:                 context.candidate_email || msg.email,
+          turns:                 scored.turns,
+          combined_speech_score: scored.combined_speech_score,
+          duration_seconds:      durationSeconds,
+          final_feedback:        scored.final_feedback,
+          tab_switches:          Number(msg.tab_switches || 0),
+          result:                finalOutcome,
+          score:                 finalScore,
+          technical_score:       finalResult.technical_score ?? finalResult.techAvg ?? null,
+          speech_score:          finalResult.speech_score ?? finalResult.speechAvg ?? scored.combined_speech_score,
+        };
+
+        // n8n complete webhook — result mail + scheduling. Retries if Vercel missed it
+        // or if PASS but scheduling_status is still stuck at "pending".
+        let completeWebhookOk = vercelWebhookOk;
+        try {
+          completeWebhookOk = await ensureSchedulingWebhook(context, completePayload, {
+            vercelReportedOk: vercelWebhookOk,
+          });
+        } catch (whErr) {
+          console.error('[relay] n8n complete webhook ensure FAILED:', whErr.message);
+          completeWebhookOk = false;
         }
 
         sendJson(clientWs, {

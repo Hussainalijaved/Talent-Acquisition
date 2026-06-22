@@ -5030,12 +5030,16 @@
                     || row.speech_score == null
                     || row.assessment_stage !== 'completed';
 
-                if (sessionId && (sessionIncomplete || data?.complete_webhook_ok === false) && window.TA_LIVE?.finalizeLiveSpeech) {
+                const schedulingStuck = row?.result === 'PASS'
+                    && ['pending', 'none', '', null].includes(String(row?.scheduling_status || '').toLowerCase());
+
+                if (sessionId && (sessionIncomplete || data?.complete_webhook_ok === false || schedulingStuck) && window.TA_LIVE?.finalizeLiveSpeech) {
                     try {
                         const fin = await window.TA_LIVE.finalizeLiveSpeech({
                             portalBase,
                             sessionId,
                             maxQuestions,
+                            liveSpeechContext,
                         });
                         if (fin?.result) result = fin.result;
                         if (fin?.score != null) score = Number(fin.score);

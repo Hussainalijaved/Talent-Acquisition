@@ -151,93 +151,76 @@ function tierLabel(tier) {
   return 'Mid-level';
 }
 
-function stackHints(jdReq) {
+function detectRoleDomain(jdTitle, jdReq) {
+  const title = String(jdTitle || '').toLowerCase();
   const jd = String(jdReq || '').toLowerCase();
-  if (/\.net|asp\.net|c#|ef core|entity framework|linq/i.test(jd)) {
-    return 'ASP.NET Core, REST, JWT/OAuth, EF Core, LINQ, middleware, DI';
+  const titleFullStack = /\bfull[\s-]?stack\b/.test(title);
+  const titleFrontend =
+    /\b(frontend|front-end|front end|ui developer|ui engineer|ux engineer|react developer|angular developer|vue developer)\b/.test(
+      title
+    );
+  const titleBackend =
+    /\b(backend|back-end|back end|api developer|\.net developer|dotnet developer|node developer|java developer|python developer)\b/.test(
+      title
+    );
+  if (titleFullStack) {
+    return {
+      domain: 'fullstack',
+      guidance:
+        'Balance frontend UI and backend/API concepts per JD emphasis — do not default to generic REST API architecture.',
+    };
   }
-  if (/node|javascript|typescript|react/i.test(jd)) {
-    return 'Node/JS APIs, REST, JWT, async I/O, HTTP';
+  if (titleFrontend && !titleBackend) {
+    return {
+      domain: 'frontend',
+      guidance:
+        'Prioritize frontend core concepts (HTML/CSS, JS, React/Vue/Angular, state, responsive design, Vite, Tailwind/Bootstrap, performance, frontend auth). Do NOT ask backend-only API architecture unless the JD requires it.',
+    };
   }
-  if (/python|django|flask|fastapi/i.test(jd)) {
-    return 'Python web APIs, REST, auth, ORM, HTTP';
+  if (titleBackend && !titleFrontend) {
+    return {
+      domain: 'backend',
+      guidance:
+        'Prioritize backend/API concepts from the JD stack and CV overlap (e.g. CQRS, DI, EF Core, JWT — when relevant to the JD).',
+    };
   }
-  return 'REST APIs, HTTP, auth, databases, backend fundamentals';
+  if (/react|angular|vue|tailwind|vite|bootstrap|html|css|frontend/i.test(jd) && !/\.net|asp\.net|microservices|ef core/i.test(jd)) {
+    return { domain: 'frontend', guidance: 'JD is frontend-heavy — prioritize UI and component concepts over generic API design.' };
+  }
+  if (/\.net|asp\.net|c#|ef core/i.test(jd)) {
+    return { domain: 'backend', guidance: 'Prioritize .NET concepts named in the JD and evidenced on the CV.' };
+  }
+  return { domain: 'general', guidance: 'Derive topics from JD title and requirements — match the role being hired.' };
 }
 
-function coreConceptHints(jdReq, targetTier) {
-  const jd = String(jdReq || '').toLowerCase();
-  const tier = targetTier === 'junior' || targetTier === 'senior' ? targetTier : 'mid';
-
-  if (/\.net|asp\.net|c#|ef core|entity framework|linq/i.test(jd)) {
-    const byTier = {
-      junior:
-        'OOP basics, HTTP status codes, authentication vs authorization, dependency injection purpose, middleware pipeline, MVC vs Web API, EF Core vs raw SQL, LINQ purpose, GET vs POST, REST statelessness',
-      mid:
-        'DI lifetimes/scopes, middleware vs filters, JWT vs cookie sessions, EF change tracking vs no-tracking, IQueryable vs IEnumerable, async/await purpose, REST idempotency, HTTP 401 vs 403, API versioning basics',
-      senior:
-        'DI composition roots and lifetimes, middleware ordering pitfalls, token refresh/revocation, EF N+1 and query shapes, LINQ deferred execution, async deadlocks/threading, distributed auth, concurrency (optimistic vs pessimistic), cache consistency',
-    };
-    return byTier[tier];
+function extractSkillSignals(text) {
+  const raw = String(text || '');
+  const re =
+    /\b(CQRS|MediatR|DDD|Clean Architecture|microservices?|ASP\.NET Core|\.NET|C#|EF Core|Entity Framework|LINQ|React|Redux|Context API|Angular|Vue|TypeScript|JavaScript|HTML5?|CSS3?|Tailwind|Bootstrap|Vite|Webpack|JWT|OAuth|Docker|Kubernetes|Azure|AWS|REST(?:ful)?(?: APIs?)?|GraphQL|Node\.?js|Python|Django|Flask|FastAPI|Middleware|Dependency Injection|DI|IQueryable|IEnumerable|Hooks?|useState|useEffect|Component Lifecycle|Responsive Design|State Management|CORS|SSR|SPA|Async\/await|XSS|HttpOnly|LocalStorage|API Gateway|SOLID|OOP|ORM|Idempotency|Serilog|BCrypt|SSO|n8n|CI\/CD)\b/gi;
+  const seen = new Set();
+  const out = [];
+  for (const m of raw.matchAll(re)) {
+    const norm = m[0].replace(/\s+/g, ' ').trim();
+    const key = norm.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(norm);
+    }
   }
-  if (/node|javascript|typescript|react/i.test(jd)) {
-    const byTier = {
-      junior:
-        'HTTP verbs/status codes, auth vs authorization, REST statelessness, JSON APIs, npm/modules, sync vs async I/O, middleware purpose, env config basics',
-      mid:
-        'JWT vs sessions, Express/Fastify middleware chain, async error handling, connection pooling, idempotency, CORS purpose, validation layers, 401 vs 403',
-      senior:
-        'Event loop and async pitfalls, backpressure, distributed tracing hooks, token rotation, rate limiting strategies, cache stampede, graceful shutdown',
-    };
-    return byTier[tier];
-  }
-  if (/python|django|flask|fastapi/i.test(jd)) {
-    const byTier = {
-      junior:
-        'HTTP basics, auth vs authorization, REST principles, ORM purpose, virtualenv/packaging, request/response cycle, status codes, JSON APIs',
-      mid:
-        'Django/Flask middleware, ORM lazy loading, migrations purpose, JWT vs sessions, idempotency, WSGI/ASGI basics, 401 vs 403',
-      senior:
-        'ORM N+1 and select_related, transaction isolation, async views/workers, auth middleware layers, caching invalidation, API versioning',
-    };
-    return byTier[tier];
-  }
-  const generic = {
-    junior: 'HTTP basics, auth vs authorization, REST statelessness, CRUD, databases vs APIs, status codes, JSON',
-    mid: 'Auth models (token vs session), idempotency, caching basics, concurrency basics, 401 vs 403, API error design',
-    senior: 'Distributed auth, cache consistency, retry/idempotency at scale, observability hooks, failure modes',
-  };
-  return generic[tier];
+  return out.slice(0, 20);
 }
 
-function phaseBlueprint(phaseNum, targetTier, jdReq) {
-  const stack = stackHints(jdReq);
-  const concepts = coreConceptHints(jdReq, targetTier);
-  const lanes = {
-    junior: {
-      2: `Core concept — pick ONE from: ${concepts}. Ask a clear comparison or definition tied to ${stack}.`,
-      3: `Core concept — explain ONE fundamental idea from: ${concepts}. Plain language + simple example, no code.`,
-      4: `Applied reasoning — light scenario in ${stack}; name 2–3 likely causes and how you would check.`,
-      5: `Core concept judgment — pick between two reasonable options from ${stack} fundamentals and justify briefly.`,
-    },
-    mid: {
-      2: `Core concept — compare two related ideas from: ${concepts}. When would you choose each in ${stack}?`,
-      3: `Core concept — explain how/why a mechanism works (from: ${concepts}), not just what it is.`,
-      4: `Applied reasoning — realistic symptom in ${stack}; diagnostic reasoning, no code.`,
-      5: `Core concept + judgment — multi-factor decision using ${stack} fundamentals; reasoned choice with trade-offs.`,
-    },
-    senior: {
-      2: `Core concept — advanced trade-offs from: ${concepts}; include failure modes or ops impact in ${stack}.`,
-      3: `Core concept — deep mechanism from: ${concepts}; inner behavior, pitfalls, or production consequences.`,
-      4: `Applied reasoning — production incident in ${stack}; prioritized hypotheses and risks.`,
-      5: `Strategic judgment — multi-constraint decision using ${stack} concepts; articulate risks of each path.`,
-    },
-  };
-  const set = lanes[targetTier] || lanes.mid;
-  return set[phaseNum] || `Core concept follow-up from: ${concepts} — at ${tierLabel(targetTier)} depth for ${stack}.`;
+function jdCvTopicAnchors(jdTitle, jdReq, cvText) {
+  const jdSkills = extractSkillSignals(`${jdTitle}\n${jdReq}`);
+  const cvSkills = extractSkillSignals(cvText);
+  const jdKeys = new Set(jdSkills.map((s) => s.toLowerCase()));
+  const overlap = cvSkills.filter((s) => jdKeys.has(s.toLowerCase()));
+  const jdOnly = jdSkills.filter((s) => !overlap.some((o) => o.toLowerCase() === s.toLowerCase()));
+  const cvOnly = cvSkills.filter((s) => !jdKeys.has(s.toLowerCase())).slice(0, 8);
+  return { overlap, jdOnly, cvOnly };
 }
 
-function tierCalibrationBlock(cal) {
+function tierCalibrationBlock(cal, jdTitle) {
   const { targetTier, roleTier, jdYears, candidateTier } = cal;
   const timing =
     targetTier === 'junior'
@@ -245,45 +228,104 @@ function tierCalibrationBlock(cal) {
       : targetTier === 'senior'
         ? 'Prefer complexity_tier C–D and 180–480s when depth warrants it.'
         : 'Prefer complexity_tier B–C and 120–300s for most questions.';
-  return `ROLE CALIBRATION (critical — match the job being hired for):
+  return `ROLE CALIBRATION (critical — questions must match the job being hired for):
 - Target interview level: ${tierLabel(targetTier)} — grade answers against THIS bar
 - Role title signals: ${tierLabel(roleTier)}${jdYears ? ` | JD experience hint: ~${jdYears} years` : ''}
-- Candidate CV signals (topic selection only, never quote CV): ${tierLabel(candidateTier)}
-- Ask questions for a ${tierLabel(targetTier)} hire — not easier because the CV looks junior
+- Candidate CV signals (topic anchors only, never quote CV): ${tierLabel(candidateTier)}
+- Ask questions for a ${tierLabel(targetTier)} ${jdTitle} — not easier because the CV looks junior
 - ${timing}
-- Pick topics in BOTH JD and CV; if the candidate scored 70+ on the current answer, make the next question slightly harder within the same tier`;
+- Never repeat a topic already asked; if the candidate scored 70+, probe deeper within the same tier`;
 }
 
-function tierExamplesBlock(targetTier, jdReq) {
-  const isDotNet = /\.net|asp\.net|c#/i.test(String(jdReq || ''));
-  if (targetTier === 'senior') {
-    return isDotNet
-      ? `GOOD senior examples:
-- "After a deploy, some users get intermittent 401s while tokens look valid — what would you investigate first and why?"
-- "When would you accept eventual consistency in a read-heavy API, and what user-visible risks must you handle?"
-- "EF Core N+1 appeared only under peak traffic — how do you diagnose without defaulting to caching?"`
-      : `GOOD senior examples:
-- "Intermittent 5xx on one pod after deploy — how do you narrow root cause before rollback?"
-- "When is JWT validation at the edge insufficient, and what additional controls would you expect?"`;
-  }
-  if (targetTier === 'junior') {
-    return isDotNet
-      ? `GOOD junior examples:
-- "What is the difference between authentication and authorization?"
-- "Why is dependency injection useful in ASP.NET Core?"
-- "What does a 404 status code mean versus a 500?"`
-      : `GOOD junior examples:
-- "What is the difference between authentication and authorization?"
-- "Why are REST APIs often stateless?"`;
-  }
-  return isDotNet
-    ? `GOOD mid-level examples:
-- "Cookie-based session auth vs JWT for an API — what are the main trade-offs?"
-- "Why might you use no-tracking queries in EF Core, and what trade-off are you accepting?"
-- "An endpoint returns 500 only under load — what causes would you consider first?"`
-    : `GOOD mid-level examples:
-- "Token-based auth vs server-side sessions — main trade-offs for a public API?"
-- "An API is slow only at peak traffic — what would you check first?"`;
+function topicSelectionRules(jdTitle, jdReq, cvText, targetTier) {
+  const domain = detectRoleDomain(jdTitle, jdReq);
+  const anchors = jdCvTopicAnchors(jdTitle, jdReq, cvText);
+  const overlapLine = anchors.overlap.length ? anchors.overlap.join(', ') : '(derive from JD + CV text)';
+  const jdLine = anchors.jdOnly.length ? anchors.jdOnly.join(', ') : '(read JD responsibilities)';
+  const cvLine = anchors.cvOnly.length ? anchors.cvOnly.join(', ') : '(read CV skills)';
+
+  return `TOPIC SELECTION (dynamic — derive each question; never use a generic fixed API list):
+
+ROLE DOMAIN: ${domain.domain} — ${domain.guidance}
+
+Step 1 — From the JD for "${jdTitle}", identify core skills, responsibilities, and stack technologies. Job title is the primary compass.
+
+Step 2 — From the CV, identify topic anchors silently (e.g. CQRS on CV + .NET in JD → CQRS core-concept question; Redux on CV + Frontend JD → state management — NOT REST statelessness).
+
+Step 3 — Skill hints (optional — infer more from full JD/CV):
+- JD emphasis: ${jdLine}
+- CV+JD overlap (prefer these): ${overlapLine}
+- CV-only (if still relevant to ${jdTitle}): ${cvLine}
+
+Step 4 — Each question must satisfy: (a) required by JD for ${jdTitle} at ${tierLabel(targetTier)} depth, (b) ideally validated by CV overlap, (c) not already asked, (d) conceptual not coding.
+
+Step 5 — Frame with compare / why / difference / explain-how / trade-off patterns — vary across phases.`;
+}
+
+function questionStylePatterns(jdTitle, targetTier) {
+  const depth =
+    targetTier === 'junior'
+      ? 'Accessible language; one clear concept.'
+      : targetTier === 'senior'
+        ? 'Nuanced trade-offs and production judgment.'
+        : 'Reasoning beyond definitions — when/why, not just what.';
+  return `QUESTION STYLE (${depth})
+- One question only; sound like a hiring manager for ${jdTitle}
+- Patterns (generate fresh wording — substitute X/Y from JD+CV):
+  - "What is the difference between X and Y in [this role]?"
+  - "Why is X used when building [JD stack]? What problem does it solve?"
+  - "How does [CV skill] relate to [JD responsibility] conceptually?"`;
+}
+
+function phaseBlueprintDynamic(phaseNum, targetTier, jdTitle) {
+  const lanes = {
+    junior: {
+      2: 'Core concept — JD+CV overlap comparison or definition.',
+      3: 'Core concept — explain WHY or HOW one JD-relevant idea works.',
+      4: 'Applied reasoning — light scenario in the JD stack.',
+      5: 'Judgment — two JD-relevant options; justify choice.',
+    },
+    mid: {
+      2: 'Compare two related JD concepts — when to use each.',
+      3: 'Mechanism or trade-off for a JD/CV-overlap topic.',
+      4: 'Applied reasoning — realistic symptom in the JD domain.',
+      5: 'Multi-factor judgment with trade-offs.',
+    },
+    senior: {
+      2: 'Advanced trade-offs on a JD-critical topic.',
+      3: 'Deep mechanism — pitfalls or production consequences.',
+      4: 'Production-style incident — prioritized hypotheses.',
+      5: 'Strategic judgment — risks of each path.',
+    },
+  };
+  const set = lanes[targetTier] || lanes.mid;
+  return set[phaseNum] || `Core concept follow-up for ${jdTitle} at ${tierLabel(targetTier)} depth.`;
+}
+
+function forbiddenQuestionRules(jdTitle) {
+  return `STRICTLY FORBIDDEN:
+- Coding, algorithms, system design exercises, step-by-step implementation recipes
+- Off-role topics for ${jdTitle} (e.g. REST statelessness for pure Frontend UI role)
+- CV quoting: company names, "on your CV", project titles
+- Generic trivia unrelated to THIS JD and CV overlap`;
+}
+
+function buildAssessmentQuestionRules({ jdTitle, jdReq, cvText, targetTier, levelCal, nextPhaseNum, maxQ }) {
+  return `ASSESSMENT QUESTION RULES (next_question):
+Written technical assessment — conceptual only.
+
+${tierCalibrationBlock(levelCal, jdTitle)}
+
+${topicSelectionRules(jdTitle, jdReq, cvText, targetTier)}
+
+WRITTEN MIX (${maxQ} phases): At least 3 core-concept phases (compare/why/how) before heavier scenarios in 4–5.
+Every question must pass: "Would a hiring manager for ${jdTitle} ask this?"
+
+Phase focus (phase ${nextPhaseNum}): ${phaseBlueprintDynamic(nextPhaseNum, targetTier, jdTitle)}
+
+${questionStylePatterns(jdTitle, targetTier)}
+
+${forbiddenQuestionRules(jdTitle)}`;
 }
 
 const cvText = String(session.cv_plaintext || '').slice(0, 8000);
@@ -312,43 +354,15 @@ const prevTimeLimit = prevPhaseRow?.time_limit_seconds ?? null;
 
 const nextPhaseNum = ph + 1;
 
-const questionRules = `ASSESSMENT QUESTION RULES (next_question and first_speech_question):
-Written technical assessment — conceptual and logic-based only. Sound like a real interviewer.
-
-${tierCalibrationBlock(levelCal)}
-
-WRITTEN ASSESSMENT MIX (required across all ${maxQ} phases):
-- At least 3 phases must be pure CORE CONCEPT questions (fundamentals, comparisons, why/how) — not only troubleshooting scenarios.
-- Role-stack core concepts to draw from: ${coreConceptHints(jdReq, targetTier)}
-- Phase 1 (from screening) should already be a core concept; phases 2–3 must continue fundamentals before heavier scenarios in 4–5.
-- Core concept questions ARE required — they must be grounded in ${jdTitle} / ${stackHints(jdReq)}, not abstract trivia unrelated to the role.
-
-Phase focus for next_question (phase ${nextPhaseNum}):
-- ${phaseBlueprint(nextPhaseNum, targetTier, jdReq)}
-
-Question style (REQUIRED):
-- Comparative: "What is the difference between X and Y?"
-- Reasoning: "Why do teams use X instead of Y?" / "What problem does X solve?"
-- Core concept: "Explain how X works" / "What is the purpose of X in ${stackHints(jdReq)}?"
-- Conceptual scenarios: symptom → explain likely causes (reasoning only) — use in later phases, not every phase
-- One clear question only — no multi-part lists
-- Answers may exist online — test understanding and explanation quality, not memorized CV stories
-- Difficulty must match ${tierLabel(targetTier)} expectations for ${jdTitle}
-
-${tierExamplesBlock(targetTier, jdReq)}
-
-STRICTLY FORBIDDEN — never ask:
-- Coding: write code, implement, algorithms, syntax, debug this snippet
-- Design exercises: design a system/architecture, microservices layout, scalability design
-- Implementation recipes: step-by-step how to build or configure something in code
-- Generic fluff with NO role context: "What is OOP?" or "Explain REST in one sentence" when unrelated to ${jdTitle}
-- CV quoting: "on your CV", company names, project titles, "At [Company]…"
-
-BAD: "Design a rate-limited microservices architecture for our platform."
-BAD: "Write a C# method to implement pagination."
-BAD: "On your CV you used JWT at Acme — tell us about that."
-GOOD (core concept): "What is the difference between authentication and authorization in an ASP.NET Core API?"
-GOOD (core concept): "Why might you use dependency injection in ASP.NET Core — what problem does it solve?"`;
+const questionRules = buildAssessmentQuestionRules({
+  jdTitle,
+  jdReq,
+  cvText,
+  targetTier,
+  levelCal,
+  nextPhaseNum,
+  maxQ,
+});
 
 const sharedRules = `"""You are an experienced technical interviewer for ${jdTitle}.
 

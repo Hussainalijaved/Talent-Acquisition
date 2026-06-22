@@ -68,118 +68,124 @@ function tierLabel(tier) {
   return 'Mid-level';
 }
 
-function stackHints(jdReq) {
+function detectRoleDomain(jdTitle, jdReq) {
+  const title = String(jdTitle || '').toLowerCase();
   const jd = String(jdReq || '').toLowerCase();
-  if (/\.net|asp\.net|c#|ef core|entity framework|linq/i.test(jd)) {
-    return 'ASP.NET Core, REST APIs, JWT/OAuth, EF Core, LINQ, middleware, dependency injection';
+  const titleFrontend =
+    /\b(frontend|front-end|front end|ui developer|react developer|angular developer|vue developer)\b/.test(title);
+  const titleBackend =
+    /\b(backend|back-end|api developer|\.net developer|dotnet developer|node developer)\b/.test(title);
+  if (/\bfull[\s-]?stack\b/.test(title)) {
+    return { domain: 'fullstack', guidance: 'Balance frontend and backend concepts per JD emphasis.' };
   }
-  if (/node|javascript|typescript|react/i.test(jd)) {
-    return 'Node/JS APIs, REST, JWT, async I/O, HTTP semantics';
+  if (titleFrontend && !titleBackend) {
+    return {
+      domain: 'frontend',
+      guidance:
+        'Prioritize React/HTML/CSS/state/Vite/Tailwind/responsive UI/frontend performance. Do NOT ask REST API statelessness or backend middleware for a frontend role.',
+    };
   }
-  if (/python|django|flask|fastapi/i.test(jd)) {
-    return 'Python web APIs, REST, auth, ORM basics, HTTP';
+  if (titleBackend && !titleFrontend) {
+    return {
+      domain: 'backend',
+      guidance: 'Prioritize JD backend stack and CV-overlap patterns (e.g. CQRS, DI, EF Core, JWT when relevant).',
+    };
   }
-  return 'REST APIs, HTTP, authentication, databases, backend fundamentals';
+  if (/react|tailwind|vite|bootstrap|frontend/i.test(jd) && !/\.net|ef core|microservices/i.test(jd)) {
+    return { domain: 'frontend', guidance: 'JD is frontend-heavy.' };
+  }
+  return { domain: 'general', guidance: 'Derive topics from JD title and requirements.' };
 }
 
-function coreConceptHints(jdReq, targetTier) {
-  const jd = String(jdReq || '').toLowerCase();
-  const tier = targetTier === 'junior' || targetTier === 'senior' ? targetTier : 'mid';
-
-  if (/\.net|asp\.net|c#|ef core|entity framework|linq/i.test(jd)) {
-    const byTier = {
-      junior:
-        'OOP basics, HTTP status codes, authentication vs authorization, dependency injection purpose, middleware pipeline, MVC vs Web API, EF Core vs raw SQL, LINQ purpose, GET vs POST, REST statelessness',
-      mid:
-        'DI lifetimes/scopes, middleware vs filters, JWT vs cookie sessions, EF change tracking vs no-tracking, IQueryable vs IEnumerable, async/await purpose, REST idempotency, HTTP 401 vs 403, API versioning basics',
-      senior:
-        'DI composition roots and lifetimes, middleware ordering pitfalls, token refresh/revocation, EF N+1 and query shapes, LINQ deferred execution, async deadlocks/threading, distributed auth, concurrency (optimistic vs pessimistic), cache consistency',
-    };
-    return byTier[tier];
+function extractSkillSignals(text) {
+  const re =
+    /\b(CQRS|MediatR|DDD|Clean Architecture|microservices?|ASP\.NET Core|\.NET|C#|EF Core|React|Redux|Angular|Vue|TypeScript|JavaScript|HTML|CSS|Tailwind|Bootstrap|Vite|JWT|OAuth|Docker|Azure|REST(?:ful)?|GraphQL|Node\.?js|Python|Middleware|Dependency Injection|DI|State Management|Component Lifecycle|Responsive Design|Hooks?|useState|CORS|SPA|Async\/await|n8n|CI\/CD|LINQ|IQueryable|API Gateway|Serilog|BCrypt|SSO)\b/gi;
+  const seen = new Set();
+  const out = [];
+  for (const m of String(text || '').matchAll(re)) {
+    const norm = m[0].trim();
+    const key = norm.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(norm);
+    }
   }
-  if (/node|javascript|typescript|react/i.test(jd)) {
-    const byTier = {
-      junior:
-        'HTTP verbs/status codes, auth vs authorization, REST statelessness, JSON APIs, npm/modules, sync vs async I/O, middleware purpose, env config basics',
-      mid:
-        'JWT vs sessions, Express/Fastify middleware chain, async error handling, connection pooling, idempotency, CORS purpose, validation layers, 401 vs 403',
-      senior:
-        'Event loop and async pitfalls, backpressure, distributed tracing hooks, token rotation, rate limiting strategies, cache stampede, graceful shutdown',
-    };
-    return byTier[tier];
-  }
-  if (/python|django|flask|fastapi/i.test(jd)) {
-    const byTier = {
-      junior:
-        'HTTP basics, auth vs authorization, REST principles, ORM purpose, virtualenv/packaging, request/response cycle, status codes, JSON APIs',
-      mid:
-        'Django/Flask middleware, ORM lazy loading, migrations purpose, JWT vs sessions, idempotency, WSGI/ASGI basics, 401 vs 403',
-      senior:
-        'ORM N+1 and select_related, transaction isolation, async views/workers, auth middleware layers, caching invalidation, API versioning',
-    };
-    return byTier[tier];
-  }
-  const generic = {
-    junior: 'HTTP basics, auth vs authorization, REST statelessness, CRUD, databases vs APIs, status codes, JSON',
-    mid: 'Auth models (token vs session), idempotency, caching basics, concurrency basics, 401 vs 403, API error design',
-    senior: 'Distributed auth, cache consistency, retry/idempotency at scale, observability hooks, failure modes',
-  };
-  return generic[tier];
+  return out.slice(0, 20);
 }
 
-const stack = stackHints(jdMust);
+function jdCvTopicAnchors(jdTitle, jdReq, cvText) {
+  const jdSkills = extractSkillSignals(`${jdTitle}\n${jdReq}`);
+  const cvSkills = extractSkillSignals(cvText);
+  const jdKeys = new Set(jdSkills.map((s) => s.toLowerCase()));
+  const overlap = cvSkills.filter((s) => jdKeys.has(s.toLowerCase()));
+  const jdOnly = jdSkills.filter((s) => !overlap.some((o) => o.toLowerCase() === s.toLowerCase()));
+  const cvOnly = cvSkills.filter((s) => !jdKeys.has(s.toLowerCase())).slice(0, 8);
+  return { overlap, jdOnly, cvOnly };
+}
+
+function topicSelectionRules(jdTitle, jdReq, cvText, targetTier) {
+  const domain = detectRoleDomain(jdTitle, jdReq);
+  const anchors = jdCvTopicAnchors(jdTitle, jdReq, cvText);
+  return `TOPIC SELECTION (dynamic — derive the question; never pick from a generic API list):
+
+ROLE DOMAIN: ${domain.domain} — ${domain.guidance}
+
+1. Read the JD for "${jdTitle}" — identify core skills, responsibilities, and stack. Job title is the compass.
+2. Read the CV — use skills/patterns as TOPIC ANCHORS only (e.g. CV has CQRS + JD is .NET → ask what CQRS solves or how it differs from layered architecture; CV has React + JD is Frontend → state/components — NOT unrelated REST statelessness).
+3. Skill hints: JD emphasis [${anchors.jdOnly.slice(0, 8).join(', ') || 'read JD'}] | CV+JD overlap [${anchors.overlap.slice(0, 8).join(', ') || 'derive overlap'}] | CV-only if relevant [${anchors.cvOnly.slice(0, 6).join(', ') || 'read CV'}]
+4. Pick ONE concept at ${tierLabel(targetTier)} depth that fits the JD AND ideally CV overlap.
+5. Frame as compare / why / difference / explain-how — one clear question only.`;
+}
+
+function buildScreeningPhase1Rules(jdTitle, jdReq, cvText, targetTier, levelCal) {
+  const domain = detectRoleDomain(jdTitle, jdReq);
+  const tierDepth =
+    targetTier === 'senior'
+      ? 'Challenging conceptual or trade-off — production nuance, not system design.'
+      : targetTier === 'junior'
+        ? 'Clear fundamentals — comparison, definition, or why a core JD idea matters.'
+        : 'Trade-off or reasoning — compare approaches for this role.';
+
+  const tierTiming =
+    targetTier === 'senior'
+      ? 'phase_1_complexity_tier: usually C or D; phase_1_time_limit_seconds: 180–420'
+      : targetTier === 'junior'
+        ? 'phase_1_complexity_tier: usually A or B; phase_1_time_limit_seconds: 90–180'
+        : 'phase_1_complexity_tier: usually B or C; phase_1_time_limit_seconds: 120–300';
+
+  return [
+    'You are a senior technical interviewer for a written assessment.',
+    'Read the job specification and candidate CV in the user message.',
+    '',
+    `ROLE LEVEL: ${tierLabel(targetTier)} position (${jdTitle}).`,
+    `- Role signals: ${tierLabel(levelCal.roleTier)}${levelCal.jdYears ? ` (~${levelCal.jdYears} years in JD)` : ''}`,
+    `- CV signals (anchors only): ${tierLabel(levelCal.candidateTier)}`,
+    `- Domain: ${domain.domain} — ${domain.guidance}`,
+    tierDepth,
+    '',
+    topicSelectionRules(jdTitle, jdReq, cvText, targetTier),
+    '',
+    'PHASE 1 — output exactly ONE core concept question derived from JD+CV (never hardcoded generic API trivia).',
+    tierTiming,
+    '',
+    'FORBIDDEN: coding, system design, implementation recipes, CV quoting, off-role topics for this job title.',
+    '',
+    'Output JSON only:',
+    '- score (0-100 role-fit vs job spec)',
+    '- recommendation: SHORTLIST | REJECT | REVIEW',
+    '- assessment_status: IN_PROGRESS',
+    '- summary: brief screening note',
+    '- phase_1_question: one question (empty if REJECT)',
+    '- phase_1_time_limit_seconds: 90-600',
+    '- phase_1_complexity_tier: A | B | C | D',
+    '- assessment_level: "junior" | "mid" | "senior"',
+  ].join('\n');
+}
+
 const cvText = String(row.cv_plaintext || '');
 const levelCal = resolveTargetTier(jdTitle, jdMust, cvText);
 const targetTier = levelCal.targetTier;
-
-const tierDepth =
-  targetTier === 'senior'
-    ? 'Ask a challenging conceptual or trade-off question with production nuance — not trivia, not system design.'
-    : targetTier === 'junior'
-      ? 'Ask a clear fundamentals question — definitions, simple comparisons, or why a core idea matters.'
-      : 'Ask a trade-off or reasoning question — compare approaches or explain how/why something works.';
-
-const tierTiming =
-  targetTier === 'senior'
-    ? 'phase_1_complexity_tier: usually C or D; phase_1_time_limit_seconds: 180–420'
-    : targetTier === 'junior'
-      ? 'phase_1_complexity_tier: usually A or B; phase_1_time_limit_seconds: 90–180'
-      : 'phase_1_complexity_tier: usually B or C; phase_1_time_limit_seconds: 120–300';
-
-const systemText = [
-  'You are a senior technical interviewer for a written assessment.',
-  'Read the job specification and candidate CV in the user message.',
-  '',
-  `ROLE LEVEL (critical): This interview is for a ${tierLabel(targetTier)} position (${jdTitle}).`,
-  `Phase 1 difficulty must match ${tierLabel(targetTier)} expectations — not the candidate's background alone.`,
-  `- Role signals: ${tierLabel(levelCal.roleTier)}${levelCal.jdYears ? ` (~${levelCal.jdYears} years in JD)` : ''}`,
-  `- CV signals (topic selection only): ${tierLabel(levelCal.candidateTier)}`,
-  tierDepth,
-  '',
-  'PHASE 1 QUESTION — must be ONE core concept question grounded in the role stack:',
-  `- Role stack focus: ${stack}`,
-  `- Core concepts to choose from (pick ONE not already obvious from CV): ${coreConceptHints(jdMust, targetTier)}`,
-  '- Ask comparative, "why", "what is the difference", or "explain how X works" — test fundamentals, not trivia.',
-  '- Pick a topic that matches BOTH the JD requirements and skills evidenced on the CV (silent — never quote CV).',
-  '- Answers may exist online — test reasoning and clarity, not obscure trivia.',
-  tierTiming,
-  '',
-  'STRICTLY FORBIDDEN in phase_1_question:',
-  '- Coding: write code, implement, algorithms, syntax, debug snippets',
-  '- Design exercises: design a system/architecture, microservices layout, scalability design',
-  '- Step-by-step implementation recipes ("how to build/deploy/configure X in 10 steps")',
-  '- CV quoting: "on your CV", company names, university, project titles',
-  '',
-  'Output JSON only:',
-  '- score (0-100 role-fit vs job spec)',
-  '- recommendation: SHORTLIST | REJECT | REVIEW',
-  '- assessment_status: IN_PROGRESS',
-  '- summary: brief screening note',
-  '- phase_1_question: one interview question at the correct role level (empty string if REJECT)',
-  '- phase_1_time_limit_seconds: sensible seconds for that question (90-600)',
-  '- phase_1_complexity_tier: A | B | C | D',
-  '- assessment_level: "junior" | "mid" | "senior"',
-].join('\n');
+const systemText = buildScreeningPhase1Rules(jdTitle, jdMust, cvText, targetTier, levelCal);
 
 const phases = row.config?.max_questions ?? 5;
 const userText = [

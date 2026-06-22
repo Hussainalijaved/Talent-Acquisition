@@ -373,91 +373,59 @@ function resolveTargetTier(jdTitle, jdReq, cvText) {
   return { targetTier, roleTier, jdYears, candidateTier: inferCandidateTier(cvText) };
 }
 
-function buildTierFallbackPools(targetTier, jdReq) {
-  const isDotNet = /\.net|asp\.net|c#|ef core|entity framework/i.test(String(jdReq || '').toLowerCase());
-  const pools = {
-    junior: {
-      dotnet: {
-        fundamentals: [
-          'What is the difference between authentication and authorization?',
-          'What is dependency injection and why is it useful in ASP.NET Core?',
-          'What is the purpose of middleware in the ASP.NET Core request pipeline?',
-        ],
-        applied: [
-          'A single API route returns 404 while others work — what are the first things you would check?',
-          'What is the difference between a 400 and a 500 HTTP response?',
-          'Why are REST APIs typically stateless?',
-        ],
-      },
-      generic: {
-        fundamentals: [
-          'What is the difference between authentication and authorization?',
-          'Why are REST APIs typically stateless?',
-          'What is the difference between a GET and a POST request?',
-        ],
-        applied: [
-          'A client receives 401 on one endpoint only — what might cause that?',
-          'What is the difference between a 400 and a 500 response?',
-          'What does idempotency mean for HTTP requests?',
-        ],
-      },
-    },
-    mid: {
-      dotnet: {
-        fundamentals: [
-          'What is the difference between IEnumerable and IQueryable in LINQ? When would you use each?',
-          'Cookie-based session auth vs JWT for an API — what are the main trade-offs?',
-          'Why might you choose no-tracking queries in EF Core, and what trade-off are you accepting?',
-        ],
-        applied: [
-          'An API endpoint returns 500 errors only under load — what are the most likely causes and how would you narrow them down?',
-          'What does idempotency mean for HTTP APIs, and why does it matter for retries?',
-          'What is the difference between optimistic and pessimistic concurrency, and when would you use each?',
-        ],
-      },
-      generic: {
-        fundamentals: [
-          'Token-based auth vs server-side sessions — what are the main trade-offs for a public API?',
-          'What is the difference between PUT and PATCH, and when would you use each?',
-          'Why are REST APIs typically stateless, and what problems does that solve?',
-        ],
-        applied: [
-          'An API is slow only under peak traffic — what categories of causes would you consider first?',
-          'Caching improved latency but users see stale data — what could have gone wrong?',
-          'What is the difference between a 401 and a 403 response, and when should each be returned?',
-        ],
-      },
-    },
-    senior: {
-      dotnet: {
-        fundamentals: [
-          'When would you choose distributed caching vs in-process caching in ASP.NET Core, and what consistency risks appear?',
-          'How do refresh tokens, short-lived access tokens, and revocation interact in a production API?',
-          'What are the main trade-offs between EF Core compiled queries, split queries, and raw SQL for hot paths?',
-        ],
-        applied: [
-          'After a deployment, some authenticated users intermittently receive 401s — what hypotheses do you prioritize and why?',
-          'A read-heavy API shows rising p95 latency and database CPU — how do you decide between caching, read replicas, and query changes?',
-          'Duplicate charge attempts hit your payment endpoint during retries — how should idempotency and API design work together?',
-        ],
-      },
-      generic: {
-        fundamentals: [
-          'When is JWT validation at the gateway insufficient, and what defense-in-depth would you expect behind it?',
-          'What are the trade-offs between synchronous REST and event-driven updates for cross-service workflows?',
-          'How do you reason about cache invalidation vs TTL when correctness matters more than freshness?',
-        ],
-        applied: [
-          'Intermittent 5xx errors appear on one instance after a rollout — how do you isolate the fault before rollback?',
-          'Traffic spikes cause cascading timeouts across services — what patterns break the cascade?',
-          'Clients retry POST requests and create duplicates — what API and client behaviors should exist?',
-        ],
-      },
-    },
-  };
-  const tier = pools[targetTier] ? targetTier : 'mid';
-  const stack = isDotNet ? 'dotnet' : 'generic';
-  return pools[tier][stack];
+function extractSkillSignals(text) {
+  const re =
+    /\b(CQRS|MediatR|React|Redux|Angular|Vue|TypeScript|JavaScript|HTML|CSS|Tailwind|Bootstrap|Vite|JWT|ASP\.NET Core|\.NET|C#|EF Core|LINQ|Middleware|Dependency Injection|DI|REST(?:ful)?|GraphQL|Node\.?js|Docker|Azure|State Management|Component Lifecycle|Responsive Design|Hooks?|useState|CORS|SPA|Async\/await|Clean Architecture|microservices?|IQueryable|API Gateway|n8n|CI\/CD)\b/gi;
+  const seen = new Set();
+  const out = [];
+  for (const m of String(text || '').matchAll(re)) {
+    const norm = m[0].trim();
+    const key = norm.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(norm);
+    }
+  }
+  return out.slice(0, 20);
+}
+
+function jdCvTopicAnchors(jdTitle, jdReq, cvText) {
+  const jdSkills = extractSkillSignals(`${jdTitle}\n${jdReq}`);
+  const cvSkills = extractSkillSignals(cvText);
+  const jdKeys = new Set(jdSkills.map((s) => s.toLowerCase()));
+  const overlap = cvSkills.filter((s) => jdKeys.has(s.toLowerCase()));
+  const jdOnly = jdSkills.filter((s) => !overlap.some((o) => o.toLowerCase() === s.toLowerCase()));
+  const cvOnly = cvSkills.filter((s) => !jdKeys.has(s.toLowerCase())).slice(0, 8);
+  return { overlap, jdOnly, cvOnly };
+}
+
+function buildDynamicFallbackQuestion(nextPhase, history, jdTitle, jdReq, cvText) {
+  const asked = (history || [])
+    .map((h) => String(h.question_text || h.question || '').toLowerCase())
+    .filter(Boolean);
+  const anchors = jdCvTopicAnchors(jdTitle, jdReq, cvText);
+  const candidates = [...anchors.overlap, ...anchors.jdOnly, ...anchors.cvOnly].filter(Boolean);
+  const unused = candidates.filter((s) => !asked.some((a) => a.includes(s.toLowerCase().slice(0, 8))));
+  const skill = unused[0] || candidates[0] || 'a core skill from the job description';
+  const role = String(jdTitle || 'this role').trim();
+  const templates =
+    nextPhase <= 2
+      ? [
+          `What is the difference between using ${skill} and not using it when working as a ${role}?`,
+          `Why is ${skill} important for a ${role}? What problem does it solve in this stack?`,
+          `Explain the purpose of ${skill} in the context of a ${role} — at a conceptual level.`,
+        ]
+      : nextPhase <= 4
+        ? [
+            `When working as a ${role}, how would ${skill} help you handle a common challenge in this stack?`,
+            `What trade-offs should a ${role} consider when working with ${skill}?`,
+          ]
+        : [`For a ${role}, compare two reasonable approaches involving ${skill} — when would you choose each?`];
+  for (const q of templates) {
+    const key = q.slice(0, 20).toLowerCase();
+    if (!asked.some((a) => a.includes(key.slice(0, 12)))) return q;
+  }
+  return templates[0];
 }
 
 function buildFallbackNextQuestion(ph, history, cfg, session) {
@@ -465,20 +433,7 @@ function buildFallbackNextQuestion(ph, history, cfg, session) {
   const jdTitle = String(cfg.requisition_title || '').trim();
   const jdReq = String(cfg.requisition_requirements || '').trim();
   const cvText = String(session?.cv_plaintext || '').trim();
-  const { targetTier } = resolveTargetTier(jdTitle, jdReq, cvText);
-  const pool = buildTierFallbackPools(targetTier, jdReq);
-  const asked = (history || [])
-    .map((h) => String(h.question_text || h.question || '').toLowerCase())
-    .filter(Boolean);
-  const fundamentals = pool.fundamentals || [];
-  const applied = pool.applied || [];
-  const lane =
-    nextPhase <= 2 ? fundamentals : nextPhase <= 4 ? applied : [applied[applied.length - 1] || fundamentals[0]];
-  for (const q of lane) {
-    const key = q.slice(0, 24).toLowerCase();
-    if (!asked.some((a) => a.includes(key.slice(0, 16)))) return q;
-  }
-  return lane[(nextPhase - 1) % lane.length] || lane[0] || fundamentals[0];
+  return buildDynamicFallbackQuestion(nextPhase, history, jdTitle, jdReq, cvText);
 }
 
 function buildFallbackSpeechQuestion(cfg, speechIndex) {

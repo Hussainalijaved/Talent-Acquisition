@@ -17,6 +17,7 @@
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
     <script src="live-speech.js"></script>
+    <script src="proctor-media.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -750,6 +751,127 @@
             100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
         }
 
+        /* Pre-assessment proctoring setup + live monitor strip */
+        .proctor-setup-shell {
+            display: grid;
+            grid-template-columns: 1fr;
+            min-height: 420px;
+        }
+        @media (min-width: 768px) {
+            .proctor-setup-shell { grid-template-columns: 220px 1fr; }
+        }
+        .proctor-step-nav {
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 1.25rem;
+            background: #f8fafc;
+        }
+        @media (min-width: 768px) {
+            .proctor-step-nav {
+                border-bottom: none;
+                border-right: 1px solid #e2e8f0;
+                padding: 1.5rem 1rem;
+            }
+        }
+        .proctor-step-item {
+            display: flex;
+            align-items: center;
+            gap: 0.625rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: #64748b;
+            margin-bottom: 0.35rem;
+        }
+        .proctor-step-item.active {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+        .proctor-step-item.done {
+            color: #059669;
+        }
+        .proctor-step-item.pending .proctor-step-badge {
+            background: #e2e8f0;
+            color: #475569;
+        }
+        .proctor-step-item.active .proctor-step-badge {
+            background: #dc2626;
+            color: #fff;
+        }
+        .proctor-step-item.done .proctor-step-badge {
+            background: #10b981;
+            color: #fff;
+        }
+        .proctor-step-badge {
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6875rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .proctor-monitor-strip {
+            position: fixed;
+            bottom: 0.75rem;
+            left: 0.75rem;
+            z-index: 9990;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            pointer-events: none;
+            max-width: min(calc(100vw - 1.5rem), 520px);
+        }
+        .proctor-monitor-tile {
+            width: 7.5rem;
+            height: 5.625rem;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            border: 2px solid #cbd5e1;
+            background: #0f172a;
+            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.2);
+            position: relative;
+        }
+        .proctor-monitor-tile video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .proctor-monitor-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 0.15rem 0.35rem;
+            font-size: 0.5625rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #fff;
+            background: linear-gradient(transparent, rgba(0,0,0,0.75));
+        }
+        .proctor-preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 0.75rem;
+        }
+        .proctor-preview-box {
+            aspect-ratio: 4/3;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            border: 2px solid #e2e8f0;
+            background: #0f172a;
+            position: relative;
+        }
+        .proctor-preview-box video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
         .speech-question-card {
             border-radius: 1rem;
             border: 1px solid #e0e7ff;
@@ -850,6 +972,8 @@
             screenshot: 'attempting to take a screenshot (Print Screen)',
             snipping_tool: 'attempting to open Snipping Tool or screen capture (Win+Shift+S)',
             print_attempt: 'attempting to print or save the page',
+            webcam_stopped: 'turning off or blocking the webcam',
+            screen_share_stopped: 'stopping screen sharing',
         };
 
         const hasWinModifier = (e) => (
@@ -1022,13 +1146,13 @@
             return false;
         };
 
-        const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'assessment', 'live-speech'];
+        const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'proctoring-setup', 'assessment', 'live-speech'];
         const isPortalLockedView = (v) => PORTAL_LOCKED_VIEWS.includes(v);
 
         // ===== TEMP TESTING MODE =====
         // true => all proctoring OFF (copy-paste, tab-switch, window-blur, fullscreen, devtools allowed).
         // Set back to false before production. Can also force OFF via URL: ?test=1 / ?noproctor / ?proctor=off
-        const FORCE_DISABLE_PROCTORING = true;
+        const FORCE_DISABLE_PROCTORING = false;
         const PROCTORING_DISABLED = FORCE_DISABLE_PROCTORING ||
             /[?&](test=1|noproctor|proctor=off)/i.test(location.search);
         if (PROCTORING_DISABLED) {
@@ -1676,7 +1800,9 @@
                 ? 'Checking your progress…'
                 : sessionBlockMsg
                     ? 'Assessment unavailable'
-                    : 'Start Phase 1 — written assessment';
+                    : PROCTORING_DISABLED
+                        ? 'Start Phase 1 — written assessment'
+                        : 'Continue to security setup';
 
             const introLead = sessionBlockMsg
                 ? sessionBlockMsg
@@ -1713,6 +1839,13 @@
                     title: 'Integrity monitoring',
                     body: 'All actions and response patterns are logged. Stay focused on this tab for the duration.',
                     icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />,
+                },
+                {
+                    title: 'Screen & webcam required',
+                    body: PROCTORING_DISABLED
+                        ? 'Proctoring is off in test mode.'
+                        : 'Before Phase 1 you will detect displays, share each screen, and enable your webcam. Both stay active during the test.',
+                    icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />,
                 },
             ];
             return (
@@ -1836,6 +1969,354 @@
                                         : 'Complete the assessment in one sitting — resuming later is not supported.'}
                                 </p>
                             </div>
+                    </PortalPage>
+                </Shell>
+            );
+        };
+
+        const PROCTOR_STEPS = [
+            { id: 'detect', label: 'Detect Screens' },
+            { id: 'share', label: 'Share Screen' },
+            { id: 'webcam', label: 'Share Webcam' },
+            { id: 'start', label: 'Start Test' },
+        ];
+
+        const ProctorStepNav = ({ activeStep, detectDone, shareDone, shareTotal, webcamDone, startReady }) => {
+            const statusFor = (id) => {
+                if (id === 'detect') {
+                    if (activeStep === 'detect') return 'active';
+                    return detectDone ? 'done' : 'pending';
+                }
+                if (id === 'share') {
+                    if (activeStep === 'share') return 'active';
+                    return shareDone >= shareTotal && shareTotal > 0 ? 'done' : detectDone ? 'pending' : 'pending';
+                }
+                if (id === 'webcam') {
+                    if (activeStep === 'webcam') return 'active';
+                    return webcamDone ? 'done' : shareDone >= shareTotal && shareTotal > 0 ? 'pending' : 'pending';
+                }
+                if (id === 'start') {
+                    if (activeStep === 'start') return startReady ? 'done' : 'active';
+                    return startReady ? 'done' : 'pending';
+                }
+                return 'pending';
+            };
+            const badgeFor = (id, status, index) => {
+                if (status === 'done') return '✓';
+                if (status === 'active' && id === 'detect') return '!';
+                return String(index + 1);
+            };
+            return (
+                <nav className="proctor-step-nav" aria-label="Proctoring setup steps">
+                    {PROCTOR_STEPS.map((step, i) => {
+                        const status = statusFor(step.id);
+                        return (
+                            <div key={step.id} className={`proctor-step-item ${status}`}>
+                                <span className="proctor-step-badge">{badgeFor(step.id, status, i)}</span>
+                                <span>{step.label}</span>
+                            </div>
+                        );
+                    })}
+                </nav>
+            );
+        };
+
+        const ProctoringMonitorStrip = ({ streams }) => {
+            const webcamRef = React.useRef(null);
+            const screenRefs = React.useRef([]);
+
+            React.useEffect(() => {
+                if (!window.TA_PROCTOR || !streams) return undefined;
+                const cleanups = [];
+                if (streams.webcam && webcamRef.current) {
+                    cleanups.push(window.TA_PROCTOR.attachStream(webcamRef.current, streams.webcam));
+                }
+                (streams.screens || []).forEach((stream, i) => {
+                    const el = screenRefs.current[i];
+                    if (el && stream) cleanups.push(window.TA_PROCTOR.attachStream(el, stream));
+                });
+                return () => cleanups.forEach((fn) => { try { fn(); } catch (_) {} });
+            }, [streams]);
+
+            if (!streams || (!streams.webcam && !(streams.screens || []).length)) return null;
+
+            return (
+                <div className="proctor-monitor-strip" aria-label="Proctoring monitors">
+                    {streams.webcam ? (
+                        <div className="proctor-monitor-tile">
+                            <video ref={webcamRef} muted playsInline autoPlay />
+                            <span className="proctor-monitor-label">Webcam</span>
+                        </div>
+                    ) : null}
+                    {(streams.screens || []).map((stream, i) => (
+                        <div key={`screen-${i}`} className="proctor-monitor-tile">
+                            <video
+                                ref={(el) => { screenRefs.current[i] = el; }}
+                                muted
+                                playsInline
+                                autoPlay
+                            />
+                            <span className="proctor-monitor-label">
+                                Screen {i + 1}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        const ProctoringSetupView = ({ onComplete, onBack, isLoading }) => {
+            const [step, setStep] = React.useState('detect');
+            const [error, setError] = React.useState('');
+            const [busy, setBusy] = React.useState(false);
+            const [screenCount, setScreenCount] = React.useState(0);
+            const [screenMeta, setScreenMeta] = React.useState([]);
+            const [sharedScreens, setSharedScreens] = React.useState([]);
+            const [webcamStream, setWebcamStream] = React.useState(null);
+            const screenStreamsRef = React.useRef([]);
+            const webcamStreamRef = React.useRef(null);
+            const previewRefs = React.useRef([]);
+            const transferredRef = React.useRef(false);
+
+            React.useEffect(() => () => {
+                if (transferredRef.current || !window.TA_PROCTOR) return;
+                window.TA_PROCTOR.stopAll({
+                    webcam: webcamStreamRef.current,
+                    screens: screenStreamsRef.current,
+                });
+            }, []);
+
+            React.useEffect(() => {
+                if (!window.TA_PROCTOR) return;
+                const cleanups = [];
+                sharedScreens.forEach((stream, i) => {
+                    const el = previewRefs.current[i];
+                    if (el) cleanups.push(window.TA_PROCTOR.attachStream(el, stream));
+                });
+                return () => cleanups.forEach((fn) => { try { fn(); } catch (_) {} });
+            }, [sharedScreens]);
+
+            React.useEffect(() => {
+                if (!window.TA_PROCTOR || !webcamStream) return undefined;
+                const el = previewRefs.current.webcam;
+                if (!el) return undefined;
+                return window.TA_PROCTOR.attachStream(el, webcamStream);
+            }, [webcamStream]);
+
+            const handleDetectScreens = async () => {
+                setError('');
+                setBusy(true);
+                try {
+                    if (!window.TA_PROCTOR?.isSupported()) {
+                        throw new Error('Your browser does not support proctoring. Use Chrome or Edge on desktop.');
+                    }
+                    const result = await window.TA_PROCTOR.detectScreens();
+                    setScreenCount(result.count);
+                    setScreenMeta(result.screens || []);
+                    setStep('share');
+                } catch (err) {
+                    setError(
+                        err.code === 'PERMISSION_DENIED' || /permission/i.test(err.message)
+                            ? 'The permission to access your screens was not granted. Please check your browser settings and try again.'
+                            : (err.message || 'Could not detect screens.')
+                    );
+                } finally {
+                    setBusy(false);
+                }
+            };
+
+            const handleShareNextScreen = async () => {
+                setError('');
+                setBusy(true);
+                try {
+                    const stream = await window.TA_PROCTOR.requestScreenShare();
+                    const next = [...screenStreamsRef.current, stream];
+                    screenStreamsRef.current = next;
+                    setSharedScreens(next);
+                    if (next.length >= screenCount) {
+                        setStep('webcam');
+                    }
+                } catch (err) {
+                    setError(
+                        err.code === 'PERMISSION_DENIED' || /permission/i.test(err.message)
+                            ? 'Screen sharing was cancelled or denied. Choose the correct monitor and click Share in the browser dialog.'
+                            : (err.message || 'Could not share screen.')
+                    );
+                } finally {
+                    setBusy(false);
+                }
+            };
+
+            const handleShareWebcam = async () => {
+                setError('');
+                setBusy(true);
+                try {
+                    const stream = await window.TA_PROCTOR.requestWebcam();
+                    webcamStreamRef.current = stream;
+                    setWebcamStream(stream);
+                    setStep('start');
+                } catch (err) {
+                    setError(
+                        err.code === 'PERMISSION_DENIED' || /permission/i.test(err.message)
+                            ? 'Webcam permission was not granted. Allow camera access in your browser and try again.'
+                            : (err.message || 'Could not access webcam.')
+                    );
+                } finally {
+                    setBusy(false);
+                }
+            };
+
+            const handleStartTest = () => {
+                if (!webcamStreamRef.current || sharedScreens.length < screenCount) return;
+                transferredRef.current = true;
+                onComplete({
+                    webcam: webcamStreamRef.current,
+                    screens: [...screenStreamsRef.current],
+                    screenCount,
+                });
+            };
+
+            const shareIndex = sharedScreens.length;
+            const shareDone = sharedScreens.length;
+            const startReady = step === 'start' && !!webcamStream && shareDone >= screenCount;
+
+            const instructions = (() => {
+                if (step === 'detect') {
+                    return {
+                        title: 'Instructions',
+                        body: [
+                            'To proceed, please allow screen access so we can detect how many displays are connected to your device.',
+                            'Please follow these instructions to continue.',
+                        ],
+                        action: 'Detect Screens',
+                        onAction: handleDetectScreens,
+                        showScreenIcon: true,
+                    };
+                }
+                if (step === 'share') {
+                    return {
+                        title: 'Share your screen(s)',
+                        body: [
+                            `We detected ${screenCount} display${screenCount === 1 ? '' : 's'}. Share each monitor one at a time.`,
+                            shareDone > 0
+                                ? `${shareDone} of ${screenCount} shared — ${shareDone >= screenCount ? 'all set.' : 'continue with the next monitor.'}`
+                                : 'In the browser dialog, pick Entire screen and select the monitor shown.',
+                        ],
+                        action: shareDone >= screenCount ? 'Continue to webcam' : `Share screen ${shareIndex + 1} of ${screenCount}`,
+                        onAction: shareDone >= screenCount ? () => setStep('webcam') : handleShareNextScreen,
+                        showScreenIcon: true,
+                    };
+                }
+                if (step === 'webcam') {
+                    return {
+                        title: 'Share your webcam',
+                        body: [
+                            'Your webcam stays visible in a small window during the assessment, like a proctored exam.',
+                            'Allow camera access when prompted — microphone is only needed later in the voice round.',
+                        ],
+                        action: 'Share Webcam',
+                        onAction: handleShareWebcam,
+                        showScreenIcon: false,
+                    };
+                }
+                return {
+                    title: 'Ready to begin',
+                    body: [
+                        `${screenCount} screen${screenCount === 1 ? '' : 's'} and your webcam are connected.`,
+                        'Keep all shares active for the full assessment. Do not stop sharing or cover the camera.',
+                    ],
+                    action: 'Start Test',
+                    onAction: handleStartTest,
+                    showScreenIcon: false,
+                };
+            })();
+
+            return (
+                <Shell subtitle="Security check" footerNote="Webcam and screen feeds are monitored during the assessment">
+                    <PortalPage size="wide" className="!p-0 overflow-hidden">
+                        <div className="p-4 sm:p-6 border-b border-slate-100 bg-gradient-to-br from-blue-50 to-white">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700 mb-1">Before the assessment</p>
+                            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Proctoring setup</h1>
+                            <p className="text-sm text-slate-600 mt-2 max-w-2xl leading-relaxed">
+                                Webcam and screen images are recorded during the test and may be included in your results.
+                                Complete every step below before starting.
+                            </p>
+                        </div>
+                        <div className="proctor-setup-shell">
+                            <ProctorStepNav
+                                activeStep={step}
+                                detectDone={screenCount > 0}
+                                shareDone={shareDone}
+                                shareTotal={screenCount}
+                                webcamDone={!!webcamStream}
+                                startReady={startReady}
+                            />
+                            <div className="p-5 sm:p-8 flex flex-col min-h-[360px]">
+                                <h2 className="text-lg font-bold text-slate-900 mb-3">{instructions.title}</h2>
+                                {instructions.body.map((line, i) => (
+                                    <p key={i} className="text-sm text-slate-600 leading-relaxed mb-2">{line}</p>
+                                ))}
+
+                                {error ? (
+                                    <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 leading-relaxed">
+                                        {error}
+                                    </div>
+                                ) : null}
+
+                                {(sharedScreens.length > 0 || webcamStream) ? (
+                                    <div className="mt-5">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Preview</p>
+                                        <div className="proctor-preview-grid">
+                                            {sharedScreens.map((_, i) => (
+                                                <div key={`pv-s-${i}`} className="proctor-preview-box">
+                                                    <video ref={(el) => { previewRefs.current[i] = el; }} muted playsInline autoPlay />
+                                                    <span className="proctor-monitor-label">Screen {i + 1}</span>
+                                                </div>
+                                            ))}
+                                            {webcamStream ? (
+                                                <div className="proctor-preview-box">
+                                                    <video ref={(el) => { previewRefs.current.webcam = el; }} muted playsInline autoPlay />
+                                                    <span className="proctor-monitor-label">Webcam</span>
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                <div className="mt-auto pt-8 flex flex-wrap items-center justify-between gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={onBack}
+                                        disabled={busy || isLoading}
+                                        className="btn-secondary px-5 py-2.5 rounded-xl text-sm disabled:opacity-40"
+                                    >
+                                        Back
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={instructions.onAction}
+                                        disabled={busy || isLoading || (step === 'start' && !startReady)}
+                                        className="btn-primary px-6 py-3 rounded-xl text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-40"
+                                    >
+                                        {busy ? (
+                                            <>
+                                                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                                Please wait…
+                                            </>
+                                        ) : (
+                                            <>
+                                                {instructions.showScreenIcon ? (
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                                    </svg>
+                                                ) : null}
+                                                {instructions.action}
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </PortalPage>
                 </Shell>
             );
@@ -2085,6 +2566,11 @@
                                 }
                             },
                             onLevel: setMicLevel,
+                            onOutputAudio: () => {
+                                if (!canAnswerRef.current && !isAnsweringRef.current) {
+                                    setIsInterviewerSpeaking(true);
+                                }
+                            },
                             onWarmupPhase: ({ phase }) => {
                                 setWarmupPhase(phase);
                                 if (phase === 'intro') {
@@ -2129,11 +2615,7 @@
                                     return;
                                 }
                                 if (isWarmup) {
-                                    const heard = warmupCaptionRef.current;
-                                    const committed = window.TA_LIVE?.chooseQuestionText
-                                        ? window.TA_LIVE.chooseQuestionText(heard, clean)
-                                        : clean;
-                                    setWarmupQuestion(committed || clean);
+                                    setWarmupQuestion(clean || warmupCaptionRef.current || 'Introduction');
                                     setWarmupCaption('');
                                     setWarmupAnswer('');
                                     setIsInterviewerSpeaking(false);
@@ -2171,7 +2653,7 @@
                             },
                             onAnswer: ({ number, text, warmup }) => {
                                 if (warmup != null || number <= 0) {
-                                    setWarmupAnswer(cleanText(text, 'user') || '(no response captured)');
+                                    setWarmupAnswer(cleanText(text, 'user') || 'Answer captured');
                                     setIsAnswering(false);
                                     setCanAnswer(false);
                                     setLiveCaption('');
@@ -4227,6 +4709,7 @@
             const [sessionConfig, setSessionConfig] = useState({});
             const [urlEntryError, setUrlEntryError] = useState('');
             const [linkSessionReady, setLinkSessionReady] = useState(false);
+            const [proctorStreams, setProctorStreams] = useState(null);
 
             const viewRef = useRef(view);
             const sessionIdRef = useRef(sessionId);
@@ -4240,6 +4723,8 @@
             const fullscreenRequiredRef = useRef(false);
             const devToolsWarnedRef = useRef(false);
             const debuggerCheckCounterRef = useRef(0);
+            const proctorStreamsRef = useRef(null);
+            const proctorWatchCleanupRef = useRef([]);
             const [fullscreenRequired, setFullscreenRequired] = useState(false);
             const [devToolsDetected, setDevToolsDetected] = useState(false);
 
@@ -4398,6 +4883,18 @@
                 };
             }, [view, fullscreenRequired]);
 
+            const stopProctorMedia = useCallback(() => {
+                (proctorWatchCleanupRef.current || []).forEach((fn) => {
+                    try { fn(); } catch (_) { /* ignore */ }
+                });
+                proctorWatchCleanupRef.current = [];
+                if (window.TA_PROCTOR && proctorStreamsRef.current) {
+                    window.TA_PROCTOR.stopAll(proctorStreamsRef.current);
+                }
+                proctorStreamsRef.current = null;
+                setProctorStreams(null);
+            }, []);
+
             const terminateTestDueToCheating = useCallback(async (reason, currentCount) => {
                 if (terminatingRef.current) return;
                 terminatingRef.current = true;
@@ -4442,6 +4939,7 @@
                     setResult('FAIL');
                     setFeedback(`Test terminated due to integrity violations (${reasonText}).`);
                 } finally {
+                    stopProctorMedia();
                     sessionStorage.removeItem('current_session_id');
                     sessionStorage.removeItem('candidate_email');
                     sessionStorage.removeItem('time_left');
@@ -4453,7 +4951,8 @@
 
             const recordIntegrityViolation = useCallback((reason) => {
                 if (PROCTORING_DISABLED) return;
-                if (viewRef.current !== 'assessment' || terminatingRef.current) return;
+                const activeView = viewRef.current;
+                if (!['assessment', 'live-speech'].includes(activeView) || terminatingRef.current) return;
                 const now = Date.now();
                 if (now - lastViolationAtRef.current < VIOLATION_DEBOUNCE_MS) return;
                 lastViolationAtRef.current = now;
@@ -4474,6 +4973,30 @@
                     `${remaining} more violation${remaining === 1 ? '' : 's'} will terminate and fail your assessment.`
                 );
             }, [terminateTestDueToCheating]);
+
+            const setupProctorWatchers = useCallback((streams) => {
+                (proctorWatchCleanupRef.current || []).forEach((fn) => {
+                    try { fn(); } catch (_) { /* ignore */ }
+                });
+                proctorWatchCleanupRef.current = [];
+                if (PROCTORING_DISABLED || !streams || !window.TA_PROCTOR) return;
+
+                const onStreamLost = (kind) => {
+                    if (terminatingRef.current) return;
+                    recordIntegrityViolation(kind === 'webcam' ? 'webcam_stopped' : 'screen_share_stopped');
+                };
+
+                if (streams.webcam) {
+                    proctorWatchCleanupRef.current.push(
+                        window.TA_PROCTOR.watchStreamEnd(streams.webcam, () => onStreamLost('webcam'))
+                    );
+                }
+                (streams.screens || []).forEach((stream) => {
+                    proctorWatchCleanupRef.current.push(
+                        window.TA_PROCTOR.watchStreamEnd(stream, () => onStreamLost('screen'))
+                    );
+                });
+            }, [recordIntegrityViolation]);
 
             const handleSecurityKeyDown = useCallback((e) => {
                 if (!isSecurityActive()) return;
@@ -4922,6 +5445,21 @@
                 } finally {
                     setIsLoading(false);
                 }
+            };
+
+            const handleBeginFromInstructions = () => {
+                if (PROCTORING_DISABLED) {
+                    handleStartAssessment();
+                    return;
+                }
+                setView('proctoring-setup');
+            };
+
+            const handleProctoringComplete = (streams) => {
+                proctorStreamsRef.current = streams;
+                setProctorStreams(streams);
+                setupProctorWatchers(streams);
+                handleStartAssessment();
             };
 
             const urlEnterRanRef = useRef(false);
@@ -5469,6 +6007,7 @@
             };
 
             const handleExitPortalAfterScheduling = useCallback(() => {
+                stopProctorMedia();
                 sessionStorage.removeItem('current_session_id');
                 sessionStorage.removeItem('candidate_email');
                 sessionStorage.removeItem('time_left');
@@ -5485,7 +6024,13 @@
                     url.searchParams.delete('job');
                     window.history.replaceState({}, '', url.pathname + url.search);
                 } catch (_) { /* ignore */ }
-            }, []);
+            }, [stopProctorMedia]);
+
+            useEffect(() => {
+                if (view === 'finished' || view === 'review' || view === 'login') {
+                    stopProctorMedia();
+                }
+            }, [view, stopProctorMedia]);
 
             const fetchAndShowReview = async () => {
                 const sid = resolveSessionIdForReview();
@@ -5539,7 +6084,15 @@
                     case 'login':
                         return <LoginView sessionId={sessionId} setSessionId={setSessionId} setView={setView} supabase={supabase} linkSessionReady={linkSessionReady} />;
                     case 'instructions':
-                        return <InstructionsView onStart={handleStartAssessment} sessionId={sessionId} supabase={supabase} />;
+                        return <InstructionsView onStart={handleBeginFromInstructions} sessionId={sessionId} supabase={supabase} />;
+                    case 'proctoring-setup':
+                        return (
+                            <ProctoringSetupView
+                                onComplete={handleProctoringComplete}
+                                onBack={() => setView('instructions')}
+                                isLoading={isLoading}
+                            />
+                        );
                     case 'speech-intro':
                         return (
                             <SpeechIntroView
@@ -5640,6 +6193,9 @@
                         </div>
                     )}
                     {renderView()}
+                    {!PROCTORING_DISABLED && proctorStreams && (view === 'assessment' || view === 'live-speech') ? (
+                        <ProctoringMonitorStrip streams={proctorStreams} />
+                    ) : null}
                     {fullscreenRequired && isPortalLockedView(view) && (
                         <FullscreenRequiredOverlay
                             onRestore={restorePortalFullscreen}

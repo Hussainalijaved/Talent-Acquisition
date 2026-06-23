@@ -7,7 +7,6 @@ import {
   fallbackInterviewQuestion,
   isClosingOnlyMessage,
   isEnglishTranscript,
-  questionLooksComplete,
   resolveCommittedQuestionText,
   sanitizeTranscript,
 } from './transcript-utils.mjs';
@@ -150,6 +149,10 @@ export class GeminiLiveBridge {
     this.answerPcmChunks = [];
     this.answerPcmChunksByTurn = {}; // aNum → chunks[], for buildTurnPairs fallback
     this._answerPcmSampleRate = 16000;
+    // Transcription-free UI: flow must not depend on output captions. Track
+    // whether the model actually spoke audio this turn so we can still commit
+    // questions and open the mic when captions are empty.
+    this.modelAudioThisTurn = false;
   }
 
   timerConfig() {
@@ -160,23 +163,28 @@ export class GeminiLiveBridge {
     return deriveTimeLimitSeconds(null, null, questionText, this.timerConfig());
   }
 
-  emitAwaitingAnswer(qNum, questionText) {
+  emitAwaitingAnswer(qNum, questionText, opts = {}) {
     if (this.answerPromptOpen && this.answerPromptFor === qNum) return;
     // Fresh PCM buffer for every real question turn.
     if (qNum >= 1) this.answerPcmChunks = [];
-    const limits = this.syncQuestionTimeLimit(questionText);
+    const isWarmup = !!(opts.warmup || qNum <= 0);
+    const limits = isWarmup
+      ? { seconds: Number(this.context.intro_answer_seconds || 90), tier: 'warmup' }
+      : this.syncQuestionTimeLimit(questionText);
     this.questionTimeLimits[qNum] = limits;
     this.answerPromptOpen = true;
     this.answerPromptFor = qNum;
     this.blockModelOutput = true;
-    this.onEvent({
+    const ev = {
       type: 'awaiting_answer',
       number: qNum,
       maxTurns: this.maxTurns,
       time_limit_seconds: limits.seconds,
       complexity_tier: limits.tier,
-    });
-    this.refineQuestionTimeLimit(qNum, questionText);
+    };
+    if (isWarmup) ev.warmup = opts.warmup || this.warmupPhase;
+    this.onEvent(ev);
+    if (qNum >= 1) this.refineQuestionTimeLimit(qNum, questionText);
   }
 
   clearAnswerPromptWindow() {
@@ -295,9 +303,7 @@ export class GeminiLiveBridge {
         : 'Could you please tell me a bit about yourself — your name, background, and interest in this role?';
       this.onEvent({ type: 'transcript', speaker: 'model', text: fallbackText, partial: false, number: fallbackNum });
       this.onEvent({ type: 'question', number: fallbackNum, text: fallbackText, warmup: phase });
-      const limit = Number(this.context.intro_answer_seconds || 90);
-      this.questionTimeLimits[fallbackNum] = { seconds: limit, tier: 'warmup' };
-      this.onEvent({ type: 'awaiting_answer', number: fallbackNum, maxTurns: this.maxTurns, time_limit_seconds: limit, complexity_tier: 'warmup', warmup: phase });
+      this.emitAwaitingAnswer(fallbackNum, fallbackText, { warmup: phase });
     }, 14000);
   }
 
@@ -357,9 +363,7 @@ export class GeminiLiveBridge {
       text: modelText,
       follow_up: !!opts.follow_up,
     });
-    if (questionLooksComplete(modelText)) {
-      this.emitAwaitingAnswer(qNum, modelText);
-    }
+    this.emitAwaitingAnswer(qNum, modelText, opts);
   }
 
   clearNextQuestionWatchdog() {
@@ -532,6 +536,7 @@ export class GeminiLiveBridge {
     for (const part of parts) {
       const inline = part.inlineData || part.inline_data;
       if (inline?.data && !this.blockModelOutput) {
+        this.modelAudioThisTurn = true;
         const chunk = {
           type: 'output_audio',
           data: inline.data,
@@ -1006,9 +1011,38 @@ export class GeminiLiveBridge {
     );
   }
 
-  emitQuestionFromBuffer() {
+  resolveModelTextAfterTurn() {
+    const hadAudio = this.modelAudioThisTurn;
+    this.modelAudioThisTurn = false;
     let modelText = sanitizeTranscript(this.modelBuf, 'model');
     this.modelBuf = '';
+
+    if (modelText) return modelText;
+
+    const streamed = this.streamingQuestionText
+      ? String(this.streamingQuestionText).trim()
+      : '';
+    if (streamed) {
+      modelText = extractInterviewQuestion(streamed) || streamed;
+      if (modelText) return modelText;
+    }
+
+    if (this.warmupPhase === 'mic_check') {
+      return 'Please say a few words so I can confirm your microphone is working.';
+    }
+    if (this.warmupPhase === 'intro') {
+      return 'Could you please tell me a bit about yourself — your name, background, and what brings you here?';
+    }
+
+    if (hadAudio && !this.inFollowUpFor && this.questions.length < this.maxTurns) {
+      return fallbackInterviewQuestion(this.questions.length + 1, this.maxTurns);
+    }
+
+    return '';
+  }
+
+  emitQuestionFromBuffer() {
+    let modelText = this.resolveModelTextAfterTurn();
     if (!modelText) return;
 
     // ── Warmup phases ────────────────────────────────────────────────────────
@@ -1024,16 +1058,7 @@ export class GeminiLiveBridge {
       this.streamingQuestionNum = 0;
       this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: wNum });
       this.onEvent({ type: 'question', number: wNum, text: modelText, warmup: this.warmupPhase });
-      const warmupLimit = Number(this.context.intro_answer_seconds || 90);
-      this.questionTimeLimits[wNum] = { seconds: warmupLimit, tier: 'warmup' };
-      this.onEvent({
-        type: 'awaiting_answer',
-        number: wNum,
-        maxTurns: this.maxTurns,
-        time_limit_seconds: warmupLimit,
-        complexity_tier: 'warmup',
-        warmup: this.warmupPhase,
-      });
+      this.emitAwaitingAnswer(wNum, modelText, { warmup: this.warmupPhase });
       return;
     }
 
@@ -1053,9 +1078,7 @@ export class GeminiLiveBridge {
       this.clearNextQuestionWatchdog();
       this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
       this.onEvent({ type: 'question', number: qNum, text: modelText, follow_up: true });
-      if (questionLooksComplete(modelText)) {
-        this.emitAwaitingAnswer(qNum, modelText);
-      }
+      this.emitAwaitingAnswer(qNum, modelText, { follow_up: true });
       return;
     }
 
@@ -1101,9 +1124,7 @@ export class GeminiLiveBridge {
       this.clearNextQuestionWatchdog();
       this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
       this.onEvent({ type: 'question', number: qNum, text: modelText });
-      if (questionLooksComplete(modelText)) {
-        this.emitAwaitingAnswer(qNum, modelText);
-      }
+      this.emitAwaitingAnswer(qNum, modelText);
     } else if (this.roundQuestionEmitted && this.questions.length && !this.answerPromptOpen) {
       const idx = this.questions.length - 1;
       const resolved = extractInterviewQuestion(resolveCommittedQuestionText(streamed, modelText)) ||
@@ -1118,10 +1139,8 @@ export class GeminiLiveBridge {
           partial: false,
           number: idx + 1,
         });
-        if (questionLooksComplete(resolved)) {
-          this.emitAwaitingAnswer(idx + 1, resolved);
-        }
-      } else if (!this.answerPromptOpen && questionLooksComplete(this.questions[idx] || resolved)) {
+        this.emitAwaitingAnswer(idx + 1, resolved);
+      } else if (!this.answerPromptOpen) {
         this.emitAwaitingAnswer(idx + 1, this.questions[idx] || resolved);
       }
     }
@@ -1155,6 +1174,7 @@ export class GeminiLiveBridge {
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
     const clean = String(text || '').trim();
     if (!clean) return;
+    this.modelAudioThisTurn = false;
     this.geminiWs.send(
       JSON.stringify({
         clientContent: {

@@ -82,6 +82,7 @@
       this.onSilenceNudge = options.onSilenceNudge || (() => {});
       this.onFollowUpProbe = options.onFollowUpProbe || (() => {});
       this.onWarmupPhase = options.onWarmupPhase || (() => {});
+      this.onOutputAudio = options.onOutputAudio || (() => {});
       this.onError = options.onError || (() => {});
       this.tabSwitches = Number(options.tabSwitches || 0);
 
@@ -105,6 +106,8 @@
       this.allowInterviewerDuringAnswer = false;
       this.nudgeAudioTimer = null;
       this.modelAudioHeardThisTurn = false;
+      this.awaitingAnswerPending = false;
+      this.micOpenFallbackTimer = null;
       this.streamingAudio = false;
       this.audioFlushTimer = null;
     }
@@ -151,6 +154,26 @@
         clearTimeout(this.micOpenTimer);
         this.micOpenTimer = null;
       }
+      if (this.micOpenFallbackTimer) {
+        clearTimeout(this.micOpenFallbackTimer);
+        this.micOpenFallbackTimer = null;
+      }
+    }
+
+    scheduleMicOpenFallback(maxMs = 12000) {
+      if (this.micOpenFallbackTimer) clearTimeout(this.micOpenFallbackTimer);
+      this.micOpenFallbackTimer = setTimeout(() => {
+        this.micOpenFallbackTimer = null;
+        if (
+          !this.ended &&
+          !this.interviewEnded &&
+          !this.answering &&
+          this.awaitingAnswerPending
+        ) {
+          this.awaitingAnswerPending = false;
+          this.beginAnswer();
+        }
+      }, maxMs);
     }
 
     scheduleMicOpen(delayMs = 3500) {
@@ -168,6 +191,9 @@
       this.cancelMicOpen();
       if (this.ended || this.interviewEnded) return;
       this.modelAudioHeardThisTurn = false;
+      // Hard fallback — transcription-free mode must still open the mic even
+      // if playback never starts (AudioContext blocked, missing chunks, etc.).
+      this.scheduleMicOpenFallback(12000);
       // Give Gemini time to send the first audio chunk before we decide playback is done.
       let preWait = 0;
       while (!this.modelAudioHeardThisTurn && preWait < 8000) {
@@ -181,6 +207,11 @@
       }
       await new Promise((r) => setTimeout(r, 600));
       if (!this.ended && !this.interviewEnded && !this.answering) {
+        this.awaitingAnswerPending = false;
+        if (this.micOpenFallbackTimer) {
+          clearTimeout(this.micOpenFallbackTimer);
+          this.micOpenFallbackTimer = null;
+        }
         this.beginAnswer();
       }
     }
@@ -199,6 +230,11 @@
     // Candidate pressed "Answer" — open their mic and tell the relay to start the turn.
     beginAnswer() {
       if (this.ended || this.interviewEnded || this.answering) return;
+      this.awaitingAnswerPending = false;
+      if (this.micOpenFallbackTimer) {
+        clearTimeout(this.micOpenFallbackTimer);
+        this.micOpenFallbackTimer = null;
+      }
       this.answering = true;
       this.allowInterviewerDuringAnswer = false;
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -328,9 +364,9 @@
       }
       if (msg.type === 'question') {
         const isWarmup = msg.warmup != null || msg.number <= 0;
-        if (!isWarmup && window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
+        if (!isWarmup && msg.text && window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
         if (!isWarmup) { this.cancelMicOpen(); this.forceEndAnswer(); this.processingAnswer = false; }
-        this.onQuestion({ number: msg.number, text: msg.text, partial: false, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
+        this.onQuestion({ number: msg.number, text: msg.text || '', partial: false, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
       }
       if (msg.type === 'answer') {
         this.onAnswer({ number: msg.number, text: msg.text, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
@@ -406,6 +442,7 @@
         this.cancelMicOpen();
         this.forceEndAnswer();
         this.processingAnswer = false;
+        this.awaitingAnswerPending = true;
         this.onAwaitingAnswer({
           number: msg.number,
           maxTurns: msg.maxTurns,
@@ -433,6 +470,7 @@
         if (this.answering && !this.allowInterviewerDuringAnswer) return;
         void this.ensureAudioRunning();
         this.modelAudioHeardThisTurn = true;
+        this.onOutputAudio?.();
         if (!this.answering) this.setStatus('Interviewer is speaking…');
         this.enqueuePlayback(msg.data, msg.mimeType || `audio/pcm;rate=${OUTPUT_RATE}`);
       }

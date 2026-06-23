@@ -1002,15 +1002,15 @@
             if (typeof PROCTORING_DISABLED !== 'undefined' && PROCTORING_DISABLED) return true;
             const el = document.documentElement;
             try {
-                if (document.fullscreenElement) return true;
+                if (isInFullscreen()) return true;
                 if (el.requestFullscreen) {
-                    await el.requestFullscreen();
+                    await el.requestFullscreen({ navigationUI: 'hide' });
                 } else if (el.webkitRequestFullscreen) {
                     await el.webkitRequestFullscreen();
                 } else if (el.msRequestFullscreen) {
                     await el.msRequestFullscreen();
                 }
-                return !!document.fullscreenElement;
+                return isInFullscreen();
             } catch (e) {
                 return false;
             }
@@ -1165,7 +1165,7 @@
             console.warn('[Assessment] Proctoring DISABLED (testing mode). Set FORCE_DISABLE_PROCTORING=false for production.');
         }
 
-        const FullscreenRequiredOverlay = ({ onRestore, onSecurityKeyDown }) => (
+        const FullscreenRequiredOverlay = ({ onRestore, onRestoreStart, onSecurityKeyDown }) => (
             <div
                 className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-white/95 backdrop-blur-2xl px-4 portal-lock animate-fade-up"
                 onContextMenu={(e) => e.preventDefault()}
@@ -1196,6 +1196,7 @@
                     <button
                         type="button"
                         autoFocus
+                        onPointerDown={() => { onRestoreStart?.(); }}
                         onClick={onRestore}
                         className="btn-primary w-full py-3.5 rounded-xl text-sm"
                     >
@@ -4815,6 +4816,7 @@
             const lastViolationAtRef = useRef(0);
             const devToolsOpenRef = useRef(false);
             const escExitRef = useRef(false);
+            const fullscreenRestoreInProgressRef = useRef(false);
             const fullscreenRequiredRef = useRef(false);
             const devToolsWarnedRef = useRef(false);
             const debuggerCheckCounterRef = useRef(0);
@@ -4852,18 +4854,39 @@
                 fullscreenRequiredRef.current = required;
             }, []);
 
+            const beginFullscreenRestore = useCallback(() => {
+                fullscreenRestoreInProgressRef.current = true;
+                escExitRef.current = true;
+            }, []);
+
             const restorePortalFullscreen = useCallback(async () => {
-                escExitRef.current = false;
+                beginFullscreenRestore();
                 devToolsWarnedRef.current = false;
-                if (runDevToolsProbe()) {
-                    devToolsOpenRef.current = true;
-                    setDevToolsDetected(true);
-                    alert('Close Developer Tools (F12) completely, then click Return to fullscreen.');
-                    return;
+                try {
+                    if (runDevToolsProbe()) {
+                        devToolsOpenRef.current = true;
+                        setDevToolsDetected(true);
+                        alert('Close Developer Tools (F12) completely, then click Return to fullscreen.');
+                        return;
+                    }
+                    devToolsOpenRef.current = false;
+                    setDevToolsDetected(false);
+                    const ok = await enterAssessmentFullscreen();
+                    syncFullscreenState();
+                    if (!ok) {
+                        alert(
+                            'Fullscreen was blocked. Allow fullscreen for this site in your browser (or press F11), then click Return to fullscreen again.'
+                        );
+                    }
+                } finally {
+                    setTimeout(() => {
+                        fullscreenRestoreInProgressRef.current = false;
+                        if (isInFullscreen()) {
+                            escExitRef.current = false;
+                        }
+                    }, 4000);
                 }
-                await enterAssessmentFullscreen();
-                syncFullscreenState();
-            }, [syncFullscreenState, runDevToolsProbe]);
+            }, [syncFullscreenState, runDevToolsProbe, beginFullscreenRestore]);
 
             useEffect(() => { viewRef.current = view; }, [view]);
             useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
@@ -5196,7 +5219,12 @@
                     if (!isSecurityActive() || terminatingRef.current) return;
 
                     if (document.visibilityState === 'hidden') {
-                        if (viewRef.current === 'assessment' && !escExitRef.current) {
+                        if (
+                            viewRef.current === 'assessment'
+                            && !escExitRef.current
+                            && !fullscreenRequiredRef.current
+                            && !fullscreenRestoreInProgressRef.current
+                        ) {
                             recordIntegrityViolation('tab_switch');
                         }
                         return;
@@ -5214,25 +5242,28 @@
             useEffect(() => {
                 const handleWindowBlur = () => {
                     if (!isSecurityActive() || terminatingRef.current) return;
-                    if (escExitRef.current) return;
+                    if (escExitRef.current || fullscreenRequiredRef.current || fullscreenRestoreInProgressRef.current) return;
                     if (viewRef.current === 'assessment' && document.visibilityState === 'visible') {
                         recordIntegrityViolation('window_blur');
                     }
                 };
 
                 const handleFullscreenChange = () => {
-                    if (!isPortalLockedView(viewRef.current) || terminatingRef.current) return;
+                    if (!isFullscreenRequiredView(viewRef.current) || terminatingRef.current) return;
                     if (!isInFullscreen()) {
                         escExitRef.current = true;
                         fullscreenRequiredRef.current = true;
                         setFullscreenRequired(true);
-                        setTimeout(() => { escExitRef.current = false; }, 2000);
                     } else {
                         escExitRef.current = false;
+                        fullscreenRestoreInProgressRef.current = false;
                         fullscreenRequiredRef.current = false;
                         setFullscreenRequired(false);
+                        devToolsOpenRef.current = false;
+                        setDevToolsDetected(false);
                         devToolsWarnedRef.current = false;
                     }
+                    syncFullscreenState();
                 };
 
                 window.addEventListener('blur', handleWindowBlur);
@@ -6374,9 +6405,10 @@
                             busy={cameraGraceBusy}
                         />
                     ) : null}
-                    {fullscreenRequired && isPortalLockedView(view) && (
+                    {fullscreenRequired && isFullscreenRequiredView(view) && (
                         <FullscreenRequiredOverlay
                             onRestore={restorePortalFullscreen}
+                            onRestoreStart={beginFullscreenRestore}
                             onSecurityKeyDown={handleSecurityKeyDown}
                         />
                     )}

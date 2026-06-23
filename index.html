@@ -1150,7 +1150,9 @@
         };
 
         const PORTAL_LOCKED_VIEWS = ['login', 'instructions', 'proctoring-setup', 'assessment', 'live-speech'];
+        const FULLSCREEN_REQUIRED_VIEWS = ['assessment', 'speech-intro', 'live-speech'];
         const isPortalLockedView = (v) => PORTAL_LOCKED_VIEWS.includes(v);
+        const isFullscreenRequiredView = (v) => FULLSCREEN_REQUIRED_VIEWS.includes(v);
 
         // ===== TEMP TESTING MODE =====
         // true => all proctoring OFF (copy-paste, tab-switch, window-blur, fullscreen, devtools allowed).
@@ -1612,7 +1614,6 @@
                     sessionStorage.setItem('current_session_id', data.id);
                     sessionStorage.removeItem('assessment_started');
                     setSessionId(data.id);
-                    await enterAssessmentFullscreen();
                     setView('instructions');
                 } catch (err) {
                     console.error('Session verification error:', err);
@@ -1820,7 +1821,9 @@
                 },
                 {
                     title: 'Fullscreen required',
-                    body: 'Stay in fullscreen throughout. Pressing Esc blurs the screen and hides content until you return.',
+                    body: PROCTORING_DISABLED
+                        ? 'Fullscreen is optional in test mode.'
+                        : 'After security setup, clicking Start Test enters fullscreen. Stay in fullscreen until you finish — Esc pauses the session until you return.',
                     icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />,
                 },
                 {
@@ -1844,10 +1847,10 @@
                     icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />,
                 },
                 {
-                    title: 'Screen & webcam required',
+                    title: 'Single monitor & webcam',
                     body: PROCTORING_DISABLED
                         ? 'Proctoring is off in test mode.'
-                        : 'Before Phase 1 you will detect displays, share each screen, and enable your webcam. Both stay active during the test.',
+                        : 'Use one monitor only — extra displays must be disconnected before Start Test. Webcam and screen share must stay active for the full assessment.',
                     icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />,
                 },
             ];
@@ -2112,6 +2115,7 @@
             const [screenMeta, setScreenMeta] = React.useState([]);
             const [sharedScreens, setSharedScreens] = React.useState([]);
             const [webcamStream, setWebcamStream] = React.useState(null);
+            const [, setLiveCheckTick] = React.useState(0);
             const screenStreamsRef = React.useRef([]);
             const webcamStreamRef = React.useRef(null);
             const previewRefs = React.useRef([]);
@@ -2142,6 +2146,12 @@
                 return window.TA_PROCTOR.attachStream(el, webcamStream);
             }, [webcamStream]);
 
+            React.useEffect(() => {
+                if (step !== 'start') return undefined;
+                const id = setInterval(() => setLiveCheckTick((n) => n + 1), 1000);
+                return () => clearInterval(id);
+            }, [step]);
+
             const handleDetectScreens = async () => {
                 setError('');
                 setBusy(true);
@@ -2150,7 +2160,14 @@
                         throw new Error('Your browser does not support proctoring. Use Chrome or Edge on desktop.');
                     }
                     const result = await window.TA_PROCTOR.detectScreens();
-                    setScreenCount(result.count);
+                    if (!window.TA_PROCTOR.isSingleDisplay(result)) {
+                        setScreenCount(result.count);
+                        setScreenMeta(result.screens || []);
+                        setError(window.TA_PROCTOR.multiDisplayBlockMessage(result));
+                        setStep('detect');
+                        return;
+                    }
+                    setScreenCount(1);
                     setScreenMeta(result.screens || []);
                     setStep('share');
                 } catch (err) {
@@ -2169,6 +2186,12 @@
                 setBusy(true);
                 try {
                     const stream = await window.TA_PROCTOR.requestScreenShare();
+                    const track = stream.getVideoTracks?.()[0];
+                    const surface = track?.getSettings?.()?.displaySurface;
+                    if (surface && surface !== 'monitor') {
+                        window.TA_PROCTOR.stopStream(stream);
+                        throw new Error('Share your entire monitor only — not a window or browser tab.');
+                    }
                     const next = [...screenStreamsRef.current, stream];
                     screenStreamsRef.current = next;
                     setSharedScreens(next);
@@ -2205,27 +2228,58 @@
                 }
             };
 
-            const handleStartTest = () => {
-                if (!webcamStreamRef.current || sharedScreens.length < screenCount) return;
-                transferredRef.current = true;
-                onComplete({
-                    webcam: webcamStreamRef.current,
-                    screens: [...screenStreamsRef.current],
-                    screenCount,
-                });
+            const handleStartTest = async () => {
+                setError('');
+                setBusy(true);
+                try {
+                    if (!window.TA_PROCTOR?.isSupported()) {
+                        throw new Error('Your browser does not support proctoring. Use Chrome or Edge on desktop.');
+                    }
+                    const displayCheck = await window.TA_PROCTOR.detectScreens();
+                    if (!window.TA_PROCTOR.isSingleDisplay(displayCheck)) {
+                        throw new Error(window.TA_PROCTOR.multiDisplayBlockMessage(displayCheck));
+                    }
+                    if (!webcamStreamRef.current || !window.TA_PROCTOR.isStreamLive(webcamStreamRef.current)) {
+                        throw new Error('Your webcam must be on before starting. Enable the camera and try again.');
+                    }
+                    if (!sharedScreens.length || !sharedScreens.every((s) => window.TA_PROCTOR.isStreamLive(s))) {
+                        throw new Error('Screen sharing must stay active. Share your monitor again from the previous step.');
+                    }
+                    if (!PROCTORING_DISABLED) {
+                        const fsOk = await enterAssessmentFullscreen();
+                        if (!fsOk) {
+                            throw new Error('Fullscreen is required to start the test. Allow fullscreen in your browser dialog and try again.');
+                        }
+                    }
+                    transferredRef.current = true;
+                    onComplete({
+                        webcam: webcamStreamRef.current,
+                        screens: [...screenStreamsRef.current],
+                        screenCount: 1,
+                    });
+                } catch (err) {
+                    setError(err.message || 'Could not start the test.');
+                } finally {
+                    setBusy(false);
+                }
             };
 
             const shareIndex = sharedScreens.length;
             const shareDone = sharedScreens.length;
-            const startReady = step === 'start' && !!webcamStream && shareDone >= screenCount;
+            const webcamLive = !!(webcamStream && window.TA_PROCTOR?.isStreamLive?.(webcamStream));
+            const screensLive = sharedScreens.length > 0 && sharedScreens.every((s) => window.TA_PROCTOR?.isStreamLive?.(s));
+            const startReady = step === 'start'
+                && screenCount === 1
+                && webcamLive
+                && screensLive;
 
             const instructions = (() => {
                 if (step === 'detect') {
                     return {
                         title: 'Instructions',
                         body: [
-                            'To proceed, please allow screen access so we can detect how many displays are connected to your device.',
-                            'Please follow these instructions to continue.',
+                            'This assessment runs on a single monitor only. Disconnect any extra displays before continuing.',
+                            'Click Detect Screens to confirm one display is connected, then share that screen and enable your webcam.',
                         ],
                         action: 'Detect Screens',
                         onAction: handleDetectScreens,
@@ -2234,15 +2288,15 @@
                 }
                 if (step === 'share') {
                     return {
-                        title: 'Share your screen(s)',
+                        title: 'Share your screen',
                         body: [
-                            `We detected ${screenCount} display${screenCount === 1 ? '' : 's'}. Share each monitor one at a time.`,
+                            'One display detected. Share your entire primary monitor when prompted.',
                             shareDone > 0
-                                ? `${shareDone} of ${screenCount} shared — ${shareDone >= screenCount ? 'all set.' : 'continue with the next monitor.'}`
-                                : 'In the browser dialog, pick Entire screen and select the monitor shown.',
+                                ? 'Screen shared — continue to webcam.'
+                                : 'In the browser dialog, choose Entire screen and select your monitor (not a window or tab).',
                         ],
-                        action: shareDone >= screenCount ? 'Continue to webcam' : `Share screen ${shareIndex + 1} of ${screenCount}`,
-                        onAction: shareDone >= screenCount ? () => setStep('webcam') : handleShareNextScreen,
+                        action: shareDone >= 1 ? 'Continue to webcam' : 'Share screen',
+                        onAction: shareDone >= 1 ? () => setStep('webcam') : handleShareNextScreen,
                         showScreenIcon: true,
                     };
                 }
@@ -2261,8 +2315,10 @@
                 return {
                     title: 'Ready to begin',
                     body: [
-                        `${screenCount} screen${screenCount === 1 ? '' : 's'} and your webcam are connected.`,
-                        'Keep all shares active for the full assessment. Do not stop sharing or cover the camera.',
+                        'Your screen and webcam are connected on a single monitor.',
+                        startReady
+                            ? 'Click Start Test to enter fullscreen and begin Phase 1. Keep screen share and camera on for the full assessment.'
+                            : 'Enable your webcam and keep screen sharing active before starting.',
                     ],
                     action: 'Start Test',
                     onAction: handleStartTest,
@@ -2277,17 +2333,17 @@
                             <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700 mb-1">Before the assessment</p>
                             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Proctoring setup</h1>
                             <p className="text-sm text-slate-600 mt-2 max-w-2xl leading-relaxed">
-                                Webcam and screen images are recorded during the test and may be included in your results.
-                                Complete every step below before starting.
+                                Use one monitor only. Webcam and screen share must stay active during the test.
+                                Fullscreen begins when you click Start Test.
                             </p>
                         </div>
                         <div className="proctor-setup-shell">
                             <ProctorStepNav
                                 activeStep={step}
-                                detectDone={screenCount > 0}
+                                detectDone={screenCount === 1}
                                 shareDone={shareDone}
-                                shareTotal={screenCount}
-                                webcamDone={!!webcamStream}
+                                shareTotal={1}
+                                webcamDone={webcamLive}
                                 startReady={startReady}
                             />
                             <div className="p-5 sm:p-8 flex flex-col min-h-[360px]">
@@ -4786,7 +4842,7 @@
             }, []);
 
             const syncFullscreenState = useCallback(() => {
-                if (PROCTORING_DISABLED || !isPortalLockedView(viewRef.current)) {
+                if (PROCTORING_DISABLED || !isFullscreenRequiredView(viewRef.current)) {
                     setFullscreenRequired(false);
                     fullscreenRequiredRef.current = false;
                     return;
@@ -5262,8 +5318,10 @@
                     setFullscreenRequired(false);
                     return;
                 }
-                if (!isPortalLockedView(view)) {
-                    exitAssessmentFullscreen();
+                if (!isFullscreenRequiredView(view)) {
+                    if (!isPortalLockedView(view)) {
+                        exitAssessmentFullscreen();
+                    }
                     setFullscreenRequired(false);
                     return;
                 }
@@ -5273,14 +5331,16 @@
 
             useEffect(() => {
                 const requestOnGesture = () => {
-                    if (isPortalLockedView(viewRef.current) && !isInFullscreen()) {
+                    if (isFullscreenRequiredView(viewRef.current) && !isInFullscreen()) {
                         enterAssessmentFullscreen().then(() => syncFullscreenState());
                     }
                 };
                 document.addEventListener('click', requestOnGesture, { once: true });
-                enterAssessmentFullscreen().then(() => syncFullscreenState());
+                if (isFullscreenRequiredView(viewRef.current)) {
+                    enterAssessmentFullscreen().then(() => syncFullscreenState());
+                }
                 return () => document.removeEventListener('click', requestOnGesture);
-            }, [syncFullscreenState]);
+            }, [view, syncFullscreenState]);
 
             const restoreSession = async (sId, email, { resumeOnly = false } = {}) => {
                 if (!sId) return;

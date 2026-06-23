@@ -35,9 +35,18 @@
       })),
       method: extended ? 'extended-heuristic' : 'single-display',
       note: extended
-        ? 'Multiple displays detected. You will share each monitor one at a time in the next step.'
+        ? 'Multiple displays detected. Disconnect extra monitors and detect again.'
         : '',
     };
+  }
+
+  function isSingleDisplay(result) {
+    return !!(result && Number(result.count) <= 1);
+  }
+
+  function multiDisplayBlockMessage(result) {
+    const n = Math.max(2, Number(result?.count) || 2);
+    return `We detected ${n} displays. This assessment runs on one monitor only — disconnect all extra screens (HDMI, docking station, extended desktop), then detect again.`;
   }
 
   async function requestScreenShare() {
@@ -141,6 +150,8 @@
   global.TA_PROCTOR = {
     isSupported,
     detectScreens,
+    isSingleDisplay,
+    multiDisplayBlockMessage,
     requestScreenShare,
     requestWebcam,
     attachStream,

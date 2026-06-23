@@ -498,16 +498,30 @@
 
         .speech-transcript-box {
             flex: 1;
-            min-height: 8rem;
-            max-height: 42vh;
+            min-height: 5.5rem;
+            max-height: min(38vh, 16rem);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+        }
+
+        .speech-transcript-sticky {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+        }
+
+        @media (min-width: 640px) {
+            .speech-transcript-box {
+                min-height: 6.5rem;
+                max-height: min(32vh, 14rem);
+            }
         }
 
         @media (min-width: 1024px) {
             .speech-transcript-box {
-                min-height: 11rem;
-                max-height: none;
+                min-height: 7rem;
+                max-height: min(28vh, 12rem);
             }
         }
 
@@ -1655,6 +1669,7 @@
             const sessionRef = React.useRef(null);
             const finishedRef = React.useRef(false);
             const cardsEndRef = React.useRef(null);
+            const liveTranscriptRef = React.useRef(null);
             const [status, setStatus] = React.useState('Preparing live session…');
             const [micLevel, setMicLevel] = React.useState(0);
             const [turn, setTurn] = React.useState(0);
@@ -1696,6 +1711,11 @@
 
             React.useEffect(() => { isAnsweringRef.current = isAnswering; }, [isAnswering]);
             React.useEffect(() => { canAnswerRef.current = canAnswer; }, [canAnswer]);
+
+            React.useEffect(() => {
+                if (!isAnswering || !liveTranscriptRef.current) return;
+                liveTranscriptRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }, [isAnswering, liveCaption]);
 
             const currentQuestionNum = cards.length ? cards[cards.length - 1].number : 0;
             const completedAnswers = cards.filter((c) => c && c.answer).length;
@@ -2257,6 +2277,34 @@
                                     ) : null}
                                 </div>
                             </div>
+                            {isAnswering && !interviewComplete ? (
+                                <div
+                                    ref={liveTranscriptRef}
+                                    className={`shrink-0 px-4 sm:px-5 lg:px-6 pb-2 speech-transcript-sticky ${warmupPhase ? 'pt-1' : 'pt-0'}`}
+                                >
+                                    <div className={`rounded-xl border-2 px-4 py-3 shadow-md backdrop-blur-sm ${
+                                        warmupPhase
+                                            ? 'border-amber-300 bg-amber-50/95'
+                                            : 'border-emerald-300 bg-emerald-50/95'
+                                    }`}>
+                                        <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${
+                                            warmupPhase ? 'text-amber-800' : 'text-emerald-800'
+                                        }`}>
+                                            Live transcript
+                                        </p>
+                                        <div className="speech-transcript-box">
+                                            <p className="transcript-stream text-slate-900 text-sm sm:text-base leading-relaxed">
+                                                {liveCaption || 'Listening… speak clearly in English. Your words will appear here as you talk.'}
+                                                {liveCaption ? (
+                                                    <span className={`inline-block w-1 h-4 ml-0.5 align-middle animate-pulse rounded-sm ${
+                                                        warmupPhase ? 'bg-amber-500/80' : 'bg-emerald-500/80'
+                                                    }`} />
+                                                ) : null}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
                             <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-4 flex flex-col">
                                 {interviewComplete ? (
                                     <div className="fade-in rounded-2xl border border-emerald-200 bg-emerald-50 overflow-hidden shadow-soft animate-scale-in">
@@ -2357,12 +2405,6 @@
                                                         )}
                                                     </div>
                                                 )}
-                                                {isAnswering && liveCaption ? (
-                                                    <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 mb-2">
-                                                        <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-1">Live transcript</p>
-                                                        <p className="transcript-stream text-slate-800">{liveCaption}<span className="inline-block w-1 h-4 bg-amber-500/70 ml-0.5 align-middle animate-pulse rounded-sm" /></p>
-                                                    </div>
-                                                ) : null}
                                                 {warmupAnswer ? (
                                                     <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
                                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{isMicCheck ? 'Mic confirmed' : 'Your introduction'}</p>
@@ -2481,17 +2523,6 @@
                                                         )}
                                                     </div>
                                                 )}
-
-                                                {/* Live transcript */}
-                                                {recording && liveCaption ? (
-                                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3.5 mb-2">
-                                                        <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-1.5">Live transcript</p>
-                                                        <p className="transcript-stream text-slate-800">
-                                                            {liveCaption}
-                                                            <span className="inline-block w-1 h-4 bg-emerald-500/70 ml-0.5 align-middle animate-pulse rounded-sm" />
-                                                        </p>
-                                                    </div>
-                                                ) : null}
 
                                                 {/* Answered / saving */}
                                                 {answered ? (

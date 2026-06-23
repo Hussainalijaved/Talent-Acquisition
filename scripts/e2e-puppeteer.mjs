@@ -147,6 +147,27 @@ async function testIndexAssessmentShell(browser, base) {
   if (!hasSanitize) fail('TA_LIVE.sanitizeDisplayTranscript', 'missing');
   else ok('TA_LIVE.sanitizeDisplayTranscript exists');
 
+  const layoutCss = await pg.evaluate(() => {
+    const sheets = [...document.styleSheets];
+    let foundSticky = false;
+    let foundTranscriptBox = false;
+    for (const sheet of sheets) {
+      try {
+        const rules = sheet.cssRules || [];
+        for (const rule of rules) {
+          const sel = rule.selectorText || '';
+          if (sel.includes('speech-transcript-sticky')) foundSticky = true;
+          if (sel.includes('speech-transcript-box')) foundTranscriptBox = true;
+        }
+      } catch (_) {}
+    }
+    return { foundSticky, foundTranscriptBox };
+  });
+  if (!layoutCss.foundTranscriptBox) fail('index.html speech-transcript-box CSS', 'missing');
+  else ok('index.html speech-transcript-box CSS');
+  if (!layoutCss.foundSticky) fail('index.html speech-transcript-sticky CSS', 'missing');
+  else ok('index.html speech-transcript-sticky CSS');
+
   const audioHelpers = await pg.evaluate(() => ({
     flushMs: window.TA_LIVE?.AUDIO_FLUSH_MS,
     hasDownsample: typeof window.TA_LIVE?.downsample === 'function',
@@ -160,6 +181,22 @@ async function testIndexAssessmentShell(browser, base) {
   else ok(`TA_LIVE.downsample (${audioHelpers.downsampleLen} samples)`);
   if (audioHelpers.flushMs >= 1000) ok(`TA_LIVE audio flush ${audioHelpers.flushMs}ms`);
   else fail('TA_LIVE audio flush window', String(audioHelpers.flushMs));
+
+  const liveSpeechSource = await pg.evaluate(async () => {
+    const res = await fetch('/live-speech.js');
+    const text = await res.text();
+    return {
+      hasInitPlayback: text.includes('initPlaybackAudio'),
+      hasDrainAfterMic: text.includes('playQueue.length') && text.includes('drainPlayback'),
+      hasEnsureOnOutput: text.includes('output_audio') && text.includes('ensureAudioRunning'),
+    };
+  });
+  if (!liveSpeechSource.hasInitPlayback) fail('live-speech.js initPlaybackAudio', 'missing');
+  else ok('live-speech.js early playback init');
+  if (!liveSpeechSource.hasDrainAfterMic) fail('live-speech.js drain queue after mic', 'missing');
+  else ok('live-speech.js drains audio queue after mic');
+  if (!liveSpeechSource.hasEnsureOnOutput) fail('live-speech.js resume audio on output', 'missing');
+  else ok('live-speech.js resumes AudioContext on interviewer audio');
 
   await pg.close();
 }

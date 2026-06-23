@@ -122,6 +122,18 @@
       return this.answering || this.streamingAudio;
     }
 
+    async initPlaybackAudio() {
+      const Ctx = global.AudioContext || global.webkitAudioContext;
+      if (!Ctx) throw new Error('AudioContext not supported');
+      if (!this.audioCtx) {
+        this.audioCtx = new Ctx();
+        this.playbackGain = this.audioCtx.createGain();
+        this.playbackGain.gain.value = 1;
+        this.playbackGain.connect(this.audioCtx.destination);
+      }
+      await this.ensureAudioRunning();
+    }
+
     async ensureAudioRunning() {
       if (!this.audioCtx) return false;
       if (this.audioCtx.state === 'suspended') {
@@ -232,6 +244,7 @@
     async start() {
       if (!this.relayUrl) throw new Error('live_relay_url missing — set in n8n CFG');
       this.setStatus('Connecting…');
+      await this.initPlaybackAudio();
 
       this.ws = new WebSocket(this.relayUrl);
       await new Promise((resolve, reject) => {
@@ -261,6 +274,7 @@
       await this.waitForType('ready', 50000);
       this.setStatus('Interviewer is starting…');
       await this.startMic();
+      if (this.playQueue.length) void this.drainPlayback();
       this.setStatus('Listen to the interviewer — the first question is coming');
     }
 
@@ -421,6 +435,7 @@
       if (msg.type === 'output_audio' && msg.data) {
         // Allow interviewer nudge audio while mic is open; block normal question audio.
         if (this.answering && !this.allowInterviewerDuringAnswer) return;
+        void this.ensureAudioRunning();
         this.modelAudioHeardThisTurn = true;
         if (!this.answering) this.setStatus('Interviewer is speaking…');
         this.enqueuePlayback(msg.data, msg.mimeType || `audio/pcm;rate=${OUTPUT_RATE}`);
@@ -485,8 +500,7 @@
     }
 
     async startMic() {
-      const Ctx = global.AudioContext || global.webkitAudioContext;
-      if (!Ctx) throw new Error('AudioContext not supported');
+      if (!this.audioCtx) await this.initPlaybackAudio();
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -495,11 +509,12 @@
         },
         video: false,
       });
-      this.audioCtx = new Ctx();
       await this.ensureAudioRunning();
-      this.playbackGain = this.audioCtx.createGain();
-      this.playbackGain.gain.value = 1;
-      this.playbackGain.connect(this.audioCtx.destination);
+      if (!this.playbackGain) {
+        this.playbackGain = this.audioCtx.createGain();
+        this.playbackGain.gain.value = 1;
+        this.playbackGain.connect(this.audioCtx.destination);
+      }
       this.source = this.audioCtx.createMediaStreamSource(this.mediaStream);
       this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1);
       const inRate = this.audioCtx.sampleRate;
@@ -529,19 +544,20 @@
       this.source.connect(this.processor);
       this.processor.connect(silent);
       silent.connect(this.audioCtx.destination);
+      if (this.playQueue.length) void this.drainPlayback();
     }
 
     enqueuePlayback(b64, mimeType) {
       const rateMatch = /rate=(\d+)/i.exec(mimeType || '');
       const rate = rateMatch ? Number(rateMatch[1]) : OUTPUT_RATE;
       this.playQueue.push({ b64, rate });
-      if (!this.playing) void this.drainPlayback();
+      void this.drainPlayback();
     }
 
     async drainPlayback() {
-      if (!this.audioCtx || this.playing) return;
+      if (!this.audioCtx) return;
       await this.ensureAudioRunning();
-      if (!this.audioCtx || this.playing) return;
+      if (this.playing) return;
       this.playing = true;
       while (this.playQueue.length && !this.ended) {
         const chunk = this.playQueue.shift();
@@ -751,7 +767,16 @@
     if (!Ctx) return false;
     try {
       const ctx = new Ctx();
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      gain.connect(ctx.destination);
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(gain);
       if (ctx.state === 'suspended') await ctx.resume();
+      src.start(0);
+      await new Promise((r) => setTimeout(r, 40));
       await ctx.close();
       return true;
     } catch (_) {

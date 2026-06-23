@@ -1648,16 +1648,39 @@
                 .join(' ');
         }
 
+        function looksLikePersonName(s) {
+            const words = String(s || '').trim().split(/\s+/).filter(Boolean);
+            if (words.length < 2 || words.length > 5) return false;
+            return words.every((w) => /^[A-Za-z][A-Za-z'.-]{1,30}$/.test(w));
+        }
+
+        const JOB_TITLE_TAIL_RE = /\s+(?:\.net|dotnet|developer|engineer|software|graduate|student|consultant|specialist|manager|analyst|designer|architect|lead|senior|junior|intern|comsats|university|bachelor|master|phd)\b.*/i;
+        const FILENAME_NOISE_WORDS = new Set([
+            'final', 'draft', 'copy', 'updated', 'latest', 'new', 'rev', 'version',
+            'v1', 'v2', 'v3', 'resume', 'cv', 'curriculum', 'vitae', 'profile', 'doc', 'document',
+        ]);
+
+        function nameFromHeaderFragment(raw) {
+            let s = String(raw || '').trim();
+            if (!s) return '';
+            s = s.split(/[|·•]/)[0].trim();
+            s = s.replace(JOB_TITLE_TAIL_RE, '').trim();
+            s = s.replace(/\s{2,}/g, ' ').trim();
+            if (!looksLikePersonName(s)) return '';
+            return cleanDisplayName(s);
+        }
+
         function guessNameFromFilename(filename) {
             const base = String(filename || '').replace(/\.pdf$/i, '')
                 .replace(/[_-]+/g, ' ')
-                .replace(/\b(resume|cv|curriculum vitae|profile)\b/gi, '')
                 .trim();
-            if (!base || base.length < 3 || base.length > 60) return '';
-            if (!/^[a-zA-Z\s'.]+$/.test(base)) return '';
-            const words = base.split(/\s+/).filter(Boolean);
+            const words = base.split(/\s+/).filter(Boolean)
+                .filter((w) => !FILENAME_NOISE_WORDS.has(w.toLowerCase()));
             if (words.length < 2 || words.length > 5) return '';
-            return titleCaseWords(base);
+            const candidate = words.join(' ');
+            if (!/^[a-zA-Z\s'.]+$/.test(candidate)) return '';
+            if (!looksLikePersonName(candidate)) return '';
+            return titleCaseWords(candidate);
         }
 
         function extractNameFromCvText(text, filename, email) {
@@ -1665,16 +1688,36 @@
 
             for (const line of lines.slice(0, 35)) {
                 const labeled = line.match(/^(?:name|full\s*name|candidate(?:\s*name)?)\s*[:\-]\s*(.+)$/i);
-                if (labeled) return cleanDisplayName(labeled[1]);
+                if (labeled) {
+                    const fromLabel = nameFromHeaderFragment(labeled[1]) || cleanDisplayName(labeled[1]);
+                    if (fromLabel && looksLikePersonName(fromLabel)) return fromLabel;
+                }
             }
 
-            for (const line of lines.slice(0, 10)) {
-                if (line.length < 3 || line.length > 55) continue;
+            // Many CVs put "Name | Title" or "Name .NET Developer" on one header line.
+            const headerBlob = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+            const startCaps = headerBlob.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z'.-]+){1,4})/);
+            if (startCaps) {
+                const fromStart = nameFromHeaderFragment(startCaps[1]);
+                if (fromStart) return fromStart;
+            }
+            const startAllCaps = headerBlob.match(/^([A-Z][A-Z'.-]+(?:\s+[A-Z][A-Z'.-]+){1,4})/);
+            if (startAllCaps) {
+                const fromCaps = nameFromHeaderFragment(titleCaseWords(startAllCaps[1]));
+                if (fromCaps) return fromCaps;
+            }
+
+            for (const line of lines.slice(0, 15)) {
+                if (line.length < 3 || line.length > 90) continue;
                 if (EMAIL_RE.test(line)) continue;
                 if (/\+?\d[\d\s().-]{8,}\d/.test(line)) continue;
                 if (/^(curriculum|resume|cv|profile|summary|experience|education|skills|objective|contact)/i.test(line)) continue;
                 if (/^\d/.test(line)) continue;
-                if (/[@#/|]/.test(line)) continue;
+
+                const fromFragment = nameFromHeaderFragment(line);
+                if (fromFragment) return fromFragment;
+
+                if (/[@#]/.test(line)) continue;
                 if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z'.-]+){0,4}$/.test(line)) return line;
                 if (/^[A-Z][A-Z\s'.-]{2,45}$/.test(line) && line.split(/\s+/).length <= 5) {
                     return titleCaseWords(line);

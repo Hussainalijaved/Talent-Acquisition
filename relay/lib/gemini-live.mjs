@@ -153,6 +153,10 @@ export class GeminiLiveBridge {
     // whether the model actually spoke audio this turn so we can still commit
     // questions and open the mic when captions are empty.
     this.modelAudioThisTurn = false;
+    this.interviewClosing = false;
+    this.warmupSpeakRetries = { mic_check: 0, intro: 0 };
+    this.closingReprompts = 0;
+    this.closingCompleteTimer = null;
   }
 
   timerConfig() {
@@ -174,7 +178,8 @@ export class GeminiLiveBridge {
     this.questionTimeLimits[qNum] = limits;
     this.answerPromptOpen = true;
     this.answerPromptFor = qNum;
-    this.blockModelOutput = true;
+    // Do NOT block model audio here — turnComplete can arrive before the last
+    // audio chunk; blocking here causes clipped/garbled interviewer speech.
     const ev = {
       type: 'awaiting_answer',
       number: qNum,
@@ -185,6 +190,45 @@ export class GeminiLiveBridge {
     if (isWarmup) ev.warmup = opts.warmup || this.warmupPhase;
     this.onEvent(ev);
     if (qNum >= 1) this.refineQuestionTimeLimit(qNum, questionText);
+  }
+
+  flushClientPlayback() {
+    this.onEvent({ type: 'flush_playback' });
+  }
+
+  retryWarmupSpeak(phase) {
+    if (this.interviewEnded || this.closed || this.warmupPhase !== phase) return;
+    const key = phase === 'mic_check' ? 'mic_check' : 'intro';
+    this.warmupSpeakRetries[key] = (this.warmupSpeakRetries[key] || 0) + 1;
+    if (this.warmupSpeakRetries[key] > 3) {
+      console.warn(`[relay] warmup ${phase} speak retries exhausted — using fallback prompt`);
+      this.emitWarmupFallback(phase);
+      return;
+    }
+    console.warn(`[relay] warmup ${phase} had no audible output — retry #${this.warmupSpeakRetries[key]}`);
+    this.blockModelOutput = false;
+    this.allowModelAudio = true;
+    this.modelAudioThisTurn = false;
+    this.modelBuf = '';
+    this.pendingAudioChunks = [];
+    this.flushClientPlayback();
+    const prompt = phase === 'mic_check' ? this.buildMicCheckPrompt() : this.buildIntroPrompt();
+    this.sendClientText(
+      `[Speak out loud in clear English — the candidate must HEAR you. One short turn only, then stop and wait.] ${prompt}`,
+      true
+    );
+    this.scheduleWarmupWatchdog(phase);
+  }
+
+  emitWarmupFallback(phase) {
+    const wNum = phase === 'mic_check' ? -1 : 0;
+    const fallbackText = phase === 'mic_check'
+      ? 'Please say a few words so I can confirm your microphone is working.'
+      : 'Could you please tell me a bit about yourself — your name, background, and what brings you here?';
+    if (phase === 'intro') this.introQuestionAsked = true;
+    this.clearNextQuestionWatchdog();
+    this.onEvent({ type: 'question', number: wNum, text: fallbackText, warmup: phase });
+    this.emitAwaitingAnswer(wNum, fallbackText, { warmup: phase });
   }
 
   clearAnswerPromptWindow() {
@@ -293,18 +337,10 @@ export class GeminiLiveBridge {
     this.nextQuestionWatchdog = setTimeout(() => {
       this.nextQuestionWatchdog = null;
       if (this.interviewEnded || this.closed || this.warmupPhase !== phase) return;
-      console.warn(`[relay] warmup watchdog — ${phase} not received from AI, injecting fallback`);
-      this.modelBuf = '';
-      this.blockModelOutput = false;
-      this.allowModelAudio = true;
-      const fallbackNum = phase === 'mic_check' ? -1 : 0;
-      const fallbackText = phase === 'mic_check'
-        ? 'Please say a few words so I can confirm your microphone is working.'
-        : 'Could you please tell me a bit about yourself — your name, background, and interest in this role?';
-      this.onEvent({ type: 'transcript', speaker: 'model', text: fallbackText, partial: false, number: fallbackNum });
-      this.onEvent({ type: 'question', number: fallbackNum, text: fallbackText, warmup: phase });
-      this.emitAwaitingAnswer(fallbackNum, fallbackText, { warmup: phase });
-    }, 14000);
+      if (phase === 'intro' && this.introQuestionAsked && this.answerPromptOpen) return;
+      console.warn(`[relay] warmup watchdog — ${phase} not heard, retrying speak`);
+      this.retryWarmupSpeak(phase);
+    }, 16000);
   }
 
   scheduleNextQuestionWatchdog(nextQ) {
@@ -651,6 +687,30 @@ export class GeminiLiveBridge {
       return;
     }
 
+    if (this.interviewClosing && !this.interviewEnded) {
+      const closingText = sanitizeTranscript(this.modelBuf, 'model').trim();
+      this.modelBuf = '';
+      this.modelAudioThisTurn = false;
+      const words = closingText.split(/\s+/).filter(Boolean).length;
+      const fullClose = /completes? the voice interview|thank you for your time|that concludes/i.test(
+        closingText
+      );
+      if (words > 0 && words < 6 && !fullClose) {
+        this.closingReprompts += 1;
+        if (this.closingReprompts <= 2) {
+          this.flushClientPlayback();
+          this.sendClientText(
+            'You only said a brief thanks. Say this complete closing sentence once: "Thank you for your time — that completes the voice interview." Then stop.',
+            true
+          );
+          return;
+        }
+      }
+      if (this.closingCompleteTimer) clearTimeout(this.closingCompleteTimer);
+      this.closingCompleteTimer = setTimeout(() => this.finalizeInterviewClosing(), 3500);
+      return;
+    }
+
     if (this.awaitingAnswer) {
       this.scheduleFinalizeAnswer();
       return;
@@ -747,6 +807,7 @@ export class GeminiLiveBridge {
       this.pendingAudioChunks = [];
       this.blockModelOutput = false;
       this.sendClientText(this.buildIntroPrompt(), true);
+      this.flushClientPlayback();
       this.scheduleWarmupWatchdog('intro');
       return;
     }
@@ -766,6 +827,7 @@ export class GeminiLiveBridge {
       this.pendingAudioChunks = [];
       this.blockModelOutput = false;
       this.sendClientText(this.buildFirstQuestionPrompt(), true);
+      this.flushClientPlayback();
       this.scheduleNextQuestionWatchdog(1);
       return;
     }
@@ -871,6 +933,7 @@ export class GeminiLiveBridge {
     this.blockModelOutput = false;
     this.awaitingAnswer = false;
     this.roundQuestionEmitted = false;
+    this.flushClientPlayback();
     this.sendClientText(this.buildFollowUpPrompt(qNum, questionText, answerText), true);
     this.scheduleFollowUpWatchdog(qNum);
   }
@@ -891,6 +954,7 @@ export class GeminiLiveBridge {
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];
     this.blockModelOutput = false;
+    this.flushClientPlayback();
     this.sendClientText(this.buildNextQuestionPrompt(aNum, nextQ), true);
     this.scheduleNextQuestionWatchdog(nextQ);
   }
@@ -1017,36 +1081,41 @@ export class GeminiLiveBridge {
     let modelText = sanitizeTranscript(this.modelBuf, 'model');
     this.modelBuf = '';
 
-    if (modelText) return modelText;
+    if (modelText) return { modelText, spokeThisTurn: hadAudio };
 
     const streamed = this.streamingQuestionText
       ? String(this.streamingQuestionText).trim()
       : '';
     if (streamed) {
       modelText = extractInterviewQuestion(streamed) || streamed;
-      if (modelText) return modelText;
+      if (modelText) return { modelText, spokeThisTurn: hadAudio || true };
     }
 
-    if (this.warmupPhase === 'mic_check') {
-      return 'Please say a few words so I can confirm your microphone is working.';
-    }
-    if (this.warmupPhase === 'intro') {
-      return 'Could you please tell me a bit about yourself — your name, background, and what brings you here?';
-    }
-
-    if (hadAudio && !this.inFollowUpFor && this.questions.length < this.maxTurns) {
-      return fallbackInterviewQuestion(this.questions.length + 1, this.maxTurns);
+    if (hadAudio && !this.inFollowUpFor && this.questions.length < this.maxTurns && !this.warmupPhase) {
+      return {
+        modelText: fallbackInterviewQuestion(this.questions.length + 1, this.maxTurns),
+        spokeThisTurn: true,
+      };
     }
 
-    return '';
+    return { modelText: '', spokeThisTurn: hadAudio };
   }
 
   emitQuestionFromBuffer() {
-    let modelText = this.resolveModelTextAfterTurn();
-    if (!modelText) return;
+    const { modelText, spokeThisTurn } = this.resolveModelTextAfterTurn();
+    if (!modelText) {
+      if (this.warmupPhase === 'mic_check' || this.warmupPhase === 'intro') {
+        this.retryWarmupSpeak(this.warmupPhase);
+      }
+      return;
+    }
 
     // ── Warmup phases ────────────────────────────────────────────────────────
     if (this.warmupPhase === 'mic_check' || this.warmupPhase === 'intro') {
+      if (!spokeThisTurn) {
+        this.retryWarmupSpeak(this.warmupPhase);
+        return;
+      }
       const wNum = this.warmupPhase === 'mic_check' ? -1 : 0;
       if (this.warmupPhase === 'intro') this.introQuestionAsked = true;
       if (this.kickoffWatchdog) {
@@ -1063,6 +1132,19 @@ export class GeminiLiveBridge {
     }
 
     if (this.inFollowUpFor) {
+      if (!spokeThisTurn) {
+        const qNum = this.inFollowUpFor;
+        console.warn(`[relay] follow-up for Q${qNum} had no audible output — re-prompting`);
+        this.roundQuestionEmitted = false;
+        this.blockModelOutput = false;
+        this.allowModelAudio = true;
+        this.flushClientPlayback();
+        const qText = this.questions[qNum - 1] || '';
+        const aText = this.answers[qNum - 1] || '';
+        this.sendClientText(this.buildFollowUpPrompt(qNum, qText, aText), true);
+        this.scheduleFollowUpWatchdog(qNum);
+        return;
+      }
       const qNum = this.inFollowUpFor;
       const streamed = this.streamingQuestionNum === qNum ? this.streamingQuestionText : '';
       modelText = extractInterviewQuestion(
@@ -1105,6 +1187,7 @@ export class GeminiLiveBridge {
         if (this.prematureClosingReprompts <= 3) {
           this.blockModelOutput = false;
           this.allowModelAudio = true;
+          this.flushClientPlayback();
           this.sendClientText(this.buildClosingReprompt(expectedQ), true);
           return;
         }
@@ -1114,6 +1197,17 @@ export class GeminiLiveBridge {
     }
 
     if (!this.roundQuestionEmitted && this.questions.length < this.maxTurns) {
+      if (!spokeThisTurn) {
+        console.warn(`[relay] Q${expectedQ} turn had no audible output — re-prompting`);
+        this.roundQuestionEmitted = false;
+        this.blockModelOutput = false;
+        this.allowModelAudio = true;
+        this.flushClientPlayback();
+        const prevA = Math.max(0, expectedQ - 1);
+        this.sendClientText(this.buildNextQuestionPrompt(prevA, expectedQ), true);
+        this.scheduleNextQuestionWatchdog(expectedQ);
+        return;
+      }
       this.questions.push(modelText);
       this.roundQuestionEmitted = true;
       if (this.kickoffWatchdog) {
@@ -1154,18 +1248,29 @@ export class GeminiLiveBridge {
   }
 
   finishInterview() {
-    if (this.interviewEnded) return;
-    this.interviewEnded = true;
-    // Unblock so the closing thank-you message is actually spoken + transcribed.
+    if (this.interviewEnded || this.interviewClosing) return;
+    this.interviewClosing = true;
+    this.closingReprompts = 0;
+    this.clearAnswerPromptWindow();
     this.blockModelOutput = false;
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];
+    this.flushClientPlayback();
     this.onEvent({ type: 'interview_closing' });
-    this.onEvent({ type: 'interview_complete', turn: this.maxTurns, maxTurns: this.maxTurns });
     this.sendClientText(
-      `The candidate has now answered all ${this.maxTurns} interview questions. In one warm, short sentence, thank the candidate by saying something like "Thank you for your time — that completes the voice interview." Do not ask any more questions and do not say anything after the thank-you.`,
+      `The candidate has now answered all ${this.maxTurns} interview questions. Say ONE warm closing sentence in English only, such as: "Thank you for your time — that completes the voice interview." Do not ask any more questions. Do not add a second thank-you.`,
       true
     );
+  }
+
+  finalizeInterviewClosing() {
+    if (this.interviewEnded) return;
+    this.interviewEnded = true;
+    if (this.closingCompleteTimer) {
+      clearTimeout(this.closingCompleteTimer);
+      this.closingCompleteTimer = null;
+    }
+    this.onEvent({ type: 'interview_complete', turn: this.maxTurns, maxTurns: this.maxTurns });
     setTimeout(() => this.closeGemini(), 8000);
   }
 
@@ -1202,9 +1307,11 @@ export class GeminiLiveBridge {
     if (this.kickoffWatchdog) clearTimeout(this.kickoffWatchdog);
     this.kickoffWatchdog = setTimeout(() => {
       // Still waiting on the very first interviewer turn?
-      const firstTurnDone = (this.warmupPhase === 'intro' && !this.introQuestionAsked) ||
-        this.introQuestionAsked || this.questions.length > 0;
-      if (firstTurnDone || this.interviewEnded || this.closed) return;
+      const openingDone =
+        (this.warmupPhase === 'mic_check' && this.answerPromptOpen) ||
+        (this.warmupPhase === 'intro' && this.introQuestionAsked) ||
+        (!this.warmupPhase && this.questions.length > 0);
+      if (openingDone || this.interviewEnded || this.closed) return;
       console.warn('[relay] kickoff watchdog — no opening turn yet, retrying');
       this.modelBuf = '';
       this.allowModelAudio = true;
@@ -1305,6 +1412,10 @@ export class GeminiLiveBridge {
     if (this.pendingFinalize) {
       clearTimeout(this.pendingFinalize);
       this.pendingFinalize = null;
+    }
+    if (this.closingCompleteTimer) {
+      clearTimeout(this.closingCompleteTimer);
+      this.closingCompleteTimer = null;
     }
     if (this.geminiWs && this.geminiWs.readyState === WebSocket.OPEN) {
       try {

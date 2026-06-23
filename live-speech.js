@@ -110,6 +110,14 @@
       this.micOpenFallbackTimer = null;
       this.streamingAudio = false;
       this.audioFlushTimer = null;
+      this.playbackGeneration = 0;
+    }
+
+    clearPlayback() {
+      this.playbackGeneration += 1;
+      this.playQueue = [];
+      this.playing = false;
+      if (this.audioCtx) this.nextPlayTime = this.audioCtx.currentTime;
     }
 
     flushAnswerAudio() {
@@ -160,7 +168,7 @@
       }
     }
 
-    scheduleMicOpenFallback(maxMs = 12000) {
+    scheduleMicOpenFallback(maxMs = 25000) {
       if (this.micOpenFallbackTimer) clearTimeout(this.micOpenFallbackTimer);
       this.micOpenFallbackTimer = setTimeout(() => {
         this.micOpenFallbackTimer = null;
@@ -168,7 +176,8 @@
           !this.ended &&
           !this.interviewEnded &&
           !this.answering &&
-          this.awaitingAnswerPending
+          this.awaitingAnswerPending &&
+          this.modelAudioHeardThisTurn
         ) {
           this.awaitingAnswerPending = false;
           this.beginAnswer();
@@ -190,23 +199,29 @@
     async scheduleMicAfterPlayback() {
       this.cancelMicOpen();
       if (this.ended || this.interviewEnded) return;
-      this.modelAudioHeardThisTurn = false;
-      // Hard fallback — transcription-free mode must still open the mic even
-      // if playback never starts (AudioContext blocked, missing chunks, etc.).
-      this.scheduleMicOpenFallback(12000);
-      // Give Gemini time to send the first audio chunk before we decide playback is done.
+      // Do not reset modelAudioHeardThisTurn — audio may arrive before awaiting_answer.
+      this.scheduleMicOpenFallback(25000);
       let preWait = 0;
-      while (!this.modelAudioHeardThisTurn && preWait < 8000) {
+      while (!this.modelAudioHeardThisTurn && preWait < 20000) {
         await new Promise((r) => setTimeout(r, 200));
         preWait += 200;
+        if (this.ended || this.interviewEnded || !this.awaitingAnswerPending) return;
       }
+      if (!this.modelAudioHeardThisTurn) return;
       let waited = 0;
-      while ((this.playing || this.playQueue.length > 0) && waited < 30000) {
+      while ((this.playing || this.playQueue.length > 0) && waited < 45000) {
         await new Promise((r) => setTimeout(r, 200));
         waited += 200;
+        if (this.ended || this.interviewEnded || !this.awaitingAnswerPending) return;
       }
-      await new Promise((r) => setTimeout(r, 600));
-      if (!this.ended && !this.interviewEnded && !this.answering) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (
+        !this.ended &&
+        !this.interviewEnded &&
+        !this.answering &&
+        this.awaitingAnswerPending &&
+        this.modelAudioHeardThisTurn
+      ) {
         this.awaitingAnswerPending = false;
         if (this.micOpenFallbackTimer) {
           clearTimeout(this.micOpenFallbackTimer);
@@ -230,6 +245,15 @@
     // Candidate pressed "Answer" — open their mic and tell the relay to start the turn.
     beginAnswer() {
       if (this.ended || this.interviewEnded || this.answering) return;
+      if (this.playing || this.playQueue.length > 0) {
+        if (!this.micOpenTimer) {
+          this.micOpenTimer = setTimeout(() => {
+            this.micOpenTimer = null;
+            this.beginAnswer();
+          }, 400);
+        }
+        return;
+      }
       this.awaitingAnswerPending = false;
       if (this.micOpenFallbackTimer) {
         clearTimeout(this.micOpenFallbackTimer);
@@ -357,6 +381,11 @@
           closing: !!msg.closing,
         });
       }
+      if (msg.type === 'flush_playback') {
+        this.clearPlayback();
+        this.cancelMicOpen();
+        return;
+      }
       if (msg.type === 'question_partial' && msg.text) {
         if (msg.warmup == null && window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
         if (msg.warmup == null) { this.cancelMicOpen(); this.forceEndAnswer(); this.processingAnswer = false; }
@@ -366,12 +395,14 @@
         const isWarmup = msg.warmup != null || msg.number <= 0;
         if (!isWarmup && msg.text && window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
         if (!isWarmup) { this.cancelMicOpen(); this.forceEndAnswer(); this.processingAnswer = false; }
+        this.modelAudioHeardThisTurn = false;
         this.onQuestion({ number: msg.number, text: msg.text || '', partial: false, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
       }
       if (msg.type === 'answer') {
         this.onAnswer({ number: msg.number, text: msg.text, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
       }
       if (msg.type === 'saving_turn') {
+        this.clearPlayback();
         this.processingAnswer = true;
         this.setStatus(
           msg.follow_up
@@ -380,6 +411,8 @@
         );
       }
       if (msg.type === 'follow_up_probe') {
+        this.clearPlayback();
+        this.modelAudioHeardThisTurn = false;
         this.processingAnswer = false;
         this.onFollowUpProbe?.({ number: msg.number, maxTurns: msg.maxTurns });
         this.setStatus('Follow-up — listen to the interviewer…');
@@ -416,9 +449,12 @@
         this.onSilenceNudge?.({ stage, text: msg.text });
       }
       if (msg.type === 'next_question_ready') {
+        this.clearPlayback();
         this.cancelMicOpen();
         this.forceEndAnswer();
         this.processingAnswer = false;
+        this.modelAudioHeardThisTurn = false;
+        this.awaitingAnswerPending = false;
         this.onNextQuestionReady({ number: msg.number });
         this.setStatus('The interviewer is speaking…');
       }
@@ -592,8 +628,9 @@
       if (!this.audioCtx) return;
       await this.ensureAudioRunning();
       if (this.playing) return;
+      const gen = this.playbackGeneration;
       this.playing = true;
-      while (this.playQueue.length && !this.ended) {
+      while (this.playQueue.length && !this.ended && gen === this.playbackGeneration) {
         const chunk = this.playQueue.shift();
         const pcm = base64ToInt16(chunk.b64);
         const float = new Float32Array(pcm.length);
@@ -609,8 +646,9 @@
         await new Promise((r) => {
           src.onended = r;
         });
+        if (gen !== this.playbackGeneration) break;
       }
-      this.playing = false;
+      if (gen === this.playbackGeneration) this.playing = false;
     }
 
     async end() {

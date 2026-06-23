@@ -15,11 +15,14 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding: 32px 20px 48px;
+    padding: clamp(16px, 2.5vw, 32px) clamp(12px, 3vw, 20px) clamp(28px, 4vw, 48px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-height: 0;
 }
 .convo-portal-card {
     width: 100%;
-    max-width: 480px;
+    max-width: min(480px, 100%);
     background: var(--convo-surface);
     border: 1px solid var(--convo-line);
     border-radius: var(--convo-radius);

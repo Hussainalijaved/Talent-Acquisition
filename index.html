@@ -214,6 +214,84 @@
             border: 1px solid #e0e7ff;
             border-radius: 1.5rem;
             box-shadow: 0 8px 40px -12px rgba(79, 70, 229, 0.14), 0 0 0 1px rgba(79, 70, 229, 0.04);
+            overflow: hidden;
+        }
+
+        .portal-page .onboarding-hero {
+            overflow: clip;
+        }
+
+        /* ─── Unified portal page layout (login, guidelines, results) ─ */
+        .portal-page {
+            min-height: calc(100dvh - 4rem);
+            width: 100%;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: clamp(0.75rem, 2.5vw, 2rem);
+            box-sizing: border-box;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        @media (min-width: 640px) {
+            .portal-page { align-items: center; }
+        }
+
+        .portal-shell {
+            width: min(100%, 48rem);
+            margin: 0 auto;
+        }
+
+        .portal-shell-narrow { width: min(100%, 42rem); }
+        .portal-shell-wide { width: min(100%, 56rem); }
+        .portal-shell-guidelines { width: min(100%, 52rem); }
+
+        .portal-split {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        @media (min-width: 1280px) {
+            .portal-split { flex-direction: row; align-items: stretch; }
+        }
+
+        .portal-split-hero {
+            width: 100%;
+            flex-shrink: 0;
+        }
+
+        @media (min-width: 1280px) {
+            .portal-split-hero {
+                width: 40%;
+                min-width: 18rem;
+                max-width: 24rem;
+            }
+        }
+
+        @media (max-width: 1279px) {
+            .portal-split-hero.login-hero-panel {
+                border-radius: 1.5rem 1.5rem 0 0;
+            }
+            .portal-split-body {
+                border-radius: 0 0 1.5rem 1.5rem;
+            }
+        }
+
+        .portal-split-body {
+            flex: 1;
+            min-width: 0;
+            width: 100%;
+        }
+
+        @media (min-width: 640px) and (max-width: 1279px) {
+            .portal-hero-features { display: none !important; }
+            .portal-hero-compact { display: block !important; }
+        }
+
+        @media (max-width: 639px), (min-width: 1280px) {
+            .portal-hero-compact { display: none !important; }
         }
 
         .fade-in { animation: fadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
@@ -297,6 +375,34 @@
             .question-text { font-size: 1.125rem; }
         }
 
+        .question-reveal-shell {
+            min-height: 3.5rem;
+        }
+
+        .question-reveal-pending {
+            animation: questionPending 1.2s ease-in-out infinite;
+        }
+
+        @keyframes questionPending {
+            0%, 100% { opacity: 0.45; }
+            50% { opacity: 1; }
+        }
+
+        .question-typing-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1.1em;
+            margin-left: 2px;
+            vertical-align: text-bottom;
+            background: #7c3aed;
+            animation: questionCursorBlink 0.85s step-end infinite;
+        }
+
+        @keyframes questionCursorBlink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
         /* ─── Live transcript streaming ─────────────────────────────── */
         .transcript-stream {
             font-size: 1rem;
@@ -376,7 +482,7 @@
             min-height: calc(100dvh - 4rem);
         }
 
-        @media (min-width: 1024px) {
+        @media (min-width: 1280px) {
             .assessment-workspace { flex-direction: row; }
         }
 
@@ -387,14 +493,14 @@
             background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
             padding: 1rem 1.25rem;
             overflow-y: auto;
-            max-height: 32vh;
+            max-height: 28vh;
         }
 
         @media (min-width: 640px) {
-            .assessment-sidebar { max-height: 36vh; }
+            .assessment-sidebar { max-height: 32vh; }
         }
 
-        @media (min-width: 1024px) {
+        @media (min-width: 1280px) {
             .assessment-sidebar {
                 width: 18.5rem;
                 min-width: 18.5rem;
@@ -881,6 +987,19 @@
             );
         };
 
+        const PortalPage = ({ children, size = 'default', className = '' }) => {
+            const shell =
+                size === 'wide' ? 'portal-shell-wide'
+                : size === 'narrow' ? 'portal-shell-narrow'
+                : size === 'guidelines' ? 'portal-shell-guidelines'
+                : 'portal-shell';
+            return (
+                <div className={`portal-page portal-lock fade-in ${className}`.trim()}>
+                    <div className={`onboarding-hero ${shell}`}>{children}</div>
+                </div>
+            );
+        };
+
         const ASSESSMENT_INSTRUCTIONS = [
             'Answer in the text box — aim for clear, complete responses.',
             'Submit before the timer runs out; partial text is saved on timeout.',
@@ -1192,26 +1311,28 @@
 
             return (
                 <Shell subtitle="Candidate access" footerNote="Encrypted session · Proctored environment · Do not share your session ID">
-                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 sm:p-8 fade-in portal-lock">
-                        <div className="onboarding-hero w-full max-w-4xl overflow-hidden flex flex-col lg:flex-row">
-                            {/* Left hero panel */}
-                            <div className="login-hero-panel lg:w-2/5 p-8 sm:p-10 flex flex-col justify-between relative">
+                    <PortalPage size="wide">
+                        <div className="portal-split">
+                            <div className="portal-split-hero login-hero-panel p-6 sm:p-8 xl:p-10 flex flex-col justify-between relative">
                                 <div className="relative z-10">
-                                    <div className="flex items-center gap-3 mb-8">
-                                        <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+                                    <div className="flex items-center gap-3 mb-6 sm:mb-8">
+                                        <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center shrink-0">
                                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                                             </svg>
                                         </div>
                                         <span className="text-white/90 font-semibold text-sm tracking-wide">CONVO · TALENT</span>
                                     </div>
-                                    <h1 className="text-3xl sm:text-4xl font-bold text-white leading-tight mb-4">
-                                        Your assessment<br />starts here.
+                                    <h1 className="text-2xl sm:text-3xl xl:text-4xl font-bold text-white leading-tight mb-3 sm:mb-4">
+                                        Your assessment<br className="hidden sm:inline" /> starts here.
                                     </h1>
-                                    <p className="text-white/75 text-sm leading-relaxed mb-8">
+                                    <p className="text-white/75 text-sm leading-relaxed mb-6 sm:mb-8">
                                         A professional two-phase evaluation designed to fairly assess your technical skills and communication abilities.
                                     </p>
-                                    <div className="space-y-4">
+                                    <p className="portal-hero-compact text-white/85 text-sm leading-relaxed mb-2">
+                                        Proctored · AI-timed · Written + voice interview
+                                    </p>
+                                    <div className="portal-hero-features space-y-4">
                                         {features.map((f, i) => (
                                             <div key={i} className="flex items-start gap-3.5">
                                                 <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center shrink-0 mt-0.5">
@@ -1219,7 +1340,7 @@
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={f.icon} />
                                                     </svg>
                                                 </div>
-                                                <div>
+                                                <div className="min-w-0">
                                                     <p className="text-white font-semibold text-sm">{f.label}</p>
                                                     <p className="text-white/65 text-xs mt-0.5 leading-relaxed">{f.desc}</p>
                                                 </div>
@@ -1227,15 +1348,14 @@
                                         ))}
                                     </div>
                                 </div>
-                                <div className="relative z-10 mt-8 pt-6 border-t border-white/15">
+                                <div className="relative z-10 mt-6 sm:mt-8 pt-5 sm:pt-6 border-t border-white/15">
                                     <p className="text-white/50 text-xs leading-relaxed">
                                         Your session is encrypted and proctored. Do not share your session ID.
                                     </p>
                                 </div>
                             </div>
 
-                            {/* Right form panel */}
-                            <div className="lg:w-3/5 p-8 sm:p-10 flex flex-col justify-center">
+                            <div className="portal-split-body p-6 sm:p-8 xl:p-10 flex flex-col justify-center min-w-0">
                                 <div className="mb-6">
                                     <p className="badge badge-accent mb-4">Enterprise screening</p>
                                     <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Welcome back</h2>
@@ -1306,7 +1426,7 @@
                                 </form>
                             </div>
                         </div>
-                    </div>
+                    </PortalPage>
                 </Shell>
             );
         };
@@ -1427,10 +1547,9 @@
             ];
             return (
                 <Shell subtitle="Guidelines & integrity" footerNote="By starting, you agree to proctored session rules below">
-                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 sm:p-8 fade-in portal-lock">
-                        <div className="onboarding-hero w-full max-w-3xl overflow-hidden">
+                    <PortalPage size="guidelines">
                             {/* Header */}
-                            <div className="p-8 sm:p-10 border-b border-violet-100 bg-gradient-to-br from-violet-50 via-indigo-50/40 to-white relative overflow-hidden">
+                            <div className="p-6 sm:p-8 xl:p-10 border-b border-violet-100 bg-gradient-to-br from-violet-50 via-indigo-50/40 to-white relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-violet-100/40 -translate-y-1/2 translate-x-1/4 pointer-events-none" />
                                 <div className="relative z-10">
                                     <p className="badge badge-accent mb-4">{isSpeechResume ? 'Phase 1 complete' : 'Before you begin'}</p>
@@ -1454,7 +1573,7 @@
                             </div>
 
                             {/* Phase cards */}
-                            <div className="px-8 sm:px-10 pt-7 pb-5">
+                            <div className="px-6 sm:px-8 xl:px-10 pt-7 pb-5">
                                 <div className="grid sm:grid-cols-2 gap-4 mb-5">
                                     <div className="rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-white p-5 relative overflow-hidden">
                                         <div className="absolute top-3 right-3 w-14 h-14 rounded-full bg-violet-100/60 pointer-events-none" />
@@ -1496,7 +1615,7 @@
                             </div>
 
                             {/* Rules */}
-                            <div className="px-8 sm:px-10 py-5 bg-slate-50/60 border-t border-slate-100">
+                            <div className="px-6 sm:px-8 xl:px-10 py-5 bg-slate-50/60 border-t border-slate-100">
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Rules &amp; integrity</p>
                                 <div className="grid sm:grid-cols-2 gap-3">
                                     {rules.map((rule, i) => (
@@ -1521,7 +1640,7 @@
                             </div>
 
                             {/* Confirm + start */}
-                            <div className="px-8 sm:px-10 pb-8 sm:pb-10 pt-5 space-y-4">
+                            <div className="px-6 sm:px-8 xl:px-10 pb-6 sm:pb-8 xl:pb-10 pt-5 space-y-4">
                                 {sessionBlockMsg ? (
                                     <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 leading-relaxed flex items-start gap-2">
                                         <svg className="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
@@ -1564,17 +1683,15 @@
                                         : 'Complete the assessment in one sitting — resuming later is not supported.'}
                                 </p>
                             </div>
-                        </div>
-                    </div>
+                    </PortalPage>
                 </Shell>
             );
         };
 
         const SpeechIntroView = ({ onBegin, techSteps, speechSteps, isLoading }) => (
             <Shell subtitle="Phase 2 · Voice communication interview" footerNote="Microphone access will be requested when you begin">
-                <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in portal-lock">
-                    <div className="onboarding-hero max-w-2xl w-full rounded-2xl overflow-hidden">
-                        <div className="p-8 sm:p-10 border-b border-slate-100 bg-gradient-to-br from-indigo-50/50 to-white">
+                <PortalPage size="narrow">
+                        <div className="p-6 sm:p-8 xl:p-10 border-b border-slate-100 bg-gradient-to-br from-indigo-50/50 to-white">
                             <p className="badge badge-accent mb-3">Phase 1 complete</p>
                             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
                                 Welcome to Phase 2
@@ -1584,7 +1701,7 @@
                                 You are now entering the <strong className="text-slate-900 font-medium">voice communication interview</strong> — a professional speech-to-speech round.
                             </p>
                         </div>
-                        <div className="p-8 sm:p-10 space-y-4 bg-slate-50/50">
+                        <div className="p-6 sm:p-8 xl:p-10 space-y-4 bg-slate-50/50">
                             <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-5 py-5">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-3">How this phase works</p>
                                 <ul className="space-y-3 text-sm text-slate-700 leading-relaxed list-none p-0 m-0">
@@ -1638,8 +1755,7 @@
                                 Phase 2 begins when you click above. Your Phase 1 responses are already saved.
                             </p>
                         </div>
-                    </div>
-                </div>
+                </PortalPage>
             </Shell>
         );
 
@@ -2157,8 +2273,8 @@
             if (!sessionLive) {
                 return (
                     <Shell subtitle="Phase 2 · Voice interview" fullWidth footerNote="Use headphones to avoid echo. Allow microphone access when prompted.">
-                        <div className="min-h-[calc(100vh-6rem)] flex items-center justify-center p-6 sm:p-10 fade-in">
-                            <div className="max-w-lg w-full rounded-2xl border border-violet-100 bg-white shadow-card p-8 sm:p-10 text-center">
+                        <PortalPage size="narrow">
+                            <div className="p-6 sm:p-8 xl:p-10 text-center">
                                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white flex items-center justify-center text-3xl mx-auto mb-6 shadow-lg">🎙</div>
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-2">Before the interview</p>
                                 <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-3">Voice interview setup</h1>
@@ -2182,7 +2298,7 @@
                                     Tap Start to enable sound and connect. Use headphones so the mic does not pick up the interviewer&apos;s voice.
                                 </p>
                             </div>
-                        </div>
+                        </PortalPage>
                     </Shell>
                 );
             }
@@ -2667,13 +2783,13 @@
 
             return (
                 <Shell subtitle="Recruiter portal" footerNote="New roles sync to your n8n talent acquisition workflow">
-                    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in">
-                        <div className="onboarding-hero max-w-xl w-full rounded-2xl p-8 sm:p-10">
+                    <PortalPage size="narrow">
+                        <div className="p-6 sm:p-8 xl:p-10">
                             <div className="flex items-start justify-between gap-4 mb-8">
                                 <div>
                                     <p className="badge badge-accent mb-3">Talent operations</p>
-                                    <h2 className="text-2xl font-bold text-white tracking-tight">Publish a role</h2>
-                                    <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Publish a role</h2>
+                                    <p className="text-sm text-slate-500 mt-2 leading-relaxed">
                                         Create a job posting and share the generated application link with candidates.
                                     </p>
                                 </div>
@@ -2710,16 +2826,16 @@
                                 </form>
                             ) : (
                                 <div className="space-y-6">
-                                    <div className="flex items-start gap-3 p-5 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
-                                        <svg className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                    <div className="flex items-start gap-3 p-5 rounded-xl bg-emerald-50 border border-emerald-200">
+                                        <svg className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
                                         <div>
-                                            <p className="text-sm font-medium text-emerald-200">Role published successfully</p>
-                                            <p className="text-xs text-slate-400 mt-1">Share the invitation link with applicants.</p>
+                                            <p className="text-sm font-medium text-emerald-800">Role published successfully</p>
+                                            <p className="text-xs text-slate-500 mt-1">Share the invitation link with applicants.</p>
                                         </div>
                                     </div>
                                     <div>
                                         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Invitation link</p>
-                                        <div className="input-field p-4 rounded-xl font-mono text-xs break-all text-slate-300 leading-relaxed">
+                                        <div className="input-field p-4 rounded-xl font-mono text-xs break-all text-slate-600 leading-relaxed">
                                             {generatedLink}
                                         </div>
                                     </div>
@@ -2734,10 +2850,65 @@
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </PortalPage>
                 </Shell>
             );
         };
+
+        /** Gradual question reveal — feels AI-generated rather than instant paste. */
+        function useQuestionReveal(question, step) {
+            const [displayed, setDisplayed] = React.useState('');
+            const [phase, setPhase] = React.useState('idle'); // idle | pending | typing | done
+
+            React.useEffect(() => {
+                const full = String(question || '').trim();
+                if (!full) {
+                    setDisplayed('');
+                    setPhase('idle');
+                    return undefined;
+                }
+
+                setDisplayed('');
+                setPhase('pending');
+                let cancelled = false;
+                let tickTimer = null;
+
+                const startTimer = setTimeout(() => {
+                    if (cancelled) return;
+                    setPhase('typing');
+                    const tokens = full.match(/\S+|\s+/g) || [full];
+                    let idx = 0;
+                    const stepReveal = () => {
+                        if (cancelled) return;
+                        if (idx >= tokens.length) {
+                            setDisplayed(full);
+                            setPhase('done');
+                            return;
+                        }
+                        setDisplayed((prev) => prev + tokens[idx]);
+                        idx += 1;
+                        const delay = tokens[idx - 1]?.trim()
+                            ? 32 + Math.floor(Math.random() * 22)
+                            : 12;
+                        tickTimer = setTimeout(stepReveal, delay);
+                    };
+                    stepReveal();
+                }, step === 1 ? 680 : 420);
+
+                return () => {
+                    cancelled = true;
+                    clearTimeout(startTimer);
+                    if (tickTimer) clearTimeout(tickTimer);
+                };
+            }, [question, step]);
+
+            return {
+                displayed,
+                isPending: phase === 'pending',
+                isTyping: phase === 'typing',
+                isDone: phase === 'done',
+            };
+        }
 
         const AssessmentView = ({
             currentStep,
@@ -2756,7 +2927,9 @@
             const pct = totalSteps > 0 ? Math.min(100, (currentStep / totalSteps) * 100) : 0;
             const phases = Array.from({ length: totalSteps }, (_, i) => i + 1);
             const charCount = answer.trim().length;
-            const canSubmit = charCount >= 5 && !contentMasked && !isLoading;
+            const questionReveal = useQuestionReveal(question, currentStep);
+            const questionLocked = questionReveal.isPending || questionReveal.isTyping;
+            const canSubmit = charCount >= 5 && !contentMasked && !isLoading && !questionLocked;
             return (
                 <Shell subtitle={`Phase 1 · Written assessment · Question ${currentStep} of ${totalSteps}`} fullWidth>
                     <div className="assessment-workspace fade-in assessment-lock">
@@ -2812,14 +2985,30 @@
                                         </div>
                                     ) : (
                                         <div
-                                            className="question-protected question-text"
+                                            className="question-protected question-text question-reveal-shell"
                                             onCopy={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
                                             onCut={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
                                             onContextMenu={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
                                             onDragStart={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
                                         >
-                                        {question}
-                                    </div>
+                                            {questionReveal.isPending ? (
+                                                <p className="text-sm text-slate-500 question-reveal-pending flex items-center gap-2">
+                                                    <span className="inline-flex gap-1">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '120ms' }} />
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '240ms' }} />
+                                                    </span>
+                                                    Generating your question…
+                                                </p>
+                                            ) : (
+                                                <>
+                                                    {questionReveal.displayed || question}
+                                                    {questionReveal.isTyping ? (
+                                                        <span className="question-typing-cursor" aria-hidden="true" />
+                                                    ) : null}
+                                                </>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                                 <div className="flex-1 flex flex-col min-h-0 px-5 sm:px-6 py-5">
@@ -2827,7 +3016,7 @@
                                     <textarea
                                         id="answer"
                                         className="input-field w-full flex-1 min-h-[180px] px-4 py-4 rounded-xl text-sm sm:text-base leading-relaxed resize-none"
-                                        placeholder="Type your answer here."
+                                        placeholder={questionLocked ? 'Question loading…' : 'Type your answer here.'}
                                         value={answer}
                                         onChange={(e) => setAnswer(e.target.value)}
                                         onPaste={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
@@ -2838,13 +3027,17 @@
                                         autoCorrect="off"
                                         autoCapitalize="off"
                                         spellCheck="false"
-                                        disabled={contentMasked || isLoading}
+                                        disabled={contentMasked || isLoading || questionLocked}
                                     />
                                 </div>
                                 <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/60 rounded-b-2xl">
                                     <div>
-                                        <p className={`text-xs font-medium ${canSubmit ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                            {canSubmit ? '✓ Ready to submit' : 'Type at least 5 characters'}
+                                        <p className={`text-xs font-medium ${canSubmit ? 'text-emerald-600' : questionLocked ? 'text-violet-500' : 'text-slate-400'}`}>
+                                            {canSubmit
+                                                ? '✓ Ready to submit'
+                                                : questionLocked
+                                                    ? 'Question is being prepared…'
+                                                    : 'Type at least 5 characters'}
                                         </p>
                                         <p className="text-xs text-slate-400 mt-0.5 tabular-nums">{charCount} characters</p>
                                     </div>
@@ -3820,9 +4013,8 @@
 
             return (
             <Shell subtitle="Assessment complete">
-                <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-6 sm:p-10 fade-in">
-                    <div className="max-w-lg w-full rounded-3xl overflow-hidden shadow-card border border-slate-200/80 bg-white animate-scale-in">
-                        <div className={`result-hero-gradient px-8 sm:px-10 pt-10 pb-8 text-center border-b border-slate-100 ${passed ? '' : ''}`}>
+                <PortalPage size="narrow">
+                    <div className={`result-hero-gradient px-6 sm:px-8 xl:px-10 pt-8 sm:pt-10 pb-8 text-center border-b border-slate-100 ${passed ? '' : ''}`}>
                             <div className={`w-20 h-20 mx-auto mb-5 rounded-2xl flex items-center justify-center animate-float ${passed ? 'bg-emerald-100 border border-emerald-200 shadow-sm' : 'bg-slate-100 border border-slate-200'}`}>
                                 {passed ? (
                                     <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
@@ -3862,7 +4054,7 @@
                             </p>
                         </div>
 
-                        <div className="px-8 sm:px-10 py-8 space-y-5">
+                        <div className="px-6 sm:px-8 xl:px-10 py-6 sm:py-8 space-y-5">
                         {passed && sessionId && (
                             <div className="text-left p-5 rounded-2xl border border-emerald-200 bg-emerald-50/80 stagger-3">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 mb-2">Interview scheduling</p>
@@ -3956,8 +4148,7 @@
                             )}
                         </button>
                         </div>
-                    </div>
-                </div>
+                </PortalPage>
             </Shell>
         );
         };

@@ -56,6 +56,11 @@ const expand =
     'CODE - Expand CVs and duplicate flag',
     'CODE - Expand CVs and duplicate flag1'
   ) || {};
+const intake =
+  pickNodeJson(
+    'CODE - Frontend intake (JD + CV)',
+    'CODE - Frontend intake (JD + CV)1'
+  ) || {};
 const inp = $input.first().json || {};
 const httpOut =
   inp.candidate_email || inp.stage || inp.notes || inp.gmail_thread_id ? inp : {};
@@ -109,6 +114,18 @@ const fingerprint = String(
   httpOut.fingerprint || parse.fingerprint || expand.fingerprint || inp.fingerprint || ''
 ).trim();
 
+const interviewerForSession = String(
+  parse.config?.interviewer_email ||
+    parse.interviewer_email ||
+    expand.config?.interviewer_email ||
+    expand.interviewer_email ||
+    intake.interviewer_email ||
+    cfg.interviewer_email ||
+    ''
+)
+  .trim()
+  .toLowerCase();
+
 const requisition_id =
   String(
     parse.requisition_id ||
@@ -142,7 +159,7 @@ const sessionBody = {
     groq_model: cfg.groq_model,
     gemini_model: cfg.gemini_model,
     max_questions: cfg.max_questions,
-    interviewer_email: cfg.interviewer_email || parse.interviewer_email || '',
+    interviewer_email: interviewerForSession,
     supabase_url: cfg.supabase_url,
     supabase_key: cfg.supabase_key,
     table_assessment_sessions: cfg.table_assessment_sessions,

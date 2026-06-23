@@ -101,13 +101,69 @@ const cfg = {
   ...parseCfg,
 };
 
-const interviewerEmail = String(
+async function lookupJobInterviewer(requisitionId, requisitionTitle) {
+  const sb = String(cfg.supabase_url || '').replace(/\/+$/, '');
+  const key = String(cfg.supabase_key || '').trim();
+  if (!sb || !key) return '';
+  const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  const reqId = String(requisitionId || '').trim();
+  if (reqId) {
+    try {
+      const url =
+        `${sb}/rest/v1/jobs?select=interviewer_email&job_id=eq.${encodeURIComponent(reqId)}&limit=1`;
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const rows = await res.json();
+        const email = String(rows?.[0]?.interviewer_email || '').trim().toLowerCase();
+        if (email) return email;
+      }
+    } catch (_) {}
+  }
+  const title = String(requisitionTitle || '').trim();
+  if (title) {
+    try {
+      const url =
+        `${sb}/rest/v1/jobs?select=interviewer_email&title=eq.${encodeURIComponent(title)}&limit=1`;
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const rows = await res.json();
+        const email = String(rows?.[0]?.interviewer_email || '').trim().toLowerCase();
+        if (email) return email;
+      }
+    } catch (_) {}
+  }
+  return '';
+}
+
+return (async () => {
+const intake =
+  pickNodeJson(
+    'CODE - Frontend intake (JD + CV)',
+    'CODE - Frontend intake (JD + CV)1'
+  ) || {};
+const expand =
+  pickNodeJson(
+    'CODE - Expand CVs and duplicate flag',
+    'CODE - Expand CVs and duplicate flag1'
+  ) || {};
+
+let interviewerEmail = String(
   sessionCfg.interviewer_email ||
     parseCfg.interviewer_email ||
     parse.interviewer_email ||
+    intake.interviewer_email ||
+    expand.config?.interviewer_email ||
+    expand.interviewer_email ||
     cfg.interviewer_email ||
     ''
-).trim();
+).trim().toLowerCase();
+
+if (!interviewerEmail) {
+  interviewerEmail = await lookupJobInterviewer(
+    session.requisition_id || parse.requisition_id || cfg.requisition_id,
+    cfg.requisition_title || session.requisition_title || parse.requisition_title
+  );
+}
 
 const sessionId = String(session.id || parse.session_id || '').trim();
 const sb = String(cfg.supabase_url || '').replace(/\/+$/, '');
@@ -145,3 +201,4 @@ return [
     },
   },
 ];
+})();

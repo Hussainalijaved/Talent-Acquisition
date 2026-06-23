@@ -149,24 +149,24 @@ async function testIndexAssessmentShell(browser, base) {
 
   const layoutCss = await pg.evaluate(() => {
     const sheets = [...document.styleSheets];
-    let foundSticky = false;
-    let foundTranscriptBox = false;
+    let foundInterviewerBox = false;
+    let foundResponseBox = false;
     for (const sheet of sheets) {
       try {
         const rules = sheet.cssRules || [];
         for (const rule of rules) {
           const sel = rule.selectorText || '';
-          if (sel.includes('speech-transcript-sticky')) foundSticky = true;
-          if (sel.includes('speech-transcript-box')) foundTranscriptBox = true;
+          if (sel.includes('speech-interviewer-box')) foundInterviewerBox = true;
+          if (sel.includes('speech-response-box')) foundResponseBox = true;
         }
       } catch (_) {}
     }
-    return { foundSticky, foundTranscriptBox };
+    return { foundInterviewerBox, foundResponseBox };
   });
-  if (!layoutCss.foundTranscriptBox) fail('index.html speech-transcript-box CSS', 'missing');
-  else ok('index.html speech-transcript-box CSS');
-  if (!layoutCss.foundSticky) fail('index.html speech-transcript-sticky CSS', 'missing');
-  else ok('index.html speech-transcript-sticky CSS');
+  if (!layoutCss.foundInterviewerBox) fail('index.html speech-interviewer-box CSS', 'missing');
+  else ok('index.html speech-interviewer-box CSS');
+  if (!layoutCss.foundResponseBox) fail('index.html speech-response-box CSS', 'missing');
+  else ok('index.html speech-response-box CSS');
 
   const audioHelpers = await pg.evaluate(() => ({
     flushMs: window.TA_LIVE?.AUDIO_FLUSH_MS,

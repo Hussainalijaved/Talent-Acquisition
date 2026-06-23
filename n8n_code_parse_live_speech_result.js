@@ -297,6 +297,7 @@ return [
       average_score: combinedScore,
       candidate_email: norm.candidate_email || session.candidate_email,
       session_id: session.id,
+      interviewer_email: sessionInterviewer || sessCfg.interviewer_email || '',
       current_phase: lastPhase,
       config: sessCfg,
       gmail_thread_id: session.gmail_thread_id || null,

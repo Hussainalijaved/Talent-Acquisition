@@ -103,6 +103,130 @@ function pickAssessmentContext() {
   return merged;
 }
 
+function parseJson(raw, fallback = {}) {
+  if (raw == null) return fallback;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function normalizeEmail(raw) {
+  return String(raw || '').trim().toLowerCase();
+}
+
+function interviewerFromRow(row) {
+  if (!row || typeof row !== 'object') return '';
+  const rowCfg = parseJson(row.config, row.config || {});
+  const email = normalizeEmail(row.interviewer_email || rowCfg.interviewer_email);
+  return email;
+}
+
+function pickInterviewerNodeRows() {
+  const names = [
+    'CODE - Prep scheduling from PASS',
+    'CODE - Prep scheduling from PASS1',
+    'CODE - Parse Live Speech Result',
+    'CODE - Parse Result',
+    'CODE - Parse Result1',
+    'CODE - Frontend intake (JD + CV)',
+    'CODE - Frontend intake (JD + CV)1',
+    'CODE - Expand CVs and duplicate flag',
+    'CODE - Expand CVs and duplicate flag1',
+  ];
+  return names.map((n) => pickNodeJson(n)).filter(Boolean);
+}
+
+function pickSessionRow(base, ctx) {
+  const fetchRaw = pickNodeJson(
+    'HTTP - Fetch Session Complete',
+    'HTTP - Fetch Session',
+    'HTTP - Fetch Session1'
+  );
+  const fetched = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;
+  if (fetched?.id) return fetched;
+  if (base?.id && (base.config || base.candidate_email)) return base;
+  if (ctx?.id && (ctx.config || ctx.candidate_email)) return ctx;
+  return null;
+}
+
+async function lookupJobInterviewer({ supabaseUrl, supabaseKey, requisitionId, requisitionTitle }) {
+  const sb = String(supabaseUrl || '').replace(/\/+$/, '');
+  const key = String(supabaseKey || '').trim();
+  if (!sb || !key) return '';
+
+  const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  const reqId = String(requisitionId || '').trim();
+  if (reqId) {
+    try {
+      const url =
+        `${sb}/rest/v1/jobs?select=interviewer_email&job_id=eq.${encodeURIComponent(reqId)}&limit=1`;
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const rows = await res.json();
+        const email = normalizeEmail(rows?.[0]?.interviewer_email);
+        if (email) return email;
+      }
+    } catch (_) {}
+  }
+
+  const title = String(requisitionTitle || '').trim();
+  if (title) {
+    try {
+      const url =
+        `${sb}/rest/v1/jobs?select=interviewer_email&title=eq.${encodeURIComponent(title)}&limit=1`;
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const rows = await res.json();
+        const email = normalizeEmail(rows?.[0]?.interviewer_email);
+        if (email) return email;
+      }
+    } catch (_) {}
+  }
+
+  return '';
+}
+
+async function resolveInterviewerEmail({ base, ctx, cfg, sessionRow }) {
+  const sessionCfg = parseJson(sessionRow?.config, {});
+  const nodeRows = pickInterviewerNodeRows();
+  const fromNodes = nodeRows.map((row) => interviewerFromRow(row)).filter(Boolean);
+
+  let email = normalizeEmail(
+    sessionCfg.interviewer_email ||
+      sessionRow?.interviewer_email ||
+      base.interviewer_email ||
+      base.config?.interviewer_email ||
+      ctx.interviewer_email ||
+      ctx.config?.interviewer_email ||
+      fromNodes[0] ||
+      ''
+  );
+
+  if (!email) {
+    email = await lookupJobInterviewer({
+      supabaseUrl: cfg.supabase_url,
+      supabaseKey: cfg.supabase_key,
+      requisitionId:
+        sessionRow?.requisition_id ||
+        base.requisition_id ||
+        ctx.requisition_id ||
+        sessionCfg.requisition_id ||
+        cfg.requisition_id,
+      requisitionTitle:
+        base.requisition_title ||
+        ctx.requisition_title ||
+        sessionCfg.requisition_title ||
+        cfg.requisition_title,
+    });
+  }
+
+  if (!email) email = normalizeEmail(cfg.interviewer_email);
+  return email;
+}
+
 function nameFromEmail(email) {
   const e = String(email || '').trim().toLowerCase();
   if (!e) return 'Candidate';
@@ -115,9 +239,10 @@ function nameFromEmail(email) {
 
 const base = $input.first().json || {};
 const ctx = pickAssessmentContext();
+const sessionRow = pickSessionRow(base, ctx);
 const cfg = {
   ...loadWorkflowConfig(),
-  ...mergeConfig(base, ctx),
+  ...mergeConfig(base, ctx, sessionRow || {}),
 };
 
 const portalBase = String(
@@ -138,7 +263,7 @@ const candidateName = String(
 ).trim();
 
 const sessionId = String(
-  base.session_id || ctx.session_id || ctx.session_db_id || ctx.id || ''
+  base.session_id || ctx.session_id || ctx.session_db_id || ctx.id || sessionRow?.id || ''
 ).trim();
 
 const scoreRaw = base.score ?? ctx.score ?? ctx.average_score ?? ctx.phase_score;
@@ -147,18 +272,13 @@ const score = scoreRaw != null && scoreRaw !== '' ? scoreRaw : '—';
 const role = String(
   base.requisition_title ||
     ctx.requisition_title ||
+    sessionRow?.requisition_title ||
     cfg.requisition_title ||
     'Open role'
 ).trim();
 
-const interviewerEmail = String(
-  base.interviewer_email ||
-    ctx.interviewer_email ||
-    cfg.interviewer_email ||
-    base.config?.interviewer_email ||
-    ctx.config?.interviewer_email ||
-    ''
-).trim();
+return (async () => {
+const interviewerEmail = await resolveInterviewerEmail({ base, ctx, cfg, sessionRow });
 
 if (!candidateEmail) {
   throw new Error(
@@ -168,7 +288,7 @@ if (!candidateEmail) {
 
 if (!interviewerEmail) {
   throw new Error(
-    'interviewer_email missing — set on the job (apply/admin) so it is stored in session.config.interviewer_email.'
+    'interviewer_email missing — set interviewer on the job in admin (apply form sends it) or ensure session.config.interviewer_email is stored.'
   );
 }
 
@@ -240,7 +360,8 @@ return [
     json: {
       ...base,
       ...ctx,
-      config: cfg,
+      ...(sessionRow || {}),
+      config: { ...cfg, interviewer_email: interviewerEmail },
       candidate_email: candidateEmail,
       candidate_name: candidateName,
       requisition_title: role,
@@ -264,3 +385,4 @@ return [
     },
   },
 ];
+})();

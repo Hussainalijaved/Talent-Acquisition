@@ -217,7 +217,8 @@ export async function scoreSingleTurn({ apiKey, context, turn }) {
     return {
       ...turn, score: 0, clarity: 0, confidence: 0, professionalism: 0, relevance: 0,
       feedback, soft_skills: zero,
-      scoring_source: 'gemini_live_relay', stt_source: 'gemini_live',
+      scoring_source: 'no_speech', stt_source: 'gemini_live',
+      audio_chunk_count: turn.answer_pcm_chunks?.length || 0,
       answer_pcm_chunks: undefined,
     };
   }
@@ -241,7 +242,10 @@ export async function scoreSingleTurn({ apiKey, context, turn }) {
   try {
     const rawText = await callGeminiScore(apiKey, prompt, wavBase64);
     const scored = parseScoredTurn(turn, rawText, scoringSource);
-    if (scored) return scored;
+    if (scored) {
+      scored.audio_chunk_count = turn.answer_pcm_chunks?.length || 0;
+      return scored;
+    }
     console.warn(`[relay] scoreSingleTurn parse empty for phase ${turn.phase}; using heuristic. Raw: ${rawText.slice(0, 200)}`);
   } catch (err) {
     // Audio scoring failed — try text-only fallback before giving up.
@@ -251,7 +255,10 @@ export async function scoreSingleTurn({ apiKey, context, turn }) {
         const textPrompt = buildScorePrompt(turn, role, false);
         const rawText = await callGeminiScore(apiKey, textPrompt, '');
         const scored = parseScoredTurn(turn, rawText, 'transcript_only_fallback');
-        if (scored) return scored;
+        if (scored) {
+          scored.audio_chunk_count = turn.answer_pcm_chunks?.length || 0;
+          return scored;
+        }
       } catch (textErr) {
         console.warn(`[relay] text fallback also failed phase ${turn.phase}:`, textErr.message);
       }
@@ -260,7 +267,9 @@ export async function scoreSingleTurn({ apiKey, context, turn }) {
     }
   }
 
-  return buildHeuristicScore(turn);
+  const heuristic = buildHeuristicScore(turn);
+  heuristic.audio_chunk_count = turn.answer_pcm_chunks?.length || 0;
+  return heuristic;
 }
 
 /** Always returns a scored turn — never throws, never leaves score null. */
@@ -277,7 +286,9 @@ export async function scoreTurnGuaranteed({ apiKey, context, turn, timeoutMs = 3
     console.warn(`[relay] scoreTurnGuaranteed API failed phase ${turn.phase}:`, err.message);
   }
 
-  return buildHeuristicScore(turn);
+  const heuristic = buildHeuristicScore(turn);
+  heuristic.audio_chunk_count = turn.answer_pcm_chunks?.length || 0;
+  return heuristic;
 }
 
 /** Score turns one-by-one (reliable — bulk scoring often times out on 5 turns). */
@@ -308,6 +319,8 @@ export async function enrichTurnsFromDb(context, turns) {
           score: Number(db.score),
           feedback: db.feedback || t.feedback,
           soft_skills: db.soft_skills || t.soft_skills,
+          scoring_source: db.scoring_source || t.scoring_source,
+          audio_chunk_count: db.audio_chunk_count ?? t.audio_chunk_count,
         };
       }
       return t;
@@ -438,8 +451,9 @@ A: ${t.answer_text}`).join('\n\n')}`;
       relevance:      soft.answer_relevance,
       feedback:       String(s.feedback || '').trim(),
       soft_skills:    soft,
-      scoring_source: 'gemini_live_relay',
+      scoring_source: 'transcript_only',
       stt_source:     'gemini_live',
+      audio_chunk_count: 0,
     };
   });
 
@@ -571,8 +585,12 @@ function mergeTurnsIntoHistory(history, turns, maxQ, iso = new Date().toISOStrin
       feedback: turn.feedback || existing.feedback || null,
       score,
       soft_skills: softSkills,
-      stt_source: 'gemini_live',
-      scoring_source: 'gemini_live_relay',
+      stt_source: turn.stt_source || existing.stt_source || 'gemini_live',
+      scoring_source: turn.scoring_source || existing.scoring_source || null,
+      audio_chunk_count:
+        turn.audio_chunk_count != null
+          ? Number(turn.audio_chunk_count)
+          : (existing.audio_chunk_count != null ? existing.audio_chunk_count : null),
     };
     if (turn.time_limit_seconds != null && Number.isFinite(Number(turn.time_limit_seconds))) {
       patch.time_limit_seconds = Math.round(Number(turn.time_limit_seconds));

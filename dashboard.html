@@ -209,7 +209,7 @@
                                 <th>Role</th>
                                 <th>Status</th>
                                 <th>Result</th>
-                                <th>Score</th>
+                                <th>Overall</th>
                                 <th>Phases</th>
                                 <th>Updated</th>
                             </tr>
@@ -1504,13 +1504,23 @@
             const merged = findMergedForSession(sess);
             const stage = merged?.stage || (sess.status === 'completed' ? 'Shortlisted' : '—');
             const outcome = sessionDisplayOutcome(sess);
+            const scoreCell = outcome.score != null
+                ? scoreBadge(outcome.score) +
+                    ((outcome.techAvg != null || outcome.speechAvg != null)
+                        ? '<div class="score-sub">' +
+                            (outcome.techAvg != null ? 'Tech ' + Math.round(outcome.techAvg) : '') +
+                            (outcome.techAvg != null && outcome.speechAvg != null ? ' · ' : '') +
+                            (outcome.speechAvg != null ? 'Voice ' + Math.round(outcome.speechAvg) : '') +
+                            '</div>'
+                        : '')
+                : '<span class="c-role">—</span>';
             return '<tr data-session-id="' + esc(sess.id) + '">' +
                 '<td><div class="c-email"><span class="avatar" style="background:' + av.color + '">' + esc(av.init) + '</span>' +
                 esc(sess.candidate_email || '—') + '</div></td>' +
                 '<td>' + esc(roleLabel(sessionRoleLabel(sess))) + '</td>' +
                 '<td>' + assessPill(sess, stage) + '</td>' +
                 '<td>' + resultPillHtml(outcome.result) + '</td>' +
-                '<td>' + scoreBadge(outcome.score) + '</td>' +
+                '<td>' + scoreCell + '</td>' +
                 '<td><span class="assess-progress">' + answered + ' / ' + maxPh + '</span></td>' +
                 '<td>' + esc(fmtDate(sessionTimestamp(sess))) + '</td>' +
                 '</tr>';
@@ -1728,10 +1738,15 @@
             if (audio) {
                 html += '<div class="qlabel">Voice recording</div><div class="speech-audio-wrap">' +
                     '<audio controls preload="metadata" src="' + esc(audio) + '">Audio not supported</audio>';
-                if (h.scoring_source || h.stt_source) {
+                if (h.scoring_source || h.stt_source || h.audio_chunk_count != null) {
                     html += '<div class="speech-audio-meta">' + esc(
-                        [h.scoring_source && 'Scoring: ' + h.scoring_source, h.stt_source && 'Transcript: ' + h.stt_source]
-                            .filter(Boolean).join(' · ')
+                        [
+                            h.scoring_source && 'Scoring: ' + scoringSourceLabel(h.scoring_source),
+                            h.audio_chunk_count != null && Number(h.audio_chunk_count) > 0
+                                ? 'Audio chunks: ' + h.audio_chunk_count
+                                : (h.scoring_source === 'audio_primary' ? '' : 'No audio chunks recorded'),
+                            h.stt_source && 'Transcript: ' + h.stt_source,
+                        ].filter(Boolean).join(' · ')
                     ) + '</div>';
                 }
                 html += '</div>';
@@ -1797,6 +1812,146 @@
                 '</summary>' +
                 '<div class="phase-accordion-body">' + body + '</div>' +
                 '</details>';
+        }
+
+        function avgSpeechSkillFromHist(hist, key, legacy) {
+            const vals = (hist || [])
+                .map((h) => {
+                    const s = h.soft_skills;
+                    if (!s) return NaN;
+                    const v = s[key];
+                    if (v != null && Number.isFinite(Number(v))) return Number(v);
+                    if (legacy && s[legacy] != null && Number.isFinite(Number(s[legacy]))) return Number(s[legacy]);
+                    return NaN;
+                })
+                .filter((n) => Number.isFinite(n));
+            if (!vals.length) return null;
+            return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+        }
+
+        function summarizeSpeechScoring(speechHist) {
+            const counts = {
+                audio_primary: 0,
+                transcript_only: 0,
+                transcript_only_fallback: 0,
+                gemini_live_relay_heuristic: 0,
+                no_speech: 0,
+                legacy: 0,
+                unknown: 0,
+            };
+            let withChunks = 0;
+            for (const h of speechHist || []) {
+                const src = String(h.scoring_source || '').trim();
+                if (src === 'audio_primary') counts.audio_primary += 1;
+                else if (src === 'transcript_only') counts.transcript_only += 1;
+                else if (src === 'transcript_only_fallback') counts.transcript_only_fallback += 1;
+                else if (src === 'gemini_live_relay_heuristic') counts.gemini_live_relay_heuristic += 1;
+                else if (src === 'no_speech') counts.no_speech += 1;
+                else if (src === 'gemini_live_relay' || !src) counts.legacy += 1;
+                else counts.unknown += 1;
+                if (Number(h.audio_chunk_count) > 0) withChunks += 1;
+            }
+            return { counts, withChunks, total: (speechHist || []).length };
+        }
+
+        function scoringSourceLabel(src) {
+            const map = {
+                audio_primary: 'Audio (primary)',
+                transcript_only: 'Transcript only',
+                transcript_only_fallback: 'Transcript fallback',
+                gemini_live_relay_heuristic: 'Heuristic fallback',
+                no_speech: 'No speech captured',
+                gemini_live_relay: 'Legacy (source not recorded)',
+            };
+            return map[src] || (src ? String(src) : 'Unknown');
+        }
+
+        function renderOverallAssessmentSummary(sess) {
+            const hist = parseHistory(sess);
+            const cfg = parseJson(sess.config);
+            const outcome = computeFinalOutcome(sess, hist, cfg);
+            const techMax = inferTechMax(hist, cfg, sess);
+            const speechHist = hist.filter((h) => isSpeechPhaseRow(h, techMax));
+            const tw = Number(cfg.technical_weight ?? 0.7);
+            const sw = Number(cfg.speech_weight ?? 0.3);
+            const pt = Number(cfg.pass_score_threshold ?? 60);
+            const tech = outcome.techAvg;
+            const speech = outcome.speechAvg;
+            const combined = outcome.combined ?? outcome.score;
+            const audit = summarizeSpeechScoring(speechHist);
+
+            let html = '<div class="section overall-assessment-summary"><div class="section-h">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>' +
+                'Overall assessment</div>';
+
+            html += '<div class="assess-summary overall-score-grid">' +
+                '<div class="assess-stat assess-stat-lg">' +
+                (outcome.result === 'PASS' ? '<span class="pill p-pass">PASS</span>' :
+                    outcome.result === 'FAIL' ? '<span class="pill p-reject">FAIL</span>' :
+                        assessPill(sess)) +
+                '<span class="assess-stat-lbl">Outcome</span></div>' +
+                '<div class="assess-stat assess-stat-lg">' + scoreBadge(combined) +
+                '<span class="assess-stat-lbl">Combined score</span></div>' +
+                '<div class="assess-stat">' + (tech != null ? scoreBadge(tech) : '<span class="c-role">—</span>') +
+                '<span class="assess-stat-lbl">Technical</span></div>' +
+                '<div class="assess-stat">' + (speech != null ? scoreBadge(speech) : '<span class="c-role">—</span>') +
+                '<span class="assess-stat-lbl">Voice</span></div>' +
+                '</div>';
+
+            if (tech != null && speech != null && combined != null) {
+                html += '<p class="overall-formula">Combined = Technical × ' + Math.round(tw * 100) + '% + Voice × ' +
+                    Math.round(sw * 100) + '% → <strong>' + esc(String(combined)) + '</strong> ' +
+                    '(pass ≥ ' + esc(String(pt)) + ')</p>';
+            }
+
+            if (speechHist.length) {
+                const skillDims = [
+                    ['Communication clarity', 'communication_clarity', 'clarity'],
+                    ['Fluency', 'fluency', null],
+                    ['Confidence', 'confidence', null],
+                    ['Professionalism', 'professionalism', null],
+                    ['English proficiency', 'english_proficiency', null],
+                    ['Answer relevance', 'answer_relevance', 'relevance'],
+                ];
+                const skillRows = skillDims
+                    .map(([label, key, legacy]) => [label, avgSpeechSkillFromHist(speechHist, key, legacy)])
+                    .filter(([, v]) => v != null);
+                if (skillRows.length) {
+                    html += '<div class="qlabel">Voice communication (average across interview)</div>';
+                    html += '<div class="speech-skill-grid">';
+                    skillRows.forEach(([label, val]) => {
+                        html += '<div class="speech-skill-row"><span class="speech-skill-lbl">' + esc(label) + '</span>' +
+                            scoreBadge(val) + '</div>';
+                    });
+                    html += '</div>';
+                }
+
+                html += '<div class="qlabel">Voice scoring method</div><div class="report-meta">';
+                if (audit.counts.audio_primary) {
+                    html += '<span class="meta-chip">' + audit.counts.audio_primary + ' turn(s) audio-primary</span>';
+                }
+                if (audit.counts.transcript_only) {
+                    html += '<span class="meta-chip">' + audit.counts.transcript_only + ' transcript-only</span>';
+                }
+                if (audit.counts.transcript_only_fallback) {
+                    html += '<span class="meta-chip">' + audit.counts.transcript_only_fallback + ' transcript fallback</span>';
+                }
+                if (audit.counts.gemini_live_relay_heuristic) {
+                    html += '<span class="meta-chip">' + audit.counts.gemini_live_relay_heuristic + ' heuristic</span>';
+                }
+                if (audit.counts.legacy) {
+                    html += '<span class="meta-chip">' + audit.counts.legacy + ' legacy (re-score to audit)</span>';
+                }
+                if (audit.withChunks > 0) {
+                    html += '<span class="meta-chip">' + audit.withChunks + ' turn(s) had mic audio chunks</span>';
+                } else if (audit.total > 0) {
+                    html += '<span class="meta-chip warn">No audio chunk metadata — likely transcript/heuristic</span>';
+                }
+                html += '</div>';
+            }
+
+            html += '</div>';
+            return html;
         }
 
         function proctorCategoryLabel(cat) {
@@ -1952,7 +2107,8 @@
             const outcome = computeFinalOutcome(sess, parseHistory(sess), cfg);
             const displayResult = outcome.result;
             const displayScore = outcome.score;
-            let html = '<div class="section"><div class="section-h">' +
+            let html = renderOverallAssessmentSummary(sess);
+            html += '<div class="section"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"/><path d="M9 7a3 3 0 0 1 6 0v4H9z"/></svg>' +
                 'Session snapshot</div>' +
                 kv('Session ID', esc(sess.id || '—')) +
@@ -2017,6 +2173,7 @@
             const av = avatarFor(sess.candidate_email);
             const role = sessionRoleLabel(sess);
             const { answered, maxPh } = historyStats(sess);
+            const detailOutcome = computeFinalOutcome(sess, parseHistory(sess), parseJson(sess.config));
             const hero = document.getElementById('assessmentDetailHero');
             if (hero) {
                 hero.innerHTML =
@@ -2027,9 +2184,11 @@
                     '<p class="detail-sub">' + esc(roleLabel(role)) + ' · Updated ' + esc(fmtDateTime(sessionTimestamp(sess))) + '</p>' +
                     '<div class="detail-chips">' +
                     assessPill(sess, merged?.stage) +
-                    (sess.result === 'PASS' ? '<span class="pill p-pass">PASS</span>' :
-                        sess.result === 'FAIL' ? '<span class="pill p-reject">FAIL</span>' : '') +
-                    scoreBadge(sess.score) +
+                    (detailOutcome.result === 'PASS' ? '<span class="pill p-pass">PASS</span>' :
+                        detailOutcome.result === 'FAIL' ? '<span class="pill p-reject">FAIL</span>' : '') +
+                    scoreBadge(detailOutcome.score) +
+                    (detailOutcome.techAvg != null ? '<span class="meta-chip">Tech ' + Math.round(detailOutcome.techAvg) + '</span>' : '') +
+                    (detailOutcome.speechAvg != null ? '<span class="meta-chip">Voice ' + Math.round(detailOutcome.speechAvg) + '</span>' : '') +
                     '<span class="meta-chip">' + answered + ' / ' + maxPh + ' phases</span>' +
                     '</div></div></div>';
             }

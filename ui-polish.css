@@ -287,6 +287,42 @@ body.admin-body {
     font-weight: 600;
     color: #475569;
 }
+.overall-formula {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin: 0 0 1rem;
+    line-height: 1.5;
+}
+.overall-score-grid {
+    margin-bottom: 0.75rem;
+}
+.score-sub {
+    font-size: 0.6875rem;
+    color: #64748b;
+    margin-top: 0.25rem;
+    font-weight: 500;
+}
+.speech-skill-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.5rem 1rem;
+    margin-bottom: 1rem;
+}
+.speech-skill-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+}
+.speech-skill-lbl {
+    color: #475569;
+}
+.meta-chip.warn {
+    border-color: #fcd34d;
+    background: #fffbeb;
+    color: #92400e;
+}
 .proctor-entry-body {
     font-size: 0.875rem;
     line-height: 1.5;

@@ -1951,6 +1951,7 @@
             React.useEffect(() => { warmupCaptionRef.current = warmupCaption; }, [warmupCaption]);
             const warmupPhaseRef = React.useRef(warmupPhase);
             React.useEffect(() => { warmupPhaseRef.current = warmupPhase; }, [warmupPhase]);
+            const questionLockedRef = React.useRef(false);
 
             React.useEffect(() => { isAnsweringRef.current = isAnswering; }, [isAnswering]);
             React.useEffect(() => { canAnswerRef.current = canAnswer; }, [canAnswer]);
@@ -2038,7 +2039,7 @@
                                         setTimeLeft(null);
                                         if (warmupPhaseRef.current === 'mic_check' || warmupPhaseRef.current === 'intro') {
                                             setWarmupCaption(clean);
-                                        } else {
+                                        } else if (!questionLockedRef.current) {
                                             setLiveQuestionCaption(clean);
                                         }
                                     } else {
@@ -2090,6 +2091,7 @@
                                 const clean = cleanText(text, 'model');
                                 const isWarmup = warmup != null || number <= 0;
                                 if (partial) {
+                                    if (!isWarmup && questionLockedRef.current) return;
                                     setIsInterviewerSpeaking(true);
                                     if (isWarmup) {
                                         setWarmupCaption(clean || '');
@@ -2116,6 +2118,7 @@
                                     ? window.TA_LIVE.chooseQuestionText(heard, clean)
                                     : clean;
                                 setWarmupPhase(null);
+                                questionLockedRef.current = true;
                                 addQuestion(number, committed || clean);
                                 setLiveQuestionCaption('');
                                 setIsInterviewerSpeaking(false);
@@ -2124,6 +2127,7 @@
                                 setFollowUpActive(!!follow_up);
                             },
                             onFollowUpProbe: () => {
+                                questionLockedRef.current = false;
                                 setFollowUpActive(true);
                                 setSavingAnswer(false);
                                 setCanAnswer(false);
@@ -2194,6 +2198,7 @@
                                 setCanAnswer(false);
                                 setIsAnswering(false);
                                 setSilenceHint('');
+                                questionLockedRef.current = false;
                                 if (number >= 1) {
                                     setWarmupPhase(null);
                                     setTurn(number);
@@ -2607,8 +2612,14 @@
                                     );
                                 })() : (() => {
                                     const card = cards.length ? cards[cards.length - 1] : null;
-                                    const questionDisplay = isInterviewerSpeaking
-                                        ? liveQuestionCaption
+                                    const committedQ = card?.question && card.question !== '…';
+                                    const questionLocked = committedQ && (
+                                        questionLockedRef.current || canAnswer || isAnswering || savingAnswer
+                                    );
+                                    const questionDisplay = questionLocked
+                                        ? card.question
+                                        : isInterviewerSpeaking
+                                        ? (liveQuestionCaption || card?.question || '')
                                         : (liveQuestionCaption || card?.question || '');
                                     if (!card && !questionDisplay && !isInterviewerSpeaking) {
                                         return (
@@ -2622,10 +2633,11 @@
                                     const saving = savingAnswer;
                                     const savedResponse = answered ? card?.answer : (saving && card?.answer ? card.answer : null);
                                     const interviewerPlaceholder = followUpActive ? 'Follow-up coming…' : 'Listen to the interviewer…';
+                                    const showInterviewerSpeaking = isInterviewerSpeaking && !questionLocked;
                                     return (
                                         <div className="fade-in speech-question-card animate-slide-up">
                                             <div className="px-5 sm:px-6 py-5">
-                                                {renderInterviewerTranscript(questionDisplay, isInterviewerSpeaking, interviewerPlaceholder)}
+                                                {renderInterviewerTranscript(questionDisplay, showInterviewerSpeaking, interviewerPlaceholder)}
                                                 {renderCandidateTranscript(savedResponse, false)}
                                                 {saving && !answered ? (
                                                     <p className="text-xs text-amber-700 flex items-center gap-2 mt-3">

@@ -9,6 +9,7 @@ import {
   isClosingMessage,
   isEnglishTranscript,
   resolveCommittedQuestionText,
+  questionLooksComplete,
 } from '../relay/lib/transcript-utils.mjs';
 
 let failures = 0;
@@ -76,6 +77,11 @@ check('prefers streamed over fallback', resolveCommittedQuestionText(
   'Describe a time you had to collaborate with someone who disagreed with your approach. How did you handle it?'
 )?.includes('setback'));
 check('uses final when no stream', resolveCommittedQuestionText('', 'What is your greatest strength?')?.includes('strength'));
+
+console.log('\n=== questionLooksComplete ===');
+check('question mark sentence complete', questionLooksComplete('Describe a situation where you faced unexpected technical challenges?'));
+check('mid-sentence incomplete', !questionLooksComplete('Describe a situation where you faced unexpected technical challenges or tight deadlines and how you communicated to your team'));
+check('long declarative complete', questionLooksComplete('Please tell me about a time when you led a project under pressure.'));
 
 console.log(`\n${failures === 0 ? 'ALL PASS' : failures + ' FAILURES'}`);
 process.exit(failures === 0 ? 0 : 1);

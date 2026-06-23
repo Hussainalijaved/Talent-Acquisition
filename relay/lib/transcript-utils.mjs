@@ -153,6 +153,16 @@ export function extractInterviewQuestion(text) {
   return t.length >= 20 ? t : '';
 }
 
+/** True when the interviewer turn looks finished — avoids opening the mic mid-question. */
+export function questionLooksComplete(text) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!t) return false;
+  const words = t.split(/\s+/).filter(Boolean).length;
+  if (t.includes('?')) return words >= 6;
+  if (/[.!]$/.test(t) && words >= 10) return true;
+  return false;
+}
+
 /** Prefer streamed caption when final text diverges (matches what the candidate heard). */
 export function resolveCommittedQuestionText(streamed, final) {
   const streamRaw = String(streamed || '').replace(/\s+/g, ' ').trim();

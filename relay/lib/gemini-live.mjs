@@ -7,6 +7,7 @@ import {
   fallbackInterviewQuestion,
   isClosingOnlyMessage,
   isEnglishTranscript,
+  questionLooksComplete,
   resolveCommittedQuestionText,
   sanitizeTranscript,
 } from './transcript-utils.mjs';
@@ -86,6 +87,8 @@ export class GeminiLiveBridge {
 
     this.roundQuestionEmitted = false;
     this.awaitingAnswer = false;
+    this.answerPromptOpen = false;
+    this.answerPromptFor = 0;
     this.blockModelOutput = false;
     this.userTurnActive = false;
     this.answerTimer = null;
@@ -158,10 +161,14 @@ export class GeminiLiveBridge {
   }
 
   emitAwaitingAnswer(qNum, questionText) {
+    if (this.answerPromptOpen && this.answerPromptFor === qNum) return;
     // Fresh PCM buffer for every real question turn.
     if (qNum >= 1) this.answerPcmChunks = [];
     const limits = this.syncQuestionTimeLimit(questionText);
     this.questionTimeLimits[qNum] = limits;
+    this.answerPromptOpen = true;
+    this.answerPromptFor = qNum;
+    this.blockModelOutput = true;
     this.onEvent({
       type: 'awaiting_answer',
       number: qNum,
@@ -170,6 +177,11 @@ export class GeminiLiveBridge {
       complexity_tier: limits.tier,
     });
     this.refineQuestionTimeLimit(qNum, questionText);
+  }
+
+  clearAnswerPromptWindow() {
+    this.answerPromptOpen = false;
+    this.answerPromptFor = 0;
   }
 
   refineQuestionTimeLimit(qNum, questionText) {
@@ -345,7 +357,9 @@ export class GeminiLiveBridge {
       text: modelText,
       follow_up: !!opts.follow_up,
     });
-    this.emitAwaitingAnswer(qNum, modelText);
+    if (questionLooksComplete(modelText)) {
+      this.emitAwaitingAnswer(qNum, modelText);
+    }
   }
 
   clearNextQuestionWatchdog() {
@@ -581,6 +595,9 @@ export class GeminiLiveBridge {
       return;
     }
 
+    // Question committed and mic window open — ignore late interviewer captions.
+    if (this.answerPromptOpen && !this.inFollowUpFor) return;
+
     if (isClosingOnlyMessage(modelText) && this.answers.length < this.maxTurns) {
       this.onEvent({ type: 'interview_closing_premature', text: modelText });
       return;
@@ -808,6 +825,7 @@ export class GeminiLiveBridge {
   //  - weak/short answer (not already followed-up) → one cross-question
   //  - otherwise → next numbered question (with optional coaching) or finish
   proceedAfterAnswer(aNum, userText, turnPair) {
+    this.clearAnswerPromptWindow();
     this.roundQuestionEmitted = false;
     this.streamingQuestionText = '';
     this.streamingQuestionNum = 0;
@@ -841,6 +859,7 @@ export class GeminiLiveBridge {
   }
 
   askFollowUp(qNum, questionText, answerText) {
+    this.clearAnswerPromptWindow();
     this.modelBuf = '';
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];
@@ -1034,7 +1053,9 @@ export class GeminiLiveBridge {
       this.clearNextQuestionWatchdog();
       this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
       this.onEvent({ type: 'question', number: qNum, text: modelText, follow_up: true });
-      this.emitAwaitingAnswer(qNum, modelText);
+      if (questionLooksComplete(modelText)) {
+        this.emitAwaitingAnswer(qNum, modelText);
+      }
       return;
     }
 
@@ -1080,8 +1101,10 @@ export class GeminiLiveBridge {
       this.clearNextQuestionWatchdog();
       this.onEvent({ type: 'transcript', speaker: 'model', text: modelText, partial: false, number: qNum });
       this.onEvent({ type: 'question', number: qNum, text: modelText });
-      this.emitAwaitingAnswer(qNum, modelText);
-    } else if (this.roundQuestionEmitted && this.questions.length) {
+      if (questionLooksComplete(modelText)) {
+        this.emitAwaitingAnswer(qNum, modelText);
+      }
+    } else if (this.roundQuestionEmitted && this.questions.length && !this.answerPromptOpen) {
       const idx = this.questions.length - 1;
       const resolved = extractInterviewQuestion(resolveCommittedQuestionText(streamed, modelText)) ||
         resolveCommittedQuestionText(streamed, modelText);
@@ -1095,6 +1118,11 @@ export class GeminiLiveBridge {
           partial: false,
           number: idx + 1,
         });
+        if (questionLooksComplete(resolved)) {
+          this.emitAwaitingAnswer(idx + 1, resolved);
+        }
+      } else if (!this.answerPromptOpen && questionLooksComplete(this.questions[idx] || resolved)) {
+        this.emitAwaitingAnswer(idx + 1, this.questions[idx] || resolved);
       }
     }
   }

@@ -86,6 +86,7 @@
             margin: 0;
             padding: 0;
             overflow-x: hidden;
+            overflow-y: auto;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             font-feature-settings: 'cv11', 'ss01';
@@ -223,15 +224,13 @@
 
         /* ─── Unified portal page layout (login, guidelines, results) ─ */
         .portal-page {
-            min-height: calc(100dvh - 4rem);
+            min-height: 100%;
             width: 100%;
             display: flex;
             align-items: flex-start;
             justify-content: center;
             padding: clamp(0.75rem, 2.5vw, 2rem);
             box-sizing: border-box;
-            overflow-x: hidden;
-            overflow-y: auto;
         }
 
         @media (min-width: 640px) {
@@ -489,31 +488,58 @@
         .assessment-sidebar {
             flex-shrink: 0;
             width: 100%;
-            border-bottom: 1px solid var(--border);
             background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-            padding: 1rem 1.25rem;
-            overflow-y: auto;
-            max-height: 28vh;
-        }
-
-        @media (min-width: 640px) {
-            .assessment-sidebar { max-height: 32vh; }
+            border-bottom: 1px solid var(--border);
         }
 
         @media (min-width: 1280px) {
             .assessment-sidebar {
-                width: 18.5rem;
-                min-width: 18.5rem;
-                max-height: none;
+                width: 20rem;
+                min-width: 20rem;
                 height: 100%;
                 border-bottom: none;
                 border-right: 1px solid var(--border);
-                padding: 1.25rem 1rem 1.5rem;
+                overflow-y: auto;
             }
         }
 
+        /* ── Mobile compact sidebar strip (<1280px) ── */
+        .sidebar-compact {
+            display: flex;
+            align-items: center;
+            gap: 0.875rem;
+            padding: 0.625rem 1rem;
+        }
         @media (min-width: 1280px) {
-            .assessment-sidebar { width: 20rem; min-width: 20rem; }
+            .sidebar-compact { display: none; }
+        }
+
+        .sidebar-compact-count {
+            flex-shrink: 0;
+            display: flex;
+            align-items: baseline;
+            gap: 0.125rem;
+            white-space: nowrap;
+        }
+
+        .sidebar-compact-progress {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .sidebar-compact-action { flex-shrink: 0; }
+
+        /* ── Desktop full sidebar (≥1280px) ── */
+        .sidebar-full {
+            display: none;
+        }
+        @media (min-width: 1280px) {
+            .sidebar-full {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                padding: 1.25rem 1rem 1.5rem;
+            }
         }
 
         .sidebar-section {
@@ -604,8 +630,8 @@
 
         .speech-transcript-box {
             flex: 1;
-            min-height: 5.5rem;
-            max-height: min(38vh, 16rem);
+            min-height: 4rem;
+            max-height: min(26vh, 11rem);
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
             scroll-behavior: smooth;
@@ -619,15 +645,15 @@
 
         @media (min-width: 640px) {
             .speech-transcript-box {
-                min-height: 6.5rem;
-                max-height: min(32vh, 14rem);
+                min-height: 5rem;
+                max-height: min(22vh, 10rem);
             }
         }
 
-        @media (min-width: 1024px) {
+        @media (min-width: 1280px) {
             .speech-transcript-box {
-                min-height: 7rem;
-                max-height: min(28vh, 12rem);
+                min-height: 6rem;
+                max-height: min(20vh, 9rem);
             }
         }
 
@@ -932,7 +958,7 @@
                         )}
                     </div>
                 </header>
-                <main className={`flex-1 w-full ${fullWidth ? 'min-h-0 flex flex-col' : ''}`}>{children}</main>
+                <main className={`flex-1 min-h-0 w-full ${fullWidth ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>{children}</main>
                 {footerNote && (
                     <footer className="border-t border-slate-200/80 py-4 bg-white/60">
                         <p className="text-center text-xs text-slate-500 max-w-xl mx-auto px-4 leading-relaxed">{footerNote}</p>
@@ -1140,94 +1166,114 @@
             phaseLabels = null,
             phaseDone = null,
             extraContent = null,
+            mobileAction = null,
         }) => (
             <aside className="assessment-sidebar" aria-label="Assessment sidebar">
-                <div className="sidebar-section">
-                    <p className="sidebar-label">Question count</p>
-                    <p className="text-3xl font-bold text-slate-900 tabular-nums leading-none">
-                        {currentStep}
-                        <span className="text-slate-400 text-xl font-semibold"> / {totalSteps}</span>
-                    </p>
-                    <p className="text-sm text-slate-500 mt-2">{sessionLabel}</p>
-                    <div className="h-1.5 bg-violet-100 rounded-full overflow-hidden mt-4">
-                        <div
-                            className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-500 ease-out"
-                            style={{ width: `${pct}%` }}
-                        />
+
+                {/* ── Compact strip shown only on small/medium screens (<1280px) ── */}
+                <div className="sidebar-compact">
+                    <div className="sidebar-compact-count">
+                        <span className="text-xl font-bold text-slate-900 tabular-nums">{currentStep}</span>
+                        <span className="text-slate-400 text-base font-semibold"> / {totalSteps}</span>
                     </div>
-                </div>
-
-                <div className="sidebar-section">
-                    <p className="sidebar-label">All phases</p>
-                    <ul className="list-none p-0 m-0" role="list">
-                        {phases.map((p) => {
-                            const done = phaseDone ? phaseDone(p) : p < currentStep;
-                            const active = p === currentStep;
-                            const rowClass = active ? 'active' : done ? 'done' : 'pending';
-                            const statusLabel = active ? 'In progress' : done ? 'Completed' : 'Upcoming';
-                            return (
-                                <li
-                                    key={p}
-                                    role="listitem"
-                                    className={`phase-list-item ${rowClass}`}
-                                    aria-current={active ? 'step' : undefined}
-                                >
-                                    <span
-                                        className={`phase-list-num ${active ? 'bg-violet-600 text-white shadow-sm' : done ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}
-                                    >
-                                        {done ? (
-                                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-                                            </svg>
-                                        ) : (
-                                            p
-                                        )}
-                                    </span>
-                                    <div className="min-w-0 flex-1 pt-0.5">
-                                        <p className={`text-sm font-semibold leading-tight ${active ? 'text-slate-900' : 'text-slate-600'}`}>
-                                            {phaseLabels?.[p] || `${questionLabel}${questionLabel ? ' ' : ''}${p}`.trim()}
-                                        </p>
-                                        <p className={`text-xs mt-1 ${active ? 'text-violet-600' : 'text-slate-400'}`}>{statusLabel}</p>
-                                    </div>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                </div>
-
-                {extraContent ? (
-                    <div className="sidebar-section">{extraContent}</div>
-                ) : null}
-
-                <div className="sidebar-section">
-                    <p className="sidebar-label">Session</p>
-                    {candidateEmail ? (
-                        <div className="mb-3">
-                            <p className="text-xs text-slate-400 mb-1">Candidate</p>
-                            <p className="text-sm text-slate-700 break-all leading-snug">{candidateEmail}</p>
+                    <div className="sidebar-compact-progress">
+                        <div className="h-1.5 bg-violet-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-500 ease-out" style={{ width: `${pct}%` }} />
                         </div>
-                    ) : null}
-                    <div>
-                        <p className="text-xs text-slate-400 mb-1">Integrity monitor</p>
-                        <p className="text-sm text-slate-700 tabular-nums">
-                            <span className={integrityViolationCount > 0 ? 'text-amber-600 font-semibold' : 'font-medium'}>
-                                {integrityViolationCount}
-                            </span>
-                            <span className="text-slate-400"> / {MAX_INTEGRITY_VIOLATIONS - 1} warnings</span>
-                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate leading-tight">{sessionLabel}</p>
                     </div>
+                    {mobileAction ? <div className="sidebar-compact-action">{mobileAction}</div> : null}
                 </div>
 
-                <div className="sidebar-section">
-                    <p className="sidebar-label">Instructions</p>
-                    <ul className="space-y-2.5 m-0 p-0 list-none">
-                        {instructions.map((line, i) => (
-                            <li key={i} className="flex gap-2.5 text-xs text-slate-500 leading-relaxed">
-                                <span className="text-blue-600 font-bold shrink-0 mt-px">{i + 1}.</span>
-                                <span>{line}</span>
-                            </li>
-                        ))}
-                    </ul>
+                {/* ── Full sidebar shown only on desktop (≥1280px) ── */}
+                <div className="sidebar-full">
+                    <div className="sidebar-section">
+                        <p className="sidebar-label">Question count</p>
+                        <p className="text-3xl font-bold text-slate-900 tabular-nums leading-none">
+                            {currentStep}
+                            <span className="text-slate-400 text-xl font-semibold"> / {totalSteps}</span>
+                        </p>
+                        <p className="text-sm text-slate-500 mt-2">{sessionLabel}</p>
+                        <div className="h-1.5 bg-violet-100 rounded-full overflow-hidden mt-4">
+                            <div
+                                className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-500 ease-out"
+                                style={{ width: `${pct}%` }}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="sidebar-section">
+                        <p className="sidebar-label">All phases</p>
+                        <ul className="list-none p-0 m-0" role="list">
+                            {phases.map((p) => {
+                                const done = phaseDone ? phaseDone(p) : p < currentStep;
+                                const active = p === currentStep;
+                                const rowClass = active ? 'active' : done ? 'done' : 'pending';
+                                const statusLabel = active ? 'In progress' : done ? 'Completed' : 'Upcoming';
+                                return (
+                                    <li
+                                        key={p}
+                                        role="listitem"
+                                        className={`phase-list-item ${rowClass}`}
+                                        aria-current={active ? 'step' : undefined}
+                                    >
+                                        <span
+                                            className={`phase-list-num ${active ? 'bg-violet-600 text-white shadow-sm' : done ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}
+                                        >
+                                            {done ? (
+                                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            ) : (
+                                                p
+                                            )}
+                                        </span>
+                                        <div className="min-w-0 flex-1 pt-0.5">
+                                            <p className={`text-sm font-semibold leading-tight ${active ? 'text-slate-900' : 'text-slate-600'}`}>
+                                                {phaseLabels?.[p] || `${questionLabel}${questionLabel ? ' ' : ''}${p}`.trim()}
+                                            </p>
+                                            <p className={`text-xs mt-1 ${active ? 'text-violet-600' : 'text-slate-400'}`}>{statusLabel}</p>
+                                        </div>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </div>
+
+                    {extraContent ? (
+                        <div className="sidebar-section">{extraContent}</div>
+                    ) : null}
+
+                    <div className="sidebar-section">
+                        <p className="sidebar-label">Session</p>
+                        {candidateEmail ? (
+                            <div className="mb-3">
+                                <p className="text-xs text-slate-400 mb-1">Candidate</p>
+                                <p className="text-sm text-slate-700 break-all leading-snug">{candidateEmail}</p>
+                            </div>
+                        ) : null}
+                        <div>
+                            <p className="text-xs text-slate-400 mb-1">Integrity monitor</p>
+                            <p className="text-sm text-slate-700 tabular-nums">
+                                <span className={integrityViolationCount > 0 ? 'text-amber-600 font-semibold' : 'font-medium'}>
+                                    {integrityViolationCount}
+                                </span>
+                                <span className="text-slate-400"> / {MAX_INTEGRITY_VIOLATIONS - 1} warnings</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="sidebar-section">
+                        <p className="sidebar-label">Instructions</p>
+                        <ul className="space-y-2.5 m-0 p-0 list-none">
+                            {instructions.map((line, i) => (
+                                <li key={i} className="flex gap-2.5 text-xs text-slate-500 leading-relaxed">
+                                    <span className="text-blue-600 font-bold shrink-0 mt-px">{i + 1}.</span>
+                                    <span>{line}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
                 </div>
             </aside>
         );
@@ -1691,70 +1737,70 @@
         const SpeechIntroView = ({ onBegin, techSteps, speechSteps, isLoading }) => (
             <Shell subtitle="Phase 2 · Voice communication interview" footerNote="Microphone access will be requested when you begin">
                 <PortalPage size="narrow">
-                        <div className="p-6 sm:p-8 xl:p-10 border-b border-slate-100 bg-gradient-to-br from-indigo-50/50 to-white">
-                            <p className="badge badge-accent mb-3">Phase 1 complete</p>
-                            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-                                Welcome to Phase 2
-                            </h1>
-                            <p className="text-sm text-slate-600 mt-3 leading-relaxed">
-                                Thank you for completing the written technical assessment ({techSteps} questions).
-                                You are now entering the <strong className="text-slate-900 font-medium">voice communication interview</strong> — a professional speech-to-speech round.
-                            </p>
+                    <div className="p-5 sm:p-7 border-b border-slate-100 bg-gradient-to-br from-indigo-50/50 to-white">
+                        <p className="badge badge-accent mb-2.5">Phase 1 complete</p>
+                        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                            Welcome to Phase 2
+                        </h1>
+                        <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                            Written assessment ({techSteps} questions) complete.
+                            You are now entering the <strong className="text-slate-900 font-medium">voice interview</strong> — a speech-to-speech round.
+                        </p>
+                    </div>
+                    <div className="p-5 sm:p-7 space-y-3.5 bg-slate-50/50">
+                        <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-4">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-2.5">How this phase works</p>
+                            <ul className="space-y-2 text-sm text-slate-700 leading-relaxed list-none p-0 m-0">
+                                <li className="flex gap-2.5">
+                                    <span className="text-indigo-600 font-bold shrink-0">1.</span>
+                                    <span>Each question is read aloud — listen carefully, then respond.</span>
+                                </li>
+                                <li className="flex gap-2.5">
+                                    <span className="text-indigo-600 font-bold shrink-0">2.</span>
+                                    <span>Have a live voice conversation with the AI interviewer.</span>
+                                </li>
+                                <li className="flex gap-2.5">
+                                    <span className="text-indigo-600 font-bold shrink-0">3.</span>
+                                    <span>Live captions show what you and the interviewer say. Click End when done.</span>
+                                </li>
+                                <li className="flex gap-2.5">
+                                    <span className="text-indigo-600 font-bold shrink-0">4.</span>
+                                    <span>Use a quiet space — allow microphone access when prompted.</span>
+                                </li>
+                            </ul>
                         </div>
-                        <div className="p-6 sm:p-8 xl:p-10 space-y-4 bg-slate-50/50">
-                            <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-5 py-5">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-3">How this phase works</p>
-                                <ul className="space-y-3 text-sm text-slate-700 leading-relaxed list-none p-0 m-0">
-                                    <li className="flex gap-3">
-                                        <span className="text-indigo-600 font-bold shrink-0">1.</span>
-                                        <span>Each question is read aloud — listen carefully before you respond.</span>
-                                    </li>
-                                    <li className="flex gap-3">
-                                        <span className="text-indigo-600 font-bold shrink-0">2.</span>
-                                        <span>You will have a live voice conversation with the AI interviewer — listen and respond naturally.</span>
-                                    </li>
-                                    <li className="flex gap-3">
-                                        <span className="text-indigo-600 font-bold shrink-0">3.</span>
-                                        <span>Live captions show what you and the interviewer say. Click End when the conversation is finished.</span>
-                                    </li>
-                                    <li className="flex gap-3">
-                                        <span className="text-indigo-600 font-bold shrink-0">4.</span>
-                                        <span>Use a quiet space and allow microphone access when prompted.</span>
-                                    </li>
-                                </ul>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+                                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Questions</p>
+                                <p className="text-sm text-slate-800 mt-0.5 font-medium">{speechSteps} voice · timed</p>
                             </div>
-                            <div className="grid sm:grid-cols-2 gap-3">
-                                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Phase 2 questions</p>
-                                    <p className="text-sm text-slate-800 mt-0.5">{speechSteps} voice questions · individually timed</p>
-                                </div>
-                                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Evaluated on</p>
-                                    <p className="text-sm text-slate-800 mt-0.5">Clarity, confidence, professionalism &amp; relevance</p>
-                                </div>
+                            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+                                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Evaluated on</p>
+                                <p className="text-sm text-slate-800 mt-0.5 font-medium">Clarity &amp; confidence</p>
                             </div>
-                            <button
-                                type="button"
-                                onClick={onBegin}
-                                disabled={isLoading}
-                                className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                            >
-                                {isLoading ? (
-                                    <>
-                                        <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                        </svg>
-                                        Loading…
-                                    </>
-                                ) : (
-                                    'Begin voice interview'
-                                )}
-                            </button>
-                            <p className="text-xs text-center text-slate-600 leading-relaxed">
-                                Phase 2 begins when you click above. Your Phase 1 responses are already saved.
-                            </p>
                         </div>
+                        <button
+                            type="button"
+                            onClick={onBegin}
+                            disabled={isLoading}
+                            className="btn-primary w-full py-3.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                            {isLoading ? (
+                                <>
+                                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    Loading…
+                                </>
+                            ) : (
+                                'Begin voice interview'
+                            )}
+                        </button>
+                        <p className="text-xs text-center text-slate-500 leading-relaxed">
+                            Phase 2 begins when you click above. Phase 1 responses are already saved.
+                        </p>
+                    </div>
                 </PortalPage>
             </Shell>
         );
@@ -2243,6 +2289,18 @@
                 p === 1 ? warmupPhase === 'intro' || !inWarmup : p === 2 ? !inWarmup && cards.length > 0 : false
             );
 
+            const endBtnLabel = ending ? 'Finishing…' : interviewComplete ? 'Submitting…' : 'End';
+            const sidebarMobileAction = (
+                <button
+                    type="button"
+                    onClick={handleEnd}
+                    disabled={ending || isLoading}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap disabled:opacity-40 transition-all ${interviewComplete ? 'btn-primary' : 'btn-secondary'}`}
+                >
+                    {endBtnLabel}
+                </button>
+            );
+
             const sidebarExtras = (
                 <>
                     <div>
@@ -2274,14 +2332,14 @@
                 return (
                     <Shell subtitle="Phase 2 · Voice interview" fullWidth footerNote="Use headphones to avoid echo. Allow microphone access when prompted.">
                         <PortalPage size="narrow">
-                            <div className="p-6 sm:p-8 xl:p-10 text-center">
-                                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white flex items-center justify-center text-3xl mx-auto mb-6 shadow-lg">🎙</div>
+                            <div className="p-5 sm:p-8 text-center">
+                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white flex items-center justify-center text-2xl mx-auto mb-5 shadow-lg">🎙</div>
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-2">Before the interview</p>
-                                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-3">Voice interview setup</h1>
-                                <p className="text-sm text-slate-600 leading-relaxed mb-6">
-                                    First you will hear the AI interviewer on your speakers. We will check your microphone, then ask for a brief introduction. After that, the {maxTurns} interview questions begin.
+                                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mb-2.5">Voice interview setup</h1>
+                                <p className="text-sm text-slate-600 leading-relaxed mb-5">
+                                    The AI interviewer will check your mic, ask for a brief intro, then begin {maxTurns} interview questions.
                                 </p>
-                                <ol className="text-left text-sm text-slate-600 space-y-2 mb-8 max-w-sm mx-auto">
+                                <ol className="text-left text-sm text-slate-600 space-y-2 mb-6 max-w-xs mx-auto">
                                     <li className="flex gap-2"><span className="text-violet-600 font-bold">1.</span> Microphone check — say a few words</li>
                                     <li className="flex gap-2"><span className="text-violet-600 font-bold">2.</span> Short introduction about yourself</li>
                                     <li className="flex gap-2"><span className="text-violet-600 font-bold">3.</span> {maxTurns} voice interview questions</li>
@@ -2294,8 +2352,8 @@
                                 >
                                     {connecting ? 'Connecting…' : 'Start voice interview'}
                                 </button>
-                                <p className="text-xs text-slate-400 mt-4 leading-relaxed">
-                                    Tap Start to enable sound and connect. Use headphones so the mic does not pick up the interviewer&apos;s voice.
+                                <p className="text-xs text-slate-400 mt-3 leading-relaxed">
+                                    Tap Start to enable sound and connect. Use headphones to avoid echo.
                                 </p>
                             </div>
                         </PortalPage>
@@ -2320,6 +2378,7 @@
                                 phaseLabels={{ 1: 'Microphone check', 2: 'Introduction' }}
                                 phaseDone={setupPhaseDone}
                                 extraContent={sidebarExtras}
+                                mobileAction={sidebarMobileAction}
                             />
                         ) : (
                             <AssessmentSidebar
@@ -2334,6 +2393,7 @@
                                 questionLabel="Voice Q"
                                 phaseDone={phaseDone}
                                 extraContent={sidebarExtras}
+                                mobileAction={sidebarMobileAction}
                             />
                         )}
                         <div className="assessment-main">

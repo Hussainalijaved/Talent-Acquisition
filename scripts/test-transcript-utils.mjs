@@ -1,5 +1,6 @@
 // Unit tests for relay/lib/transcript-utils.mjs
 import {
+  appendTranscriptionChunk,
   cleanUserAnswerText,
   displayUserTranscript,
   extractEnglishAnswer,
@@ -55,6 +56,13 @@ check('strips leading thank you', extractInterviewQuestion(
 check('strips trailing closing', extractInterviewQuestion(
   'What motivates you about this role? Thank you for your time.'
 )?.includes('motivates'));
+
+console.log('\n=== appendTranscriptionChunk ===');
+check('empty chunk keeps buffer', appendTranscriptionChunk('hello', '') === 'hello');
+check('append incremental', appendTranscriptionChunk('hello ', 'world') === 'hello world');
+check('dedupe duplicate tail', appendTranscriptionChunk('hello world', 'world') === 'hello world');
+check('cumulative replace', appendTranscriptionChunk('hello', 'hello world') === 'hello world');
+check('overlap merge', appendTranscriptionChunk('I worked on', 'on a project') === 'I worked on a project');
 
 console.log('\n=== resolveCommittedQuestionText ===');
 check('prefers streamed over fallback', resolveCommittedQuestionText(

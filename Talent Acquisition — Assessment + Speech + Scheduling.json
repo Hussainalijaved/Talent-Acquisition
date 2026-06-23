@@ -702,11 +702,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+              "value": "={{ $json._supabase_key || $json.config.supabase_key || $('CFG - Assessment Config').first().json.supabase_key }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+              "value": "=Bearer {{ $json._supabase_key || $json.config.supabase_key || $('CFG - Assessment Config').first().json.supabase_key }}"
             },
             {
               "name": "Content-Type",
@@ -1139,17 +1139,17 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('CFG - Assessment Config').first().json.supabase_url.replace(/\\/$/, '') }}/rest/v1/assessment_sessions?id=eq.{{ $('CODE - Prep scheduling from PASS').first().json.session_id }}",
+        "url": "={{ $json._scheduling_patch_url }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+              "value": "={{ $json._supabase_key || $json.config.supabase_key || $('CFG - Assessment Config').first().json.supabase_key }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+              "value": "=Bearer {{ $json._supabase_key || $json.config.supabase_key || $('CFG - Assessment Config').first().json.supabase_key }}"
             },
             {
               "name": "Content-Type",
@@ -1163,7 +1163,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { scheduling_status: 'pending', updated_at: new Date().toISOString() } }}",
+        "jsonBody": "={{ $json._scheduling_patch_body }}",
         "options": {}
       },
       "id": "e72d2bcd-6c2d-4735-82b2-6a72f6c0a2dc",

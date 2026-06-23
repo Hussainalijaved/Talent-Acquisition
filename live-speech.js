@@ -46,11 +46,20 @@
     const newLen = Math.round(buffer.length / ratio);
     const result = new Float32Array(newLen);
     for (let i = 0; i < newLen; i += 1) {
-      const idx = Math.floor(i * ratio);
-      result[i] = buffer[idx] || 0;
+      const start = Math.floor(i * ratio);
+      const end = Math.min(buffer.length, Math.floor((i + 1) * ratio));
+      if (end <= start) {
+        result[i] = buffer[start] || 0;
+        continue;
+      }
+      let sum = 0;
+      for (let j = start; j < end; j += 1) sum += buffer[j];
+      result[i] = sum / (end - start);
     }
     return result;
   }
+
+  const AUDIO_FLUSH_MS = 1400;
 
   class LiveSpeechSession {
     constructor(options) {
@@ -95,6 +104,34 @@
       // client's raw mic level. The client only reacts to relay nudge events.
       this.allowInterviewerDuringAnswer = false;
       this.nudgeAudioTimer = null;
+      this.modelAudioHeardThisTurn = false;
+      this.streamingAudio = false;
+      this.audioFlushTimer = null;
+    }
+
+    flushAnswerAudio() {
+      this.streamingAudio = true;
+      if (this.audioFlushTimer) clearTimeout(this.audioFlushTimer);
+      this.audioFlushTimer = setTimeout(() => {
+        this.audioFlushTimer = null;
+        this.streamingAudio = false;
+      }, AUDIO_FLUSH_MS);
+    }
+
+    shouldStreamMic() {
+      return this.answering || this.streamingAudio;
+    }
+
+    async ensureAudioRunning() {
+      if (!this.audioCtx) return false;
+      if (this.audioCtx.state === 'suspended') {
+        try {
+          await this.audioCtx.resume();
+        } catch (err) {
+          console.warn('[live-speech] AudioContext resume failed:', err);
+        }
+      }
+      return this.audioCtx.state === 'running';
     }
 
     cancelMicOpen() {
@@ -118,7 +155,13 @@
     async scheduleMicAfterPlayback() {
       this.cancelMicOpen();
       if (this.ended || this.interviewEnded) return;
-      // Wait until interviewer audio finishes, then open mic.
+      this.modelAudioHeardThisTurn = false;
+      // Give Gemini time to send the first audio chunk before we decide playback is done.
+      let preWait = 0;
+      while (!this.modelAudioHeardThisTurn && preWait < 8000) {
+        await new Promise((r) => setTimeout(r, 200));
+        preWait += 200;
+      }
       let waited = 0;
       while ((this.playing || this.playQueue.length > 0) && waited < 30000) {
         await new Promise((r) => setTimeout(r, 200));
@@ -131,7 +174,8 @@
     }
 
     forceEndAnswer() {
-      if (!this.answering) return;
+      if (!this.answering && !this.streamingAudio) return;
+      this.flushAnswerAudio();
       this.answering = false;
       this.allowInterviewerDuringAnswer = false;
       this.onLevel(0);
@@ -155,6 +199,7 @@
     // Candidate pressed "Submit" — close their mic and let the interviewer respond.
     submitAnswer() {
       if (!this.answering) return;
+      this.flushAnswerAudio();
       this.answering = false;
       this.processingAnswer = true;
       this.allowInterviewerDuringAnswer = false;
@@ -301,7 +346,8 @@
       if (msg.type === 'silence_nudge') {
         const stage = msg.stage || 'nudge';
         if (stage === 'auto_submit') {
-          // Relay is finalizing the turn — close the mic UI immediately.
+          // Relay is finalizing — keep streaming tail audio while UI closes.
+          this.flushAnswerAudio();
           this.answering = false;
           this.processingAnswer = true;
           this.allowInterviewerDuringAnswer = false;
@@ -375,6 +421,7 @@
       if (msg.type === 'output_audio' && msg.data) {
         // Allow interviewer nudge audio while mic is open; block normal question audio.
         if (this.answering && !this.allowInterviewerDuringAnswer) return;
+        this.modelAudioHeardThisTurn = true;
         if (!this.answering) this.setStatus('Interviewer is speaking…');
         this.enqueuePlayback(msg.data, msg.mimeType || `audio/pcm;rate=${OUTPUT_RATE}`);
       }
@@ -449,13 +496,17 @@
         video: false,
       });
       this.audioCtx = new Ctx();
+      await this.ensureAudioRunning();
+      this.playbackGain = this.audioCtx.createGain();
+      this.playbackGain.gain.value = 1;
+      this.playbackGain.connect(this.audioCtx.destination);
       this.source = this.audioCtx.createMediaStreamSource(this.mediaStream);
       this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1);
       const inRate = this.audioCtx.sampleRate;
 
       this.processor.onaudioprocess = (e) => {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.ended || this.interviewEnded) return;
-        if (!this.answering) return; // push-to-talk: only stream while the candidate is answering
+        if (!this.shouldStreamMic()) return;
         const input = e.inputBuffer.getChannelData(0);
         let sum = 0;
         for (let i = 0; i < input.length; i += 1) sum += Math.abs(input[i]);
@@ -484,10 +535,12 @@
       const rateMatch = /rate=(\d+)/i.exec(mimeType || '');
       const rate = rateMatch ? Number(rateMatch[1]) : OUTPUT_RATE;
       this.playQueue.push({ b64, rate });
-      if (!this.playing) this.drainPlayback();
+      if (!this.playing) void this.drainPlayback();
     }
 
     async drainPlayback() {
+      if (!this.audioCtx || this.playing) return;
+      await this.ensureAudioRunning();
       if (!this.audioCtx || this.playing) return;
       this.playing = true;
       while (this.playQueue.length && !this.ended) {
@@ -499,7 +552,7 @@
         buffer.copyToChannel(float, 0);
         const src = this.audioCtx.createBufferSource();
         src.buffer = buffer;
-        src.connect(this.audioCtx.destination);
+        src.connect(this.playbackGain || this.audioCtx.destination);
         const startAt = Math.max(this.audioCtx.currentTime, this.nextPlayTime);
         src.start(startAt);
         this.nextPlayTime = startAt + buffer.duration;
@@ -516,6 +569,11 @@
         clearTimeout(this.autoEndTimer);
         this.autoEndTimer = null;
       }
+      if (this.audioFlushTimer) {
+        clearTimeout(this.audioFlushTimer);
+        this.audioFlushTimer = null;
+      }
+      this.streamingAudio = false;
       this.stopMic();
       this.setStatus('Finishing session…');
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -688,13 +746,29 @@
     return finRaw.length >= streamRaw.length ? finRaw : streamRaw;
   }
 
+  async function unlockAudioBeforeSession() {
+    const Ctx = global.AudioContext || global.webkitAudioContext;
+    if (!Ctx) return false;
+    try {
+      const ctx = new Ctx();
+      if (ctx.state === 'suspended') await ctx.resume();
+      await ctx.close();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   global.TA_LIVE = {
     LiveSpeechSession,
     fetchLiveSpeechStart,
     resolveRelayUrl,
     finalizeLiveSpeech,
+    unlockAudioBeforeSession,
     sanitizeDisplayTranscript,
     looksLikeClosingMessage,
     chooseQuestionText,
+    downsample,
+    AUDIO_FLUSH_MS,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

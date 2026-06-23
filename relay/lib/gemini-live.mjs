@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import {
+  appendTranscriptionChunk,
   cleanUserAnswerText,
   displayUserTranscript,
   extractInterviewQuestion,
@@ -496,29 +497,15 @@ export class GeminiLiveBridge {
       return;
     }
 
-    if (msg.inputTranscription?.text) {
-      if (this.userTurnActive) {
-        this.userBuf += msg.inputTranscription.text;
-        this.noteUserActivity();
-      } else if (this.awaitingAnswer) {
-        // Transcription can arrive after activityEnd — keep for this answer turn.
-        this.lateUserBuf += msg.inputTranscription.text;
-      }
-      this.emitUserPartialTranscript();
+    if (msg.inputTranscription?.text || msg.serverContent?.inputTranscription?.text) {
+      const top = msg.inputTranscription?.text;
+      const nested = msg.serverContent?.inputTranscription?.text;
+      if (top) this.appendUserTranscription(top);
+      if (nested && nested !== top) this.appendUserTranscription(nested);
     }
 
     const server = msg.serverContent;
     if (!server) return;
-
-    if (server.inputTranscription?.text) {
-      if (this.userTurnActive) {
-        this.userBuf += server.inputTranscription.text;
-        this.noteUserActivity();
-      } else if (this.awaitingAnswer) {
-        this.lateUserBuf += server.inputTranscription.text;
-      }
-      this.emitUserPartialTranscript();
-    }
 
     // While the candidate's answer is being finalized, ignore model audio/text.
     if (!this.blockModelOutput && server.outputTranscription?.text) {
@@ -549,6 +536,20 @@ export class GeminiLiveBridge {
   }
 
   // Stream the candidate's speech-to-text to the client as a live caption.
+  appendUserTranscription(text) {
+    const piece = String(text || '');
+    if (!piece) return;
+    if (this.userTurnActive) {
+      this.userBuf = appendTranscriptionChunk(this.userBuf, piece);
+      this.noteUserActivity();
+    } else if (this.awaitingAnswer) {
+      this.lateUserBuf = appendTranscriptionChunk(this.lateUserBuf, piece);
+      this.noteUserActivity();
+      if (this.pendingFinalize) this.scheduleFinalizeAnswer(true);
+    }
+    this.emitUserPartialTranscript();
+  }
+
   emitUserPartialTranscript() {
     if (!this.userTurnActive && !this.awaitingAnswer) return;
     const combined = `${this.userBuf}${this.lateUserBuf}`;
@@ -629,8 +630,12 @@ export class GeminiLiveBridge {
     this.emitQuestionFromBuffer();
   }
 
-  scheduleFinalizeAnswer() {
-    if (this.pendingFinalize) return;
+  scheduleFinalizeAnswer(restart = false) {
+    if (this.pendingFinalize) {
+      if (!restart) return;
+      clearTimeout(this.pendingFinalize);
+      this.pendingFinalize = null;
+    }
     const startedAt = Date.now();
     let lastLen = -1;
     let stableSince = 0;
@@ -642,8 +647,8 @@ export class GeminiLiveBridge {
 
       if (len > 0 && len === lastLen) {
         if (!stableSince) stableSince = now;
-        // Transcript stable for 900ms — safe to finalize.
-        if (now - stableSince >= 900) {
+        // Transcript stable for 1.1s — safe to finalize.
+        if (now - stableSince >= 1100) {
           this.pendingFinalize = null;
           this.completeAnswerTurn();
           return;
@@ -653,17 +658,17 @@ export class GeminiLiveBridge {
         lastLen = len;
       }
 
-      // Hard cap — never wait more than 8s for transcription flush.
-      if (now - startedAt >= 8000) {
+      // Hard cap — never wait more than 10s for transcription flush.
+      if (now - startedAt >= 10000) {
         this.pendingFinalize = null;
         this.completeAnswerTurn();
         return;
       }
 
-      this.pendingFinalize = setTimeout(tick, 250);
+      this.pendingFinalize = setTimeout(tick, 200);
     };
 
-    this.pendingFinalize = setTimeout(tick, 600);
+    this.pendingFinalize = setTimeout(tick, 500);
   }
 
   completeAnswerTurn() {
@@ -876,6 +881,19 @@ export class GeminiLiveBridge {
           this.endUserTurn();
         }
       }, 1500);
+    }
+  }
+
+  cancelNudgeForUserSpeech() {
+    if (!this.inNudgePlayback) return;
+    this.inNudgePlayback = false;
+    this.silenceNudged = false;
+    this.silenceNudgedAt = 0;
+    this.modelBuf = '';
+    this.blockModelOutput = true;
+    this.lastUserActivityAt = Date.now();
+    if (this.userTurnActive && this.geminiWs?.readyState === WebSocket.OPEN) {
+      this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
     }
   }
 
@@ -1138,6 +1156,7 @@ export class GeminiLiveBridge {
     if (!this.ready || this.closed || this.interviewEnded || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
     if (this.userTurnActive) return;
+    if (this.awaitingAnswer) return;
     this.userTurnActive = true;
     this.userBuf = '';
     this.lateUserBuf = '';
@@ -1155,28 +1174,25 @@ export class GeminiLiveBridge {
     this.blockModelOutput = true;
     this.userTurnEndedAt = Date.now();
     this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
+    this.scheduleFinalizeAnswer();
 
     if (this.answerTimer) clearTimeout(this.answerTimer);
     // Fallback: finalize after flush window even if model never sends turnComplete.
     this.answerTimer = setTimeout(() => {
       if (!this.awaitingAnswer || this.interviewEnded) return;
       this.completeAnswerTurn();
-    }, 12000);
+    }, 15000);
   }
 
   sendAudio(base64Pcm, mimeType = 'audio/pcm;rate=16000') {
     if (!this.ready || this.closed || this.interviewEnded || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
-    if (!this.userTurnActive) return;
-    // While the interviewer is speaking the silence nudge we have paused the
-    // user activity window — don't forward mic audio until it resumes.
-    if (this.inNudgePlayback) return;
+    const canCapture = this.userTurnActive || this.awaitingAnswer;
+    if (!canCapture) return;
 
-    // Measure RMS energy of the PCM chunk. If above background-noise level
-    // (~300 / 32767 ≈ -41 dBFS), treat it as the candidate speaking and reset
-    // the silence timer. This is the authoritative "still speaking" signal —
-    // transcription from Gemini can lag by 2-4 s which makes the timer fire
-    // prematurely and cuts off mid-sentence transcription.
+    // Measure RMS energy of the PCM chunk. If above background-noise level,
+    // treat it as the candidate speaking and reset the silence timer.
+    let rms = 0;
     try {
       const pcmBuf = Buffer.from(base64Pcm, 'base64');
       const samples = pcmBuf.length >> 1;
@@ -1186,10 +1202,16 @@ export class GeminiLiveBridge {
           const s = pcmBuf.readInt16LE(i * 2);
           sumSq += s * s;
         }
-        const rms = Math.sqrt(sumSq / samples);
-        if (rms > 350) this.noteUserActivity();
+        rms = Math.sqrt(sumSq / samples);
+        if (rms > 120) {
+          if (this.inNudgePlayback) this.cancelNudgeForUserSpeech();
+          this.noteUserActivity();
+        }
       }
     } catch (_) { /* decoding failure — ignore */ }
+
+    // During nudge playback with no detected speech, pause forwarding so Gemini can finish the nudge.
+    if (this.inNudgePlayback) return;
 
     this.geminiWs.send(
       JSON.stringify({ realtimeInput: { audio: { mimeType, data: base64Pcm } } })

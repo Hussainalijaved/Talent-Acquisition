@@ -120,6 +120,7 @@ return [
         interviewer_mail_subject: mailSubject || undefined,
         updated_at: new Date().toISOString(),
       },
+      _supabase_key: String(cfg.supabase_key || '').trim(),
     },
   },
 ];

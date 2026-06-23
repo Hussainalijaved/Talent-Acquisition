@@ -1004,6 +1004,7 @@
             sessionLabel = 'Questions in this session',
             instructions = ASSESSMENT_INSTRUCTIONS,
             questionLabel = 'Question',
+            phaseLabels = null,
             phaseDone = null,
             extraContent = null,
         }) => (
@@ -1051,7 +1052,7 @@
                                     </span>
                                     <div className="min-w-0 flex-1 pt-0.5">
                                         <p className={`text-sm font-semibold leading-tight ${active ? 'text-slate-900' : 'text-slate-600'}`}>
-                                            {questionLabel} {p}
+                                            {phaseLabels?.[p] || `${questionLabel}${questionLabel ? ' ' : ''}${p}`.trim()}
                                         </p>
                                         <p className={`text-xs mt-1 ${active ? 'text-violet-600' : 'text-slate-400'}`}>{statusLabel}</p>
                                     </div>
@@ -1672,6 +1673,8 @@
             const [saveNotice, setSaveNotice] = React.useState('');
             const [silenceHint, setSilenceHint] = React.useState('');
             const [followUpActive, setFollowUpActive] = React.useState(false);
+            const [sessionLive, setSessionLive] = React.useState(false);
+            const [connecting, setConnecting] = React.useState(false);
             // 'mic_check' | 'intro' | null
             const [warmupPhase, setWarmupPhase] = React.useState('mic_check');
             const [warmupQuestion, setWarmupQuestion] = React.useState('');
@@ -1740,7 +1743,9 @@
             }, []);
 
             React.useEffect(() => {
+                if (!sessionLive) return undefined;
                 let cancelled = false;
+                setConnecting(true);
                 (async () => {
                     if (!window.TA_LIVE) {
                         onError?.('Live speech module not loaded.');
@@ -1763,9 +1768,6 @@
                                         setIsInterviewerSpeaking(true);
                                         return;
                                     }
-                                    // Only track speaking state here.
-                                    // liveQuestionCaption is managed exclusively by onQuestion
-                                    // (question_partial / question events) to prevent text conflicts.
                                     if (partial) {
                                         setIsInterviewerSpeaking(true);
                                         setAnswerTimerActive(false);
@@ -1777,8 +1779,10 @@
                                 }
                                 const clean = cleanText(text, 'user');
                                 if (partial) {
-                                    setLiveCaption(clean || '');
+                                    setLiveCaption(clean || text.trim());
                                 } else if (clean) {
+                                    setLiveCaption('');
+                                } else {
                                     setLiveCaption('');
                                 }
                             },
@@ -1964,9 +1968,16 @@
                         });
                         sessionRef.current = session;
                         await session.start();
-                        if (!cancelled) setStatus('Listen to the interviewer — the first question is coming');
+                        if (!cancelled) {
+                            setConnecting(false);
+                            setStatus('Listen to the interviewer — setup is starting');
+                        }
                     } catch (e) {
-                        if (!cancelled) onError?.(e?.message || 'Could not start live speech');
+                        if (!cancelled) {
+                            setConnecting(false);
+                            setSessionLive(false);
+                            onError?.(e?.message || 'Could not start live speech');
+                        }
                     }
                 })();
                 return () => {
@@ -1974,7 +1985,7 @@
                     sessionRef.current?.cancel?.();
                     sessionRef.current = null;
                 };
-            }, [context, relayFallback, tabSwitches, onError, addQuestion, setAnswerForQuestion, setScoreForQuestion]);
+            }, [sessionLive, context, relayFallback, tabSwitches, onError, addQuestion, setAnswerForQuestion, setScoreForQuestion, cleanText]);
 
             React.useEffect(() => {
                 cardsEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' });
@@ -2048,6 +2059,19 @@
                 }
             };
 
+            const handleStartInterview = async () => {
+                if (sessionLive || connecting || ending || isLoading) return;
+                setConnecting(true);
+                setStatus('Enabling sound…');
+                try {
+                    if (window.TA_LIVE?.unlockAudioBeforeSession) {
+                        await window.TA_LIVE.unlockAudioBeforeSession();
+                    }
+                } catch (_) {}
+                setSessionLive(true);
+                setStatus('Connecting to voice interviewer…');
+            };
+
             const handleEnd = async () => {
                 if (ending || isLoading || finishedRef.current) return;
                 setEnding(true);
@@ -2070,9 +2094,18 @@
             };
 
             const voicePhases = Array.from({ length: maxTurns }, (_, i) => i + 1);
-            const voiceStep = Math.min(maxTurns, Math.max(1, turn || currentQuestionNum || 1));
-            const pct = maxTurns > 0 ? Math.min(100, (completedAnswers / maxTurns) * 100) : 0;
+            const inWarmup = Boolean(warmupPhase);
+            const setupStep = warmupPhase === 'mic_check' ? 1 : warmupPhase === 'intro' ? 2 : 0;
+            const voiceStep = inWarmup
+                ? setupStep
+                : Math.min(maxTurns, Math.max(1, turn || currentQuestionNum || 1));
+            const pct = inWarmup
+                ? (warmupPhase === 'intro' ? 50 : 0)
+                : (maxTurns > 0 ? Math.min(100, (completedAnswers / maxTurns) * 100) : 0);
             const phaseDone = (p) => Boolean(cards[p - 1]?.answer);
+            const setupPhaseDone = (p) => (
+                p === 1 ? warmupPhase === 'intro' || !inWarmup : p === 2 ? !inWarmup && cards.length > 0 : false
+            );
 
             const sidebarExtras = (
                 <>
@@ -2101,22 +2134,72 @@
                 </>
             );
 
+            if (!sessionLive) {
+                return (
+                    <Shell subtitle="Phase 2 · Voice interview" fullWidth footerNote="Use headphones to avoid echo. Allow microphone access when prompted.">
+                        <div className="min-h-[calc(100vh-6rem)] flex items-center justify-center p-6 sm:p-10 fade-in">
+                            <div className="max-w-lg w-full rounded-2xl border border-violet-100 bg-white shadow-card p-8 sm:p-10 text-center">
+                                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white flex items-center justify-center text-3xl mx-auto mb-6 shadow-lg">🎙</div>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-2">Before the interview</p>
+                                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-3">Voice interview setup</h1>
+                                <p className="text-sm text-slate-600 leading-relaxed mb-6">
+                                    First you will hear the AI interviewer on your speakers. We will check your microphone, then ask for a brief introduction. After that, the {maxTurns} interview questions begin.
+                                </p>
+                                <ol className="text-left text-sm text-slate-600 space-y-2 mb-8 max-w-sm mx-auto">
+                                    <li className="flex gap-2"><span className="text-violet-600 font-bold">1.</span> Microphone check — say a few words</li>
+                                    <li className="flex gap-2"><span className="text-violet-600 font-bold">2.</span> Short introduction about yourself</li>
+                                    <li className="flex gap-2"><span className="text-violet-600 font-bold">3.</span> {maxTurns} voice interview questions</li>
+                                </ol>
+                                <button
+                                    type="button"
+                                    onClick={handleStartInterview}
+                                    disabled={connecting || isLoading}
+                                    className="btn-primary w-full py-3.5 text-base font-semibold rounded-xl disabled:opacity-50"
+                                >
+                                    {connecting ? 'Connecting…' : 'Start voice interview'}
+                                </button>
+                                <p className="text-xs text-slate-400 mt-4 leading-relaxed">
+                                    Tap Start to enable sound and connect. Use headphones so the mic does not pick up the interviewer&apos;s voice.
+                                </p>
+                            </div>
+                        </div>
+                    </Shell>
+                );
+            }
+
             return (
                 <Shell subtitle={warmupPhase === 'mic_check' ? 'Phase 2 · Warm-up · Microphone check' : warmupPhase === 'intro' ? 'Phase 2 · Warm-up · Introduction' : `Phase 2 · Live voice interview · Question ${voiceStep} of ${maxTurns}`} fullWidth footerNote="Use headphones to avoid echo. Allow microphone access.">
                     <div className="assessment-workspace fade-in portal-lock">
-                        <AssessmentSidebar
-                            phases={voicePhases}
-                            currentStep={voiceStep}
-                            totalSteps={maxTurns}
-                            candidateEmail={candidateEmail || context?.candidate_email}
-                            integrityViolationCount={integrityViolationCount}
-                            pct={pct}
-                            sessionLabel="Phase 2 — live voice communication"
-                            instructions={LIVE_SPEECH_INSTRUCTIONS}
-                            questionLabel="Voice Q"
-                            phaseDone={phaseDone}
-                            extraContent={sidebarExtras}
-                        />
+                        {inWarmup ? (
+                            <AssessmentSidebar
+                                phases={[1, 2]}
+                                currentStep={setupStep}
+                                totalSteps={2}
+                                candidateEmail={candidateEmail || context?.candidate_email}
+                                integrityViolationCount={integrityViolationCount}
+                                pct={pct}
+                                sessionLabel="Setup before interview questions"
+                                instructions={LIVE_SPEECH_INSTRUCTIONS}
+                                questionLabel=""
+                                phaseLabels={{ 1: 'Microphone check', 2: 'Introduction' }}
+                                phaseDone={setupPhaseDone}
+                                extraContent={sidebarExtras}
+                            />
+                        ) : (
+                            <AssessmentSidebar
+                                phases={voicePhases}
+                                currentStep={voiceStep}
+                                totalSteps={maxTurns}
+                                candidateEmail={candidateEmail || context?.candidate_email}
+                                integrityViolationCount={integrityViolationCount}
+                                pct={pct}
+                                sessionLabel="Phase 2 — live voice interview"
+                                instructions={LIVE_SPEECH_INSTRUCTIONS}
+                                questionLabel="Voice Q"
+                                phaseDone={phaseDone}
+                                extraContent={sidebarExtras}
+                            />
+                        )}
                         <div className="assessment-main">
                             {cards.length > 0 ? (
                                 <div className="shrink-0 flex items-center gap-1.5 px-4 sm:px-5 lg:px-6 pt-4">
@@ -2202,6 +2285,9 @@
                                         <div className="fade-in rounded-2xl border-2 border-amber-100 bg-white overflow-hidden shadow-card animate-slide-up">
                                             <div className="px-6 py-5 border-b border-amber-50 bg-gradient-to-r from-amber-50/80 via-orange-50/40 to-white relative overflow-hidden">
                                                 <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-amber-100/30 -translate-y-1/2 translate-x-1/4 pointer-events-none" />
+                                                <p className="text-xs text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2 mb-4 leading-relaxed relative z-10">
+                                                    Turn your volume up — the interviewer speaks through your device speakers. Use headphones to avoid echo.
+                                                </p>
                                                 <div className="relative z-10">
                                                     <div className="flex items-center gap-2 mb-3">
                                                         <span className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-500 text-[10px] font-bold text-white">{isMicCheck ? '🎤' : '👋'}</span>

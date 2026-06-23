@@ -22,6 +22,44 @@ function parseJson(raw, fallback) {
   }
 }
 
+function extractConfig(row) {
+  const out = {};
+  if (!row || typeof row !== 'object') return out;
+  if (row.config && typeof row.config === 'object') Object.assign(out, row.config);
+  for (const [k, v] of Object.entries(row)) {
+    if (k.startsWith('config.') && v != null && String(v).trim()) {
+      out[k.slice(7)] = String(v).trim();
+    }
+  }
+  return out;
+}
+
+function mergeConfig(...sources) {
+  const out = {};
+  for (const src of sources) {
+    if (!src || typeof src !== 'object') continue;
+    Object.assign(out, extractConfig(src));
+    if (src.config && typeof src.config === 'object') {
+      for (const [k, v] of Object.entries(src.config)) {
+        if (v != null && String(v).trim()) out[k] = String(v).trim();
+      }
+    }
+  }
+  return out;
+}
+
+function loadWorkflowConfig() {
+  const names = [
+    'CFG - Live Speech Config (complete)',
+    'CFG - Live Speech Config (start)',
+    'CFG - Assessment Config',
+    'CFG - Assessment Config1',
+    'CFG - Workflow configuration',
+    'CFG - Workflow configuration1',
+  ];
+  return mergeConfig(...names.map((n) => pickNodeJson(n)).filter(Boolean));
+}
+
 function pickSessionRow() {
   const built =
     pickNodeJson(
@@ -57,7 +95,11 @@ const parse =
 const session = pickSessionRow();
 const sessionCfg = parseJson(session.config, {});
 const parseCfg = parseJson(parse.config, parse.config || {});
-const cfg = { ...sessionCfg, ...parseCfg };
+const cfg = {
+  ...loadWorkflowConfig(),
+  ...sessionCfg,
+  ...parseCfg,
+};
 
 const interviewerEmail = String(
   sessionCfg.interviewer_email ||
@@ -67,13 +109,19 @@ const interviewerEmail = String(
     ''
 ).trim();
 
+const sessionId = String(session.id || parse.session_id || '').trim();
+const sb = String(cfg.supabase_url || '').replace(/\/+$/, '');
+const tb = cfg.table_assessment_sessions || 'assessment_sessions';
+const nowIso = new Date().toISOString();
+
 return [
   {
     json: {
       ...parse,
       ...session,
-      session_id: session.id || parse.session_id,
+      session_id: sessionId,
       candidate_email: parse.candidate_email || session.candidate_email,
+      candidate_name: parse.candidate_name || session.candidate_name || null,
       score: parse.score ?? session.score,
       result: parse.result || session.result,
       requisition_title:
@@ -85,6 +133,15 @@ return [
       mail_subject: session.mail_subject,
       interviewer_gmail_thread_id: session.interviewer_gmail_thread_id,
       interviewer_gmail_message_id: session.interviewer_gmail_message_id,
+      _supabase_key: String(cfg.supabase_key || '').trim(),
+      _scheduling_patch_url: sessionId
+        ? `${sb}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`
+        : '',
+      _scheduling_patch_body: {
+        scheduling_status: 'pending_interviewer',
+        scheduling_updated_at: nowIso,
+        updated_at: nowIso,
+      },
     },
   },
 ];

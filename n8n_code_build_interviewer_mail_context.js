@@ -260,6 +260,7 @@ return [
         scheduling_updated_at: nowIso,
         updated_at: nowIso,
       },
+      _supabase_key: String(cfg.supabase_key || '').trim(),
     },
   },
 ];

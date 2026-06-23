@@ -659,11 +659,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('CFG - Live Speech Config (complete)').first().json.supabase_key }}"
+              "value": "={{ $json._supabase_key || $json.config.supabase_key }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('CFG - Live Speech Config (complete)').first().json.supabase_key }}"
+              "value": "=Bearer {{ $json._supabase_key || $json.config.supabase_key }}"
             },
             {
               "name": "Content-Type",
@@ -699,11 +699,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('CFG - Live Speech Config (complete)').first().json.supabase_key }}"
+              "value": "={{ $json._supabase_key || $json.config.supabase_key }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('CFG - Live Speech Config (complete)').first().json.supabase_key }}"
+              "value": "=Bearer {{ $json._supabase_key || $json.config.supabase_key }}"
             },
             {
               "name": "Content-Type",

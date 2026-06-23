@@ -90,6 +90,21 @@ export function displayUserTranscript(text) {
   return '';
 }
 
+/** Merge Gemini STT fragments without duplicating top-level + serverContent echoes. */
+export function appendTranscriptionChunk(buffer, chunk) {
+  const piece = String(chunk || '');
+  if (!piece) return String(buffer || '');
+  const buf = String(buffer || '');
+  if (!buf) return piece;
+  if (buf === piece || buf.endsWith(piece)) return buf;
+  if (piece.startsWith(buf)) return piece;
+  const maxOverlap = Math.min(buf.length, piece.length, 80);
+  for (let n = maxOverlap; n >= 2; n -= 1) {
+    if (buf.slice(-n) === piece.slice(0, n)) return buf + piece.slice(n);
+  }
+  return buf + piece;
+}
+
 export function isSubstantiveAnswer(text) {
   const t = sanitizeTranscript(text, 'user');
   if (!t) return false;

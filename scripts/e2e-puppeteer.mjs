@@ -147,6 +147,20 @@ async function testIndexAssessmentShell(browser, base) {
   if (!hasSanitize) fail('TA_LIVE.sanitizeDisplayTranscript', 'missing');
   else ok('TA_LIVE.sanitizeDisplayTranscript exists');
 
+  const audioHelpers = await pg.evaluate(() => ({
+    flushMs: window.TA_LIVE?.AUDIO_FLUSH_MS,
+    hasDownsample: typeof window.TA_LIVE?.downsample === 'function',
+    downsampleLen: (() => {
+      const input = new Float32Array([0, 0.5, 0.25, 0.75, 0.1, 0.9]);
+      const out = window.TA_LIVE.downsample(input, 48000, 16000);
+      return out?.length || 0;
+    })(),
+  }));
+  if (!audioHelpers.hasDownsample) fail('TA_LIVE.downsample', 'missing');
+  else ok(`TA_LIVE.downsample (${audioHelpers.downsampleLen} samples)`);
+  if (audioHelpers.flushMs >= 1000) ok(`TA_LIVE audio flush ${audioHelpers.flushMs}ms`);
+  else fail('TA_LIVE audio flush window', String(audioHelpers.flushMs));
+
   await pg.close();
 }
 

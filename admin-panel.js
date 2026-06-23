@@ -2497,8 +2497,14 @@
                 throw new Error(data.message || data.error || 'Shortlist request failed');
             }
 
+            let linkCopied = false;
             if (data.assessment_link && navigator.clipboard?.writeText) {
-                await navigator.clipboard.writeText(data.assessment_link);
+                try {
+                    await navigator.clipboard.writeText(data.assessment_link);
+                    linkCopied = true;
+                } catch (clipErr) {
+                    console.warn('Assessment link clipboard copy skipped:', clipErr.message || clipErr);
+                }
             }
 
             let emailSent = !!data.email_sent;
@@ -2541,8 +2547,13 @@
                     'Shortlisted — session created but email failed: ' + emailError + '. Check n8n workflow is Active and URL uses /webhook/ not /webhook-test/.',
                     'err'
                 );
-            } else if (data.assessment_link && navigator.clipboard?.writeText) {
+            } else if (linkCopied) {
                 deps.banner('Shortlisted — session created. Link copied to clipboard.', 'ok');
+            } else if (data.assessment_link) {
+                deps.banner(
+                    'Shortlisted — session created. Copy the assessment link from the session row (clipboard blocked — keep this tab focused).',
+                    'ok'
+                );
             } else {
                 deps.banner('Shortlisted — session ' + (data.session_id || 'created'), 'ok');
             }

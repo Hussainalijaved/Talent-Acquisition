@@ -52,10 +52,16 @@ check('pure closing is closing-only', isClosingOnlyMessage('Thank you for your t
 console.log('\n=== extractInterviewQuestion ===');
 check('strips leading thank you', extractInterviewQuestion(
   'Thank you. Describe a time you had to collaborate with someone who disagreed. How did you handle it?'
-)?.includes('collaborate'));
+)?.includes('handle it'));
 check('strips trailing closing', extractInterviewQuestion(
   'What motivates you about this role? Thank you for your time.'
 )?.includes('motivates'));
+check('keeps first question when two asked', extractInterviewQuestion(
+  'Why are you interested in this role? What would you focus on in your first 90 days?'
+) === 'Why are you interested in this role?');
+check('drops coaching before question', extractInterviewQuestion(
+  "That's okay — try to use a specific example next time. Why are you interested in this role?"
+) === 'Why are you interested in this role?');
 
 console.log('\n=== appendTranscriptionChunk ===');
 check('empty chunk keeps buffer', appendTranscriptionChunk('hello', '') === 'hello');

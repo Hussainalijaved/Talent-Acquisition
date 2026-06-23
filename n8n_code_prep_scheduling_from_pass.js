@@ -106,31 +106,54 @@ async function lookupJobInterviewer(requisitionId, requisitionTitle) {
   const key = String(cfg.supabase_key || '').trim();
   if (!sb || !key) return '';
   const headers = { apikey: key, Authorization: `Bearer ${key}` };
+
+  async function fetchFirst(url) {
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) return '';
+      const rows = await res.json();
+      if (!Array.isArray(rows)) return '';
+      for (const row of rows) {
+        const email = String(row?.interviewer_email || '').trim().toLowerCase();
+        if (email) return email;
+      }
+      return '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   const reqId = String(requisitionId || '').trim();
   if (reqId) {
-    try {
-      const url =
-        `${sb}/rest/v1/jobs?select=interviewer_email&job_id=eq.${encodeURIComponent(reqId)}&limit=1`;
-      const res = await fetch(url, { headers });
-      if (res.ok) {
-        const rows = await res.json();
-        const email = String(rows?.[0]?.interviewer_email || '').trim().toLowerCase();
-        if (email) return email;
-      }
-    } catch (_) {}
+    const email = await fetchFirst(
+      `${sb}/rest/v1/jobs?select=interviewer_email&job_id=eq.${encodeURIComponent(reqId)}&limit=1`
+    );
+    if (email) return email;
   }
+
   const title = String(requisitionTitle || '').trim();
-  if (title) {
-    try {
-      const url =
-        `${sb}/rest/v1/jobs?select=interviewer_email&title=eq.${encodeURIComponent(title)}&limit=1`;
-      const res = await fetch(url, { headers });
-      if (res.ok) {
-        const rows = await res.json();
-        const email = String(rows?.[0]?.interviewer_email || '').trim().toLowerCase();
-        if (email) return email;
-      }
-    } catch (_) {}
+  if (!title) return '';
+
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 64);
+
+  const urls = [
+    `${sb}/rest/v1/jobs?select=interviewer_email&title=eq.${encodeURIComponent(title)}&limit=1`,
+    `${sb}/rest/v1/jobs?select=interviewer_email&title=ilike.${encodeURIComponent(title)}&limit=3`,
+    `${sb}/rest/v1/jobs?select=interviewer_email&title=ilike.${encodeURIComponent(`%${title.replace(/\s+/g, '%')}%`)}&limit=3`,
+  ];
+  if (slug && slug !== reqId) {
+    urls.push(
+      `${sb}/rest/v1/jobs?select=interviewer_email&job_id=eq.${encodeURIComponent(slug)}&limit=1`
+    );
+  }
+
+  for (const url of urls) {
+    const email = await fetchFirst(url);
+    if (email) return email;
   }
   return '';
 }
@@ -160,8 +183,16 @@ let interviewerEmail = String(
 
 if (!interviewerEmail) {
   interviewerEmail = await lookupJobInterviewer(
-    session.requisition_id || parse.requisition_id || cfg.requisition_id,
-    cfg.requisition_title || session.requisition_title || parse.requisition_title
+    session.requisition_id ||
+      sessionCfg.requisition_id ||
+      parse.requisition_id ||
+      parseCfg.requisition_id ||
+      cfg.requisition_id,
+    sessionCfg.requisition_title ||
+      cfg.requisition_title ||
+      session.requisition_title ||
+      parse.requisition_title ||
+      parseCfg.requisition_title
   );
 }
 

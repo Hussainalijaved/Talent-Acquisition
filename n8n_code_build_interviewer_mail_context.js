@@ -158,32 +158,54 @@ async function lookupJobInterviewer({ supabaseUrl, supabaseKey, requisitionId, r
   if (!sb || !key) return '';
 
   const headers = { apikey: key, Authorization: `Bearer ${key}` };
-  const reqId = String(requisitionId || '').trim();
-  if (reqId) {
+
+  async function fetchFirst(url) {
     try {
-      const url =
-        `${sb}/rest/v1/jobs?select=interviewer_email&job_id=eq.${encodeURIComponent(reqId)}&limit=1`;
       const res = await fetch(url, { headers });
-      if (res.ok) {
-        const rows = await res.json();
-        const email = normalizeEmail(rows?.[0]?.interviewer_email);
+      if (!res.ok) return '';
+      const rows = await res.json();
+      if (!Array.isArray(rows)) return '';
+      for (const row of rows) {
+        const email = normalizeEmail(row?.interviewer_email);
         if (email) return email;
       }
-    } catch (_) {}
+      return '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  const reqId = String(requisitionId || '').trim();
+  if (reqId) {
+    const email = await fetchFirst(
+      `${sb}/rest/v1/jobs?select=interviewer_email&job_id=eq.${encodeURIComponent(reqId)}&limit=1`
+    );
+    if (email) return email;
   }
 
   const title = String(requisitionTitle || '').trim();
-  if (title) {
-    try {
-      const url =
-        `${sb}/rest/v1/jobs?select=interviewer_email&title=eq.${encodeURIComponent(title)}&limit=1`;
-      const res = await fetch(url, { headers });
-      if (res.ok) {
-        const rows = await res.json();
-        const email = normalizeEmail(rows?.[0]?.interviewer_email);
-        if (email) return email;
-      }
-    } catch (_) {}
+  if (!title) return '';
+
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 64);
+
+  const urls = [
+    `${sb}/rest/v1/jobs?select=interviewer_email&title=eq.${encodeURIComponent(title)}&limit=1`,
+    `${sb}/rest/v1/jobs?select=interviewer_email&title=ilike.${encodeURIComponent(title)}&limit=3`,
+    `${sb}/rest/v1/jobs?select=interviewer_email&title=ilike.${encodeURIComponent(`%${title.replace(/\s+/g, '%')}%`)}&limit=3`,
+  ];
+  if (slug && slug !== reqId) {
+    urls.push(
+      `${sb}/rest/v1/jobs?select=interviewer_email&job_id=eq.${encodeURIComponent(slug)}&limit=1`
+    );
+  }
+
+  for (const url of urls) {
+    const email = await fetchFirst(url);
+    if (email) return email;
   }
 
   return '';
@@ -216,9 +238,10 @@ async function resolveInterviewerEmail({ base, ctx, cfg, sessionRow }) {
         sessionCfg.requisition_id ||
         cfg.requisition_id,
       requisitionTitle:
+        sessionCfg.requisition_title ||
         base.requisition_title ||
         ctx.requisition_title ||
-        sessionCfg.requisition_title ||
+        sessionRow?.requisition_title ||
         cfg.requisition_title,
     });
   }
@@ -287,8 +310,24 @@ if (!candidateEmail) {
 }
 
 if (!interviewerEmail) {
+  const sessionCfg = parseJson(sessionRow?.config, {});
+  const reqId =
+    sessionRow?.requisition_id ||
+    base.requisition_id ||
+    ctx.requisition_id ||
+    sessionCfg.requisition_id ||
+    cfg.requisition_id ||
+    'unknown';
+  const reqTitle =
+    sessionCfg.requisition_title ||
+    base.requisition_title ||
+    ctx.requisition_title ||
+    role ||
+    'unknown';
   throw new Error(
-    'interviewer_email missing — set interviewer on the job in admin (apply form sends it) or ensure session.config.interviewer_email is stored.'
+    `interviewer_email missing for "${reqTitle}" (requisition_id=${reqId}). ` +
+      'Set interviewer email on the job in Admin → Jobs, or set interviewer_email in CFG - Live Speech Config (complete). ' +
+      'New applications copy it from the apply form into session.config automatically.'
   );
 }
 

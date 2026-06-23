@@ -744,18 +744,37 @@
     return json;
   }
 
+  function extractInterviewQuestion(text) {
+    let t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!t) return '';
+    t = t.replace(
+      /\s*(?:thank you(?: for your time)?|thanks(?: for your time)?|we will be in touch|we'll be in touch|that completes the voice interview|that concludes(?: the interview)?|have a (?:great|good|nice) day)[^.?!]*[.?!]?\s*$/gi,
+      ''
+    ).trim();
+    const sentences = t.split(/(?<=[.?!])\s+/).filter((s) => s.trim().length > 2);
+    const questionSentences = sentences.filter(
+      (s) => s.includes('?') && s.split(/\s+/).filter(Boolean).length >= 4
+    );
+    if (questionSentences.length >= 1) return questionSentences[0].replace(/\s+/g, ' ').trim();
+    return t.length >= 20 ? t : '';
+  }
+
   function chooseQuestionText(streamed, final) {
     const streamRaw = String(streamed || '').replace(/\s+/g, ' ').trim();
     const finRaw = String(final || '').replace(/\s+/g, ' ').trim();
-    if (!streamRaw) return finRaw;
-    if (!finRaw || finRaw === '…') return streamRaw;
+    if (!streamRaw) return extractInterviewQuestion(finRaw) || finRaw;
+    if (!finRaw || finRaw === '…') return extractInterviewQuestion(streamRaw) || streamRaw;
     const norm = (s) => s.toLowerCase().replace(/[^\w\s?]/g, '').replace(/\s+/g, ' ').trim();
-    if (norm(streamRaw) === norm(finRaw)) return streamRaw;
+    if (norm(streamRaw) === norm(finRaw)) return extractInterviewQuestion(streamRaw) || streamRaw;
     if (norm(finRaw).includes(norm(streamRaw)) || norm(streamRaw).includes(norm(finRaw))) {
-      return streamRaw.length >= finRaw.length ? streamRaw : finRaw;
+      const picked = streamRaw.length >= finRaw.length ? streamRaw : finRaw;
+      return extractInterviewQuestion(picked) || picked;
     }
-    if (streamRaw.includes('?') && streamRaw.split(/\s+/).filter(Boolean).length >= 6) return streamRaw;
-    return finRaw.length >= streamRaw.length ? finRaw : streamRaw;
+    if (streamRaw.includes('?') && streamRaw.split(/\s+/).filter(Boolean).length >= 6) {
+      return extractInterviewQuestion(streamRaw) || streamRaw;
+    }
+    const picked = finRaw.length >= streamRaw.length ? finRaw : streamRaw;
+    return extractInterviewQuestion(picked) || picked;
   }
 
   async function unlockAudioBeforeSession() {

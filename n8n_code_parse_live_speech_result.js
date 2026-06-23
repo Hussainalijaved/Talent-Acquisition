@@ -129,6 +129,63 @@ function computeSpeechAverage(rows, maxQ, speechPhases) {
   return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 }
 
+async function lookupJobInterviewer(requisitionId, requisitionTitle, supabaseUrl, supabaseKey) {
+  const sb = String(supabaseUrl || '').replace(/\/+$/, '');
+  const key = String(supabaseKey || '').trim();
+  if (!sb || !key) return '';
+  const headers = { apikey: key, Authorization: `Bearer ${key}` };
+
+  async function fetchFirst(url) {
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) return '';
+      const rows = await res.json();
+      if (!Array.isArray(rows)) return '';
+      for (const row of rows) {
+        const email = String(row?.interviewer_email || '').trim().toLowerCase();
+        if (email) return email;
+      }
+      return '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  const reqId = String(requisitionId || '').trim();
+  if (reqId) {
+    const email = await fetchFirst(
+      `${sb}/rest/v1/jobs?select=interviewer_email&job_id=eq.${encodeURIComponent(reqId)}&limit=1`
+    );
+    if (email) return email;
+  }
+
+  const title = String(requisitionTitle || '').trim();
+  if (!title) return '';
+
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 64);
+
+  const urls = [
+    `${sb}/rest/v1/jobs?select=interviewer_email&title=eq.${encodeURIComponent(title)}&limit=1`,
+    `${sb}/rest/v1/jobs?select=interviewer_email&title=ilike.${encodeURIComponent(title)}&limit=3`,
+    `${sb}/rest/v1/jobs?select=interviewer_email&title=ilike.${encodeURIComponent(`%${title.replace(/\s+/g, '%')}%`)}&limit=3`,
+  ];
+  if (slug && slug !== reqId) {
+    urls.push(
+      `${sb}/rest/v1/jobs?select=interviewer_email&job_id=eq.${encodeURIComponent(slug)}&limit=1`
+    );
+  }
+
+  for (const url of urls) {
+    const email = await fetchFirst(url);
+    if (email) return email;
+  }
+  return '';
+}
+
 const norm = resolveLiveSpeechNorm();
 const cfg = norm.config || {};
 const fetchRaw = $input.first().json;
@@ -279,32 +336,49 @@ const body = {
 const lastTurn = turns[turns.length - 1] || {};
 const phaseScore = Math.round(Number(lastTurn.score ?? speechAvg));
 
-return [
-  {
-    json: {
-      score: combinedScore,
-      phase_score: phaseScore,
-      soft_skills: lastTurn.soft_skills || null,
-      feedback: finalFeedback,
-      nextQuestion: '',
-      time_limit_seconds: null,
-      deadline_at: null,
-      complexity_tier: null,
-      isFinal: true,
-      assessment_mode: 'live_speech',
-      speech_phases: speechPhases,
-      result: finalResult,
-      average_score: combinedScore,
-      candidate_email: norm.candidate_email || session.candidate_email,
-      session_id: session.id,
-      interviewer_email: sessionInterviewer || sessCfg.interviewer_email || '',
-      current_phase: lastPhase,
-      config: sessCfg,
-      gmail_thread_id: session.gmail_thread_id || null,
-      gmail_message_id: session.gmail_message_id || null,
-      mail_subject: session.mail_subject || null,
-      _session_patch_url: patchUrl,
-      _session_patch_body: body,
+return (async () => {
+  let resolvedInterviewer = sessionInterviewer || sessCfg.interviewer_email || '';
+  if (!resolvedInterviewer) {
+    resolvedInterviewer = await lookupJobInterviewer(
+      session.requisition_id || sessionCfg.requisition_id,
+      sessionCfg.requisition_title || cfg.requisition_title,
+      cfg.supabase_url || sessCfg.supabase_url,
+      cfg.supabase_key || sessCfg.supabase_key
+    );
+    if (resolvedInterviewer) {
+      sessCfg.interviewer_email = resolvedInterviewer;
+    }
+  }
+
+  return [
+    {
+      json: {
+        score: combinedScore,
+        phase_score: phaseScore,
+        soft_skills: lastTurn.soft_skills || null,
+        feedback: finalFeedback,
+        nextQuestion: '',
+        time_limit_seconds: null,
+        deadline_at: null,
+        complexity_tier: null,
+        isFinal: true,
+        assessment_mode: 'live_speech',
+        speech_phases: speechPhases,
+        result: finalResult,
+        average_score: combinedScore,
+        candidate_email: norm.candidate_email || session.candidate_email,
+        session_id: session.id,
+        requisition_id: session.requisition_id || sessionCfg.requisition_id || null,
+        requisition_title: sessionCfg.requisition_title || cfg.requisition_title || null,
+        interviewer_email: resolvedInterviewer,
+        current_phase: lastPhase,
+        config: sessCfg,
+        gmail_thread_id: session.gmail_thread_id || null,
+        gmail_message_id: session.gmail_message_id || null,
+        mail_subject: session.mail_subject || null,
+        _session_patch_url: patchUrl,
+        _session_patch_body: body,
+      },
     },
-  },
-];
+  ];
+})();

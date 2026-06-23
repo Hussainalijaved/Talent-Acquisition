@@ -489,6 +489,13 @@
             min-height: calc(100dvh - 4rem);
         }
 
+        .shell-immersive .assessment-workspace,
+        .shell-immersive .speech-workspace-full {
+            height: 100%;
+            min-height: 0;
+            flex: 1;
+        }
+
         @media (min-width: 1280px) {
             .assessment-workspace { flex-direction: row; }
         }
@@ -617,13 +624,56 @@
         /* ── Full-width speech interview (no sidebar) ── */
         .speech-workspace-full {
             flex-direction: column !important;
+            width: 100%;
+            max-width: none;
+            flex: 1;
+            min-height: 0;
             background: linear-gradient(180deg, #f8fafc 0%, #ffffff 40%);
         }
 
         .speech-main-full {
-            max-width: 52rem;
             width: 100%;
-            margin: 0 auto;
+            max-width: none;
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .speech-workspace-full .speech-question-card,
+        .speech-workspace-full .speech-answer-panel {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .speech-workspace-full .speech-interviewer-box,
+        .speech-workspace-full .speech-response-box {
+            flex: 1;
+            min-height: 8rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .speech-workspace-full .speech-interviewer-box .transcript-stream,
+        .speech-workspace-full .speech-response-box p:last-child {
+            flex: 1;
+        }
+
+        .shell-immersive {
+            height: 100dvh;
+            max-height: 100dvh;
+            overflow: hidden;
+        }
+
+        .shell-immersive header {
+            flex-shrink: 0;
+        }
+
+        .shell-immersive main {
+            flex: 1;
+            min-height: 0;
         }
 
         .speech-progress-bar {
@@ -1005,10 +1055,10 @@
         // Local dev: cd relay && npm start → ws://localhost:8080/live
         const LIVE_SPEECH_RELAY_FALLBACK = 'ws://localhost:8080/live';
 
-        const Shell = ({ children, subtitle, footerNote, fullWidth = false, headerExtra = null }) => (
-            <div className="min-h-screen flex flex-col w-full">
-                <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/85 backdrop-blur-xl w-full shadow-sm">
-                    <div className={`w-full h-16 flex items-center justify-between gap-3 ${fullWidth ? 'px-4 lg:px-5' : 'max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8'}`}>
+        const Shell = ({ children, subtitle, footerNote, fullWidth = false, immersive = false, headerExtra = null }) => (
+            <div className={`flex flex-col w-full ${immersive ? 'shell-immersive' : 'min-h-screen'}`}>
+                <header className={`${immersive ? 'relative' : 'sticky top-0'} z-40 border-b border-slate-200/90 bg-white/85 backdrop-blur-xl w-full shadow-sm`}>
+                    <div className={`w-full ${immersive ? 'h-12' : 'h-16'} flex items-center justify-between gap-3 ${fullWidth ? 'px-4 lg:px-5' : 'max-w-[1600px] xl:max-w-[1760px] mx-auto px-4 sm:px-6 lg:px-8'}`}>
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-glow animate-scale-in">
                                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -1033,7 +1083,7 @@
                     </div>
                 </header>
                 <main className={`flex-1 min-h-0 w-full ${fullWidth ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}>{children}</main>
-                {footerNote && (
+                {footerNote && !immersive && (
                     <footer className="border-t border-slate-200/80 py-4 bg-white/60">
                         <p className="text-center text-xs text-slate-500 max-w-xl mx-auto px-4 leading-relaxed">{footerNote}</p>
                     </footer>
@@ -2476,8 +2526,8 @@
             }
 
             return (
-                <Shell subtitle="Phase 2 · Voice interview" fullWidth footerNote="Use headphones to avoid echo. Allow microphone access.">
-                    <div className="assessment-workspace speech-workspace-full fade-in portal-lock">
+                <Shell subtitle="Phase 2 · Voice interview" fullWidth immersive footerNote="Use headphones to avoid echo. Allow microphone access.">
+                    <div className="assessment-workspace speech-workspace-full fade-in portal-lock h-full">
                         <div className="assessment-main speech-main-full">
                             <div className="speech-progress-bar shrink-0">
                                 {inWarmup ? (
@@ -2517,7 +2567,7 @@
                                     {saveNotice}
                                 </div>
                             ) : null}
-                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 py-4 flex flex-col">
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col">
                                 {interviewComplete ? (
                                     <div className="fade-in rounded-2xl border border-emerald-200 bg-emerald-50 overflow-hidden shadow-soft animate-scale-in">
                                         <div className="px-6 py-8 text-center">
@@ -2749,10 +2799,11 @@
             );
         };
 
-        /** Gradual question reveal — feels AI-generated rather than instant paste. */
+        /** Question reveal — brief loading beat, then show full text (no word-by-word typing). */
         function useQuestionReveal(question, step) {
+            const initialFull = String(question || '').trim();
             const [displayed, setDisplayed] = React.useState('');
-            const [phase, setPhase] = React.useState('idle'); // idle | pending | typing | done
+            const [phase, setPhase] = React.useState(initialFull ? 'pending' : 'idle'); // idle | pending | done
 
             React.useEffect(() => {
                 const full = String(question || '').trim();
@@ -2765,41 +2816,23 @@
                 setDisplayed('');
                 setPhase('pending');
                 let cancelled = false;
-                let tickTimer = null;
 
                 const startTimer = setTimeout(() => {
                     if (cancelled) return;
-                    setPhase('typing');
-                    const tokens = full.match(/\S+|\s+/g) || [full];
-                    let idx = 0;
-                    const stepReveal = () => {
-                        if (cancelled) return;
-                        if (idx >= tokens.length) {
-                            setDisplayed(full);
-                            setPhase('done');
-                            return;
-                        }
-                        setDisplayed((prev) => prev + tokens[idx]);
-                        idx += 1;
-                        const delay = tokens[idx - 1]?.trim()
-                            ? 32 + Math.floor(Math.random() * 22)
-                            : 12;
-                        tickTimer = setTimeout(stepReveal, delay);
-                    };
-                    stepReveal();
-                }, step === 1 ? 680 : 420);
+                    setDisplayed(full);
+                    setPhase('done');
+                }, step === 1 ? 920 : 420);
 
                 return () => {
                     cancelled = true;
                     clearTimeout(startTimer);
-                    if (tickTimer) clearTimeout(tickTimer);
                 };
             }, [question, step]);
 
             return {
                 displayed,
                 isPending: phase === 'pending',
-                isTyping: phase === 'typing',
+                isTyping: false,
                 isDone: phase === 'done',
             };
         }
@@ -2822,7 +2855,8 @@
             const phases = Array.from({ length: totalSteps }, (_, i) => i + 1);
             const charCount = answer.trim().length;
             const questionReveal = useQuestionReveal(question, currentStep);
-            const questionLocked = questionReveal.isPending || questionReveal.isTyping;
+            const questionLocked = questionReveal.isPending;
+            const questionReady = questionReveal.isDone;
             const canSubmit = charCount >= 5 && !contentMasked && !isLoading && !questionLocked;
             return (
                 <Shell subtitle={`Phase 1 · Written assessment · Question ${currentStep} of ${totalSteps}`} fullWidth>
@@ -2894,14 +2928,9 @@
                                                     </span>
                                                     Generating your question…
                                                 </p>
-                                            ) : (
-                                                <>
-                                                    {questionReveal.displayed || question}
-                                                    {questionReveal.isTyping ? (
-                                                        <span className="question-typing-cursor" aria-hidden="true" />
-                                                    ) : null}
-                                                </>
-                                            )}
+                                            ) : questionReady ? (
+                                                <p className="question-protected question-text">{questionReveal.displayed}</p>
+                                            ) : null}
                                         </div>
                                     )}
                                 </div>
@@ -3177,8 +3206,8 @@
             const showTimer = timerReady && phaseTimeLimit != null && timeLeft != null;
 
             return (
-                <Shell subtitle="Phase 2 · Voice interview" fullWidth>
-                    <div className="assessment-workspace speech-workspace-full fade-in assessment-lock">
+                <Shell subtitle="Phase 2 · Voice interview" fullWidth immersive>
+                    <div className="assessment-workspace speech-workspace-full fade-in assessment-lock h-full">
                         <div className="assessment-main speech-main-full">
                             <div className="speech-progress-bar shrink-0">
                                 {phases.map((p) => (
@@ -3200,7 +3229,7 @@
                                 ) : null}
                             </div>
 
-                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 py-4 flex flex-col">
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col">
                                 {speechIndex === 1 ? (
                                     <div className="mb-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/80 to-violet-50/40 px-5 py-4 shrink-0 animate-fade-up flex items-start gap-3">
                                         <div className="w-8 h-8 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center shrink-0">
@@ -4135,7 +4164,7 @@
             const deadlineAtRef = useRef(null);
             const pendingSpeechTimerRef = useRef(null);
             const [speechTimerReady, setSpeechTimerReady] = useState(false);
-            const [question, setQuestion] = useState('Loading question…');
+            const [question, setQuestion] = useState('');
             const [answer, setAnswer] = useState('');
             const [result, setResult] = useState(null);
             const [overallScore, setOverallScore] = useState(null);
@@ -4787,7 +4816,8 @@
 
                     const { phaseIndex, phaseNum, row: currentPhaseData, questionText } = resume;
 
-                    setQuestion(questionText);
+                    setQuestion('');
+                    setAnswer('');
                     const modeInfo = resolveAssessmentMode(data, phaseNum, currentPhaseData);
                     setAssessmentMode(modeInfo.mode);
                     setTechMaxSteps(modeInfo.techMaxSteps);
@@ -4828,6 +4858,11 @@
                     }
 
                     setView('assessment');
+
+                    // Defer Q1 text so the same loading → reveal flow runs as later questions.
+                    requestAnimationFrame(() => {
+                        setTimeout(() => setQuestion(questionText), 60);
+                    });
                 } catch (e) {
                     console.error('Start Assessment Error:', e);
                     alert(e?.message || 'Failed to load the first question. Please refresh or re-open the link from your email.');

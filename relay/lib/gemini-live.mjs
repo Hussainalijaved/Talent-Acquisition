@@ -217,25 +217,15 @@ export class GeminiLiveBridge {
   }
 
   buildNextQuestionPrompt(aNum, nextQ) {
-    let coaching = '';
-    if (this.coachingConfig.coachingEnabled && this.lastAnswerWeak) {
-      coaching =
-        ' The candidate\'s previous answer was brief or unclear. Before question ' +
-        nextQ +
-        ', give ONE short supportive coaching line (never mention scores or say they failed) — e.g. gently encourage them to use a specific example or more detail — then ask the next question. Keep coaching + question within 3 sentences total. ';
-    }
-
     if (nextQ >= this.maxTurns) {
       return (
-        coaching +
         `The candidate finished answering question ${aNum}. You MUST ask interview question ${nextQ} of ${this.maxTurns} now — this is the LAST question before the interview ends. ` +
-        'Ask exactly one new behavioural interview question in clear English. Do NOT thank the candidate. Do NOT say the interview is complete. Do NOT say goodbye or "we will be in touch". Ask the question only, then stop and wait.'
+        'Ask exactly ONE behavioural interview question in clear English — no coaching, no preamble, no second question. Do NOT thank the candidate. Do NOT say the interview is complete. Do NOT say goodbye or "we will be in touch". Ask the question only, then stop and wait.'
       );
     }
     return (
-      coaching +
       `The candidate finished answering question ${aNum}. Now ask interview question ${nextQ} of ${this.maxTurns} in clear English. ` +
-      'Ask exactly one question, then stop talking and wait for the candidate. Do not thank or close the interview yet.'
+      'Ask exactly ONE question only — no coaching, no acknowledgment, no follow-up probe, and no second question in the same turn. Then stop talking and wait for the candidate. Do not thank or close the interview yet.'
     );
   }
 
@@ -312,7 +302,8 @@ export class GeminiLiveBridge {
   }
 
   commitQuestionText(qNum, text, opts = {}) {
-    const modelText = stripQuestionNumbering(String(text || '').trim());
+    const raw = stripQuestionNumbering(String(text || '').trim());
+    const modelText = extractInterviewQuestion(raw) || raw;
     if (!modelText || qNum < 1 || qNum > this.maxTurns) return;
 
     if (!this.roundQuestionEmitted && this.questions.length < qNum) {
@@ -585,9 +576,11 @@ export class GeminiLiveBridge {
       return;
     }
 
-    const qNum = this.roundQuestionEmitted
-      ? this.questions.length
-      : this.questions.length + 1;
+    const qNum = this.inFollowUpFor
+      ? this.inFollowUpFor
+      : (this.roundQuestionEmitted
+        ? this.questions.length
+        : this.questions.length + 1);
     if (!qNum || qNum > this.maxTurns) return;
 
     if (this.questions.length === 0 && !this.roundQuestionEmitted) {
@@ -596,14 +589,18 @@ export class GeminiLiveBridge {
     modelText = stripQuestionNumbering(modelText);
     if (!modelText) return;
 
+    const partialText = modelText.includes('?')
+      ? (extractInterviewQuestion(modelText) || modelText)
+      : modelText;
+
     this.onEvent({
       type: 'transcript',
       speaker: 'model',
-      text: modelText,
+      text: partialText,
       partial: true,
       number: qNum,
     });
-    this.onEvent({ type: 'question_partial', number: qNum, text: modelText });
+    this.onEvent({ type: 'question_partial', number: qNum, text: partialText });
     this.streamingQuestionText = modelText;
     this.streamingQuestionNum = qNum;
   }
@@ -831,7 +828,7 @@ export class GeminiLiveBridge {
     this.pendingAudioChunks = [];
     this.blockModelOutput = false;
     this.awaitingAnswer = false;
-    this.roundQuestionEmitted = true;
+    this.roundQuestionEmitted = false;
     this.sendClientText(this.buildFollowUpPrompt(qNum, questionText, answerText), true);
     this.scheduleFollowUpWatchdog(qNum);
   }
@@ -1006,7 +1003,9 @@ export class GeminiLiveBridge {
     if (this.inFollowUpFor) {
       const qNum = this.inFollowUpFor;
       const streamed = this.streamingQuestionNum === qNum ? this.streamingQuestionText : '';
-      modelText = stripQuestionNumbering(resolveCommittedQuestionText(streamed, modelText));
+      modelText = extractInterviewQuestion(
+        stripQuestionNumbering(resolveCommittedQuestionText(streamed, modelText))
+      ) || stripQuestionNumbering(resolveCommittedQuestionText(streamed, modelText));
       if (this.questions.length >= qNum) {
         this.questions[qNum - 1] = modelText;
       } else {
@@ -1028,6 +1027,7 @@ export class GeminiLiveBridge {
     if (this.questions.length === 0) {
       modelText = stripLeadingGreeting(modelText) || modelText;
     }
+    modelText = extractInterviewQuestion(modelText) || modelText;
 
     // Gemini sometimes closes early (e.g. thank-you as "Q5") — reject and re-prompt.
     if (!this.interviewEnded && isClosingOnlyMessage(modelText) && this.answers.length < this.maxTurns) {
@@ -1065,19 +1065,19 @@ export class GeminiLiveBridge {
       this.emitAwaitingAnswer(qNum, modelText);
     } else if (this.roundQuestionEmitted && this.questions.length) {
       const idx = this.questions.length - 1;
-      const merged = resolveCommittedQuestionText(
-        `${this.questions[idx]} ${streamed}`.trim(),
-        `${this.questions[idx]} ${modelText}`.replace(/\s+/g, ' ').trim()
-      );
-      this.questions[idx] = merged;
-      this.onEvent({ type: 'question', number: idx + 1, text: this.questions[idx] });
-      this.onEvent({
-        type: 'transcript',
-        speaker: 'model',
-        text: this.questions[idx],
-        partial: false,
-        number: idx + 1,
-      });
+      const resolved = extractInterviewQuestion(resolveCommittedQuestionText(streamed, modelText)) ||
+        resolveCommittedQuestionText(streamed, modelText);
+      if (resolved && resolved !== this.questions[idx]) {
+        this.questions[idx] = resolved;
+        this.onEvent({ type: 'question', number: idx + 1, text: resolved });
+        this.onEvent({
+          type: 'transcript',
+          speaker: 'model',
+          text: resolved,
+          partial: false,
+          number: idx + 1,
+        });
+      }
     }
   }
 

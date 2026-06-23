@@ -118,7 +118,13 @@ export function mergeQuestionChunks(chunks) {
   return parts.join(' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Pull the actual interview question out of acknowledgments / trailing closings. */
+function isSubstantiveQuestionSentence(sentence) {
+  const s = String(sentence || '').replace(/\s+/g, ' ').trim();
+  if (!s.includes('?')) return false;
+  return s.split(/\s+/).filter(Boolean).length >= 4;
+}
+
+/** Pull exactly ONE interview question out of coaching, acks, or trailing closings. */
 export function extractInterviewQuestion(text) {
   let t = String(text || '').replace(/\s+/g, ' ').trim();
   if (!t) return '';
@@ -134,12 +140,12 @@ export function extractInterviewQuestion(text) {
   ).trim();
   if (leadStrip.length >= 20) t = leadStrip;
 
-  const sentences = t.split(/(?<=[.?!])\s+/).filter((s) => s.length > 3);
-  const firstQIdx = sentences.findIndex((s) => s.includes('?'));
-  if (firstQIdx >= 0) {
-    let start = 0;
-    while (start < firstQIdx && sentences[start].split(/\s+/).filter(Boolean).length < 4) start += 1;
-    return sentences.slice(start, firstQIdx + 1).join(' ').replace(/\s+/g, ' ').trim();
+  const sentences = t.split(/(?<=[.?!])\s+/).filter((s) => s.trim().length > 2);
+  const questionSentences = sentences.filter(isSubstantiveQuestionSentence);
+
+  // Never surface coaching + question or two questions in one turn — first ? only.
+  if (questionSentences.length >= 1) {
+    return questionSentences[0].replace(/\s+/g, ' ').trim();
   }
 
   const words = t.split(/\s+/).filter(Boolean);
@@ -160,10 +166,12 @@ export function resolveCommittedQuestionText(streamed, final) {
 
   if (norm(streamQ) === norm(finalQ)) return streamQ;
   if (norm(finalQ).includes(norm(streamQ)) || norm(streamQ).includes(norm(finalQ))) {
-    return streamQ.length >= finalQ.length ? streamQ : finalQ;
+    return extractInterviewQuestion(streamQ.length >= finalQ.length ? streamQ : finalQ) ||
+      (streamQ.length >= finalQ.length ? streamQ : finalQ);
   }
   if (streamQ.includes('?') && streamQ.split(/\s+/).length >= 6) return streamQ;
-  return finalQ.length >= streamQ.length ? finalQ : streamQ;
+  const picked = finalQ.length >= streamQ.length ? finalQ : streamQ;
+  return extractInterviewQuestion(picked) || picked;
 }
 
 /** True when the model spoke a closing/thank-you instead of an interview question. */

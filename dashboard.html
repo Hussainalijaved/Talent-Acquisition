@@ -1064,15 +1064,24 @@
         async function fetchAssessmentSessions() {
             const fullSelect =
                 'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, proctor_report, updated_at, created_at';
+            const baseSelect =
+                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, updated_at, created_at';
+            const minimalSelect =
+                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, updated_at, created_at';
+
             let res = await sb.from('assessment_sessions')
                 .select(fullSelect)
                 .order('updated_at', { ascending: false })
                 .limit(1000);
-            if (res.error) {
-                const baseSelect =
-                    'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, proctor_report, updated_at, created_at';
+            if (res.error && /proctor_report|column.*does not exist/i.test(String(res.error.message || ''))) {
                 res = await sb.from('assessment_sessions')
                     .select(baseSelect)
+                    .order('updated_at', { ascending: false })
+                    .limit(1000);
+            }
+            if (res.error) {
+                res = await sb.from('assessment_sessions')
+                    .select(minimalSelect)
                     .order('updated_at', { ascending: false })
                     .limit(1000);
             }

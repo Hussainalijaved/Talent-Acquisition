@@ -275,7 +275,7 @@
       this.setStatus('Interviewer is starting…');
       await this.startMic();
       if (this.playQueue.length) void this.drainPlayback();
-      this.setStatus('Listen to the interviewer — the first question is coming');
+      this.setStatus('Listen to the interviewer — setup is starting');
     }
 
     waitForType(type, ms) {
@@ -339,14 +339,14 @@
         this.processingAnswer = true;
         this.setStatus(
           msg.follow_up
-            ? `Follow-up answer ${msg.number} captured — saving…`
-            : `Answer ${msg.number} captured — saving in background…`
+            ? 'Follow-up captured — saving…'
+            : 'Answer captured — saving in background…'
         );
       }
       if (msg.type === 'follow_up_probe') {
         this.processingAnswer = false;
         this.onFollowUpProbe?.({ number: msg.number, maxTurns: msg.maxTurns });
-        this.setStatus(`Follow-up on question ${msg.number} — listen to the interviewer…`);
+        this.setStatus('Follow-up — listen to the interviewer…');
       }
       if (msg.type === 'warmup_phase') {
         this.onWarmupPhase?.({ phase: msg.phase });
@@ -384,11 +384,7 @@
         this.forceEndAnswer();
         this.processingAnswer = false;
         this.onNextQuestionReady({ number: msg.number });
-        this.setStatus(
-          msg.number > 0
-            ? `Question ${msg.number} — the interviewer is speaking…`
-            : 'The interviewer is speaking…'
-        );
+        this.setStatus('The interviewer is speaking…');
       }
       if (msg.type === 'turn_saved_status') {
         this.onTurn({ savedStatus: { number: msg.number, saved: !!msg.saved, error: msg.error } });
@@ -401,8 +397,8 @@
         } else {
           this.setStatus(
             msg.saved
-              ? `Answer ${msg.number} saved — preparing next step…`
-              : `Answer ${msg.number} recorded — preparing next step…`
+              ? 'Answer saved — preparing next step…'
+              : 'Answer recorded — preparing next step…'
           );
         }
       }
@@ -422,7 +418,7 @@
           ? 'Microphone check — listen, then say a few words when the mic opens'
           : msg.warmup === 'intro'
             ? 'Introduction — listen, then speak when the mic opens'
-            : `Question ${msg.number} — listen, then speak when the mic opens`;
+            : 'Listen, then speak when the mic opens';
         this.setStatus(statusMsg);
       }
       if (msg.type === 'time_limit_update') {
@@ -457,7 +453,7 @@
         this.processingAnswer = false;
         this.answering = false;
         this.onPrematureClosing(msg);
-        this.setStatus('Preparing the next question — please wait…');
+        this.setStatus('Preparing the next step — please wait…');
         return;
       }
       if (msg.type === 'interview_closing') {
@@ -469,7 +465,7 @@
         this.stopMic();
         this.processingAnswer = false;
         this.interviewEnded = true;
-        this.setStatus(`All ${msg.maxTurns || 5} questions complete — the interviewer is wrapping up…`);
+        this.setStatus('Interview complete — the interviewer is wrapping up…');
         this.onInterviewComplete(msg);
         if (!this.autoEndTimer && !this.ended) {
           this.autoEndTimer = setTimeout(() => {

@@ -657,12 +657,19 @@
             border: 1px solid rgba(16, 185, 129, 0.25);
             background: rgba(236, 253, 245, 0.7);
             padding: 0.875rem 1rem;
-            margin-top: 1rem;
+            margin-top: 0.75rem;
         }
 
         .speech-response-box.warmup {
             border-color: rgba(245, 158, 11, 0.3);
             background: rgba(255, 251, 235, 0.8);
+        }
+
+        .speech-interviewer-box {
+            border-radius: 0.75rem;
+            border: 1px solid rgba(99, 102, 241, 0.22);
+            background: rgba(238, 242, 255, 0.85);
+            padding: 0.875rem 1rem;
         }
 
         .speech-question-card {
@@ -1783,7 +1790,7 @@
                                 </li>
                                 <li className="flex gap-2.5">
                                     <span className="text-indigo-600 font-bold shrink-0">3.</span>
-                                    <span>Live captions show what you and the interviewer say. Click End when done.</span>
+                                    <span>Live captions show what the interviewer says and your responses. Click End when done.</span>
                                 </li>
                                 <li className="flex gap-2.5">
                                     <span className="text-indigo-600 font-bold shrink-0">4.</span>
@@ -1794,7 +1801,7 @@
                         <div className="grid grid-cols-2 gap-3">
                             <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
                                 <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Questions</p>
-                                <p className="text-sm text-slate-800 mt-0.5 font-medium">{speechSteps} voice · timed</p>
+                                <p className="text-sm text-slate-800 mt-0.5 font-medium">Voice · timed</p>
                             </div>
                             <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
                                 <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Evaluated on</p>
@@ -1892,6 +1899,8 @@
             React.useEffect(() => { liveQuestionCaptionRef.current = liveQuestionCaption; }, [liveQuestionCaption]);
             const warmupCaptionRef = React.useRef('');
             React.useEffect(() => { warmupCaptionRef.current = warmupCaption; }, [warmupCaption]);
+            const warmupPhaseRef = React.useRef(warmupPhase);
+            React.useEffect(() => { warmupPhaseRef.current = warmupPhase; }, [warmupPhase]);
 
             React.useEffect(() => { isAnsweringRef.current = isAnswering; }, [isAnswering]);
             React.useEffect(() => { canAnswerRef.current = canAnswer; }, [canAnswer]);
@@ -1915,7 +1924,7 @@
                 setCards((prev) => {
                     const next = [...prev];
                     const idx = number - 1;
-                    next[idx] = { ...(next[idx] || {}), number, question: clean || `Question ${number}`, answer: next[idx]?.answer || '' };
+                    next[idx] = { ...(next[idx] || {}), number, question: clean || '…', answer: next[idx]?.answer || '' };
                     return next;
                 });
             }, [cleanText]);
@@ -1969,6 +1978,7 @@
                                     if (closing) {
                                         setClosingCaption(clean);
                                         setLiveQuestionCaption('');
+                                        setWarmupCaption('');
                                         setIsInterviewerSpeaking(true);
                                         return;
                                     }
@@ -1976,6 +1986,11 @@
                                         setIsInterviewerSpeaking(true);
                                         setAnswerTimerActive(false);
                                         setTimeLeft(null);
+                                        if (warmupPhaseRef.current === 'mic_check' || warmupPhaseRef.current === 'intro') {
+                                            setWarmupCaption(clean);
+                                        } else {
+                                            setLiveQuestionCaption(clean);
+                                        }
                                     } else {
                                         setIsInterviewerSpeaking(false);
                                     }
@@ -2010,8 +2025,8 @@
                                     setSavingAnswer(false);
                                     setSaveNotice(
                                         saved
-                                            ? `Answer ${number} saved.`
-                                            : `Answer ${number} recorded — will retry on interview end.${error ? ` (${error})` : ''}`
+                                            ? 'Answer saved.'
+                                            : `Answer recorded — will retry on interview end.${error ? ` (${error})` : ''}`
                                     );
                                     return;
                                 }
@@ -2136,12 +2151,12 @@
                                 }
                                 setIsInterviewerSpeaking(true);
                                 setLiveQuestionCaption('');
-                                setStatus(number >= 1 ? `Question ${number} — the interviewer is speaking…` : 'The interviewer is speaking…');
+                                setStatus('The interviewer is speaking…');
                             },
                             onPrematureClosing: () => {
                                 setSavingAnswer(false);
                                 setIsInterviewerSpeaking(true);
-                                setStatus('Preparing the next question — please wait…');
+                                setStatus('Preparing the next step — please wait…');
                             },
                             onTurnScored: ({ number, score, feedback, soft_skills }) => {
                                 setScoreForQuestion(number, score, feedback, soft_skills);
@@ -2243,7 +2258,7 @@
                     setSavingAnswer(false);
                     setStatus((prev) => (
                         /saving/i.test(prev)
-                            ? 'Preparing the next question — please wait…'
+                            ? 'Preparing the next step — please wait…'
                             : prev
                     ));
                 }, 6000);
@@ -2316,7 +2331,7 @@
                 : savingAnswer && followUpActive
                 ? 'Follow-up saved — next step…'
                 : savingAnswer && cards[cards.length - 1]?.answer
-                ? 'Answer saved — next question…'
+                ? 'Answer saved — next step…'
                 : savingAnswer
                 ? 'Saving your answer…'
                 : canAnswer
@@ -2325,19 +2340,104 @@
                 ? 'Listen to the follow-up'
                 : 'Listen to the interviewer';
 
-            const renderLiveResponse = (warmup = false) => {
-                if (!isAnswering || interviewComplete) return null;
+            const renderInterviewerTranscript = (text, isSpeaking, placeholder) => (
+                <div className="speech-interviewer-box">
+                    <div className="flex items-center gap-2 mb-1.5">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700">Interviewer</p>
+                        {isSpeaking ? (
+                            <span className="flex gap-0.5 items-end h-3 ml-1">
+                                <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '50%', animationDelay: '0ms' }} />
+                                <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '100%', animationDelay: '150ms' }} />
+                                <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '70%', animationDelay: '300ms' }} />
+                            </span>
+                        ) : null}
+                    </div>
+                    <p className="transcript-stream text-slate-900 text-sm sm:text-base leading-relaxed min-h-[2.5rem]">
+                        {text || (isSpeaking ? '' : placeholder)}
+                        {isSpeaking && text ? (
+                            <span className="inline-block w-0.5 h-4 bg-indigo-500/80 ml-0.5 align-middle animate-pulse rounded-sm" />
+                        ) : null}
+                        {isSpeaking && !text ? (
+                            <span className="inline-block w-0.5 h-4 bg-indigo-400/60 ml-0.5 align-middle animate-pulse rounded-sm" />
+                        ) : null}
+                    </p>
+                </div>
+            );
+
+            const renderCandidateTranscript = (savedText, warmup = false) => {
+                const live = isAnswering && !interviewComplete;
+                const display = live ? (liveCaption || '') : (savedText || '');
+                if (!live && !display) return null;
                 return (
-                    <div ref={liveTranscriptRef} className={`speech-response-box ${warmup ? 'warmup' : ''}`}>
+                    <div ref={live ? liveTranscriptRef : null} className={`speech-response-box ${warmup ? 'warmup' : ''}`}>
                         <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${warmup ? 'text-amber-800' : 'text-emerald-800'}`}>
                             Your response
                         </p>
                         <p className="text-sm sm:text-base text-slate-900 leading-relaxed min-h-[2.5rem]">
-                            {liveCaption || 'Listening… your words will appear here as you speak.'}
-                            {liveCaption ? (
+                            {live
+                                ? (display || 'Listening… your words will appear here as you speak.')
+                                : display}
+                            {live && display ? (
                                 <span className={`inline-block w-0.5 h-4 ml-0.5 align-middle animate-pulse rounded-sm ${warmup ? 'bg-amber-500/80' : 'bg-emerald-500/80'}`} />
                             ) : null}
                         </p>
+                    </div>
+                );
+            };
+
+            const renderMicControls = (warmup = false, answered = false) => {
+                const isMicCheck = warmup && warmupPhase === 'mic_check';
+                const showMic = (isAnswering || (canAnswer && !answered)) && !savingAnswer;
+                if (!showMic && !answered) return null;
+                return (
+                    <div className="px-5 sm:px-6 py-5 border-t border-slate-100">
+                        {showMic ? (
+                            <div className="flex flex-col items-center">
+                                <div className={`mic-btn-wrap mb-3 ${isAnswering ? 'mic-btn-active' : ''}`}>
+                                    {isAnswering && (
+                                        <>
+                                            <div className="mic-ring mic-ring-1" style={{ background: micLevel > 0.05 ? (warmup ? 'rgba(245,158,11,0.18)' : 'rgba(16,185,129,0.18)') : (warmup ? 'rgba(245,158,11,0.12)' : 'rgba(79,70,229,0.15)') }} />
+                                            <div className="mic-ring mic-ring-2" style={{ background: micLevel > 0.05 ? (warmup ? 'rgba(245,158,11,0.14)' : 'rgba(16,185,129,0.14)') : (warmup ? 'rgba(245,158,11,0.08)' : 'rgba(79,70,229,0.12)') }} />
+                                            <div className="mic-ring mic-ring-3" style={{ background: micLevel > 0.05 ? (warmup ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)') : (warmup ? 'rgba(245,158,11,0.05)' : 'rgba(79,70,229,0.08)') }} />
+                                        </>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={handleAnswerToggle}
+                                        disabled={(!canAnswer && !isAnswering) || savingAnswer}
+                                        className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-4 shadow-lg disabled:opacity-50 ${
+                                            isAnswering
+                                                ? 'bg-red-500 hover:bg-red-600 focus:ring-red-200 shadow-red-200'
+                                                : warmup
+                                                ? 'bg-gradient-to-br from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 focus:ring-amber-200 shadow-amber-200'
+                                                : 'bg-gradient-to-br from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 focus:ring-indigo-200 shadow-indigo-200'
+                                        }`}
+                                    >
+                                        {isAnswering ? (
+                                            <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+                                        ) : (
+                                            <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4zm0 2a2 2 0 00-2 2v6a2 2 0 004 0V5a2 2 0 00-2-2zm-1 15.93V21h2v-2.07A8.001 8.001 0 0020 11h-2a6 6 0 01-12 0H4a8.001 8.001 0 007 7.93z" /></svg>
+                                        )}
+                                    </button>
+                                </div>
+                                <p className={`text-sm font-semibold ${isAnswering ? 'text-red-600' : warmup ? 'text-amber-600' : 'text-indigo-600'}`}>
+                                    {isAnswering
+                                        ? (isMicCheck ? 'Mic on — tap to submit' : 'Recording — tap to submit')
+                                        : (isMicCheck ? 'Tap to start mic check' : 'Tap to start speaking')}
+                                </p>
+                                {isAnswering ? (
+                                    <div className="flex flex-col items-center gap-1.5 mt-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={`w-2 h-2 rounded-full animate-pulse ${micLevel > 0.05 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                            <span className={`text-xs ${micLevel > 0.05 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                {micLevel > 0.05 ? 'Audio detected' : 'Waiting for audio…'}
+                                            </span>
+                                        </div>
+                                        {silenceHint ? <p className="text-xs text-amber-700 text-center max-w-xs">{silenceHint}</p> : null}
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
                     </div>
                 );
             };
@@ -2351,12 +2451,12 @@
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-2">Before the interview</p>
                                 <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mb-2.5">Voice interview setup</h1>
                                 <p className="text-sm text-slate-600 leading-relaxed mb-5">
-                                    The AI interviewer will check your mic, ask for a brief intro, then begin {maxTurns} interview questions.
+                                    The AI interviewer will check your mic, ask for a brief intro, then continue with the voice interview.
                                 </p>
                                 <ol className="text-left text-sm text-slate-600 space-y-2 mb-6 max-w-xs mx-auto">
                                     <li className="flex gap-2"><span className="text-violet-600 font-bold">1.</span> Microphone check — say a few words</li>
                                     <li className="flex gap-2"><span className="text-violet-600 font-bold">2.</span> Short introduction about yourself</li>
-                                    <li className="flex gap-2"><span className="text-violet-600 font-bold">3.</span> {maxTurns} voice interview questions</li>
+                                    <li className="flex gap-2"><span className="text-violet-600 font-bold">3.</span> Voice interview conversation</li>
                                 </ol>
                                 <button
                                     type="button"
@@ -2376,21 +2476,26 @@
             }
 
             return (
-                <Shell subtitle={warmupPhase === 'mic_check' ? 'Phase 2 · Microphone check' : warmupPhase === 'intro' ? 'Phase 2 · Introduction' : 'Phase 2 · Live voice interview'} fullWidth footerNote="Use headphones to avoid echo. Allow microphone access.">
+                <Shell subtitle="Phase 2 · Voice interview" fullWidth footerNote="Use headphones to avoid echo. Allow microphone access.">
                     <div className="assessment-workspace speech-workspace-full fade-in portal-lock">
                         <div className="assessment-main speech-main-full">
-                            {!inWarmup && cards.length > 0 ? (
-                                <div className="speech-progress-bar shrink-0">
-                                    {Array.from({ length: maxTurns }).map((_, i) => {
+                            <div className="speech-progress-bar shrink-0">
+                                {inWarmup ? (
+                                    <>
+                                        <div className={`h-1 flex-1 rounded-full transition-all duration-500 ${warmupPhase === 'mic_check' ? 'bg-indigo-500' : 'bg-emerald-500'}`} />
+                                        <div className={`h-1 flex-1 rounded-full transition-all duration-500 ${warmupPhase === 'intro' ? 'bg-indigo-500' : warmupPhase === 'mic_check' ? 'bg-slate-200' : 'bg-emerald-500'}`} />
+                                    </>
+                                ) : (
+                                    Array.from({ length: maxTurns }).map((_, i) => {
                                         const c = cards[i];
                                         const done = c && c.answer;
                                         const active = i === cards.length - 1 && !interviewComplete;
                                         return (
                                             <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-500 ${done ? 'bg-emerald-500' : active ? 'bg-indigo-500' : 'bg-slate-200'}`} />
                                         );
-                                    })}
-                                </div>
-                            ) : null}
+                                    })
+                                )}
+                            </div>
                             <div className="speech-top-bar shrink-0">
                                 <p className="text-xs sm:text-sm text-slate-500 leading-snug min-w-0 flex-1 truncate">{statusHint}</p>
                                 <div className="flex items-center gap-2 shrink-0">
@@ -2431,100 +2536,27 @@
                                         </div>
                                     </div>
                                 ) : warmupPhase ? (() => {
-                                    // ── Dedicated warmup cards (mic check / intro) ──────────────
                                     const isMicCheck = warmupPhase === 'mic_check';
-                                    const warmupDisplay = isInterviewerSpeaking
+                                    const interviewerText = isInterviewerSpeaking
                                         ? warmupCaption
                                         : (warmupCaption || warmupQuestion);
+                                    const placeholder = isMicCheck
+                                        ? 'The interviewer is about to greet you…'
+                                        : 'The interviewer will ask you to introduce yourself…';
                                     return (
                                         <div className="fade-in speech-question-card animate-slide-up">
-                                            <div className="px-5 sm:px-6 py-5 border-b border-amber-100 bg-gradient-to-r from-amber-50/80 via-orange-50/30 to-white">
+                                            <div className="px-5 sm:px-6 py-5">
                                                 <p className="text-xs text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2 mb-4 leading-relaxed">
                                                     Use headphones — the interviewer speaks through your speakers.
                                                 </p>
-                                                <div className="flex items-center gap-2 mb-3">
-                                                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-500 text-[10px] font-bold text-white">{isMicCheck ? '🎤' : '👋'}</span>
-                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700">
-                                                        {isMicCheck ? 'Microphone check' : 'Introduction'}
-                                                    </p>
-                                                    {isInterviewerSpeaking && (
-                                                        <span className="flex gap-0.5 items-end h-3.5 ml-1">
-                                                            <span className="w-0.5 bg-amber-400 rounded-full animate-bounce" style={{ height: '50%', animationDelay: '0ms' }} />
-                                                            <span className="w-0.5 bg-amber-400 rounded-full animate-bounce" style={{ height: '100%', animationDelay: '150ms' }} />
-                                                            <span className="w-0.5 bg-amber-400 rounded-full animate-bounce" style={{ height: '70%', animationDelay: '300ms' }} />
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <p className="transcript-stream text-slate-900 text-sm sm:text-base leading-relaxed">
-                                                    {warmupDisplay || (isInterviewerSpeaking ? '' : (isMicCheck ? 'The interviewer is about to greet you…' : 'The interviewer will ask you to introduce yourself…'))}
-                                                    {isInterviewerSpeaking && (
-                                                        <span className="inline-block w-1.5 h-5 bg-amber-400/80 ml-0.5 align-middle animate-pulse rounded-sm" />
-                                                    )}
-                                                </p>
-                                                {renderLiveResponse(true)}
+                                                {renderInterviewerTranscript(interviewerText, isInterviewerSpeaking, placeholder)}
+                                                {renderCandidateTranscript(warmupAnswer, true)}
                                             </div>
-                                            <div className="px-5 sm:px-6 py-5">
-                                                {(isAnswering || (canAnswer && !warmupAnswer)) && (
-                                                    <div className="flex flex-col items-center mb-5">
-                                                        <div className={`mic-btn-wrap mb-3 ${isAnswering ? 'mic-btn-active' : ''}`}>
-                                                            {isAnswering && (
-                                                                <>
-                                                                    <div className="mic-ring mic-ring-1" style={{ background: micLevel > 0.05 ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.12)' }} />
-                                                                    <div className="mic-ring mic-ring-2" style={{ background: micLevel > 0.05 ? 'rgba(245,158,11,0.14)' : 'rgba(245,158,11,0.08)' }} />
-                                                                    <div className="mic-ring mic-ring-3" style={{ background: micLevel > 0.05 ? 'rgba(245,158,11,0.1)' : 'rgba(245,158,11,0.05)' }} />
-                                                                </>
-                                                            )}
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleAnswerToggle}
-                                                                disabled={(!canAnswer && !isAnswering)}
-                                                                className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-4 shadow-lg disabled:opacity-50 ${
-                                                                    isAnswering
-                                                                        ? 'bg-red-500 hover:bg-red-600 focus:ring-red-200 shadow-red-200'
-                                                                        : 'bg-gradient-to-br from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 focus:ring-amber-200 shadow-amber-200'
-                                                                }`}
-                                                            >
-                                                                {isAnswering ? (
-                                                                    <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
-                                                                ) : (
-                                                                    <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4zm0 2a2 2 0 00-2 2v6a2 2 0 004 0V5a2 2 0 00-2-2zm-1 15.93V21h2v-2.07A8.001 8.001 0 0020 11h-2a6 6 0 01-12 0H4a8.001 8.001 0 007 7.93z" /></svg>
-                                                                )}
-                                                            </button>
-                                                        </div>
-                                                        <p className={`text-sm font-semibold ${isAnswering ? 'text-red-600' : 'text-amber-600'}`}>
-                                                            {isAnswering
-                                                                ? (isMicCheck ? 'Mic on — say anything…' : 'Recording — tap to submit')
-                                                                : (isMicCheck ? 'Tap to start mic check' : 'Tap to start speaking')}
-                                                        </p>
-                                                        {isAnswering && (
-                                                            <div className="flex flex-col items-center gap-1.5 mt-2">
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <span className={`w-2 h-2 rounded-full animate-pulse ${micLevel > 0.05 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                                                                    <span className={`text-xs ${micLevel > 0.05 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                                        {micLevel > 0.05 ? 'Audio detected' : 'Waiting for audio…'}
-                                                                    </span>
-                                                                </div>
-                                                                {silenceHint ? <p className="text-xs text-amber-700 text-center">{silenceHint}</p> : null}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                                {warmupAnswer ? (
-                                                    <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
-                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{isMicCheck ? 'Mic confirmed' : 'Your introduction'}</p>
-                                                        <p className="transcript-stream text-slate-700">{warmupAnswer}</p>
-                                                    </div>
-                                                ) : null}
-                                            </div>
+                                            {renderMicControls(true, !!warmupAnswer)}
                                         </div>
                                     );
                                 })() : (() => {
-                                    // ── Actual interview question cards ───────────────────────
                                     const card = cards.length ? cards[cards.length - 1] : null;
-                                    // While AI is speaking: show ONLY the growing partial caption
-                                    // (so text streams in word-by-word as AI talks).
-                                    // After AI finishes: show the committed full question text.
-                                    // This prevents the "full text → short partial → growing" jump.
                                     const questionDisplay = isInterviewerSpeaking
                                         ? liveQuestionCaption
                                         : (liveQuestionCaption || card?.question || '');
@@ -2532,156 +2564,43 @@
                                         return (
                                             <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
                                                 <div className="w-14 h-14 rounded-full border border-indigo-100 bg-indigo-50 flex items-center justify-center text-indigo-600 text-2xl animate-float">🎧</div>
-                                                <p className="text-sm max-w-sm text-slate-600">The interviewer will ask each question out loud. Your mic opens a few seconds after they finish — speak in English, then press <span className="text-slate-900 font-medium">Submit</span>.</p>
+                                                <p className="text-sm max-w-sm text-slate-600">The interviewer will speak each prompt out loud. Your mic opens after they finish — speak in English, then submit.</p>
                                             </div>
                                         );
                                     }
-                                    const recording = isAnswering;
-                                    const saving = savingAnswer;
                                     const answered = Boolean(card?.answer);
-                                    const displayAnswer = card?.answer || liveCaption || '';
-                                    const waitingNext = answered && !interviewComplete && !recording && !saving;
-                                    const qNum = card?.number || currentQuestionNum || 1;
+                                    const saving = savingAnswer;
+                                    const savedResponse = answered ? card?.answer : (saving && card?.answer ? card.answer : null);
+                                    const interviewerPlaceholder = followUpActive ? 'Follow-up coming…' : 'Listen to the interviewer…';
                                     return (
-                                        <div key={qNum} className="fade-in speech-question-card animate-slide-up">
-                                            <div className="px-5 sm:px-6 py-5 border-b border-indigo-50 bg-gradient-to-r from-indigo-50/60 via-violet-50/30 to-white">
-                                                <div className="flex items-center gap-2 mb-3">
-                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">
-                                                        Interviewer{followUpActive ? ' · Follow-up' : ''}
-                                                    </p>
-                                                    {isInterviewerSpeaking && (
-                                                        <span className="flex gap-0.5 items-end h-3.5 ml-1">
-                                                            <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '50%', animationDelay: '0ms' }} />
-                                                            <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '100%', animationDelay: '150ms' }} />
-                                                            <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '70%', animationDelay: '300ms' }} />
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <p className="transcript-stream text-slate-900 text-sm sm:text-base leading-relaxed">
-                                                    {questionDisplay || (isInterviewerSpeaking ? '' : '…')}
-                                                    {isInterviewerSpeaking && !questionDisplay && (
-                                                        <span className="inline-block w-1.5 h-5 bg-indigo-400/60 ml-0.5 align-middle animate-pulse rounded-sm" />
-                                                    )}
-                                                    {isInterviewerSpeaking && questionDisplay && (
-                                                        <span className="inline-block w-1.5 h-5 bg-indigo-400/80 ml-0.5 align-middle animate-pulse rounded-sm" />
-                                                    )}
-                                                </p>
-                                                {renderLiveResponse(false)}
-                                            </div>
-
+                                        <div className="fade-in speech-question-card animate-slide-up">
                                             <div className="px-5 sm:px-6 py-5">
-                                                {(recording || (canAnswer && !answered && !saving)) && (
-                                                    <div className="flex flex-col items-center mb-5">
-                                                        <div className={`mic-btn-wrap mb-3 ${recording ? 'mic-btn-active' : ''}`} onClick={recording ? undefined : handleAnswerToggle} style={{ cursor: recording ? 'default' : canAnswer ? 'pointer' : 'default' }}>
-                                                            {recording && (
-                                                                <>
-                                                                    <div className="mic-ring mic-ring-1" style={{ background: micLevel > 0.05 ? 'rgba(16,185,129,0.18)' : 'rgba(79,70,229,0.15)' }} />
-                                                                    <div className="mic-ring mic-ring-2" style={{ background: micLevel > 0.05 ? 'rgba(16,185,129,0.14)' : 'rgba(79,70,229,0.12)' }} />
-                                                                    <div className="mic-ring mic-ring-3" style={{ background: micLevel > 0.05 ? 'rgba(16,185,129,0.1)' : 'rgba(79,70,229,0.08)' }} />
-                                                                </>
-                                                            )}
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleAnswerToggle}
-                                                                disabled={(!canAnswer && !recording) || saving}
-                                                                className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-4 shadow-lg disabled:opacity-50 ${
-                                                                    recording
-                                                                        ? 'bg-red-500 hover:bg-red-600 focus:ring-red-200 shadow-red-200'
-                                                                        : 'bg-gradient-to-br from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 focus:ring-indigo-200 shadow-indigo-200'
-                                                                }`}
-                                                            >
-                                                                {recording ? (
-                                                                    <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                                                        <rect x="6" y="6" width="12" height="12" rx="2" />
-                                                                    </svg>
-                                                                ) : (
-                                                                    <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                                                        <path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4zm0 2a2 2 0 00-2 2v6a2 2 0 004 0V5a2 2 0 00-2-2zm-1 15.93V21h2v-2.07A8.001 8.001 0 0020 11h-2a6 6 0 01-12 0H4a8.001 8.001 0 007 7.93z" />
-                                                                    </svg>
-                                                                )}
-                                                            </button>
-                                                        </div>
-                                                        <p className={`text-sm font-semibold ${recording ? 'text-red-600' : 'text-indigo-600'}`}>
-                                                            {recording ? 'Recording — tap to submit' : 'Tap to start recording'}
-                                                        </p>
-                                                        {recording && (
-                                                            <div className="flex flex-col items-center gap-1.5 mt-2">
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <span className={`w-2 h-2 rounded-full animate-pulse ${micLevel > 0.05 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                                                                    <span className={`text-xs ${micLevel > 0.05 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                                        {micLevel > 0.05 ? 'Receiving audio' : 'Waiting for voice…'}
-                                                                    </span>
-                                                                </div>
-                                                                {silenceHint ? (
-                                                                    <p className="text-xs text-amber-700 text-center max-w-xs">{silenceHint}</p>
-                                                                ) : null}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-
-                                                {/* Answered / saving */}
-                                                {answered ? (
-                                                    <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3.5">
-                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Your answer</p>
-                                                        <p className="transcript-stream text-slate-700">{card?.answer}</p>
-                                                        {saving ? (
-                                                            <p className="text-xs text-amber-700 flex items-center gap-2 mt-3">
-                                                                <span className="inline-block w-3 h-3 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin" />
-                                                                Saving your answer…
-                                                            </p>
-                                                        ) : null}
-                                                    </div>
-                                                ) : saving ? (
-                                                    <div className="py-1">
-                                                        {displayAnswer && !/^\[(no spoken|non-english)/i.test(displayAnswer) ? (
-                                                            <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3.5 mb-2">
-                                                                <p className="transcript-stream text-slate-700">{displayAnswer}</p>
-                                                            </div>
-                                                        ) : null}
-                                                        <p className="text-xs text-amber-700 flex items-center gap-2">
-                                                            <span className="inline-block w-3 h-3 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin" />
-                                                            Saving your answer…
-                                                        </p>
-                                                    </div>
-                                                ) : !recording && !canAnswer && !answered ? (
-                                                    <div className="flex items-center gap-3 py-3">
-                                                        <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+                                                {renderInterviewerTranscript(questionDisplay, isInterviewerSpeaking, interviewerPlaceholder)}
+                                                {renderCandidateTranscript(savedResponse, false)}
+                                                {saving && !answered ? (
+                                                    <p className="text-xs text-amber-700 flex items-center gap-2 mt-3">
+                                                        <span className="inline-block w-3 h-3 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin" />
+                                                        Saving your answer…
+                                                    </p>
+                                                ) : null}
+                                                {!isAnswering && !canAnswer && !answered && !saving ? (
+                                                    <div className="flex items-center gap-3 mt-3 py-2">
+                                                        <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
                                                             <svg className="w-4 h-4 text-indigo-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
                                                         </div>
                                                         <p className="text-sm text-slate-500">
-                                                            {answerTimerActive ? 'Mic opens shortly — listen to the question…' : 'Listen to the interviewer…'}
+                                                            {answerTimerActive ? 'Mic opens shortly…' : 'Listen to the interviewer…'}
                                                         </p>
                                                     </div>
                                                 ) : null}
-
-                                                {waitingNext ? (
-                                                    <p className="text-xs text-indigo-600 mt-4 flex items-center gap-2 pt-3 border-t border-slate-100">
+                                                {answered && !interviewComplete && !isAnswering && !saving ? (
+                                                    <p className="text-xs text-indigo-600 mt-3 flex items-center gap-2">
                                                         <span className="inline-block w-3 h-3 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-                                                        Moving to question {turn + 1}…
+                                                        Preparing next step…
                                                     </p>
                                                 ) : null}
-                                                {card?.score != null && Number.isFinite(Number(card.score)) && !followUpActive ? (
-                                                    <div className="mt-4 pt-3 border-t border-slate-100">
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-2">Communication score</p>
-                                                        <p className="text-lg font-bold text-indigo-700 tabular-nums">{card.score}<span className="text-sm text-slate-500 font-medium">/100</span></p>
-                                                        {card.soft_skills ? (
-                                                            <div className="grid grid-cols-2 gap-2 mt-3">
-                                                                {SPEECH_SKILL_DIMS.map(([label, key, legacy]) => {
-                                                                    const val = getSpeechSkillValue(card.soft_skills, key, legacy);
-                                                                    if (val == null) return null;
-                                                                    return (
-                                                                        <div key={label} className="text-xs text-slate-500">
-                                                                            <span>{label}: </span>
-                                                                            <span className="text-slate-800 font-semibold tabular-nums">{val}</span>
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        ) : null}
-                                                    </div>
-                                                ) : null}
                                             </div>
+                                            {renderMicControls(false, answered)}
                                         </div>
                                     );
                                 })()}
@@ -2691,7 +2610,7 @@
                                 {interviewComplete ? (
                                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-700 flex items-center justify-center gap-2">
                                         <span className="inline-block w-3.5 h-3.5 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
-                                        All {maxTurns} questions complete — submitting…
+                                        Interview complete — submitting…
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-3">

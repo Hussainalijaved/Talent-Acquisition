@@ -276,8 +276,9 @@ function mergeTurns(history, newTurns, maxQ) {
             feedback: turn.feedback || existing.feedback || null,
             score,
             soft_skills: softSkills,
-            stt_source: 'gemini_live',
-            scoring_source: 'gemini_live_relay',
+            stt_source: turn.stt_source || 'gemini_live',
+            scoring_source: turn.scoring_source || 'gemini_live_relay',
+            // answer_pcm_chunks is never persisted — it's relay-only for scoring.
         };
         if (turn.time_limit_seconds != null && Number.isFinite(Number(turn.time_limit_seconds))) {
             entry.time_limit_seconds = Math.round(Number(turn.time_limit_seconds));

@@ -2,6 +2,32 @@ import { cleanUserAnswerText } from './transcript-utils.mjs';
 
 const SCORE_MODEL = process.env.GEMINI_SCORE_MODEL || 'gemini-2.0-flash';
 
+/**
+ * Encode an array of base64 PCM-16 chunks (16-bit LE signed, mono) into a WAV
+ * and return its base64 representation. Returns '' if chunks is empty.
+ */
+function pcmChunksToWavBase64(chunks, sampleRate = 16000) {
+  if (!chunks || !chunks.length) return '';
+  const buffers = chunks.map((c) => Buffer.from(c, 'base64'));
+  const pcmData = Buffer.concat(buffers);
+  const dataSize = pcmData.length;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0, 'ascii');
+  header.writeUInt32LE(36 + dataSize, 4);
+  header.write('WAVE', 8, 'ascii');
+  header.write('fmt ', 12, 'ascii');
+  header.writeUInt32LE(16, 16);               // fmt subchunk size
+  header.writeUInt16LE(1, 20);                // PCM format
+  header.writeUInt16LE(1, 22);                // mono
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);   // byte rate (16-bit mono)
+  header.writeUInt16LE(2, 32);                // block align
+  header.writeUInt16LE(16, 34);               // bits per sample
+  header.write('data', 36, 'ascii');
+  header.writeUInt32LE(dataSize, 40);
+  return Buffer.concat([header, pcmData]).toString('base64');
+}
+
 // Tolerant JSON parse: strip fences, extract the first balanced object, repair
 // trailing commas. Returns {} on total failure so scoring never throws away a turn.
 function safeParseJson(rawText) {
@@ -48,132 +74,76 @@ function safeParseJson(rawText) {
   return {};
 }
 
-export async function scoreSingleTurn({ apiKey, context, turn }) {
-  if (!apiKey) throw new Error('GEMINI_API_KEY missing for scoring');
-  const role = String(context.requisition_title || 'the role');
-  const isNoResponse = !turn.answer_text ||
-    /^\[(no spoken|non-english|no speech|noise)/i.test(turn.answer_text) ||
-    (!cleanUserAnswerText(turn.answer_text) && String(turn.answer_text || '').trim().length < 12);
-
-  // Short-circuit unscorable answers — avoids API call and score=0 parse bug.
-  if (isNoResponse) {
-    const zero = {
-      communication_clarity: 0,
-      fluency: 0,
-      confidence: 0,
-      professionalism: 0,
-      english_proficiency: 0,
-      answer_relevance: 0,
-      clarity: 0,
-      relevance: 0,
-    };
-    const feedback = /non-english/i.test(turn.answer_text)
-      ? 'Please answer in English. Non-English responses cannot be evaluated for communication skills.'
-      : /^\[noise\]/i.test(turn.answer_text)
-        ? 'No clear speech detected — background noise or unintelligible audio.'
-        : 'No spoken response was captured for this question.';
-    return {
-      ...turn,
-      score: 0,
-      clarity: 0,
-      confidence: 0,
-      professionalism: 0,
-      relevance: 0,
-      feedback,
-      soft_skills: zero,
-      scoring_source: 'gemini_live_relay',
-      stt_source: 'gemini_live',
-    };
+/**
+ * Build and fire the Gemini generateContent request.
+ * When wavBase64 is provided the request is multimodal (audio + text).
+ */
+async function callGeminiScore(apiKey, prompt, wavBase64) {
+  const parts = [{ text: prompt }];
+  if (wavBase64) {
+    parts.push({ inline_data: { mime_type: 'audio/wav', data: wavBase64 } });
   }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${SCORE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts }],
+      generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`gemini_score_failed ${res.status}: ${errText.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  return data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+}
 
-  const prompt = `You are evaluating a live voice interview answer for a ${role} position.
-This is a COMMUNICATION SKILLS round — score the candidate on HOW they speak, not just WHAT they say.
+/** Build the scoring rubric prompt (shared for audio and text modes). */
+function buildScorePrompt(turn, role, hasAudio) {
+  const transcript = String(turn.answer_text || '').trim();
+  const transcriptLine = transcript && !/^\[(no spoken|non-english|no speech|noise)/i.test(transcript)
+    ? `Candidate's transcribed answer (for reference — score the AUDIO above, not only this text):\n${transcript}`
+    : '(No reliable transcript available — score from audio only.)';
+
+  const audioPreamble = hasAudio
+    ? `IMPORTANT: You have been given the candidate's audio recording. Listen carefully to:
+- Tone, pace, energy, confidence, hesitation, fluency
+- Pronunciation and clarity of spoken English
+- Filler words, stammers, long pauses
+Score based on what you HEAR. The transcript is supplementary only.`
+    : `IMPORTANT: No audio recording available — score based on the transcript alone.`;
+
+  return `You are evaluating a live voice interview answer for a ${role} position.
+This is a COMMUNICATION SKILLS round — score HOW the candidate speaks, not just what they say.
+
+${audioPreamble}
 
 Return JSON only (no markdown, no explanation):
 {
   "phase": ${turn.phase},
   "score": <overall 0-100>,
   "communication_clarity": <0-100, clear articulation, logical flow, easy to follow>,
-  "fluency": <0-100, smooth delivery, natural pace, minimal filler words>,
-  "confidence": <0-100, assertive tone, no excessive hedging, speaks with conviction>,
-  "professionalism": <0-100, appropriate tone, formal register, respectful>,
+  "fluency": <0-100, smooth natural delivery, minimal filler words>,
+  "confidence": <0-100, assertive tone, speaks with conviction, no excessive hedging>,
+  "professionalism": <0-100, appropriate register, respectful, interview-ready>,
   "english_proficiency": <0-100, grammar, vocabulary, pronunciation quality>,
-  "answer_relevance": <0-100, did they actually answer what was asked>,
-  "feedback": "<2-3 sentences: what was strong, what to improve in communication style>"
+  "answer_relevance": <0-100, did they actually address what was asked>,
+  "feedback": "<2-3 sentences: what was strong + what to improve in communication style>"
 }
 
-Question: ${turn.question_text}
-Candidate's transcribed answer: ${turn.answer_text}`;
+Question asked: ${turn.question_text}
+${transcriptLine}`;
+}
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${SCORE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`gemini_single_score_failed ${res.status}: ${errText.slice(0, 300)}`);
-  }
-
-  const data = await res.json();
-  const rawText = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+/** Parse scored dimensions from Gemini JSON response. */
+function parseScoredTurn(turn, rawText, scoringSource) {
   const parsed = safeParseJson(rawText);
-
   const parsedScore = parsed.score != null ? Number(parsed.score) : null;
-  const parsedClarity = parsed.communication_clarity != null
-    ? Number(parsed.communication_clarity) : null;
+  const parsedClarity = parsed.communication_clarity != null ? Number(parsed.communication_clarity) : null;
 
-  // Heuristic fallback: never return null — base on transcript length + English-ness.
-  // This guarantees a saved score even when Gemini returns malformed JSON.
-  const buildHeuristicScore = () => {
-    const a = String(turn.answer_text || '').trim();
-    const words = a.split(/\s+/).filter(Boolean);
-    const wordCount = words.length;
-    let base = 30;
-    if (wordCount >= 8) base = 45;
-    if (wordCount >= 20) base = 55;
-    if (wordCount >= 40) base = 60;
-    return {
-      score: base,
-      soft: {
-        communication_clarity: base,
-        fluency: base,
-        confidence: base - 5,
-        professionalism: base,
-        english_proficiency: base,
-        answer_relevance: Math.max(0, base - 10),
-        clarity: base,
-        relevance: Math.max(0, base - 10),
-      },
-      feedback:
-        'Automatic fallback score — the scoring model returned an unparseable response. ' +
-        'Heuristic based on transcript length; consider re-scoring offline if needed.',
-    };
-  };
-
-  if (!Number.isFinite(parsedScore) && !Number.isFinite(parsedClarity)) {
-    console.warn(
-      `[relay] scoreSingleTurn parse empty for phase ${turn.phase}; using heuristic. Raw: ${rawText.slice(0, 200)}`
-    );
-    const h = buildHeuristicScore();
-    return {
-      ...turn,
-      score: h.score,
-      clarity: h.soft.communication_clarity,
-      confidence: h.soft.confidence,
-      professionalism: h.soft.professionalism,
-      relevance: h.soft.answer_relevance,
-      feedback: h.feedback,
-      soft_skills: h.soft,
-      scoring_source: 'gemini_live_relay_heuristic',
-      stt_source: 'gemini_live',
-    };
-  }
+  if (!Number.isFinite(parsedScore) && !Number.isFinite(parsedClarity)) return null;
 
   const overall = Math.round(Number(parsed.score ?? parsed.communication_clarity ?? 0));
   const soft = {
@@ -183,23 +153,114 @@ Candidate's transcribed answer: ${turn.answer_text}`;
     professionalism:       Math.round(Number(parsed.professionalism       ?? parsed.score ?? 0)),
     english_proficiency:   Math.round(Number(parsed.english_proficiency   ?? parsed.score ?? 0)),
     answer_relevance:      Math.round(Number(parsed.answer_relevance      ?? parsed.score ?? 0)),
-    // Legacy keys for admin dashboard
     clarity:               Math.round(Number(parsed.communication_clarity ?? parsed.clarity ?? parsed.score ?? 0)),
     relevance:             Math.round(Number(parsed.answer_relevance      ?? parsed.relevance ?? parsed.score ?? 0)),
   };
-
   return {
     ...turn,
     score: overall,
-    clarity:        soft.communication_clarity,
-    confidence:     soft.confidence,
+    clarity:         soft.communication_clarity,
+    confidence:      soft.confidence,
     professionalism: soft.professionalism,
-    relevance:      soft.answer_relevance,
-    feedback:       String(parsed.feedback || '').trim(),
-    soft_skills:    soft,
-    scoring_source: 'gemini_live_relay',
-    stt_source:     'gemini_live',
+    relevance:       soft.answer_relevance,
+    feedback:        String(parsed.feedback || '').trim(),
+    soft_skills:     soft,
+    scoring_source:  scoringSource,
+    stt_source:      'gemini_live',
+    answer_pcm_chunks: undefined, // do not persist raw audio in DB
   };
+}
+
+/** Heuristic score when API is unavailable — based on transcript word count. */
+function buildHeuristicScore(turn) {
+  const words = String(turn.answer_text || '').trim().split(/\s+/).filter(Boolean);
+  const base = words.length >= 40 ? 60 : words.length >= 20 ? 55 : words.length >= 8 ? 45 : 30;
+  const soft = {
+    communication_clarity: base, fluency: base, confidence: Math.max(0, base - 5),
+    professionalism: base, english_proficiency: base,
+    answer_relevance: Math.max(0, base - 10), clarity: base, relevance: Math.max(0, base - 10),
+  };
+  return {
+    ...turn,
+    score: base,
+    clarity: soft.clarity, confidence: soft.confidence,
+    professionalism: soft.professionalism, relevance: soft.relevance,
+    feedback: 'Automatic fallback score — scoring service was unavailable.',
+    soft_skills: soft,
+    scoring_source: 'gemini_live_relay_heuristic',
+    stt_source: 'gemini_live',
+    answer_pcm_chunks: undefined,
+  };
+}
+
+export async function scoreSingleTurn({ apiKey, context, turn }) {
+  if (!apiKey) throw new Error('GEMINI_API_KEY missing for scoring');
+  const role = String(context.requisition_title || 'the role');
+
+  const hasAudioChunks = Array.isArray(turn.answer_pcm_chunks) && turn.answer_pcm_chunks.length > 0;
+  const transcriptUsable = turn.answer_text &&
+    !/^\[(no spoken|non-english|no speech|noise)/i.test(turn.answer_text) &&
+    (cleanUserAnswerText(turn.answer_text) || String(turn.answer_text).trim().length >= 12);
+
+  // Nothing to score at all.
+  if (!hasAudioChunks && !transcriptUsable) {
+    const feedback = /non-english/i.test(turn.answer_text)
+      ? 'Please answer in English. Non-English responses cannot be evaluated for communication skills.'
+      : /^\[noise\]/i.test(turn.answer_text)
+        ? 'No clear speech detected — background noise or unintelligible audio.'
+        : 'No spoken response was captured for this question.';
+    const zero = {
+      communication_clarity: 0, fluency: 0, confidence: 0,
+      professionalism: 0, english_proficiency: 0, answer_relevance: 0,
+      clarity: 0, relevance: 0,
+    };
+    return {
+      ...turn, score: 0, clarity: 0, confidence: 0, professionalism: 0, relevance: 0,
+      feedback, soft_skills: zero,
+      scoring_source: 'gemini_live_relay', stt_source: 'gemini_live',
+      answer_pcm_chunks: undefined,
+    };
+  }
+
+  // Encode buffered PCM → WAV for multimodal scoring.
+  let wavBase64 = '';
+  if (hasAudioChunks) {
+    try {
+      wavBase64 = pcmChunksToWavBase64(
+        turn.answer_pcm_chunks,
+        turn.answer_pcm_sample_rate || 16000
+      );
+    } catch (encErr) {
+      console.warn(`[relay] WAV encode failed phase ${turn.phase}:`, encErr.message);
+    }
+  }
+
+  const prompt = buildScorePrompt(turn, role, !!wavBase64);
+  const scoringSource = wavBase64 ? 'audio_primary' : 'transcript_only';
+
+  try {
+    const rawText = await callGeminiScore(apiKey, prompt, wavBase64);
+    const scored = parseScoredTurn(turn, rawText, scoringSource);
+    if (scored) return scored;
+    console.warn(`[relay] scoreSingleTurn parse empty for phase ${turn.phase}; using heuristic. Raw: ${rawText.slice(0, 200)}`);
+  } catch (err) {
+    // Audio scoring failed — try text-only fallback before giving up.
+    if (wavBase64) {
+      console.warn(`[relay] audio scoring failed phase ${turn.phase} (${err.message}); retrying text-only`);
+      try {
+        const textPrompt = buildScorePrompt(turn, role, false);
+        const rawText = await callGeminiScore(apiKey, textPrompt, '');
+        const scored = parseScoredTurn(turn, rawText, 'transcript_only_fallback');
+        if (scored) return scored;
+      } catch (textErr) {
+        console.warn(`[relay] text fallback also failed phase ${turn.phase}:`, textErr.message);
+      }
+    } else {
+      console.warn(`[relay] scoreSingleTurn failed phase ${turn.phase}:`, err.message);
+    }
+  }
+
+  return buildHeuristicScore(turn);
 }
 
 /** Always returns a scored turn — never throws, never leaves score null. */
@@ -216,48 +277,7 @@ export async function scoreTurnGuaranteed({ apiKey, context, turn, timeoutMs = 3
     console.warn(`[relay] scoreTurnGuaranteed API failed phase ${turn.phase}:`, err.message);
   }
 
-  const a = String(turn.answer_text || '').trim();
-  const isUnscorable = !a ||
-    /^\[(no spoken|non-english|no speech|noise)/i.test(a) ||
-    (!cleanUserAnswerText(a) && a.length < 12);
-
-  if (isUnscorable) {
-    const zero = {
-      communication_clarity: 0, fluency: 0, confidence: 0,
-      professionalism: 0, english_proficiency: 0, answer_relevance: 0,
-      clarity: 0, relevance: 0,
-    };
-    return {
-      ...turn,
-      score: 0,
-      clarity: 0, confidence: 0, professionalism: 0, relevance: 0,
-      soft_skills: zero,
-      feedback: /non-english/i.test(a)
-        ? 'Please answer in English. Non-English responses cannot be evaluated.'
-        : 'No spoken response captured for this question.',
-      scoring_source: 'gemini_live_relay',
-      stt_source: 'gemini_live',
-    };
-  }
-
-  const wordCount = a.split(/\s+/).filter(Boolean).length;
-  const base = wordCount >= 40 ? 60 : wordCount >= 20 ? 55 : wordCount >= 8 ? 45 : 30;
-  const soft = {
-    communication_clarity: base, fluency: base, confidence: Math.max(0, base - 5),
-    professionalism: base, english_proficiency: base,
-    answer_relevance: Math.max(0, base - 10),
-    clarity: base, relevance: Math.max(0, base - 10),
-  };
-  return {
-    ...turn,
-    score: base,
-    clarity: soft.clarity, confidence: soft.confidence,
-    professionalism: soft.professionalism, relevance: soft.relevance,
-    soft_skills: soft,
-    feedback: 'Automatic fallback score — scoring service was slow or unavailable.',
-    scoring_source: 'gemini_live_relay_heuristic',
-    stt_source: 'gemini_live',
-  };
+  return buildHeuristicScore(turn);
 }
 
 /** Score turns one-by-one (reliable — bulk scoring often times out on 5 turns). */

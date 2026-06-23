@@ -192,16 +192,17 @@ wss.on('connection', (clientWs) => {
           onTurnSaved: async (turnPair) => {
             pendingTurnSaves += 1;
             try {
-              const unscored = { ...turnPair, score: null };
+              // Strip raw PCM chunks before any DB save (large array, scoring-only).
+              const unscoredForDb = { ...turnPair, score: null, answer_pcm_chunks: undefined };
               let saved = false;
               let saveError = '';
               try {
-                await vercelSaveTurn(context, unscored);
+                await vercelSaveTurn(context, unscoredForDb);
                 saved = true;
               } catch (vercelErr) {
                 console.warn('[relay] Vercel save failed, trying direct Supabase:', vercelErr.message);
                 try {
-                  await directSavePartialTurn(context, unscored);
+                  await directSavePartialTurn(context, unscoredForDb);
                   saved = true;
                 } catch (dbErr) {
                   saveError = dbErr.message || 'partial_save_failed';
@@ -217,15 +218,19 @@ wss.on('connection', (clientWs) => {
                 follow_up: !!turnPair.is_follow_up,
               });
 
+              // Pass FULL turnPair (with pcm chunks) to scoring, then strip before DB.
               const scored = await scoreTurnGuaranteed({
                 apiKey: GEMINI_API_KEY,
                 context,
-                turn: turnPair,
+                turn: turnPair, // includes answer_pcm_chunks for audio scoring
               });
+              // Strip PCM before saving scored result too.
+              const scoredForDb = { ...scored, answer_pcm_chunks: undefined };
+              console.log(`[relay] phase ${turnPair.phase} scored ${scored.score} via ${scored.scoring_source}`);
               try {
-                await vercelSaveTurn(context, scored);
+                await vercelSaveTurn(context, scoredForDb);
               } catch (vercelErr) {
-                await directSavePartialTurn(context, scored).catch((dbErr) => {
+                await directSavePartialTurn(context, scoredForDb).catch((dbErr) => {
                   console.warn('[relay] scored turn patch failed:', dbErr.message);
                 });
               }
@@ -236,6 +241,7 @@ wss.on('connection', (clientWs) => {
                 score: scored.score,
                 feedback: scored.feedback,
                 soft_skills: scored.soft_skills,
+                scoring_source: scored.scoring_source,
               });
               return scored;
             } finally {

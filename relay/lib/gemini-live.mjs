@@ -139,6 +139,14 @@ export class GeminiLiveBridge {
     this.warmupPhase = context.intro_enabled !== false ? 'mic_check' : null;
     this.micCheckAdvanceTimer = null;
     this.introQuestionAsked = false;
+
+    // Per-answer PCM buffer for audio-primary scoring.
+    // Chunks are 16-bit LE signed PCM at 16 kHz, stored as base64 strings.
+    // Cleared at the start of each new real question; captured only during
+    // actual interview turns (not warmup). Max ~120 s kept to bound memory.
+    this.answerPcmChunks = [];
+    this.answerPcmChunksByTurn = {}; // aNum → chunks[], for buildTurnPairs fallback
+    this._answerPcmSampleRate = 16000;
   }
 
   timerConfig() {
@@ -150,6 +158,8 @@ export class GeminiLiveBridge {
   }
 
   emitAwaitingAnswer(qNum, questionText) {
+    // Fresh PCM buffer for every real question turn.
+    if (qNum >= 1) this.answerPcmChunks = [];
     const limits = this.syncQuestionTimeLimit(questionText);
     this.questionTimeLimits[qNum] = limits;
     this.onEvent({
@@ -754,18 +764,26 @@ export class GeminiLiveBridge {
       aNum = this.answers.length;
     }
 
+    // Snapshot + clear the PCM buffer for this answer turn.
+    const pcmChunks = this.answerPcmChunks.slice();
+    this.answerPcmChunks = [];
+
     const qLimits = this.questionTimeLimits[aNum] || fallbackTimeLimit(this.questions[aNum - 1] || '', this.context);
     const turnPair = {
       phase: this.maxQuestions + aNum,
       voice_question_number: aNum,
       question_text: this.questions[aNum - 1] || '',
       answer_text: userText,
+      answer_pcm_chunks: pcmChunks,
+      answer_pcm_sample_rate: this._answerPcmSampleRate,
       sent_at: new Date(this.startedAt + (aNum - 1) * 60000).toISOString(),
       received_at: new Date().toISOString(),
       time_limit_seconds: qLimits.seconds,
       complexity_tier: qLimits.tier,
       is_follow_up: isFollowUpResponse,
     };
+    // Store for buildTurnPairs final-pass fallback.
+    this.answerPcmChunksByTurn[aNum] = pcmChunks;
 
     this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
     this.onEvent({ type: 'answer', number: aNum, text: userText, follow_up: isFollowUpResponse });
@@ -1213,6 +1231,13 @@ export class GeminiLiveBridge {
     // During nudge playback with no detected speech, pause forwarding so Gemini can finish the nudge.
     if (this.inNudgePlayback) return;
 
+    // Buffer PCM for audio-primary scoring (real questions only, not warmup).
+    // Cap at 120 s (120 * 1000ms/256ms ≈ 469 chunks of 4096 samples @ 16 kHz).
+    if (this.userTurnActive && this.warmupPhase === null) {
+      this.answerPcmChunks.push(base64Pcm);
+      if (this.answerPcmChunks.length > 469) this.answerPcmChunks.shift();
+    }
+
     this.geminiWs.send(
       JSON.stringify({ realtimeInput: { audio: { mimeType, data: base64Pcm } } })
     );
@@ -1252,6 +1277,8 @@ export class GeminiLiveBridge {
         voice_question_number: i + 1,
         question_text: this.questions[i] || '',
         answer_text: this.answers[i] || '',
+        answer_pcm_chunks: this.answerPcmChunksByTurn[i + 1] || [],
+        answer_pcm_sample_rate: this._answerPcmSampleRate,
         sent_at: new Date(this.startedAt + i * 60000).toISOString(),
         received_at: new Date().toISOString(),
       });

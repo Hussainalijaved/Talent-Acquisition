@@ -1062,22 +1062,26 @@
         }
 
         async function fetchAssessmentSessions() {
+            // Note: assessment_sessions has updated_at but no created_at in production schema.
             const fullSelect =
-                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, proctor_report, updated_at, created_at';
+                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, proctor_report, updated_at';
             const baseSelect =
-                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, updated_at, created_at';
+                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, updated_at';
             const minimalSelect =
-                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, updated_at, created_at';
+                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, updated_at';
 
             let res = await sb.from('assessment_sessions')
                 .select(fullSelect)
                 .order('updated_at', { ascending: false })
                 .limit(1000);
-            if (res.error && /proctor_report|column.*does not exist/i.test(String(res.error.message || ''))) {
-                res = await sb.from('assessment_sessions')
-                    .select(baseSelect)
-                    .order('updated_at', { ascending: false })
-                    .limit(1000);
+            if (res.error) {
+                const msg = String(res.error.message || '');
+                if (/proctor_report|screening|scheduling_status|requisition_id|column.*does not exist/i.test(msg)) {
+                    res = await sb.from('assessment_sessions')
+                        .select(baseSelect)
+                        .order('updated_at', { ascending: false })
+                        .limit(1000);
+                }
             }
             if (res.error) {
                 res = await sb.from('assessment_sessions')
@@ -1125,9 +1129,7 @@
             }
 
             if (candRes.error) { banner('Could not read candidates: ' + candRes.error.message + ' — run supabase_rls_candidates_read.sql.', 'err'); }
-            if (sessRes.error) {
-                banner('Could not read assessment sessions: ' + sessRes.error.message + ' — check assessment_sessions RLS for staff.', 'err');
-            }
+            const sessErrMsg = sessRes.error ? String(sessRes.error.message || 'unknown error') : '';
 
             const allSessions = sessRes.data || [];
             const merged = [];
@@ -1163,7 +1165,7 @@
             }
             const loadMsg = 'Loaded ' + MERGED.length + ' candidate(s) and ' + SESSION_LIST.length + ' assessment session(s) — ' + new Date().toLocaleTimeString() + '.';
             if (sessRes.error) {
-                banner(loadMsg + ' Assessment query failed — see error above.', 'err');
+                banner(loadMsg + ' Assessment query failed: ' + sessErrMsg, 'err');
             } else if (!SESSION_LIST.length && MERGED.some((m) => m.session)) {
                 banner(loadMsg, 'ok');
             } else {

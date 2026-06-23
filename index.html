@@ -269,9 +269,17 @@
             }
         }
 
-        @media (max-width: 1279px) {
+        /* On very small screens, hide the hero marketing panel — just show the form */
+        @media (max-width: 639px) {
+            .portal-split-hero { display: none !important; }
+            .portal-split-body { border-radius: 1.5rem !important; }
+        }
+
+        @media (min-width: 640px) and (max-width: 1279px) {
             .portal-split-hero.login-hero-panel {
                 border-radius: 1.5rem 1.5rem 0 0;
+                padding: 1rem 1.25rem !important;
+                min-height: 0;
             }
             .portal-split-body {
                 border-radius: 0 0 1.5rem 1.5rem;
@@ -1401,27 +1409,25 @@
                                 </div>
                             </div>
 
-                            <div className="portal-split-body p-6 sm:p-8 xl:p-10 flex flex-col justify-center min-w-0">
-                                <div className="mb-6">
-                                    <p className="badge badge-accent mb-4">Enterprise screening</p>
-                                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Welcome back</h2>
-                                    <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">
-                                        Enter the session ID from your invitation email to begin your assessment.
+                            <div className="portal-split-body p-5 sm:p-7 xl:p-10 flex flex-col justify-center min-w-0">
+                                <div className="mb-4">
+                                    <p className="badge badge-accent mb-3">Enterprise screening</p>
+                                    <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Welcome back</h2>
+                                    <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                                        Enter the session ID from your invitation email to begin.
                                     </p>
                                 </div>
 
-                                <div className="rounded-xl border border-violet-100 bg-violet-50/50 p-4 mb-6">
-                                    <p className="text-[10px] font-bold text-violet-700 uppercase tracking-widest mb-3">What happens next</p>
-                                    <ul className="space-y-2.5">
+                                <div className="rounded-xl border border-violet-100 bg-violet-50/50 p-3 mb-4">
+                                    <p className="text-[10px] font-bold text-violet-700 uppercase tracking-widest mb-2">What happens next</p>
+                                    <ul className="space-y-2">
                                         {steps.map((s, i) => (
-                                            <li key={i} className="flex gap-3 text-sm items-start">
-                                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-[10px] font-bold text-white mt-0.5">
+                                            <li key={i} className="flex gap-2.5 text-sm items-center">
+                                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-violet-600 text-[9px] font-bold text-white">
                                                     {i + 1}
                                                 </span>
-                                                <span>
-                                                    <span className="font-semibold text-slate-800">{s.t}</span>
-                                                    <span className="text-slate-500"> — {s.d}</span>
-                                                </span>
+                                                <span className="font-semibold text-slate-800">{s.t}</span>
+                                                <span className="text-slate-400 text-xs hidden sm:inline"> — {s.d}</span>
                                             </li>
                                         ))}
                                     </ul>
@@ -1535,74 +1541,48 @@
             const youStartWith = 'Phase 1 — written assessment';
             const rules = [
                 {
-                    title: 'Phase 1 — Written technical assessment',
-                    body: `${techCount} timed questions. Read each prompt carefully and type your answer in the text box. Submit before the timer ends — partial answers are saved automatically on timeout.`,
-                    icon: (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    ),
+                    title: 'Timed & auto-saved',
+                    body: 'Each question has a countdown timer. Partial answers are saved automatically if time runs out.',
+                    icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />,
                 },
                 {
-                    title: 'Phase 2 — Voice communication interview',
-                    body: `If you pass Phase 1, you will enter a short voice round (${speechCount} questions). Each question is read aloud. Find a quiet place, allow microphone access, listen fully, then record your spoken answer. Live captions show what the system hears.`,
-                    icon: (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                    ),
+                    title: 'Fullscreen required',
+                    body: 'Stay in fullscreen throughout. Pressing Esc blurs the screen and hides content until you return.',
+                    icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />,
                 },
                 {
-                    title: 'Timed Phases & Auto-Save',
-                    body: 'Each phase has its own countdown timer (set by question difficulty). If the timer runs out, whatever you have typed will be automatically saved and submitted.',
-                    icon: (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    ),
+                    title: 'No copy-paste',
+                    body: 'Right-click, copy, paste, drag, and print are disabled. Type answers manually.',
+                    icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />,
                 },
                 {
-                    title: 'Focus & Fullscreen Rules',
-                    body: 'The portal stays in fullscreen from sign-in. Alt+Tab, Ctrl+Tab, F11, Win+Shift+S (Snipping Tool), Print Screen, and screenshot shortcuts are blocked. Pressing Esc blurs the screen and hides question content until you return. Developer Tools are detected even while blurred.',
-                    icon: (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    ),
+                    title: 'DevTools blocked',
+                    body: 'F12, Inspect, and View Source are detected. Question content is hidden if DevTools opens.',
+                    icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />,
                 },
                 {
-                    title: 'No Copying or Right-Clicking',
-                    body: 'Text selection, right-clicking, copy-paste, cut, drag, and print are disabled on questions. Answers must be typed manually in the answer box.',
-                    icon: (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                    ),
+                    title: 'Don\'t refresh',
+                    body: 'Session restores after reload but the timer won\'t reset. Avoid manual page refresh.',
+                    icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89H18V4" />,
                 },
                 {
-                    title: 'Developer Tools Blocked',
-                    body: 'F12, Inspect, View Source, and DevTools docking are detected. If DevTools opens, the question is hidden and a violation is recorded during the assessment.',
-                    icon: (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    ),
-                },
-                {
-                    title: 'Avoid Page Refreshing',
-                    body: 'Do not manually reload or refresh the browser. While your session is automatically restored if you refresh, the timer will not reset.',
-                    icon: (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89H18V4" />
-                    ),
-                },
-                {
-                    title: 'Integrity Monitoring',
-                    body: 'All active actions, response patterns, and screen movements are logged for evaluation. Stay focused on the test tab.',
-                    icon: (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    ),
+                    title: 'Integrity monitoring',
+                    body: 'All actions and response patterns are logged. Stay focused on this tab for the duration.',
+                    icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />,
                 },
             ];
             return (
                 <Shell subtitle="Guidelines & integrity" footerNote="By starting, you agree to proctored session rules below">
                     <PortalPage size="guidelines">
                             {/* Header */}
-                            <div className="p-6 sm:p-8 xl:p-10 border-b border-violet-100 bg-gradient-to-br from-violet-50 via-indigo-50/40 to-white relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-violet-100/40 -translate-y-1/2 translate-x-1/4 pointer-events-none" />
+                            <div className="p-4 sm:p-6 xl:p-8 border-b border-violet-100 bg-gradient-to-br from-violet-50 via-indigo-50/40 to-white relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-violet-100/40 -translate-y-1/2 translate-x-1/4 pointer-events-none" />
                                 <div className="relative z-10">
-                                    <p className="badge badge-accent mb-4">{isSpeechResume ? 'Phase 1 complete' : 'Before you begin'}</p>
-                                    <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                                    <p className="badge badge-accent mb-3">{isSpeechResume ? 'Phase 1 complete' : 'Before you begin'}</p>
+                                    <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                                         {isSpeechResume ? 'Continue to Phase 2' : 'Two-phase assessment'}
                                     </h1>
-                                    <p className="text-sm sm:text-base text-slate-600 mt-2.5 leading-relaxed max-w-xl">
+                                    <p className="text-sm text-slate-600 mt-2 leading-relaxed max-w-xl">
                                         {introLead}
                                     </p>
                                     {isSpeechResume ? (
@@ -1619,58 +1599,41 @@
                             </div>
 
                             {/* Phase cards */}
-                            <div className="px-6 sm:px-8 xl:px-10 pt-7 pb-5">
-                                <div className="grid sm:grid-cols-2 gap-4 mb-5">
-                                    <div className="rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-white p-5 relative overflow-hidden">
-                                        <div className="absolute top-3 right-3 w-14 h-14 rounded-full bg-violet-100/60 pointer-events-none" />
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-violet-700 mb-2">Phase 1</p>
-                                        <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">Written technical assessment</h2>
-                                        <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-                                            {techCount} questions · typed answers · AI-timed per question
-                                        </p>
+                            <div className="px-4 sm:px-6 xl:px-8 pt-5 pb-4">
+                                <div className="grid grid-cols-2 gap-3 mb-4">
+                                    <div className="rounded-xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-white p-3.5">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-violet-700 mb-1">Phase 1</p>
+                                        <p className="text-sm font-bold text-slate-900 leading-snug">Written assessment</p>
+                                        <p className="text-xs text-slate-500 mt-1">{techCount} questions · AI-timed</p>
                                     </div>
-                                    <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 relative overflow-hidden">
-                                        <div className="absolute top-3 right-3 w-14 h-14 rounded-full bg-indigo-100/60 pointer-events-none" />
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-2">Phase 2</p>
-                                        <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">Voice communication interview</h2>
-                                        <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-                                            {speechCount} questions · speech-to-speech · mic required
-                                        </p>
+                                    <div className="rounded-xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3.5">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-1">Phase 2</p>
+                                        <p className="text-sm font-bold text-slate-900 leading-snug">Voice interview</p>
+                                        <p className="text-xs text-slate-500 mt-1">{speechCount} questions · mic required</p>
                                     </div>
                                 </div>
-                                <div className="flex flex-col sm:flex-row gap-3">
-                                    <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3.5 flex items-center gap-3">
-                                        <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
-                                            <svg className="w-3.5 h-3.5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">You {isSpeechResume || isTechResume ? 'resume with' : 'start with'}</p>
-                                            <p className="text-sm font-medium text-slate-800">{youStartWith}</p>
-                                        </div>
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 flex items-center gap-3">
+                                    <div className="w-6 h-6 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+                                        <svg className="w-3 h-3 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                     </div>
-                                    <div className="flex-1 rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3.5 flex items-center gap-3">
-                                        <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                                            <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3v-3z" /></svg>
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Help</p>
-                                            <p className="text-sm font-medium text-slate-800">Contact your recruiter for issues</p>
-                                        </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">You {isSpeechResume || isTechResume ? 'resume with' : 'start with'}</p>
+                                        <p className="text-xs font-semibold text-slate-800">{youStartWith}</p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Rules */}
-                            <div className="px-6 sm:px-8 xl:px-10 py-5 bg-slate-50/60 border-t border-slate-100">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Rules &amp; integrity</p>
-                                <div className="grid sm:grid-cols-2 gap-3">
+                            <div className="px-4 sm:px-6 xl:px-8 py-4 bg-slate-50/60 border-t border-slate-100">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Rules &amp; integrity</p>
+                                <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
                                     {rules.map((rule, i) => (
                                         <div
                                             key={i}
-                                            className="rule-card flex gap-3 p-3.5 rounded-xl border border-slate-200 bg-white"
+                                            className="rule-card flex gap-2.5 p-2.5 rounded-xl border border-slate-200 bg-white"
                                         >
-                                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 border border-violet-100 text-violet-600">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-50 border border-violet-100 text-violet-600">
+                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                                     {rule.icon}
                                                 </svg>
                                             </div>
@@ -1678,7 +1641,7 @@
                                                 <p className="text-xs font-bold text-slate-800 leading-snug">
                                                     {rule.title}
                                                 </p>
-                                                <p className="text-xs text-slate-500 mt-1 leading-relaxed">{rule.body}</p>
+                                                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{rule.body}</p>
                                             </div>
                                         </div>
                                     ))}
@@ -1686,7 +1649,7 @@
                             </div>
 
                             {/* Confirm + start */}
-                            <div className="px-6 sm:px-8 xl:px-10 pb-6 sm:pb-8 xl:pb-10 pt-5 space-y-4">
+                            <div className="px-4 sm:px-6 xl:px-8 pb-5 sm:pb-6 xl:pb-8 pt-4 space-y-3">
                                 {sessionBlockMsg ? (
                                     <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 leading-relaxed flex items-start gap-2">
                                         <svg className="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
@@ -4074,8 +4037,8 @@
             return (
             <Shell subtitle="Assessment complete">
                 <PortalPage size="narrow">
-                    <div className={`result-hero-gradient px-6 sm:px-8 xl:px-10 pt-8 sm:pt-10 pb-8 text-center border-b border-slate-100 ${passed ? '' : ''}`}>
-                            <div className={`w-20 h-20 mx-auto mb-5 rounded-2xl flex items-center justify-center animate-float ${passed ? 'bg-emerald-100 border border-emerald-200 shadow-sm' : 'bg-slate-100 border border-slate-200'}`}>
+                    <div className={`result-hero-gradient px-5 sm:px-8 xl:px-10 pt-6 sm:pt-8 pb-6 text-center border-b border-slate-100 ${passed ? '' : ''}`}>
+                            <div className={`w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 rounded-2xl flex items-center justify-center animate-float ${passed ? 'bg-emerald-100 border border-emerald-200 shadow-sm' : 'bg-slate-100 border border-slate-200'}`}>
                                 {passed ? (
                                     <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
                                 ) : (
@@ -4086,8 +4049,8 @@
                                 {passed ? 'Proceed to next stage' : 'Under review'}
                             </span>
                             {showScore && (
-                                <p className={`text-5xl font-bold tabular-nums mb-1 animate-fade-up ${scoreTone(scoreNum)}`}>
-                                    {Math.round(scoreNum)}<span className="text-xl text-slate-400 font-semibold">/100</span>
+                                <p className={`text-4xl sm:text-5xl font-bold tabular-nums mb-1 animate-fade-up ${scoreTone(scoreNum)}`}>
+                                    {Math.round(scoreNum)}<span className="text-lg sm:text-xl text-slate-400 font-semibold">/100</span>
                                 </p>
                             )}
                             {(Number.isFinite(scoreBreakdown.technical) || Number.isFinite(scoreBreakdown.speech)) && (
@@ -4253,9 +4216,9 @@
 
             return (
             <Shell subtitle="Response review">
-                <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10 fade-in">
+                <div className="max-w-4xl mx-auto px-3 sm:px-5 lg:px-8 py-5 sm:py-8 fade-in">
                     <div className="rounded-3xl border border-slate-200 bg-white shadow-card overflow-hidden mb-8 animate-scale-in">
-                        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 sm:px-8 py-8 text-white">
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 sm:px-7 py-6 text-white">
                             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
                                 <div>
                                     <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100 mb-2">Assessment review</p>

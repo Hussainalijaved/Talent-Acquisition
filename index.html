@@ -18,6 +18,7 @@
     <script src="speech-assessment.js"></script>
     <script src="live-speech.js"></script>
     <script src="proctor-media.js"></script>
+    <script src="proctor-activity.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -958,6 +959,7 @@
         const { useState, useEffect, useRef, useCallback } = React;
 
         const MAX_INTEGRITY_VIOLATIONS = 3;
+        const CAMERA_GRACE_SECONDS = 45;
         const VIOLATION_DEBOUNCE_MS = 1200;
         const DEVTOOLS_SIZE_THRESHOLD = 140;
         const DEVTOOLS_POLL_MS = 350;
@@ -973,6 +975,7 @@
             snipping_tool: 'attempting to open Snipping Tool or screen capture (Win+Shift+S)',
             print_attempt: 'attempting to print or save the page',
             webcam_stopped: 'turning off or blocking the webcam',
+            camera_not_restored: 'not turning the webcam back on within the time limit',
             screen_share_stopped: 'stopping screen sharing',
         };
 
@@ -2064,6 +2067,42 @@
                 </div>
             );
         };
+
+        const CameraGraceOverlay = ({ secondsLeft, onEnableCamera, busy }) => (
+            <div
+                className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-slate-900/90 backdrop-blur-md px-4 portal-lock"
+                role="alertdialog"
+                aria-modal="true"
+                aria-label="Camera required"
+            >
+                <div className="panel max-w-md w-full rounded-2xl p-8 sm:p-10 text-center shadow-card border border-red-400/40 bg-white">
+                    <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/15 border border-red-500/30">
+                        <svg className="h-7 w-7 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    <span className="badge badge-warning mb-4">Camera required</span>
+                    <h2 className="text-xl font-bold text-slate-900 mb-3 tracking-tight">Turn your camera back on</h2>
+                    <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                        Your webcam was turned off. Enable it again to continue your assessment.
+                    </p>
+                    <p className="text-2xl font-bold text-red-600 tabular-nums mb-6">
+                        {secondsLeft != null ? `${secondsLeft}s` : '—'}
+                    </p>
+                    <p className="text-xs text-slate-500 mb-6">
+                        If the camera is not restored in time, your assessment will be terminated.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={onEnableCamera}
+                        disabled={busy}
+                        className="btn-primary w-full justify-center py-3 disabled:opacity-60"
+                    >
+                        {busy ? 'Enabling camera…' : 'Enable camera'}
+                    </button>
+                </div>
+            </div>
+        );
 
         const ProctoringSetupView = ({ onComplete, onBack, isLoading }) => {
             const [step, setStep] = React.useState('detect');
@@ -4725,6 +4764,10 @@
             const debuggerCheckCounterRef = useRef(0);
             const proctorStreamsRef = useRef(null);
             const proctorWatchCleanupRef = useRef([]);
+            const cameraGraceTimerRef = useRef(null);
+            const cameraGraceActiveRef = useRef(false);
+            const [cameraGraceSecondsLeft, setCameraGraceSecondsLeft] = useState(null);
+            const [cameraGraceBusy, setCameraGraceBusy] = useState(false);
             const [fullscreenRequired, setFullscreenRequired] = useState(false);
             const [devToolsDetected, setDevToolsDetected] = useState(false);
 
@@ -4883,7 +4926,21 @@
                 };
             }, [view, fullscreenRequired]);
 
+            const clearCameraGrace = useCallback(() => {
+                if (cameraGraceTimerRef.current) {
+                    clearInterval(cameraGraceTimerRef.current);
+                    cameraGraceTimerRef.current = null;
+                }
+                cameraGraceActiveRef.current = false;
+                setCameraGraceSecondsLeft(null);
+                setCameraGraceBusy(false);
+            }, []);
+
             const stopProctorMedia = useCallback(() => {
+                clearCameraGrace();
+                if (window.TA_PROCTOR_ACTIVITY) {
+                    window.TA_PROCTOR_ACTIVITY.stop();
+                }
                 (proctorWatchCleanupRef.current || []).forEach((fn) => {
                     try { fn(); } catch (_) { /* ignore */ }
                 });
@@ -4893,7 +4950,7 @@
                 }
                 proctorStreamsRef.current = null;
                 setProctorStreams(null);
-            }, []);
+            }, [clearCameraGrace]);
 
             const terminateTestDueToCheating = useCallback(async (reason, currentCount) => {
                 if (terminatingRef.current) return;
@@ -4947,7 +5004,7 @@
                     sessionStorage.removeItem('assessment_started');
                     deadlineAtRef.current = null;
                 }
-            }, []);
+            }, [stopProctorMedia]);
 
             const recordIntegrityViolation = useCallback((reason) => {
                 if (PROCTORING_DISABLED) return;
@@ -4956,6 +5013,8 @@
                 const now = Date.now();
                 if (now - lastViolationAtRef.current < VIOLATION_DEBOUNCE_MS) return;
                 lastViolationAtRef.current = now;
+
+                window.TA_PROCTOR_ACTIVITY?.logViolation?.(reason);
 
                 const newCount = integrityViolationCountRef.current + 1;
                 integrityViolationCountRef.current = newCount;
@@ -4974,6 +5033,25 @@
                 );
             }, [terminateTestDueToCheating]);
 
+            const startCameraGrace = useCallback(() => {
+                if (PROCTORING_DISABLED || terminatingRef.current || cameraGraceActiveRef.current) return;
+                cameraGraceActiveRef.current = true;
+                window.TA_PROCTOR_ACTIVITY?.logEvent?.('webcam_lost', null, { suspicious: true });
+                let left = CAMERA_GRACE_SECONDS;
+                setCameraGraceSecondsLeft(left);
+                if (cameraGraceTimerRef.current) clearInterval(cameraGraceTimerRef.current);
+                cameraGraceTimerRef.current = setInterval(() => {
+                    left -= 1;
+                    if (left <= 0) {
+                        clearCameraGrace();
+                        window.TA_PROCTOR_ACTIVITY?.logEvent?.('camera_not_restored', null, { suspicious: true });
+                        terminateTestDueToCheating('camera_not_restored', MAX_INTEGRITY_VIOLATIONS);
+                        return;
+                    }
+                    setCameraGraceSecondsLeft(left);
+                }, 1000);
+            }, [clearCameraGrace, terminateTestDueToCheating]);
+
             const setupProctorWatchers = useCallback((streams) => {
                 (proctorWatchCleanupRef.current || []).forEach((fn) => {
                     try { fn(); } catch (_) { /* ignore */ }
@@ -4981,22 +5059,45 @@
                 proctorWatchCleanupRef.current = [];
                 if (PROCTORING_DISABLED || !streams || !window.TA_PROCTOR) return;
 
-                const onStreamLost = (kind) => {
+                const onWebcamLost = () => {
                     if (terminatingRef.current) return;
-                    recordIntegrityViolation(kind === 'webcam' ? 'webcam_stopped' : 'screen_share_stopped');
+                    startCameraGrace();
+                };
+                const onScreenLost = () => {
+                    if (terminatingRef.current) return;
+                    recordIntegrityViolation('screen_share_stopped');
                 };
 
                 if (streams.webcam) {
                     proctorWatchCleanupRef.current.push(
-                        window.TA_PROCTOR.watchStreamEnd(streams.webcam, () => onStreamLost('webcam'))
+                        window.TA_PROCTOR.watchStreamEnd(streams.webcam, () => onWebcamLost())
                     );
                 }
                 (streams.screens || []).forEach((stream) => {
                     proctorWatchCleanupRef.current.push(
-                        window.TA_PROCTOR.watchStreamEnd(stream, () => onStreamLost('screen'))
+                        window.TA_PROCTOR.watchStreamEnd(stream, () => onScreenLost())
                     );
                 });
-            }, [recordIntegrityViolation]);
+            }, [recordIntegrityViolation, startCameraGrace]);
+
+            const handleRestoreWebcam = useCallback(async () => {
+                if (!window.TA_PROCTOR) return;
+                setCameraGraceBusy(true);
+                try {
+                    const stream = await window.TA_PROCTOR.requestWebcam();
+                    const prev = proctorStreamsRef.current || { screens: [] };
+                    const next = { ...prev, webcam: stream };
+                    proctorStreamsRef.current = next;
+                    setProctorStreams(next);
+                    setupProctorWatchers(next);
+                    clearCameraGrace();
+                    window.TA_PROCTOR_ACTIVITY?.logEvent?.('webcam_restored', null, { suspicious: false });
+                } catch (err) {
+                    alert(err.message || 'Could not access webcam. Please allow camera permission and try again.');
+                } finally {
+                    setCameraGraceBusy(false);
+                }
+            }, [clearCameraGrace, setupProctorWatchers]);
 
             const handleSecurityKeyDown = useCallback((e) => {
                 if (!isSecurityActive()) return;
@@ -5010,6 +5111,8 @@
                 const record = (reason) => {
                     if (viewRef.current === 'assessment') {
                         recordIntegrityViolation(reason);
+                    } else if (viewRef.current === 'live-speech') {
+                        window.TA_PROCTOR_ACTIVITY?.logViolation?.(reason);
                     }
                 };
 
@@ -5459,6 +5562,14 @@
                 proctorStreamsRef.current = streams;
                 setProctorStreams(streams);
                 setupProctorWatchers(streams);
+                if (window.TA_PROCTOR_ACTIVITY && sessionIdRef.current) {
+                    window.TA_PROCTOR_ACTIVITY.start({
+                        sessionId: sessionIdRef.current,
+                        portalBase: window.location.origin,
+                        getPhase: () => currentStepRef.current,
+                        getStreams: () => proctorStreamsRef.current,
+                    });
+                }
                 handleStartAssessment();
             };
 
@@ -6195,6 +6306,13 @@
                     {renderView()}
                     {!PROCTORING_DISABLED && proctorStreams && (view === 'assessment' || view === 'live-speech') ? (
                         <ProctoringMonitorStrip streams={proctorStreams} />
+                    ) : null}
+                    {!PROCTORING_DISABLED && cameraGraceSecondsLeft != null ? (
+                        <CameraGraceOverlay
+                            secondsLeft={cameraGraceSecondsLeft}
+                            onEnableCamera={handleRestoreWebcam}
+                            busy={cameraGraceBusy}
+                        />
                     ) : null}
                     {fullscreenRequired && isPortalLockedView(view) && (
                         <FullscreenRequiredOverlay

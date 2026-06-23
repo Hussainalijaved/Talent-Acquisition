@@ -1063,14 +1063,14 @@
 
         async function fetchAssessmentSessions() {
             const fullSelect =
-                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, updated_at';
+                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, proctor_report, updated_at, created_at';
             let res = await sb.from('assessment_sessions')
                 .select(fullSelect)
                 .order('updated_at', { ascending: false })
                 .limit(1000);
             if (res.error) {
                 const baseSelect =
-                    'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, updated_at';
+                    'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, proctor_report, updated_at, created_at';
                 res = await sb.from('assessment_sessions')
                     .select(baseSelect)
                     .order('updated_at', { ascending: false })
@@ -1799,6 +1799,81 @@
                 '</details>';
         }
 
+        function proctorCategoryLabel(cat) {
+            const map = {
+                tab_switch: 'Tab / window hidden',
+                window_blur: 'Focus lost',
+                devtools: 'DevTools',
+                fullscreen_exit: 'Fullscreen exit',
+                blocked_shortcut: 'Blocked shortcut',
+                screenshot: 'Screenshot attempt',
+                snipping_tool: 'Snipping tool',
+                print_attempt: 'Print attempt',
+                webcam_lost: 'Webcam off',
+                webcam_restored: 'Webcam restored',
+                camera_not_restored: 'Camera not restored',
+                screen_share_stopped: 'Screen share stopped',
+                screen_blank: 'Blank / minimized screen',
+                screen_content: 'Screen activity',
+                session_start: 'Monitoring started',
+                activity: 'Activity',
+            };
+            return map[String(cat || '').trim()] || String(cat || 'Activity');
+        }
+
+        function renderProctorReport(sess) {
+            const raw = sess && sess.proctor_report;
+            const report = typeof raw === 'string' ? (function () { try { return JSON.parse(raw); } catch (_) { return null; } })() : raw;
+            if (!report || (!report.summary && !(report.entries || []).length)) {
+                return '';
+            }
+            const entries = Array.isArray(report.entries) ? report.entries.slice() : [];
+            entries.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+
+            let html = '<div class="section proctor-report-section"><div class="section-h">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>' +
+                'Proctoring activity (text log)</div>';
+
+            if (report.summary) {
+                html += '<div class="proctor-summary">' + esc(report.summary) + '</div>';
+            }
+            if (Array.isArray(report.highlights) && report.highlights.length) {
+                html += '<ul class="proctor-highlights">';
+                report.highlights.forEach((h) => {
+                    html += '<li>' + esc(String(h)) + '</li>';
+                });
+                html += '</ul>';
+            }
+
+            const meta = [];
+            if (report.suspicious_count != null) meta.push('Flagged: ' + report.suspicious_count);
+            if (report.finalized_at) meta.push('Finalized ' + fmtDateTime(report.finalized_at));
+            if (meta.length) {
+                html += '<div class="report-meta">' + meta.map((m) => '<span class="meta-chip">' + esc(m) + '</span>').join('') + '</div>';
+            }
+
+            if (entries.length) {
+                html += '<div class="proctor-timeline">';
+                entries.forEach((e) => {
+                    const time = e.at ? fmtDateTime(e.at) : '—';
+                    const phase = e.phase != null ? 'Phase ' + esc(String(e.phase)) : '';
+                    const cat = proctorCategoryLabel(e.category);
+                    const flag = e.suspicious ? ' <span class="pill p-reject" style="font-size:10px;padding:2px 6px">Flagged</span>' : '';
+                    html += '<div class="proctor-entry' + (e.suspicious ? ' suspicious' : '') + '">' +
+                        '<div class="proctor-entry-head"><span class="proctor-time">' + esc(time) + '</span>' +
+                        (phase ? '<span class="meta-chip">' + phase + '</span>' : '') +
+                        '<span class="meta-chip">' + esc(cat) + '</span>' + flag + '</div>' +
+                        '<div class="proctor-entry-body">' + esc(e.summary || '') + '</div></div>';
+                });
+                html += '</div>';
+            } else {
+                html += '<div class="phase-empty">No individual events recorded.</div>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
         function renderAssessmentReport(sess) {
             const hist = parseHistory(sess);
             const cfg = parseJson(sess.config);
@@ -1891,6 +1966,7 @@
                 '</div>';
 
             html += renderAssessmentReport(sess);
+            html += renderProctorReport(sess);
 
             if (merged) {
                 const n = merged.notes || {};
@@ -2045,6 +2121,7 @@
             // Interview history (assessment_sessions.interview_history)
             if (sess) {
                 html += renderAssessmentReport(sess);
+                html += renderProctorReport(sess);
             } else if (m.stage === 'ReviewQueue') {
                 html += '<div class="section"><div class="section-h">' +
                     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Assessment</div>' +

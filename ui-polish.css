@@ -241,3 +241,54 @@ body.admin-body {
     background: linear-gradient(135deg, #ef4444, #dc2626);
     box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
 }
+
+/* Admin — text proctor activity log */
+.proctor-summary {
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: #334155;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: #f8fafc;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+}
+.proctor-highlights {
+    margin: 0 0 0.75rem 1.1rem;
+    padding: 0;
+    font-size: 0.875rem;
+    color: #64748b;
+}
+.proctor-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+.proctor-entry {
+    padding: 0.65rem 0.85rem;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+}
+.proctor-entry.suspicious {
+    border-color: #fecaca;
+    background: #fffafb;
+}
+.proctor-entry-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.75rem;
+}
+.proctor-time {
+    font-weight: 600;
+    color: #475569;
+}
+.proctor-entry-body {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #1e293b;
+}

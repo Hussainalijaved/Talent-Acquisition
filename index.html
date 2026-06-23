@@ -722,6 +722,34 @@
             padding: 0.875rem 1rem;
         }
 
+        .speech-speaker-orb {
+            width: 2.75rem;
+            height: 2.75rem;
+            flex-shrink: 0;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6366f1;
+            background: #eef2ff;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .speech-speaker-orb.speaking {
+            color: #ffffff;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-color: transparent;
+            box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45);
+            animation: speakerPulse 1.6s ease-out infinite;
+        }
+
+        @keyframes speakerPulse {
+            0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45); }
+            70% { box-shadow: 0 0 0 14px rgba(99, 102, 241, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        }
+
         .speech-question-card {
             border-radius: 1rem;
             border: 1px solid #e0e7ff;
@@ -2395,47 +2423,64 @@
                 ? 'Listen to the follow-up'
                 : 'Listen to the interviewer';
 
-            const renderInterviewerTranscript = (text, isSpeaking, placeholder) => (
+            // Audio-only interviewer indicator — this is a transcription-free
+            // interview, so no question text is ever shown. We only convey whether
+            // the interviewer is currently speaking.
+            const renderInterviewerTranscript = (_text, isSpeaking, placeholder) => (
                 <div className="speech-interviewer-box">
-                    <div className="flex items-center gap-2 mb-1.5">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700">Interviewer</p>
-                        {isSpeaking ? (
-                            <span className="flex gap-0.5 items-end h-3 ml-1">
-                                <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '50%', animationDelay: '0ms' }} />
-                                <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '100%', animationDelay: '150ms' }} />
-                                <span className="w-0.5 bg-indigo-400 rounded-full animate-bounce" style={{ height: '70%', animationDelay: '300ms' }} />
-                            </span>
-                        ) : null}
+                    <div className="flex items-center gap-3">
+                        <div className={`speech-speaker-orb ${isSpeaking ? 'speaking' : ''}`}>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5 9v6h4l5 5V4L9 9H5z" />
+                            </svg>
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-1">Interviewer</p>
+                            {isSpeaking ? (
+                                <div className="flex items-center gap-2">
+                                    <span className="flex gap-0.5 items-end h-4">
+                                        <span className="w-1 bg-indigo-400 rounded-full animate-bounce" style={{ height: '45%', animationDelay: '0ms' }} />
+                                        <span className="w-1 bg-indigo-500 rounded-full animate-bounce" style={{ height: '100%', animationDelay: '120ms' }} />
+                                        <span className="w-1 bg-indigo-400 rounded-full animate-bounce" style={{ height: '65%', animationDelay: '240ms' }} />
+                                        <span className="w-1 bg-indigo-500 rounded-full animate-bounce" style={{ height: '85%', animationDelay: '360ms' }} />
+                                    </span>
+                                    <span className="text-sm font-medium text-slate-700">Speaking…</span>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-slate-500">{placeholder}</p>
+                            )}
+                        </div>
                     </div>
-                    <p className="transcript-stream text-slate-900 text-sm sm:text-base leading-relaxed min-h-[2.5rem]">
-                        {text || (isSpeaking ? '' : placeholder)}
-                        {isSpeaking && text ? (
-                            <span className="inline-block w-0.5 h-4 bg-indigo-500/80 ml-0.5 align-middle animate-pulse rounded-sm" />
-                        ) : null}
-                        {isSpeaking && !text ? (
-                            <span className="inline-block w-0.5 h-4 bg-indigo-400/60 ml-0.5 align-middle animate-pulse rounded-sm" />
-                        ) : null}
-                    </p>
                 </div>
             );
 
-            const renderCandidateTranscript = (savedText, warmup = false) => {
+            // Audio-only candidate indicator — no spoken transcript is displayed.
+            const renderCandidateTranscript = (answered, warmup = false) => {
                 const live = isAnswering && !interviewComplete;
-                const display = live ? (liveCaption || '') : (savedText || '');
-                if (!live && !display) return null;
+                if (!live && !answered) return null;
+                const heard = micLevel > 0.05;
                 return (
                     <div ref={live ? liveTranscriptRef : null} className={`speech-response-box ${warmup ? 'warmup' : ''}`}>
                         <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${warmup ? 'text-amber-800' : 'text-emerald-800'}`}>
                             Your response
                         </p>
-                        <p className="text-sm sm:text-base text-slate-900 leading-relaxed min-h-[2.5rem]">
-                            {live
-                                ? (display || 'Listening… your words will appear here as you speak.')
-                                : display}
-                            {live && display ? (
-                                <span className={`inline-block w-0.5 h-4 ml-0.5 align-middle animate-pulse rounded-sm ${warmup ? 'bg-amber-500/80' : 'bg-emerald-500/80'}`} />
-                            ) : null}
-                        </p>
+                        {live ? (
+                            <div className="flex items-center gap-2.5">
+                                <span className={`flex gap-0.5 items-end h-4`}>
+                                    <span className={`w-1 rounded-full animate-bounce ${heard ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ height: '50%', animationDelay: '0ms' }} />
+                                    <span className={`w-1 rounded-full animate-bounce ${heard ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ height: '100%', animationDelay: '150ms' }} />
+                                    <span className={`w-1 rounded-full animate-bounce ${heard ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ height: '70%', animationDelay: '300ms' }} />
+                                </span>
+                                <span className="text-sm font-medium text-slate-700">
+                                    {heard ? 'Recording your answer…' : 'Listening — start speaking…'}
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs">✓</span>
+                                <span className="text-sm font-medium text-slate-700">Answer captured</span>
+                            </div>
+                        )}
                     </div>
                 );
             };
@@ -3759,8 +3804,8 @@
                 <div className="panel rounded-2xl p-6 mb-8 border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white animate-fade-up">
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
                                     <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-1">Voice round summary</p>
-                            <p className="text-sm text-slate-600">{speechRows.length} voice question{speechRows.length === 1 ? '' : 's'} completed</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-1">Overall voice communication</p>
+                            <p className="text-sm text-slate-600">Averaged across the whole interview ({speechRows.length} question{speechRows.length === 1 ? '' : 's'})</p>
                                         </div>
                         {avgScore != null ? (
                             <p className={`text-2xl font-bold tabular-nums ${scoreTone(avgScore)}`}>{avgScore}<span className="text-sm text-slate-500 font-medium">/100</span></p>
@@ -4109,7 +4154,7 @@
                                 <div>
                                     <p className="text-[10px] font-bold uppercase tracking-widest text-blue-100 mb-2">Assessment review</p>
                                     <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Your responses</h2>
-                                    <p className="text-sm text-blue-100/90 mt-2">Technical answers, voice scores, recordings, and evaluator feedback.</p>
+                                    <p className="text-sm text-blue-100/90 mt-2">Technical answers and your overall voice communication summary.</p>
                                 </div>
                                 <button type="button" onClick={onBack} className="bg-white/15 hover:bg-white/25 border border-white/25 text-white px-5 py-2.5 rounded-xl text-sm self-start sm:self-auto transition-all duration-200">
                                     Back to results
@@ -4139,13 +4184,9 @@
                                 technicalRows,
                                 'badge-accent'
                             )}
-                            {renderSection(
-                                'Voice communication interview',
-                                'Soft skills, delivery metrics, and audio playback',
-                                speechRows,
-                                'bg-indigo-50 text-indigo-700 border border-indigo-200',
-                                true
-                            )}
+                            {/* Voice round is transcription-free and scored as one
+                                overall average — shown via SpeechSummaryCard above,
+                                no per-question breakdown. */}
                         </div>
                     )}
 

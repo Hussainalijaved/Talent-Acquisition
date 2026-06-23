@@ -37,6 +37,27 @@ function sendJson(ws, payload) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
 }
 
+// The speech assessment is fully transcription-free for the candidate: no
+// question/answer text is ever shown, and only one overall score is reported
+// at the end (never per-question). This strips anything transcript-like before
+// it reaches the browser, regardless of what the relay produces internally.
+function sendToClient(ws, ev) {
+  if (!ev || typeof ev !== 'object') return;
+  const type = ev.type;
+  // Captions / live transcripts — never surface to the candidate.
+  if (type === 'transcript' || type === 'question_partial') return;
+  // Per-question scores are not shown; scoring is averaged once at the end.
+  if (type === 'turn_scored') return;
+  // Question/answer flow events keep their number (for the progress bar) but
+  // must not carry any spoken text.
+  if (type === 'question' || type === 'answer') {
+    const { text, ...rest } = ev;
+    sendJson(ws, rest);
+    return;
+  }
+  sendJson(ws, ev);
+}
+
 async function waitForPendingTurnSaves(getCount, maxMs = 90000) {
   const deadline = Date.now() + maxMs;
   while (getCount() > 0 && Date.now() < deadline) {
@@ -188,7 +209,7 @@ wss.on('connection', (clientWs) => {
         bridge = new GeminiLiveBridge({
           apiKey: GEMINI_API_KEY,
           context,
-          onEvent: (ev) => sendJson(clientWs, ev),
+          onEvent: (ev) => sendToClient(clientWs, ev),
           onTurnSaved: async (turnPair) => {
             pendingTurnSaves += 1;
             try {
@@ -234,7 +255,9 @@ wss.on('connection', (clientWs) => {
                   console.warn('[relay] scored turn patch failed:', dbErr.message);
                 });
               }
-              sendJson(clientWs, {
+              // Scored internally so the end-of-interview average is accurate,
+              // but never surfaced per-question to the candidate.
+              sendToClient(clientWs, {
                 type: 'turn_scored',
                 number: turnPair.voice_question_number,
                 phase: turnPair.phase,

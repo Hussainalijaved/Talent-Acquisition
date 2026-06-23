@@ -336,6 +336,41 @@ const body = {
 const lastTurn = turns[turns.length - 1] || {};
 const phaseScore = Math.round(Number(lastTurn.score ?? speechAvg));
 
+// Overall soft skills = average of every voice turn's soft skills across the
+// whole interview (not per-question). This is what the candidate and emails see.
+const SOFT_SKILL_KEYS = [
+  'communication_clarity',
+  'fluency',
+  'confidence',
+  'professionalism',
+  'english_proficiency',
+  'answer_relevance',
+];
+const overallSoftSkills = (() => {
+  const sums = {};
+  const counts = {};
+  for (const t of turns) {
+    const s = t && typeof t.soft_skills === 'object' ? t.soft_skills : null;
+    if (!s) continue;
+    for (const k of SOFT_SKILL_KEYS) {
+      const v = Number(s[k]);
+      if (Number.isFinite(v)) {
+        sums[k] = (sums[k] || 0) + v;
+        counts[k] = (counts[k] || 0) + 1;
+      }
+    }
+  }
+  const out = {};
+  let any = false;
+  for (const k of SOFT_SKILL_KEYS) {
+    if (counts[k]) {
+      out[k] = Math.round(sums[k] / counts[k]);
+      any = true;
+    }
+  }
+  return any ? out : (lastTurn.soft_skills || null);
+})();
+
 return (async () => {
   let resolvedInterviewer = sessionInterviewer || sessCfg.interviewer_email || '';
   if (!resolvedInterviewer) {
@@ -355,7 +390,7 @@ return (async () => {
       json: {
         score: combinedScore,
         phase_score: phaseScore,
-        soft_skills: lastTurn.soft_skills || null,
+        soft_skills: overallSoftSkills,
         feedback: finalFeedback,
         nextQuestion: '',
         time_limit_seconds: null,

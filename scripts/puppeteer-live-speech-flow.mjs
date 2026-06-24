@@ -71,6 +71,13 @@ function createMockRelay() {
       setTimeout(() => {
         sendJson(ws, { type: 'awaiting_answer', number: qNum, maxTurns: TOTAL_Q, time_limit_seconds: 120 });
       }, 600);
+      // Late partials after awaiting_answer — this was cancelling mic open for Q1-Q5.
+      setTimeout(() => {
+        sendJson(ws, { type: 'question_partial', number: qNum, text: `Interview question ${qNum}: tell me about a relevant experience, in detail?` });
+      }, 900);
+      setTimeout(() => {
+        sendJson(ws, { type: 'question_partial', number: qNum, text: `Interview question ${qNum}: tell me about a relevant experience, in detail? Please.` });
+      }, 1200);
     };
 
     ws.on('message', (raw) => {

@@ -140,6 +140,11 @@
       return this.answering || this.streamingAudio;
     }
 
+    // Report mic level whenever the answer window is open (even before beginAnswer).
+    shouldShowMicLevel() {
+      return this.shouldStreamMic() || this.awaitingAnswerPending;
+    }
+
     async initPlaybackAudio() {
       const Ctx = global.AudioContext || global.webkitAudioContext;
       if (!Ctx) throw new Error('AudioContext not supported');
@@ -222,18 +227,23 @@
       const deadline = Date.now() + 9000;
       while (Date.now() < deadline) {
         if (this.ended || this.interviewEnded) return;
-        if (myToken !== this.micOpenToken) return;        // superseded
+        if (myToken !== this.micOpenToken) return;
         if (!this.awaitingAnswerPending || this.answering) return;
         if (!this.playing && this.playQueue.length === 0) break;
         await new Promise((r) => setTimeout(r, 150));
       }
       if (myToken !== this.micOpenToken) return;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
-      // Small settle so the tail of the question isn't clipped.
       await new Promise((r) => setTimeout(r, 250));
       if (myToken !== this.micOpenToken) return;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
       this.beginAnswer();
+    }
+
+    // Re-arm mic open if a prior loop was cancelled (e.g. late question_partial).
+    ensureMicReady() {
+      if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
+      void this.openMicAfterPlayback();
     }
 
     closeMicForInterviewer() {
@@ -400,13 +410,16 @@
         // Ignore stale flush if interviewer audio for the current turn is already queued.
         if (this.playQueue.length > 0 || this.playing) return;
         this.clearPlayback();
-        this.cancelMicOpen();
+        // Never cancel an open answer window — flush only clears playback.
+        if (!this.awaitingAnswerPending && !this.answering) this.cancelMicOpen();
         return;
       }
       if (msg.type === 'question_partial' && msg.text) {
         if (msg.warmup == null && window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
-        if (msg.warmup == null) { this.cancelMicOpen(); this.forceEndAnswer(); this.processingAnswer = false; }
+        // Partials are caption-only — must NOT cancel mic open (warmup works because
+        // partials carry warmup=mic_check|intro; real Q1-Q5 partials were killing the mic).
         this.onQuestion({ number: msg.number, text: msg.text, partial: true, warmup: msg.warmup || null });
+        if (this.awaitingAnswerPending && !this.answering) this.ensureMicReady();
       }
       if (msg.type === 'question') {
         const isWarmup = msg.warmup != null || msg.number <= 0;
@@ -415,9 +428,8 @@
           this.processingAnswer = false;
         }
         this.onQuestion({ number: msg.number, text: msg.text || '', partial: false, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
-        // Safety only: if awaiting_answer never arrives for this real question,
-        // the timer below will open the mic. The normal flow clears it first.
         if (!isWarmup && msg.number >= 1) this.scheduleQuestionSafety(msg.number, 120);
+        if (this.awaitingAnswerPending && !this.answering) this.ensureMicReady();
       }
       if (msg.type === 'answer') {
         this.clearQuestionSafetyTimer();
@@ -630,7 +642,9 @@
         }
         const rms = Math.sqrt(sumSq / input.length);
         const level = Math.min(1, rms * 14);
-        this.onLevel(level);
+        this.onLevel(this.shouldShowMicLevel() ? level : 0);
+
+        if (!this.shouldStreamMic()) return;
 
         const down = downsample(input, inRate, INPUT_RATE);
         const pcm = floatTo16BitPcm(down);
@@ -691,6 +705,7 @@
       this.playing = false;
       if (gen === this.playbackGeneration && !this.playQueue.length) {
         this.onPlaybackIdle?.();
+        if (this.awaitingAnswerPending && !this.answering) this.ensureMicReady();
       }
     }
 

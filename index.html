@@ -16,7 +16,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
-    <script src="live-speech.js?v=20260624d"></script>
+    <script src="live-speech.js?v=20260624e"></script>
     <script src="proctor-media.js"></script>
     <script src="proctor-activity.js"></script>
     <script>
@@ -2985,13 +2985,9 @@
                                     setIsAnswering(false);
                                     setCanAnswer(false);
                                     setSavingAnswer(true);
-                                } else if (canAnswerRef.current) {
-                                    sessionRef.current.beginAnswer?.();
-                                    sessionRef.current.submitAnswer?.();
-                                    setIsAnswering(false);
-                                    setCanAnswer(false);
-                                    setSavingAnswer(true);
                                 }
+                                // Never auto-submit an empty answer — if the mic never opened,
+                                // keep waiting; the relay safety timer will re-open it.
                             }
                             setAnswerTimerActive(false);
                             return 0;

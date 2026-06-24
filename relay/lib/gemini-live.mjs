@@ -112,9 +112,14 @@ export class GeminiLiveBridge {
     this.inFollowUpFor = 0;
     this.lastAnswerWeak = false;
     this.coachingConfig = {
-      minWords: Number(context.followup_min_words ?? 12),
-      followUpEnabled: context.follow_up_enabled !== false,
-      coachingEnabled: context.coaching_enabled !== false,
+      // Require ≥ 30 words to avoid triggering on short-but-real answers.
+      // Silence-auto-submit yields "[No spoken response captured]" which isWeakAnswer()
+      // already guards against, but a short 5-word answer would slip through at 12.
+      minWords: Number(context.followup_min_words ?? 30),
+      // Default OFF — follow-ups confuse candidates who expect Q2.
+      // Enable explicitly in the n8n workflow via follow_up_enabled: true.
+      followUpEnabled: Boolean(context.follow_up_enabled),
+      coachingEnabled: Boolean(context.coaching_enabled),
     };
 
     // Relay-side silence detection. Driven by transcript growth (authoritative)
@@ -982,6 +987,9 @@ export class GeminiLiveBridge {
     this.roundQuestionEmitted = false;
     this.sendSpokenPrompt(this.buildFollowUpPrompt(qNum, questionText, answerText));
     this.scheduleFollowUpWatchdog(qNum);
+    // Safety: if emitQuestionFromBuffer never commits the follow-up (Gemini stalls),
+    // force awaiting_answer so the candidate can still answer and the interview proceeds.
+    this.scheduleAnswerWindowSafety(qNum);
   }
 
   scheduleFollowUpWatchdog(qNum) {

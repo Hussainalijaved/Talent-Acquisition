@@ -138,8 +138,9 @@ return [
       silence_nudge_seconds: Number(cfg.silence_nudge_seconds || sessCfg.silence_nudge_seconds || 5),
       silence_auto_submit_seconds: Number(cfg.silence_auto_submit_seconds || sessCfg.silence_auto_submit_seconds || 6),
       silence_nudge_text: String(cfg.silence_nudge_text || sessCfg.silence_nudge_text || "Take your time — whenever you're ready, please go ahead and share your answer."),
-      followup_min_words: Number(cfg.followup_min_words || sessCfg.followup_min_words || 12),
-      follow_up_enabled: cfg.follow_up_enabled !== false,
+      followup_min_words: Number(cfg.followup_min_words || sessCfg.followup_min_words || 30),
+      // Default OFF so candidates always get Q2 after Q1. Enable per-job if needed.
+      follow_up_enabled: Boolean(cfg.follow_up_enabled || sessCfg.follow_up_enabled),
       coaching_enabled: cfg.coaching_enabled !== false,
       intro_enabled: cfg.intro_enabled !== false,
       intro_answer_seconds: Number(cfg.intro_answer_seconds || sessCfg.intro_answer_seconds || 90),

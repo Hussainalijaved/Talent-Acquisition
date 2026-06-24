@@ -220,11 +220,12 @@
     }
 
     // Wait for the interviewer's audio to finish, then open the mic. Hard-capped
-    // at 9s so a stuck playback flag can NEVER freeze the interview.
+    // at 40s — long enough for the longest interview question audio but still a
+    // safety net so a stuck playback flag can never freeze the interview.
     async openMicAfterPlayback() {
       const myToken = ++this.micOpenToken;
       if (this.ended || this.interviewEnded) return;
-      const deadline = Date.now() + 9000;
+      const deadline = Date.now() + 40000;
       while (Date.now() < deadline) {
         if (this.ended || this.interviewEnded) return;
         if (myToken !== this.micOpenToken) return;

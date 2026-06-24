@@ -79,6 +79,15 @@ export class GeminiLiveBridge {
 
     this.questions = [];
     this.answers = [];
+    // Deterministic question flow: the relay OWNS the question list and drives
+    // progression (Q1→QN) itself. Gemini Live is used only as a TTS voice that
+    // reads the exact question text — progression NEVER depends on Gemini's
+    // conversational turn-taking, which is what kept stalling between questions.
+    this.questionBank = [];
+    this.currentQ = 0;
+    this.ttsOnlyTurn = false;   // current model turn is just speaking a question
+    this.ttsForQ = 0;
+    this.questionAudioSafety = null;
 
     this.modelBuf = '';
     this.userBuf = '';
@@ -98,6 +107,11 @@ export class GeminiLiveBridge {
 
     this.maxTurns = Number(context.speech_phases || 5);
     this.maxQuestions = Number(context.max_questions || 5);
+    // Seed the deterministic question bank with reliable fallbacks immediately so
+    // the interview can ALWAYS progress, even if AI generation is slow or fails.
+    for (let i = 1; i <= this.maxTurns; i += 1) {
+      this.questionBank.push(fallbackInterviewQuestion(i, this.maxTurns));
+    }
     this.prematureClosingReprompts = 0;
     this.nextQuestionWatchdog = null;
     this.answerWindowSafetyTimer = null;
@@ -309,6 +323,128 @@ export class GeminiLiveBridge {
     );
   }
 
+  async generateQuestionBank() {
+    const apiKey = this.apiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) return;
+    const role = String(this.context.requisition_title || 'this role').trim();
+    const jd = String(this.context.job_description || this.context.requirements || '').slice(0, 1500).trim();
+    const n = this.maxTurns;
+    const prompt =
+      `You are designing a spoken behavioural interview for the role: "${role}".` +
+      (jd ? `\n\nRole context:\n${jd}` : '') +
+      `\n\nWrite exactly ${n} interview questions that assess soft skills (communication, teamwork, ` +
+      `problem solving, composure under pressure, motivation). Each question must be ONE or TWO sentences, ` +
+      `clear, spoken-English friendly, and answerable out loud in under a minute. Do NOT number them and do ` +
+      `NOT add any preamble. Return ONLY a JSON array of ${n} strings.`;
+    const model = String(this.context.gemini_text_model || 'gemini-2.0-flash').replace(/^models\//, '');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 20000);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ctrl.signal,
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.6, responseMimeType: 'application/json' },
+        }),
+      }).finally(() => clearTimeout(t));
+      if (!res.ok) throw new Error(`gen ${res.status}`);
+      const data = await res.json();
+      const raw = data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '';
+      let arr = null;
+      try { arr = JSON.parse(raw); } catch (_) {
+        const m = raw.match(/\[[\s\S]*\]/);
+        if (m) { try { arr = JSON.parse(m[0]); } catch (_) {} }
+      }
+      if (!Array.isArray(arr)) throw new Error('bad shape');
+      const cleaned = arr
+        .map((q) => stripQuestionNumbering(String(q || '').trim()))
+        .filter((q) => q.length > 8);
+      // Only overwrite slots that have not been asked yet.
+      for (let i = 0; i < this.maxTurns; i += 1) {
+        if (i + 1 <= this.currentQ) continue;
+        if (cleaned[i]) this.questionBank[i] = cleaned[i];
+      }
+      console.log(`[relay] question bank ready — ${cleaned.length}/${this.maxTurns} AI questions`);
+    } catch (err) {
+      console.warn('[relay] question generation failed, using fallbacks:', err.message);
+    }
+  }
+
+  // ── Deterministic question driver ──────────────────────────────────────────
+  // Commit the question text, send it to the client, have Gemini SPEAK it, then
+  // open the answer window when the spoken audio completes (or a safety timeout).
+  // Progression never waits on Gemini to "decide" to ask the next question.
+  speakQuestion(qNum) {
+    if (this.interviewEnded || this.interviewClosing || this.closed) return;
+    if (qNum > this.maxTurns) {
+      this.finishInterview();
+      return;
+    }
+    const text =
+      (this.questionBank[qNum - 1] || '').trim() ||
+      fallbackInterviewQuestion(qNum, this.maxTurns);
+    this.questions[qNum - 1] = text;
+    this.currentQ = qNum;
+
+    // Reset all turn state so nothing from the previous answer leaks in.
+    this.clearAnswerPromptWindow();
+    if (this.nextQuestionWatchdog) { clearTimeout(this.nextQuestionWatchdog); this.nextQuestionWatchdog = null; }
+    if (this.answerWindowSafetyTimer) { clearTimeout(this.answerWindowSafetyTimer); this.answerWindowSafetyTimer = null; }
+    this.awaitingAnswer = false;
+    this.answerPromptOpen = false;
+    this.userTurnActive = false;
+    this.userBuf = '';
+    this.lateUserBuf = '';
+    this.modelBuf = '';
+    this.modelAudioThisTurn = false;
+    this.voiceDetectedThisTurn = false;
+    this.roundQuestionEmitted = true;
+    this.streamingQuestionText = '';
+    this.streamingQuestionNum = 0;
+    this.inFollowUpFor = 0;
+    this.blockModelOutput = false;
+    this.allowModelAudio = true;
+    this.pendingAudioChunks = [];
+    this.answerPcmChunks = [];
+    this.ttsOnlyTurn = true;
+    this.ttsForQ = qNum;
+
+    this.flushClientPlayback();
+    this.onEvent({ type: 'next_question_ready', number: qNum });
+    this.onEvent({ type: 'transcript', speaker: 'model', text, partial: false, number: qNum });
+    this.onEvent({ type: 'question', number: qNum, text });
+    this.computeAndEmitTimer(qNum, text);
+
+    this.sendSpokenPrompt(
+      `Read this interview question aloud to the candidate, word for word, in a warm professional tone. ` +
+        `Say ONLY this question and nothing else — no preamble, no numbering, no follow-up:\n"${text}"`,
+      { flushFirst: false }
+    );
+
+    // Open the answer window once the question audio finishes — or force it after
+    // a hard cap so a slow/missing Gemini turn can never freeze the interview.
+    if (this.questionAudioSafety) clearTimeout(this.questionAudioSafety);
+    this.questionAudioSafety = setTimeout(() => {
+      this.questionAudioSafety = null;
+      if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
+      if (this.awaitingAnswer || this.answerPromptOpen) return;
+      console.warn(`[relay] question ${qNum} audio safety — opening answer window`);
+      this.ttsOnlyTurn = false;
+      this.emitAwaitingAnswer(qNum, text);
+    }, 14000);
+  }
+
+  computeAndEmitTimer(qNum, text) {
+    try {
+      const qLimits =
+        this.questionTimeLimits[qNum] || fallbackTimeLimit(text || '', this.context);
+      this.questionTimeLimits[qNum] = qLimits;
+    } catch (_) {}
+  }
+
   buildNextQuestionPrompt(aNum, nextQ) {
     if (nextQ >= this.maxTurns) {
       return (
@@ -463,6 +599,11 @@ export class GeminiLiveBridge {
         this.closed = false;
         await this.connectOnce(systemText);
         console.log(`[relay] Gemini Live ready — model ${model}`);
+        // Generate role-specific questions in the background. Warmup (mic check +
+        // intro) buys ~20-40s, so the bank is usually upgraded before Q1. If it is
+        // not ready in time, the seeded fallback questions are used — either way
+        // the interview always has every question ready before it is asked.
+        void this.generateQuestionBank();
         return;
       } catch (err) {
         lastErr = err;
@@ -681,6 +822,10 @@ export class GeminiLiveBridge {
       return;
     }
 
+    // Deterministic question TTS: the committed question text was already sent.
+    // Suppress partial captions so they cannot race/cancel the answer window.
+    if (this.ttsOnlyTurn) return;
+
     // Ignore late captions only when the mic is already open for THIS question.
     if (this.answerPromptOpen && !this.inFollowUpFor) {
       const nextQ = this.roundQuestionEmitted
@@ -758,6 +903,24 @@ export class GeminiLiveBridge {
       }
       if (this.closingCompleteTimer) clearTimeout(this.closingCompleteTimer);
       this.closingCompleteTimer = setTimeout(() => this.finalizeInterviewClosing(), 3500);
+      return;
+    }
+
+    // Deterministic question TTS finished speaking → open the answer window.
+    // We do NOT commit a question from the buffer here; the relay already sent
+    // the exact question text. This is the single, reliable Q1→QN hand-off.
+    if (this.ttsOnlyTurn) {
+      this.ttsOnlyTurn = false;
+      this.modelBuf = '';
+      this.modelAudioThisTurn = false;
+      if (this.questionAudioSafety) {
+        clearTimeout(this.questionAudioSafety);
+        this.questionAudioSafety = null;
+      }
+      const qNum = this.ttsForQ;
+      if (!this.awaitingAnswer && !this.answerPromptOpen && !this.interviewEnded && !this.closed) {
+        this.emitAwaitingAnswer(qNum, this.questions[qNum - 1] || '');
+      }
       return;
     }
 
@@ -909,15 +1072,8 @@ export class GeminiLiveBridge {
       this.streamingQuestionText = '';
       this.streamingQuestionNum = 0;
       this.onEvent({ type: 'warmup_phase', phase: null });
-      this.modelBuf = '';
-      this.allowModelAudio = true;
-      this.pendingAudioChunks = [];
-      this.blockModelOutput = false;
-      this.flushClientPlayback();
-      this.onEvent({ type: 'next_question_ready', number: 1 });
-      this.sendSpokenPrompt(this.buildFirstQuestionPrompt(), { flushFirst: false });
-      this.scheduleNextQuestionWatchdog(1);
-      this.scheduleAnswerWindowSafety(1);
+      // Deterministic hand-off: the relay now drives Q1..QN itself.
+      this.speakQuestion(1);
       return;
     }
 
@@ -980,45 +1136,26 @@ export class GeminiLiveBridge {
       console.warn('[relay] turn save/score failed:', err.message);
     });
 
-    this.proceedAfterAnswer(aNum, userText, turnPair);
+    this.proceedAfterAnswer(aNum);
   }
 
   // Decide next step using a fast transcript heuristic (no score wait):
   //  - weak/short answer (not already followed-up) → one cross-question
   //  - otherwise → next numbered question (with optional coaching) or finish
-  proceedAfterAnswer(aNum, userText, turnPair) {
+  proceedAfterAnswer(aNum) {
     this.clearAnswerPromptWindow();
     this.roundQuestionEmitted = false;
     this.streamingQuestionText = '';
     this.streamingQuestionNum = 0;
+    this.inFollowUpFor = 0;
 
-    const weak = this.isWeakAnswer(userText);
-
-    if (
-      this.coachingConfig.followUpEnabled &&
-      !turnPair.is_follow_up &&
-      !this.followUpUsed[aNum] &&
-      weak
-    ) {
-      this.followUpUsed[aNum] = true;
-      this.inFollowUpFor = aNum;
-      this.onEvent({ type: 'follow_up_probe', number: aNum, maxTurns: this.maxTurns });
-      this.askFollowUp(aNum, turnPair.question_text, userText);
-      return;
-    }
-
-    // Coaching on the NEXT question reflects whether this answer was weak.
-    this.lastAnswerWeak = weak;
-
+    // Deterministic: move straight to the next question or finish. No follow-up
+    // branch, no waiting on Gemini to decide — progression is relay-owned.
     if (aNum >= this.maxTurns) {
       this.finishInterview();
       return;
     }
-
-    const nextQ = aNum + 1;
-    this.flushClientPlayback();
-    this.onEvent({ type: 'next_question_ready', number: nextQ });
-    this.proceedToNextQuestion(aNum, nextQ);
+    this.speakQuestion(aNum + 1);
   }
 
   askFollowUp(qNum, questionText, answerText) {

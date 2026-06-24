@@ -109,6 +109,7 @@
       this.modelAudioHeardThisTurn = false;
       this.awaitingAnswerPending = false;
       this.micOpenFallbackTimer = null;
+      this.nextQuestionForceFallbackTimer = null;
       this.streamingAudio = false;
       this.audioFlushTimer = null;
       this.playbackGeneration = 0;
@@ -166,6 +167,30 @@
       if (this.micOpenFallbackTimer) {
         clearTimeout(this.micOpenFallbackTimer);
         this.micOpenFallbackTimer = null;
+      }
+    }
+
+    // Called after next_question_ready. If awaiting_answer never arrives from relay
+    // (old relay version, network hiccup, etc.) this guarantees mic opens anyway.
+    scheduleNextQuestionForceFallback(timeLimitSeconds = 120) {
+      if (this.nextQuestionForceFallbackTimer) {
+        clearTimeout(this.nextQuestionForceFallbackTimer);
+        this.nextQuestionForceFallbackTimer = null;
+      }
+      this.nextQuestionForceFallbackTimer = setTimeout(() => {
+        this.nextQuestionForceFallbackTimer = null;
+        if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
+        // awaiting_answer never arrived — synthesise it so mic opens.
+        this.awaitingAnswerPending = true;
+        this.onAwaitingAnswer({ time_limit_seconds: timeLimitSeconds, warmup: null });
+        void this.scheduleMicAfterPlayback();
+      }, 12000);
+    }
+
+    clearNextQuestionForceFallback() {
+      if (this.nextQuestionForceFallbackTimer) {
+        clearTimeout(this.nextQuestionForceFallbackTimer);
+        this.nextQuestionForceFallbackTimer = null;
       }
     }
 
@@ -424,6 +449,7 @@
         this.onQuestion({ number: msg.number, text: msg.text || '', partial: false, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
       }
       if (msg.type === 'answer') {
+        this.clearNextQuestionForceFallback();
         if (msg.warmup === 'mic_check') {
           this.closeMicForInterviewer();
         }
@@ -487,6 +513,8 @@
         this.awaitingAnswerPending = false;
         this.onNextQuestionReady({ number: msg.number });
         this.setStatus('The interviewer is speaking…');
+        // Relay (old versions) may not send awaiting_answer — this guarantees mic opens.
+        if (msg.number >= 1) this.scheduleNextQuestionForceFallback(120);
       }
       if (msg.type === 'turn_saved_status') {
         this.onTurn({ savedStatus: { number: msg.number, saved: !!msg.saved, error: msg.error } });
@@ -505,6 +533,7 @@
         }
       }
       if (msg.type === 'awaiting_answer') {
+        this.clearNextQuestionForceFallback();
         this.cancelMicOpen();
         this.closeMicForInterviewer();
         this.processingAnswer = false;
@@ -768,6 +797,8 @@
     }
 
     cleanup() {
+      this.clearNextQuestionForceFallback();
+      this.cancelMicOpen();
       try {
         this.processor?.disconnect();
         this.source?.disconnect();

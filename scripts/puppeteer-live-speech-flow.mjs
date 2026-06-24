@@ -61,67 +61,52 @@ function sendAudio(ws, count = 3) {
 }
 
 function createMockRelay() {
-  let phase = 'mic_check';
   const wss = new WebSocketServer({ port: RELAY_PORT });
-
-  const advanceToIntro = (ws) => {
-    phase = 'intro';
-    sendJson(ws, { type: 'warmup_phase', phase: 'intro' });
-    sendAudio(ws, 2);
-    sendJson(ws, {
-      type: 'awaiting_answer',
-      number: 0,
-      maxTurns: 5,
-      time_limit_seconds: 90,
-      warmup: 'intro',
-    });
-  };
-
-  const advanceToQ1 = (ws) => {
-    phase = 'q1';
-    sendJson(ws, { type: 'flush_playback' });
-    sendJson(ws, { type: 'next_question_ready', number: 1 });
-    sendAudio(ws, 4);
-    sendJson(ws, {
-      type: 'question',
-      number: 1,
-      text: 'Tell me about a time you solved a difficult problem at work.',
-    });
-    sendJson(ws, {
-      type: 'awaiting_answer',
-      number: 1,
-      maxTurns: 5,
-      time_limit_seconds: 120,
-    });
-  };
 
   wss.on('connection', (ws) => {
     ws.on('message', (raw) => {
       let msg;
       try { msg = JSON.parse(String(raw)); } catch (_) { return; }
 
-      if (msg.type === 'session.start') {
-        sendJson(ws, { type: 'ready' });
-        setTimeout(() => {
-          sendJson(ws, { type: 'warmup_phase', phase: 'mic_check' });
-          sendAudio(ws, 2);
-          sendJson(ws, {
-            type: 'awaiting_answer',
-            number: -1,
-            maxTurns: 5,
-            time_limit_seconds: 60,
-            warmup: 'mic_check',
-          });
-        }, 50);
-      }
+      if (msg.type !== 'session.start') return;
 
-      if (msg.type === 'user_turn_start' && phase === 'mic_check') {
-        setTimeout(() => advanceToIntro(ws), 120);
-      }
+      // Time-based sequence — does not depend on client user_turn_start timing.
+      sendJson(ws, { type: 'ready' });
 
-      if (msg.type === 'user_turn_start' && phase === 'intro') {
-        setTimeout(() => advanceToQ1(ws), 120);
-      }
+      setTimeout(() => {
+        // Mic check phase.
+        sendJson(ws, { type: 'warmup_phase', phase: 'mic_check' });
+        sendAudio(ws, 2);
+        sendJson(ws, {
+          type: 'awaiting_answer', number: -1, maxTurns: 5,
+          time_limit_seconds: 60, warmup: 'mic_check',
+        });
+      }, 50);
+
+      setTimeout(() => {
+        // Intro phase.
+        sendJson(ws, { type: 'warmup_phase', phase: 'intro' });
+        sendAudio(ws, 2);
+        sendJson(ws, {
+          type: 'awaiting_answer', number: 0, maxTurns: 5,
+          time_limit_seconds: 90, warmup: 'intro',
+        });
+      }, 700);
+
+      setTimeout(() => {
+        // Q1 handoff.
+        sendJson(ws, { type: 'flush_playback' });
+        sendJson(ws, { type: 'next_question_ready', number: 1 });
+        sendAudio(ws, 4);
+        sendJson(ws, {
+          type: 'question', number: 1,
+          text: 'Tell me about a time you solved a difficult problem at work.',
+        });
+        sendJson(ws, {
+          type: 'awaiting_answer', number: 1, maxTurns: 5,
+          time_limit_seconds: 120,
+        });
+      }, 1400);
     });
   });
 

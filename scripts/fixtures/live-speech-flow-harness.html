@@ -10,59 +10,54 @@
 (async () => {
   const params = new URLSearchParams(location.search);
   const relayUrl = params.get('relay') || 'ws://127.0.0.1:8792';
+  const TOTAL_Q = 5;
   const result = {
     sessionStarts: 0,
     flushIgnoredWithQueuedAudio: false,
-    q1AwaitingAnswer: false,
-    q1CanAnswer: false,
-    q1MicOpened: false,
-    q1MicAfterQuestionOrder: false,
-    q2AwaitingAnswer: false,
-    timerClearedOnNextQuestion: false,
-    playbackChunksAfterLateFlush: 0,
+    awaitingByQ: {},      // qNum -> true
+    micOpenByQ: {},       // qNum -> true
+    answeredByQ: {},      // qNum -> true (relay confirmed)
+    interviewComplete: false,
+    micCheckOpened: false,
+    introOpened: false,
     errors: [],
   };
 
-  let answerTimerActiveAtNextQ = null;
-  let q1QuestionSeenAt = 0;
-  let q1AwaitingAt = 0;
-  let q1MicAt = 0;
+  let lastAwaitingNumber = null;
 
   try {
-    if (!window.TA_LIVE?.LiveSpeechSession) {
-      throw new Error('TA_LIVE.LiveSpeechSession missing');
-    }
+    if (!window.TA_LIVE?.LiveSpeechSession) throw new Error('TA_LIVE.LiveSpeechSession missing');
+
     const session = new window.TA_LIVE.LiveSpeechSession({
       relayUrl,
-      context: { session_id: 'flow-test', speech_phases: 5, speech_answer_seconds: 120 },
+      context: { session_id: 'flow-test', speech_phases: TOTAL_Q, speech_answer_seconds: 120 },
       tabSwitches: 0,
       onStatus: () => {},
       onTranscript: () => {},
       onLevel: () => {},
       onTurn: () => {},
-      onQuestion: ({ number }) => {
-        if (number === 1) q1QuestionSeenAt = Date.now();
+      onQuestion: () => {},
+      onAnswer: ({ number, warmup }) => {
+        if (warmup == null && number >= 1) result.answeredByQ[number] = true;
       },
-      onAnswer: () => {},
       onAwaitingAnswer: ({ number }) => {
-        if (number === 1) {
-          result.q1AwaitingAnswer = true;
-          q1AwaitingAt = Date.now();
-        }
-        if (number === 2) result.q2AwaitingAnswer = true;
+        lastAwaitingNumber = number;
+        if (number === -1) { /* mic check */ }
+        else if (number === 0) { /* intro */ }
+        else if (number >= 1) result.awaitingByQ[number] = true;
       },
       onMicOpen: () => {
-        if (!result.q2AwaitingAnswer) {
-          result.q1MicOpened = true;
-          q1MicAt = Date.now();
-        }
+        const q = lastAwaitingNumber;
+        if (q === -1) result.micCheckOpened = true;
+        else if (q === 0) result.introOpened = true;
+        else if (q >= 1) result.micOpenByQ[q] = true;
+        // Simulate the candidate giving a short spoken answer then submitting.
+        setTimeout(() => {
+          try { session.submitAnswer?.(); } catch (_) {}
+        }, 200);
       },
-      onNextQuestionReady: ({ number }) => {
-        if (number === 2) {
-          answerTimerActiveAtNextQ = session.awaitingAnswerPending;
-        }
-      },
-      onInterviewComplete: () => {},
+      onNextQuestionReady: () => {},
+      onInterviewComplete: () => { result.interviewComplete = true; },
       onComplete: () => {},
       onError: (err) => result.errors.push(err?.message || String(err)),
     });
@@ -73,29 +68,21 @@
       new Promise((_, reject) => setTimeout(() => reject(new Error('session.start timeout')), 15000)),
     ]);
 
+    // Stale flush must NOT drop already-queued interviewer audio.
     const tinyPcm = btoa(String.fromCharCode(0, 0, 0, 0));
     session.playQueue.push({ b64: tinyPcm, rate: 24000 });
     session.playQueue.push({ b64: tinyPcm, rate: 24000 });
     const queuedBeforeFlush = session.playQueue.length;
     session.handleMessage(JSON.stringify({ type: 'flush_playback' }));
     result.flushIgnoredWithQueuedAudio = queuedBeforeFlush > 0 && session.playQueue.length === queuedBeforeFlush;
+    session.clearPlayback();
 
-    const q1Deadline = Date.now() + 20000;
-    while (Date.now() < q1Deadline) {
-      if (result.q1MicOpened || session.answering) break;
+    // Drive until interview complete (allow a grace window after the last answer).
+    const deadline = Date.now() + 45000;
+    while (Date.now() < deadline) {
+      if (result.interviewComplete) break;
       await new Promise((r) => setTimeout(r, 100));
     }
-
-    const q2Deadline = Date.now() + 8000;
-    while (Date.now() < q2Deadline) {
-      if (result.q2AwaitingAnswer) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-
-    result.playbackChunksAfterLateFlush = session.playQueue.length;
-    result.q1CanAnswer = result.q1AwaitingAnswer;
-    result.q1MicAfterQuestionOrder = q1QuestionSeenAt > 0 && q1AwaitingAt >= q1QuestionSeenAt && q1MicAt >= q1AwaitingAt;
-    result.timerClearedOnNextQuestion = answerTimerActiveAtNextQ === false;
 
     session.cancel?.();
   } catch (e) {

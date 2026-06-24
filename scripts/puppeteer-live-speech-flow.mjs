@@ -1,6 +1,11 @@
 /**
- * E2E: live speech mic handoff after Q1 (realistic relay message ordering).
- * Reproduces: audio → question → awaiting_answer (not batched together).
+ * E2E: full live-speech flow (mic check -> intro -> Q1..Q5) against a stateful
+ * mock relay. Verifies the candidate's mic opens for EVERY question and that
+ * each answer advances to the next question (the recurring "stuck at Q2" bug).
+ *
+ * Realistic ordering: for each question the relay sends audio chunks FIRST,
+ * then the `question` text, then `awaiting_answer` — and advances only when the
+ * client sends `user_turn_end` (i.e. the candidate actually answered).
  */
 import fs from 'fs';
 import http from 'http';
@@ -13,6 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const HTTP_PORT = 8791;
 const RELAY_PORT = 8792;
+const TOTAL_Q = 5;
 
 const TINY_PCM_B64 = Buffer.from(new Int16Array([0, 0, 0, 0]).buffer).toString('base64');
 
@@ -26,8 +32,7 @@ function fail(label, detail = '') {
 function sendJson(ws, obj) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
 }
-
-function sendAudio(ws, count = 2) {
+function sendAudio(ws, count = 4) {
   for (let i = 0; i < count; i += 1) {
     sendJson(ws, { type: 'output_audio', data: TINY_PCM_B64, mimeType: 'audio/pcm;rate=24000' });
   }
@@ -37,10 +42,8 @@ function startStaticServer(port) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const urlPath = req.url?.split('?')[0] || '/';
-      let filePath = path.join(ROOT, urlPath === '/' ? 'scripts/fixtures/live-speech-flow-harness.html' : urlPath.slice(1));
-      if (!fs.existsSync(filePath)) {
-        res.writeHead(404); res.end('not found'); return;
-      }
+      const filePath = path.join(ROOT, urlPath === '/' ? 'scripts/fixtures/live-speech-flow-harness.html' : urlPath.slice(1));
+      if (!fs.existsSync(filePath)) { res.writeHead(404); res.end('not found'); return; }
       const ext = path.extname(filePath);
       const types = { '.html': 'text/html', '.js': 'application/javascript' };
       res.writeHead(200, { 'Content-Type': types[ext] || 'text/plain' });
@@ -54,66 +57,62 @@ function createMockRelay() {
   const wss = new WebSocketServer({ port: RELAY_PORT });
 
   wss.on('connection', (ws) => {
+    let currentQ = 0; // 0 = warmup, 1..5 = real questions
+
+    const askQuestion = (qNum) => {
+      currentQ = qNum;
+      sendJson(ws, { type: 'flush_playback' });
+      sendJson(ws, { type: 'next_question_ready', number: qNum });
+      // Audio first, THEN question text, THEN awaiting_answer (realistic order).
+      sendAudio(ws, 5);
+      setTimeout(() => {
+        sendJson(ws, { type: 'question', number: qNum, text: `Interview question ${qNum}: tell me about a relevant experience.` });
+      }, 300);
+      setTimeout(() => {
+        sendJson(ws, { type: 'awaiting_answer', number: qNum, maxTurns: TOTAL_Q, time_limit_seconds: 120 });
+      }, 600);
+    };
+
     ws.on('message', (raw) => {
       let msg;
       try { msg = JSON.parse(String(raw)); } catch (_) { return; }
-      if (msg.type !== 'session.start') return;
 
-      sendJson(ws, { type: 'ready' });
+      if (msg.type === 'session.start') {
+        sendJson(ws, { type: 'ready' });
+        // Mic check.
+        setTimeout(() => {
+          sendJson(ws, { type: 'warmup_phase', phase: 'mic_check' });
+          sendAudio(ws, 2);
+          sendJson(ws, { type: 'awaiting_answer', number: -1, maxTurns: TOTAL_Q, time_limit_seconds: 60, warmup: 'mic_check' });
+        }, 50);
+        // Intro.
+        setTimeout(() => {
+          sendJson(ws, { type: 'warmup_phase', phase: 'intro' });
+          sendAudio(ws, 2);
+          sendJson(ws, { type: 'awaiting_answer', number: 0, maxTurns: TOTAL_Q, time_limit_seconds: 90, warmup: 'intro' });
+        }, 900);
+        // Q1.
+        setTimeout(() => askQuestion(1), 1800);
+        return;
+      }
 
-      // Mic check
-      setTimeout(() => {
-        sendJson(ws, { type: 'warmup_phase', phase: 'mic_check' });
-        sendAudio(ws, 2);
-        sendJson(ws, {
-          type: 'awaiting_answer', number: -1, maxTurns: 5,
-          time_limit_seconds: 60, warmup: 'mic_check',
-        });
-      }, 50);
-
-      // Intro
-      setTimeout(() => {
-        sendJson(ws, { type: 'warmup_phase', phase: 'intro' });
-        sendAudio(ws, 2);
-        sendJson(ws, {
-          type: 'awaiting_answer', number: 0, maxTurns: 5,
-          time_limit_seconds: 90, warmup: 'intro',
-        });
-      }, 700);
-
-      // Q1 — realistic order: next_question_ready + audio FIRST, question LATER, awaiting_answer LAST
-      setTimeout(() => {
-        sendJson(ws, { type: 'flush_playback' });
-        sendJson(ws, { type: 'next_question_ready', number: 1 });
-        sendAudio(ws, 6);
-      }, 1400);
-
-      setTimeout(() => {
-        sendJson(ws, {
-          type: 'question', number: 1,
-          text: 'Tell me about a time you solved a difficult problem at work.',
-        });
-      }, 2200);
-
-      // Deliberately NO awaiting_answer for Q1 — client must open mic via fallback.
-
-      // Q2 handoff after simulated Q1 answer
-      setTimeout(() => {
-        sendJson(ws, { type: 'answer', number: 1, text: 'I fixed a bug in our payment system.' });
-        sendJson(ws, { type: 'saving_turn', number: 1 });
-        sendJson(ws, { type: 'turn_saved_status', number: 1, saved: true });
-        sendJson(ws, { type: 'flush_playback' });
-        sendJson(ws, { type: 'next_question_ready', number: 2 });
-        sendAudio(ws, 4);
-        sendJson(ws, {
-          type: 'question', number: 2,
-          text: 'Describe a situation where you had to work under pressure.',
-        });
-        sendJson(ws, {
-          type: 'awaiting_answer', number: 2, maxTurns: 5,
-          time_limit_seconds: 120,
-        });
-      }, 4200);
+      // Candidate finished an answer.
+      if (msg.type === 'user_turn_end') {
+        if (currentQ >= 1 && currentQ <= TOTAL_Q) {
+          const answered = currentQ;
+          sendJson(ws, { type: 'answer', number: answered, text: `Answer to question ${answered}.` });
+          sendJson(ws, { type: 'saving_turn', number: answered });
+          sendJson(ws, { type: 'turn_saved_status', number: answered, saved: true });
+          if (answered < TOTAL_Q) {
+            setTimeout(() => askQuestion(answered + 1), 400);
+          } else {
+            currentQ = 0;
+            setTimeout(() => {
+              sendJson(ws, { type: 'interview_complete', turn: TOTAL_Q, maxTurns: TOTAL_Q });
+            }, 400);
+          }
+        }
+      }
     });
   });
 
@@ -121,7 +120,7 @@ function createMockRelay() {
 }
 
 async function main() {
-  console.log('=== puppeteer live speech flow ===\n');
+  console.log('=== puppeteer live speech full flow (Q1..Q5) ===\n');
 
   const relay = createMockRelay();
   const httpServer = await startStaticServer(HTTP_PORT);
@@ -145,29 +144,34 @@ async function main() {
       timeout: 30000,
     });
 
-    await page.waitForFunction(() => window.__flowTestDone === true, { timeout: 50000 });
-    const result = await page.evaluate(() => window.__flowTestResult || {});
+    await page.waitForFunction(() => window.__flowTestDone === true, { timeout: 55000 });
+    const r = await page.evaluate(() => window.__flowTestResult || {});
 
-    if (result.sessionStarts === 1) ok('session starts exactly once');
-    else fail('session starts exactly once', `starts=${result.sessionStarts}`);
+    if (r.sessionStarts === 1) ok('session starts exactly once');
+    else fail('session starts exactly once', `starts=${r.sessionStarts}`);
 
-    if (result.flushIgnoredWithQueuedAudio) ok('stale flush ignored when audio queued');
+    if (r.flushIgnoredWithQueuedAudio) ok('stale flush ignored when audio queued');
     else fail('stale flush ignored when audio queued');
 
-    if (result.q1AwaitingAnswer) ok('Q1 awaiting_answer received (or synthesised by fallback)');
-    else fail('Q1 awaiting_answer received (or synthesised by fallback)');
+    if (r.micCheckOpened) ok('mic check mic opened'); else fail('mic check mic opened', JSON.stringify(r));
+    if (r.introOpened) ok('intro mic opened'); else fail('intro mic opened', JSON.stringify(r));
 
-    if (result.q1MicOpened) ok('mic opens after Q1 even without relay awaiting_answer');
-    else fail('mic opens after Q1', JSON.stringify(result));
+    for (let q = 1; q <= TOTAL_Q; q += 1) {
+      if (r.awaitingByQ?.[q]) ok(`Q${q} awaiting_answer received`);
+      else fail(`Q${q} awaiting_answer received`, JSON.stringify(r.awaitingByQ));
 
-    if (result.q2AwaitingAnswer) ok('Q2 awaiting_answer received after Q1 answer');
-    else fail('Q2 awaiting_answer received', JSON.stringify(result));
+      if (r.micOpenByQ?.[q]) ok(`Q${q} mic opened for candidate`);
+      else fail(`Q${q} mic opened for candidate`, JSON.stringify(r.micOpenByQ));
 
-    if (result.timerClearedOnNextQuestion) ok('timer cleared when next_question_ready fires');
-    else fail('timer cleared when next_question_ready fires', JSON.stringify(result));
+      if (r.answeredByQ?.[q]) ok(`Q${q} answer advanced the interview`);
+      else fail(`Q${q} answer advanced the interview`, JSON.stringify(r.answeredByQ));
+    }
 
-    if (!result.errors?.length) ok('no harness errors');
-    else fail('no harness errors', result.errors.join(' | '));
+    if (r.interviewComplete) ok('interview completed after Q5');
+    else fail('interview completed after Q5', JSON.stringify(r));
+
+    if (!r.errors?.length) ok('no harness errors');
+    else fail('no harness errors', r.errors.join(' | '));
   } finally {
     await browser.close();
     httpServer.close();
@@ -178,7 +182,4 @@ async function main() {
   process.exit(failures === 0 ? 0 : 1);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main().catch((e) => { console.error(e); process.exit(1); });

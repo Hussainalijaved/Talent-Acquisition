@@ -107,15 +107,14 @@
       // client's raw mic level. The client only reacts to relay nudge events.
       this.allowInterviewerDuringAnswer = false;
       this.nudgeAudioTimer = null;
-      this.modelAudioHeardThisTurn = false;
+      // Single source of truth for the answer window. Mirrors the warmup flow:
+      // relay sends `awaiting_answer` → we wait for interviewer audio to finish
+      // → we open the mic. No other path opens the mic for real questions.
       this.awaitingAnswerPending = false;
-      this.micOpenFallbackTimer = null;
-      this.nextQuestionForceFallbackTimer = null;
-      this.questionAnswerFallbackTimer = null;
-      this.playbackWaitTimer = null;
-      this.playbackIdleAnswerTimer = null;
       this.pendingAnswerQ = 0;
       this.pendingAnswerSeconds = 120;
+      this.micOpenToken = 0;          // invalidates stale open-mic loops
+      this.questionSafetyTimer = null; // fires only if awaiting_answer never arrives
       this.streamingAudio = false;
       this.audioFlushTimer = null;
       this.playbackGeneration = 0;
@@ -166,201 +165,80 @@
     }
 
     cancelMicOpen() {
+      // Invalidate any in-flight open-mic loop and clear the safety timer.
+      this.micOpenToken += 1;
       if (this.micOpenTimer) {
         clearTimeout(this.micOpenTimer);
         this.micOpenTimer = null;
       }
-      if (this.micOpenFallbackTimer) {
-        clearTimeout(this.micOpenFallbackTimer);
-        this.micOpenFallbackTimer = null;
-      }
-      // Do NOT clear playbackWaitTimer here — it must survive cancelMicOpen calls
-      // from question/flush handlers while waiting for audio to finish.
     }
 
-    // Called after next_question_ready. If awaiting_answer never arrives from relay,
-    // synthesise it so the mic UI opens — even when AI audio was heard.
-    scheduleNextQuestionForceFallback(timeLimitSeconds = 120) {
-      if (this.nextQuestionForceFallbackTimer) {
-        clearTimeout(this.nextQuestionForceFallbackTimer);
-        this.nextQuestionForceFallbackTimer = null;
+    clearQuestionSafetyTimer() {
+      if (this.questionSafetyTimer) {
+        clearTimeout(this.questionSafetyTimer);
+        this.questionSafetyTimer = null;
       }
-      this.pendingAnswerSeconds = timeLimitSeconds;
-      this.nextQuestionForceFallbackTimer = setTimeout(() => {
-        this.nextQuestionForceFallbackTimer = null;
-        if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
-        this.openAnswerWindow(this.pendingAnswerQ || 1, timeLimitSeconds);
-      }, 8000);
     }
 
-    openAnswerWindow(qNum, timeLimitSeconds = 120, warmup = null) {
-      if (this.ended || this.interviewEnded || this.answering) return;
-      if (this.awaitingAnswerPending && this.pendingAnswerQ === qNum) {
-        // Already open for this question — just ensure mic opens after playback.
-        void this.scheduleMicAfterPlayback();
-        return;
-      }
-      this.awaitingAnswerPending = true;
+    // Safety net used ONLY if the relay never sends awaiting_answer for a real
+    // question (e.g. relay not redeployed). The normal flow never needs this.
+    scheduleQuestionSafety(qNum, timeLimitSeconds = 120) {
+      this.clearQuestionSafetyTimer();
       this.pendingAnswerQ = qNum;
       this.pendingAnswerSeconds = timeLimitSeconds;
+      this.questionSafetyTimer = setTimeout(() => {
+        this.questionSafetyTimer = null;
+        if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
+        this.requestAnswer({ number: qNum, time_limit_seconds: timeLimitSeconds, warmup: null });
+      }, 11000);
+    }
+
+    // THE single entry point for opening the candidate's mic. Both warmup turns
+    // and real questions go through here — identical behaviour for all of them.
+    // Fires onAwaitingAnswer exactly once with whatever payload is supplied.
+    requestAnswer(payload = {}) {
+      if (this.ended || this.interviewEnded) return;
+      const number = payload.number ?? 0;
+      const seconds = Number(payload.time_limit_seconds) > 0 ? Number(payload.time_limit_seconds) : 120;
+      this.clearQuestionSafetyTimer();
+      this.awaitingAnswerPending = true;
+      this.pendingAnswerQ = number;
+      this.pendingAnswerSeconds = seconds;
       this.onAwaitingAnswer({
-        number: qNum,
-        time_limit_seconds: timeLimitSeconds,
-        warmup,
+        number,
+        maxTurns: payload.maxTurns,
+        time_limit_seconds: seconds,
+        complexity_tier: payload.complexity_tier,
+        warmup: payload.warmup || null,
       });
-      void this.scheduleMicAfterPlayback();
+      void this.openMicAfterPlayback();
     }
 
-    maybeOpenAnswerAfterPlaybackIdle() {
-      if (this.playbackIdleAnswerTimer) clearTimeout(this.playbackIdleAnswerTimer);
-      if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
-      if (this.pendingAnswerQ < 1) return;
-      if (this.playing || this.playQueue.length > 0) return;
-      // AI finished speaking but relay never sent awaiting_answer — open mic soon.
-      this.playbackIdleAnswerTimer = setTimeout(() => {
-        this.playbackIdleAnswerTimer = null;
-        if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
-        if (this.playing || this.playQueue.length > 0) return;
-        if (this.pendingAnswerQ < 1) return;
-        this.openAnswerWindow(this.pendingAnswerQ, this.pendingAnswerSeconds);
-      }, 600);
-    }
-
-    clearPlaybackIdleAnswerTimer() {
-      if (this.playbackIdleAnswerTimer) {
-        clearTimeout(this.playbackIdleAnswerTimer);
-        this.playbackIdleAnswerTimer = null;
-      }
-    }
-
-    clearNextQuestionForceFallback() {
-      if (this.nextQuestionForceFallbackTimer) {
-        clearTimeout(this.nextQuestionForceFallbackTimer);
-        this.nextQuestionForceFallbackTimer = null;
-      }
-    }
-
-    scheduleQuestionAnswerFallback(qNum, timeLimitSeconds = 120) {
-      if (this.questionAnswerFallbackTimer) {
-        clearTimeout(this.questionAnswerFallbackTimer);
-        this.questionAnswerFallbackTimer = null;
-      }
-      this.questionAnswerFallbackTimer = setTimeout(() => {
-        this.questionAnswerFallbackTimer = null;
-        if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
-        this.openAnswerWindow(qNum, timeLimitSeconds);
-      }, 3000);
-    }
-
-    clearQuestionAnswerFallback() {
-      if (this.questionAnswerFallbackTimer) {
-        clearTimeout(this.questionAnswerFallbackTimer);
-        this.questionAnswerFallbackTimer = null;
-      }
-    }
-
-    scheduleWaitForPlaybackThenBegin() {
-      if (this.playbackWaitTimer) return;
-      const tick = () => {
-        this.playbackWaitTimer = null;
-        if (this.ended || this.interviewEnded || this.answering) return;
-        if (this.playing || this.playQueue.length > 0) {
-          this.playbackWaitTimer = setTimeout(tick, 300);
-          return;
-        }
-        this.beginAnswer();
-      };
-      this.playbackWaitTimer = setTimeout(tick, 300);
-    }
-
-    clearPlaybackWait() {
-      if (this.playbackWaitTimer) {
-        clearTimeout(this.playbackWaitTimer);
-        this.playbackWaitTimer = null;
-      }
-    }
-
-    clearPendingAnswerQ() {
-      this.pendingAnswerQ = 0;
-      this.clearNextQuestionForceFallback();
-      this.clearQuestionAnswerFallback();
-      this.clearPlaybackIdleAnswerTimer();
-    }
-
-    scheduleMicOpenFallback(maxMs = 25000) {
-      if (this.micOpenFallbackTimer) clearTimeout(this.micOpenFallbackTimer);
-      this.micOpenFallbackTimer = setTimeout(() => {
-        this.micOpenFallbackTimer = null;
-        if (
-          !this.ended &&
-          !this.interviewEnded &&
-          !this.answering &&
-          this.awaitingAnswerPending
-        ) {
-          this.awaitingAnswerPending = false;
-          this.beginAnswer();
-        }
-      }, maxMs);
-    }
-
-    scheduleMicOpen(delayMs = 3500) {
-      this.cancelMicOpen();
+    // Wait for the interviewer's audio to finish, then open the mic. Hard-capped
+    // at 9s so a stuck playback flag can NEVER freeze the interview.
+    async openMicAfterPlayback() {
+      const myToken = ++this.micOpenToken;
       if (this.ended || this.interviewEnded) return;
-      this.micOpenTimer = setTimeout(() => {
-        this.micOpenTimer = null;
-        if (!this.ended && !this.interviewEnded && !this.answering) {
-          this.beginAnswer();
-        }
-      }, delayMs);
-    }
-
-    async scheduleMicAfterPlayback() {
-      this.cancelMicOpen();
-      if (this.ended || this.interviewEnded) return;
-      // Do not reset modelAudioHeardThisTurn — audio may arrive before awaiting_answer.
-      this.scheduleMicOpenFallback(25000);
-      let preWait = 0;
-      while (!this.modelAudioHeardThisTurn && preWait < 20000) {
-        await new Promise((r) => setTimeout(r, 200));
-        preWait += 200;
-        if (this.ended || this.interviewEnded || !this.awaitingAnswerPending) return;
+      const deadline = Date.now() + 9000;
+      while (Date.now() < deadline) {
+        if (this.ended || this.interviewEnded) return;
+        if (myToken !== this.micOpenToken) return;        // superseded
+        if (!this.awaitingAnswerPending || this.answering) return;
+        if (!this.playing && this.playQueue.length === 0) break;
+        await new Promise((r) => setTimeout(r, 150));
       }
-      if (!this.modelAudioHeardThisTurn) {
-        if (this.awaitingAnswerPending && !this.answering) {
-          this.awaitingAnswerPending = false;
-          this.beginAnswer();
-        }
-        return;
-      }
-      let waited = 0;
-      while ((this.playing || this.playQueue.length > 0) && waited < 45000) {
-        await new Promise((r) => setTimeout(r, 200));
-        waited += 200;
-        if (this.ended || this.interviewEnded || !this.awaitingAnswerPending) return;
-      }
-      await new Promise((r) => setTimeout(r, 500));
-      if (
-        !this.ended &&
-        !this.interviewEnded &&
-        !this.answering &&
-        this.awaitingAnswerPending
-      ) {
-        this.awaitingAnswerPending = false;
-        if (this.micOpenFallbackTimer) {
-          clearTimeout(this.micOpenFallbackTimer);
-          this.micOpenFallbackTimer = null;
-        }
-        this.beginAnswer();
-      }
+      if (myToken !== this.micOpenToken) return;
+      if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
+      // Small settle so the tail of the question isn't clipped.
+      await new Promise((r) => setTimeout(r, 250));
+      if (myToken !== this.micOpenToken) return;
+      if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
+      this.beginAnswer();
     }
 
     closeMicForInterviewer() {
       this.cancelMicOpen();
       this.awaitingAnswerPending = false;
-      if (this.micOpenFallbackTimer) {
-        clearTimeout(this.micOpenFallbackTimer);
-        this.micOpenFallbackTimer = null;
-      }
       if (this.answering || this.streamingAudio) {
         this.flushAnswerAudio();
       }
@@ -381,19 +259,15 @@
       }
     }
 
-    // Candidate pressed "Answer" — open their mic and tell the relay to start the turn.
+    // Open the candidate's mic NOW. If interviewer audio is somehow still queued,
+    // drop it instead of waiting forever — the relay only asks for an answer once
+    // the question has been fully spoken.
     beginAnswer() {
       if (this.ended || this.interviewEnded || this.answering) return;
-      if (this.playing || this.playQueue.length > 0) {
-        this.scheduleWaitForPlaybackThenBegin();
-        return;
-      }
-      this.clearPlaybackWait();
+      this.cancelMicOpen();
+      this.clearQuestionSafetyTimer();
+      if (this.playing || this.playQueue.length > 0) this.clearPlayback();
       this.awaitingAnswerPending = false;
-      if (this.micOpenFallbackTimer) {
-        clearTimeout(this.micOpenFallbackTimer);
-        this.micOpenFallbackTimer = null;
-      }
       this.answering = true;
       this.allowInterviewerDuringAnswer = false;
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -537,20 +411,16 @@
       if (msg.type === 'question') {
         const isWarmup = msg.warmup != null || msg.number <= 0;
         if (!isWarmup && msg.text && window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
-        if (!isWarmup && !this.awaitingAnswerPending) {
-          this.cancelMicOpen();
-          this.forceEndAnswer();
+        if (!isWarmup && !this.awaitingAnswerPending && !this.answering) {
           this.processingAnswer = false;
         }
-        // Do NOT reset modelAudioHeardThisTurn — question commit follows audio playback.
         this.onQuestion({ number: msg.number, text: msg.text || '', partial: false, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
-        if (!isWarmup && msg.number >= 1 && !this.awaitingAnswerPending) {
-          this.scheduleQuestionAnswerFallback(msg.number, 120);
-        }
+        // Safety only: if awaiting_answer never arrives for this real question,
+        // the timer below will open the mic. The normal flow clears it first.
+        if (!isWarmup && msg.number >= 1) this.scheduleQuestionSafety(msg.number, 120);
       }
       if (msg.type === 'answer') {
-        if (msg.number >= 1 && !msg.warmup) this.clearPendingAnswerQ();
-        this.clearNextQuestionForceFallback();
+        this.clearQuestionSafetyTimer();
         if (msg.warmup === 'mic_check') {
           this.closeMicForInterviewer();
         }
@@ -568,7 +438,7 @@
       }
       if (msg.type === 'follow_up_probe') {
         this.clearPlayback();
-        this.modelAudioHeardThisTurn = false;
+        this.clearQuestionSafetyTimer();
         this.processingAnswer = false;
         this.onFollowUpProbe?.({ number: msg.number, maxTurns: msg.maxTurns });
         this.setStatus('Follow-up — listen to the interviewer…');
@@ -609,11 +479,9 @@
       }
       if (msg.type === 'next_question_ready') {
         this.closeMicForInterviewer();
-        this.clearQuestionAnswerFallback();
-        this.clearPlaybackWait();
+        this.clearQuestionSafetyTimer();
         this.clearPlayback();
         this.processingAnswer = false;
-        this.modelAudioHeardThisTurn = false;
         this.awaitingAnswerPending = false;
         if (msg.number >= 1) {
           this.pendingAnswerQ = msg.number;
@@ -621,7 +489,8 @@
         }
         this.onNextQuestionReady({ number: msg.number });
         this.setStatus('The interviewer is speaking…');
-        if (msg.number >= 1) this.scheduleNextQuestionForceFallback(120);
+        // Safety only: open mic if the relay never sends awaiting_answer.
+        if (msg.number >= 1) this.scheduleQuestionSafety(msg.number, 120);
       }
       if (msg.type === 'turn_saved_status') {
         this.onTurn({ savedStatus: { number: msg.number, saved: !!msg.saved, error: msg.error } });
@@ -640,22 +509,15 @@
         }
       }
       if (msg.type === 'awaiting_answer') {
-        this.clearNextQuestionForceFallback();
-        this.clearQuestionAnswerFallback();
-        this.clearPlaybackIdleAnswerTimer();
-        this.cancelMicOpen();
         this.processingAnswer = false;
-        this.awaitingAnswerPending = true;
-        if (msg.number >= 1) this.pendingAnswerQ = msg.number;
-        if (msg.time_limit_seconds) this.pendingAnswerSeconds = Number(msg.time_limit_seconds) || 120;
-        this.onAwaitingAnswer({
+        // Unified path for warmup AND real questions.
+        this.requestAnswer({
           number: msg.number,
           maxTurns: msg.maxTurns,
           time_limit_seconds: msg.time_limit_seconds,
           complexity_tier: msg.complexity_tier,
           warmup: msg.warmup || null,
         });
-        void this.scheduleMicAfterPlayback();
         const statusMsg = msg.warmup === 'mic_check'
           ? 'Microphone check — listen, then say a few words when the mic opens'
           : msg.warmup === 'intro'
@@ -674,7 +536,6 @@
         // Allow interviewer nudge audio while mic is open; block normal question audio.
         if (this.answering && !this.allowInterviewerDuringAnswer) return;
         void this.ensureAudioRunning();
-        this.modelAudioHeardThisTurn = true;
         this.onOutputAudio?.();
         if (!this.answering) this.setStatus('Interviewer is speaking…');
         this.enqueuePlayback(msg.data, msg.mimeType || `audio/pcm;rate=${OUTPUT_RATE}`);
@@ -816,14 +677,19 @@
         const startAt = Math.max(this.audioCtx.currentTime, this.nextPlayTime);
         src.start(startAt);
         this.nextPlayTime = startAt + buffer.duration;
+        // Resolve on natural end OR a hard timeout — onended can silently never
+        // fire if the AudioContext is interrupted (tab blur, proctor overlay),
+        // which previously froze the whole interview.
         await new Promise((r) => {
-          src.onended = r;
+          let done = false;
+          const finish = () => { if (!done) { done = true; r(); } };
+          src.onended = finish;
+          setTimeout(finish, Math.ceil(buffer.duration * 1000) + 800);
         });
         if (gen !== this.playbackGeneration) break;
       }
       this.playing = false;
       if (gen === this.playbackGeneration && !this.playQueue.length) {
-        this.maybeOpenAnswerAfterPlaybackIdle();
         this.onPlaybackIdle?.();
       }
     }
@@ -912,8 +778,8 @@
     }
 
     cleanup() {
-      this.clearPendingAnswerQ();
-      this.clearPlaybackWait();
+      this.pendingAnswerQ = 0;
+      this.clearQuestionSafetyTimer();
       this.cancelMicOpen();
       try {
         this.processor?.disconnect();

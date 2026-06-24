@@ -102,9 +102,8 @@
       this.processingAnswer = false;
       this.autoEndTimer = null;
       this.micOpenTimer = null;
-      // Silence handling (nudge + auto-submit) is driven by the relay, which
-      // detects silence from transcript activity — far more reliable than the
-      // client's raw mic level. The client only reacts to relay nudge events.
+      // Silence handling (nudge + auto-submit) is driven by the relay using
+      // voice energy on PCM chunks — not transcription.
       this.allowInterviewerDuringAnswer = false;
       this.nudgeAudioTimer = null;
       // Single source of truth for the answer window. Mirrors the warmup flow:

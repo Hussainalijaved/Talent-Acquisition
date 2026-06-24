@@ -155,6 +155,9 @@ export class GeminiLiveBridge {
     this.answerPcmChunks = [];
     this.answerPcmChunksByTurn = {}; // aNum → chunks[], for buildTurnPairs fallback
     this._answerPcmSampleRate = 16000;
+    // Voice-only: candidate speech is NEVER transcribed. Flow and scoring use PCM audio.
+    this.voiceOnly = context.voice_only !== false;
+    this.voiceDetectedThisTurn = false;
     // Transcription-free UI: flow must not depend on output captions. Track
     // whether the model actually spoke audio this turn so we can still commit
     // questions and open the mic when captions are empty.
@@ -332,6 +335,7 @@ export class GeminiLiveBridge {
   // Heuristic only — runs instantly so the next question is never blocked on the
   // scoring API. A genuinely empty/no-response answer does NOT trigger a follow-up.
   isWeakAnswer(userText) {
+    if (this.voiceOnly) return false;
     const t = String(userText || '').trim();
     if (!t || /^\[(no spoken|non-english|no speech|noise)/i.test(t)) return false;
     const words = t.split(/\s+/).filter(Boolean).length;
@@ -589,7 +593,7 @@ export class GeminiLiveBridge {
       return;
     }
 
-    if (msg.inputTranscription?.text || msg.serverContent?.inputTranscription?.text) {
+    if (!this.voiceOnly && (msg.inputTranscription?.text || msg.serverContent?.inputTranscription?.text)) {
       const top = msg.inputTranscription?.text;
       const nested = msg.serverContent?.inputTranscription?.text;
       if (top) this.appendUserTranscription(top);
@@ -632,6 +636,7 @@ export class GeminiLiveBridge {
 
   // Stream the candidate's speech-to-text to the client as a live caption.
   appendUserTranscription(text) {
+    if (this.voiceOnly) return;
     const piece = String(text || '');
     if (!piece) return;
     if (this.userTurnActive) {
@@ -646,6 +651,7 @@ export class GeminiLiveBridge {
   }
 
   emitUserPartialTranscript() {
+    if (this.voiceOnly) return;
     if (!this.userTurnActive && !this.awaitingAnswer) return;
     const combined = `${this.userBuf}${this.lateUserBuf}`;
     const clean = displayUserTranscript(combined);
@@ -769,6 +775,14 @@ export class GeminiLiveBridge {
       clearTimeout(this.pendingFinalize);
       this.pendingFinalize = null;
     }
+    // Voice-only: never wait for Gemini STT — PCM is already buffered.
+    if (this.voiceOnly) {
+      this.pendingFinalize = setTimeout(() => {
+        this.pendingFinalize = null;
+        this.completeAnswerTurn();
+      }, 600);
+      return;
+    }
     const startedAt = Date.now();
     let lastLen = -1;
     let stableSince = 0;
@@ -806,6 +820,23 @@ export class GeminiLiveBridge {
     this.pendingFinalize = setTimeout(tick, 400);
   }
 
+  hasVoiceCapture(pcmChunks = this.answerPcmChunks) {
+    if (Array.isArray(pcmChunks) && pcmChunks.length > 0) return true;
+    return this.voiceDetectedThisTurn;
+  }
+
+  resolveUserAnswerText(pcmChunks = this.answerPcmChunks) {
+    if (this.voiceOnly) {
+      return this.hasVoiceCapture(pcmChunks)
+        ? '[Voice response recorded]'
+        : '[No spoken response captured]';
+    }
+    const combined = `${this.userBuf}${this.lateUserBuf}`.trim();
+    this.userBuf = '';
+    this.lateUserBuf = '';
+    return cleanUserAnswer(combined) || '[No spoken response captured]';
+  }
+
   completeAnswerTurn() {
     if (!this.awaitingAnswer) return;
     this.stopSilenceMonitor();
@@ -834,16 +865,19 @@ export class GeminiLiveBridge {
       this.micCheckAdvanceTimer = null;
     }
 
-    const combined = `${this.userBuf}${this.lateUserBuf}`.trim();
+    const pcmSnapshot = this.answerPcmChunks.slice();
     this.userBuf = '';
     this.lateUserBuf = '';
-    let userText = cleanUserAnswer(combined) || '[No spoken response captured]';
+    let userText = this.resolveUserAnswerText(pcmSnapshot);
+    this.voiceDetectedThisTurn = false;
 
     // ── Mic check phase: any speech = mic confirmed → advance to intro ──
     if (this.warmupPhase === 'mic_check') {
       this.clearAnswerPromptWindow();
       this.warmupPhase = 'intro';
-      this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
+      if (!this.voiceOnly) {
+        this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
+      }
       this.onEvent({ type: 'answer', number: -1, text: userText, warmup: 'mic_check' });
       this.onEvent({ type: 'warmup_phase', phase: 'intro' });
       this.roundQuestionEmitted = false;
@@ -867,7 +901,9 @@ export class GeminiLiveBridge {
     if (this.warmupPhase === 'intro') {
       this.clearAnswerPromptWindow();
       this.warmupPhase = null;
-      this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
+      if (!this.voiceOnly) {
+        this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
+      }
       this.onEvent({ type: 'answer', number: 0, text: userText, warmup: 'intro' });
       this.roundQuestionEmitted = false;
       this.streamingQuestionText = '';
@@ -902,8 +938,11 @@ export class GeminiLiveBridge {
     }
 
     // Snapshot + clear the PCM buffer for this answer turn.
-    const pcmChunks = this.answerPcmChunks.slice();
+    const pcmChunks = pcmSnapshot.length ? pcmSnapshot : this.answerPcmChunks.slice();
     this.answerPcmChunks = [];
+    if (this.voiceOnly) {
+      userText = this.resolveUserAnswerText(pcmChunks);
+    }
 
     const qLimits = this.questionTimeLimits[aNum] || fallbackTimeLimit(this.questions[aNum - 1] || '', this.context);
     const turnPair = {
@@ -918,11 +957,14 @@ export class GeminiLiveBridge {
       time_limit_seconds: qLimits.seconds,
       complexity_tier: qLimits.tier,
       is_follow_up: isFollowUpResponse,
+      stt_source: this.voiceOnly ? 'voice_pcm' : 'gemini_live',
     };
     // Store for buildTurnPairs final-pass fallback.
     this.answerPcmChunksByTurn[aNum] = pcmChunks;
 
-    this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
+    if (!this.voiceOnly) {
+      this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
+    }
     this.onEvent({ type: 'answer', number: aNum, text: userText, follow_up: isFollowUpResponse });
     this.onEvent({
       type: 'turn_complete',
@@ -1031,7 +1073,7 @@ export class GeminiLiveBridge {
       this.warmupPhase === 'mic_check' &&
       this.userTurnActive &&
       !this.micCheckAdvanceTimer &&
-      this.userBuf.trim().length > 0
+      (this.voiceOnly ? this.voiceDetectedThisTurn : this.userBuf.trim().length > 0)
     ) {
       this.micCheckAdvanceTimer = setTimeout(() => {
         this.micCheckAdvanceTimer = null;
@@ -1406,6 +1448,7 @@ export class GeminiLiveBridge {
     this.userTurnActive = true;
     this.userBuf = '';
     this.lateUserBuf = '';
+    this.voiceDetectedThisTurn = false;
     this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
     this.startSilenceMonitor();
   }
@@ -1457,6 +1500,7 @@ export class GeminiLiveBridge {
       this.userTurnActive = true;
       this.userBuf = '';
       this.lateUserBuf = '';
+      this.voiceDetectedThisTurn = false;
       if (this.geminiWs.readyState === WebSocket.OPEN) {
         this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
       }
@@ -1476,7 +1520,8 @@ export class GeminiLiveBridge {
           sumSq += s * s;
         }
         rms = Math.sqrt(sumSq / samples);
-        if (rms > 120) {
+        if (rms > 80) {
+          this.voiceDetectedThisTurn = true;
           if (this.inNudgePlayback) this.cancelNudgeForUserSpeech();
           this.noteUserActivity();
         }
@@ -1538,6 +1583,7 @@ export class GeminiLiveBridge {
         answer_text: this.answers[i] || '',
         answer_pcm_chunks: this.answerPcmChunksByTurn[i + 1] || [],
         answer_pcm_sample_rate: this._answerPcmSampleRate,
+        stt_source: this.voiceOnly ? 'voice_pcm' : 'gemini_live',
         sent_at: new Date(this.startedAt + i * 60000).toISOString(),
         received_at: new Date().toISOString(),
       });

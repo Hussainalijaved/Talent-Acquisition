@@ -16,7 +16,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
-    <script src="live-speech.js?v=20260624f"></script>
+    <script src="live-speech.js?v=20260624g"></script>
     <script src="proctor-media.js"></script>
     <script src="proctor-activity.js"></script>
     <script>
@@ -2689,6 +2689,7 @@
                             tabSwitches: tabSwitchesRef.current,
                             onStatus: setStatus,
                             onTranscript: ({ speaker, text, partial, closing }) => {
+                                if (speaker === 'user') return;
                                 if (speaker === 'model') {
                                     const clean = cleanText(text, 'model');
                                     if (!clean) return;
@@ -3069,7 +3070,7 @@
 
             const endBtnLabel = ending ? 'Finishing…' : interviewComplete ? 'Submitting…' : 'End interview';
 
-            const micHeard = micLevel > 0.02 || Boolean(liveCaption && liveCaption.trim().length > 2);
+            const micHeard = micLevel > 0.02;
 
             const statusHint = silenceHint
                 ? silenceHint
@@ -4489,13 +4490,17 @@
                         </div>
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
-                                {isSpeech ? 'Spoken transcript' : 'Your answer'}
+                                {isSpeech ? 'Voice response' : 'Your answer'}
                             </p>
-                            <p className={`text-sm leading-relaxed whitespace-pre-wrap panel-elevated rounded-xl p-4 ${hasAnswer ? 'text-slate-700' : 'text-slate-400 italic'}`}>
-                                {hasAnswer ? item.answer_text : (isSpeech ? 'No transcript captured for this question.' : '—')}
+                            <p className={`text-sm leading-relaxed whitespace-pre-wrap panel-elevated rounded-xl p-4 ${isSpeech ? 'text-slate-600 italic' : (hasAnswer ? 'text-slate-700' : 'text-slate-400 italic')}`}>
+                                {isSpeech
+                                    ? (hasAnswer && !/^\[(no spoken|no speech)/i.test(String(item.answer_text || ''))
+                                        ? 'Voice recorded — scored from audio at end of interview.'
+                                        : 'No voice captured for this question.')
+                                    : (hasAnswer ? item.answer_text : '—')}
                             </p>
-                            {isSpeech && item.stt_source ? (
-                                <p className="text-[11px] text-slate-600 mt-2">Source: {item.stt_source}</p>
+                            {isSpeech ? (
+                                <p className="text-[11px] text-slate-500 mt-2">Voice-based assessment only — no transcript is stored.</p>
                             ) : null}
                         </div>
                         {isSpeech ? <SpeechPhaseInsights item={item} /> : null}

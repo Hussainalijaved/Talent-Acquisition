@@ -142,6 +142,7 @@ return [
       // Default OFF so candidates always get Q2 after Q1. Enable per-job if needed.
       follow_up_enabled: Boolean(cfg.follow_up_enabled || sessCfg.follow_up_enabled),
       coaching_enabled: cfg.coaching_enabled !== false,
+      voice_only: cfg.voice_only !== false,
       intro_enabled: cfg.intro_enabled !== false,
       intro_answer_seconds: Number(cfg.intro_answer_seconds || sessCfg.intro_answer_seconds || 90),
       current_phase: Number(session.current_phase || maxQ + 1),

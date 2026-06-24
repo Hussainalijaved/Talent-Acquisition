@@ -196,10 +196,30 @@ function buildHeuristicScore(turn) {
 export async function scoreSingleTurn({ apiKey, context, turn }) {
   if (!apiKey) throw new Error('GEMINI_API_KEY missing for scoring');
   const role = String(context.requisition_title || 'the role');
+  const voiceOnly = context.voice_only !== false;
 
   const hasAudioChunks = Array.isArray(turn.answer_pcm_chunks) && turn.answer_pcm_chunks.length > 0;
-  const transcriptUsable = turn.answer_text &&
-    !/^\[(no spoken|non-english|no speech|noise)/i.test(turn.answer_text) &&
+
+  if (voiceOnly) {
+    if (!hasAudioChunks) {
+      const zero = {
+        communication_clarity: 0, fluency: 0, confidence: 0,
+        professionalism: 0, english_proficiency: 0, answer_relevance: 0,
+        clarity: 0, relevance: 0,
+      };
+      return {
+        ...turn, score: 0, clarity: 0, confidence: 0, professionalism: 0, relevance: 0,
+        feedback: 'No voice response was captured for this question.',
+        soft_skills: zero,
+        scoring_source: 'no_speech', stt_source: 'voice_pcm',
+        audio_chunk_count: 0,
+        answer_pcm_chunks: undefined,
+      };
+    }
+  }
+
+  const transcriptUsable = !voiceOnly && turn.answer_text &&
+    !/^\[(no spoken|non-english|no speech|noise|voice response)/i.test(turn.answer_text) &&
     (cleanUserAnswerText(turn.answer_text) || String(turn.answer_text).trim().length >= 12);
 
   // Nothing to score at all.
@@ -237,7 +257,7 @@ export async function scoreSingleTurn({ apiKey, context, turn }) {
   }
 
   const prompt = buildScorePrompt(turn, role, !!wavBase64);
-  const scoringSource = wavBase64 ? 'audio_primary' : 'transcript_only';
+  const scoringSource = wavBase64 ? 'audio_primary' : (voiceOnly ? 'no_speech' : 'transcript_only');
 
   try {
     const rawText = await callGeminiScore(apiKey, prompt, wavBase64);
@@ -386,21 +406,17 @@ export async function scoreAllTurnsOverall({ apiKey, context, turns, timeoutMs =
     };
   }
 
-  // Build the prompt + attach each answer's audio (if available).
+  // Build the prompt + attach each answer's audio ONLY (no transcripts).
   const parts = [];
   const qLines = [];
   let audioCount = 0;
   realTurns.forEach((t, i) => {
-    const transcript = String(t.answer_text || '').trim();
-    const tLine = transcript && !/^\[(no spoken|non-english|no speech|noise)/i.test(transcript)
-      ? transcript
-      : '(no reliable transcript — judge from the audio)';
-    qLines.push(`Answer ${i + 1} — Question: ${String(t.question_text || '').slice(0, 300)}\nTranscript: ${tLine}`);
+    qLines.push(`Answer ${i + 1} — Question asked: ${String(t.question_text || '').slice(0, 300)}`);
     if (Array.isArray(t.answer_pcm_chunks) && t.answer_pcm_chunks.length) {
       try {
         const wav = pcmChunksToWavBase64(t.answer_pcm_chunks, t.answer_pcm_sample_rate || 16000);
         if (wav) {
-          parts.push({ text: `\n[Audio recording of Answer ${i + 1}]` });
+          parts.push({ text: `\n[Audio recording of Answer ${i + 1} — score from voice only]` });
           parts.push({ inline_data: { mime_type: 'audio/wav', data: wav } });
           audioCount += 1;
         }
@@ -408,16 +424,22 @@ export async function scoreAllTurnsOverall({ apiKey, context, turns, timeoutMs =
     }
   });
 
-  const hasAudio = audioCount > 0;
-  const audioPreamble = hasAudio
-    ? `You are given the candidate's AUDIO recordings for ${audioCount} of their answers. Listen to tone, pace, fluency, confidence, pronunciation, filler words and pauses. Score primarily from what you HEAR; the transcripts are supplementary.`
-    : `No audio was captured — score from the transcripts alone.`;
+  if (!audioCount) {
+    return {
+      combined_speech_score: 0,
+      soft_skills: null,
+      final_feedback: 'No voice responses were captured for scoring.',
+      scoring_source: 'no_speech',
+    };
+  }
 
   const prompt = `You are evaluating a complete live VOICE interview for a ${role} position.
 This is a COMMUNICATION SKILLS round. Produce ONE overall assessment of how well the
 candidate communicates across ALL their answers combined (not per question).
 
-${audioPreamble}
+IMPORTANT: You are given ${audioCount} audio recording(s) of the candidate's spoken answers.
+There are NO transcripts — you MUST score entirely from what you HEAR in the audio:
+tone, pace, fluency, confidence, pronunciation, filler words, pauses, clarity, and relevance.
 
 Return JSON only (no markdown):
 {
@@ -431,7 +453,7 @@ Return JSON only (no markdown):
   "final_feedback": "<3-4 sentences: overall communication strengths and what to improve>"
 }
 
-Answers (in order):
+Questions that were asked (for context only — judge from the audio):
 ${qLines.join('\n\n')}`;
 
   parts.unshift({ text: prompt });
@@ -475,30 +497,29 @@ ${qLines.join('\n\n')}`;
         soft_skills: soft,
         final_feedback: String(parsed.final_feedback || '').trim()
           || `Overall communication score: ${Math.round(overall)}/100.`,
-        scoring_source: hasAudio ? 'audio_primary_overall' : 'transcript_only_overall',
+        scoring_source: 'audio_primary_overall',
       };
     }
-    console.warn('[relay] scoreAllTurnsOverall parse empty; falling back to per-turn average');
+    console.warn('[relay] scoreAllTurnsOverall parse empty; using audio-chunk heuristic');
   } catch (err) {
-    console.warn('[relay] scoreAllTurnsOverall failed:', err.message, '— falling back to per-turn average');
+    console.warn('[relay] scoreAllTurnsOverall failed:', err.message, '— using audio-chunk heuristic');
   }
 
-  // Fallback: per-turn sequential scoring → average (still audio-based per turn).
-  const scored = await scoreTurnsSequential({ apiKey, context, turns: realTurns, timeoutMs: 30000 });
-  const nums = scored.map((t) => Number(t.score)).filter((n) => Number.isFinite(n) && n >= 0);
-  const avg = nums.length ? Math.round(nums.reduce((a, b) => a + b, 0) / nums.length) : 0;
-  // Average the per-turn soft skills too.
-  const dims = ['communication_clarity', 'fluency', 'confidence', 'professionalism', 'english_proficiency', 'answer_relevance'];
-  const soft = {};
-  for (const d of dims) {
-    const vals = scored.map((t) => Number(t.soft_skills?.[d])).filter((n) => Number.isFinite(n));
-    soft[d] = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : avg;
-  }
+  // Fallback: score from audio presence / duration heuristic (never transcript).
+  const withAudio = realTurns.filter((t) => Array.isArray(t.answer_pcm_chunks) && t.answer_pcm_chunks.length > 0);
+  const avgChunks = withAudio.length
+    ? withAudio.reduce((s, t) => s + t.answer_pcm_chunks.length, 0) / withAudio.length
+    : 0;
+  const base = avgChunks >= 80 ? 65 : avgChunks >= 30 ? 55 : avgChunks >= 8 ? 45 : 30;
+  const soft = {
+    communication_clarity: base, fluency: base, confidence: Math.max(0, base - 5),
+    professionalism: base, english_proficiency: base, answer_relevance: Math.max(0, base - 8),
+  };
   return {
-    combined_speech_score: avg,
+    combined_speech_score: base,
     soft_skills: soft,
-    final_feedback: `Overall communication score: ${avg}/100 (averaged across ${nums.length || realTurns.length} answers).`,
-    scoring_source: 'per_turn_average_fallback',
+    final_feedback: `Voice responses captured (${withAudio.length} answer${withAudio.length === 1 ? '' : 's'}). Automatic fallback score — detailed audio analysis was unavailable.`,
+    scoring_source: 'voice_pcm_heuristic',
   };
 }
 

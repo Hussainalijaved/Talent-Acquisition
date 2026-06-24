@@ -88,6 +88,7 @@ export class GeminiLiveBridge {
     this.ttsOnlyTurn = false;   // current model turn is just speaking a question
     this.ttsForQ = 0;
     this.questionAudioSafety = null;
+    this.questionSpeakWatchdog = null;
 
     this.modelBuf = '';
     this.userBuf = '';
@@ -395,6 +396,7 @@ export class GeminiLiveBridge {
     if (this.answerWindowSafetyTimer) { clearTimeout(this.answerWindowSafetyTimer); this.answerWindowSafetyTimer = null; }
     if (this.pendingFinalize) { clearTimeout(this.pendingFinalize); this.pendingFinalize = null; }
     if (this.answerTimer) { clearTimeout(this.answerTimer); this.answerTimer = null; }
+    if (this.questionSpeakWatchdog) { clearTimeout(this.questionSpeakWatchdog); this.questionSpeakWatchdog = null; }
     this.awaitingAnswer = false;
     this.answerPromptOpen = false;
     this.userTurnActive = false;
@@ -426,23 +428,36 @@ export class GeminiLiveBridge {
       { flushFirst: false }
     );
 
-    // Open the answer window NOW — the client waits for interviewer playback to
-    // finish before opening the mic (same as warmup). Never block progression on
-    // Gemini turnComplete, which is what caused Q3→Q4 stalls in production.
-    this.emitAwaitingAnswer(qNum, text);
-
-    // Backup: re-emit if the answer window was somehow cleared before the candidate
-    // could respond (e.g. missed websocket event after a tab glitch).
+    // CRITICAL: open the mic ONLY after Gemini finishes speaking the question.
+    // Emitting awaiting_answer before TTS completes caused the client mic to open
+    // while answering=true, which blocked output_audio — candidate heard nothing.
     if (this.questionAudioSafety) clearTimeout(this.questionAudioSafety);
     this.questionAudioSafety = setTimeout(() => {
       this.questionAudioSafety = null;
       if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
       this.ttsOnlyTurn = false;
-      if (!this.answerPromptOpen || this.answerPromptFor !== qNum) {
-        console.warn(`[relay] question ${qNum} answer-window safety — re-opening`);
+      if (!this.answerPromptOpen) {
+        console.warn(`[relay] question ${qNum} TTS safety — opening answer window without turnComplete`);
         this.emitAwaitingAnswer(qNum, text);
       }
-    }, 8000);
+    }, 16000);
+
+    // Retry once if Gemini produces no audible output within 6s.
+    if (this.questionSpeakWatchdog) clearTimeout(this.questionSpeakWatchdog);
+    this.questionSpeakWatchdog = setTimeout(() => {
+      this.questionSpeakWatchdog = null;
+      if (this.ttsForQ !== qNum || this.interviewEnded || this.closed || this.answerPromptOpen) return;
+      if (this.modelAudioThisTurn) return;
+      console.warn(`[relay] question ${qNum} had no TTS audio — retrying speak`);
+      this.modelBuf = '';
+      this.blockModelOutput = false;
+      this.allowModelAudio = true;
+      this.sendSpokenPrompt(
+        `Read this interview question aloud to the candidate, word for word, in a warm professional tone. ` +
+          `Say ONLY this question and nothing else — no preamble, no numbering, no follow-up:\n"${text}"`,
+        { flushFirst: false }
+      );
+    }, 6000);
   }
 
   computeAndEmitTimer(qNum, text) {
@@ -914,8 +929,7 @@ export class GeminiLiveBridge {
       return;
     }
 
-    // Deterministic question TTS finished — answer window was already opened in
-    // speakQuestion(); just clear TTS state so late captions cannot interfere.
+    // Deterministic question TTS finished — NOW open the answer window.
     if (this.ttsOnlyTurn) {
       this.ttsOnlyTurn = false;
       this.modelBuf = '';
@@ -923,6 +937,14 @@ export class GeminiLiveBridge {
       if (this.questionAudioSafety) {
         clearTimeout(this.questionAudioSafety);
         this.questionAudioSafety = null;
+      }
+      if (this.questionSpeakWatchdog) {
+        clearTimeout(this.questionSpeakWatchdog);
+        this.questionSpeakWatchdog = null;
+      }
+      const qNum = this.ttsForQ;
+      if (!this.answerPromptOpen && !this.interviewEnded && !this.closed) {
+        this.emitAwaitingAnswer(qNum, this.questions[qNum - 1] || '');
       }
       return;
     }

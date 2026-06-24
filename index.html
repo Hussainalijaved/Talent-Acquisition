@@ -16,7 +16,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
-    <script src="live-speech.js?v=20260624g"></script>
+    <script src="live-speech.js?v=20260624h"></script>
     <script src="proctor-media.js"></script>
     <script src="proctor-activity.js"></script>
     <script>
@@ -2792,8 +2792,8 @@
                                 setWarmupPhase(null);
                                 questionLockedRef.current = true;
                                 addQuestion(number, committed || clean);
-                                setLiveQuestionCaption('');
-                                setIsInterviewerSpeaking(false);
+                                setLiveQuestionCaption(committed || clean || '');
+                                setIsInterviewerSpeaking(true);
                                 setSavingAnswer(false);
                                 setLiveCaption('');
                                 setFollowUpActive(!!follow_up);
@@ -3159,6 +3159,11 @@
                         </div>
                         <p className="speech-live-label">{label}</p>
                         <p className="speech-live-hint">{hint}</p>
+                        {!warmup && !interviewComplete && cards.length > 0 && cards[cards.length - 1]?.question && cards[cards.length - 1].question !== '…' ? (
+                            <p className="mt-4 max-w-lg mx-auto text-sm text-slate-700 leading-relaxed text-center px-4">
+                                {cards[cards.length - 1].question}
+                            </p>
+                        ) : null}
                         {candidateSpeaking ? (
                             <div className="flex items-center justify-center gap-2 mt-3">
                                 <span className={`w-2 h-2 rounded-full ${heard ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
@@ -4435,7 +4440,7 @@
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
                                     <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-1">Overall voice communication</p>
-                            <p className="text-sm text-slate-600">Single overall assessment across all {speechRows.length} answer{speechRows.length === 1 ? '' : 's'}</p>
+                            <p className="text-sm text-slate-600">Single overall voice score — no per-question breakdown.</p>
                                         </div>
                         {avgScore != null ? (
                             <p className={`text-2xl font-bold tabular-nums ${scoreTone(avgScore)}`}>{avgScore}<span className="text-sm text-slate-500 font-medium">/100</span></p>

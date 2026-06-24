@@ -430,7 +430,6 @@
           this.processingAnswer = false;
         }
         this.onQuestion({ number: msg.number, text: msg.text || '', partial: false, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
-        if (!isWarmup && msg.number >= 1) this.scheduleQuestionSafety(msg.number, 120);
         if (this.awaitingAnswerPending && !this.answering) this.ensureMicReady();
       }
       if (msg.type === 'answer') {
@@ -503,8 +502,7 @@
         }
         this.onNextQuestionReady({ number: msg.number });
         this.setStatus('The interviewer is speaking…');
-        // Safety only: open mic if the relay never sends awaiting_answer.
-        if (msg.number >= 1) this.scheduleQuestionSafety(msg.number, 120);
+        // Relay emits awaiting_answer after question TTS — do NOT open mic early here.
       }
       if (msg.type === 'turn_saved_status') {
         this.onTurn({ savedStatus: { number: msg.number, saved: !!msg.saved, error: msg.error } });
@@ -547,7 +545,8 @@
         });
       }
       if (msg.type === 'output_audio' && msg.data) {
-        // Allow interviewer nudge audio while mic is open; block normal question audio.
+        // Block interviewer audio only while the candidate is actively recording an
+        // answer — never while waiting for the question to be spoken.
         if (this.answering && !this.allowInterviewerDuringAnswer) return;
         void this.ensureAudioRunning();
         this.onOutputAudio?.();

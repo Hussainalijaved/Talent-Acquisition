@@ -1767,6 +1767,58 @@
             return html;
         }
 
+        function renderSpeechOverallBlock(speechAvg, speechHist, sess) {
+            const answered = (speechHist || []).filter((h) => h && String(h.answer_text || '').trim()).length;
+            const hasScore = speechAvg != null && Number.isFinite(Number(speechAvg));
+            const hasActivity = answered > 0 || hasScore;
+            let html = '<div class="section speech-overall-section"><div class="section-h">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>' +
+                'Voice assessment (overall)</div>';
+
+            if (!hasActivity) {
+                html += '<div class="phase-empty">Voice round not started yet.</div></div>';
+                return html;
+            }
+
+            html += '<div class="assess-summary" style="margin-bottom:12px">' +
+                '<div class="assess-stat">' +
+                (hasScore ? scoreBadge(speechAvg) : '<span class="score-badge lo" title="Overall voice score pending">Unscored</span>') +
+                '<span class="assess-stat-lbl">Overall voice score</span></div>' +
+                (answered > 0 ? '<div class="assess-stat"><span class="c-role">' + answered + ' response' +
+                    (answered === 1 ? '' : 's') + ' recorded</span><span class="assess-stat-lbl">Voice captured</span></div>' : '') +
+                '</div>';
+
+            html += '<p class="qtext ans" style="margin-bottom:12px">Single combined score from the full voice interview. Individual voice questions are not listed — only this overall result.</p>';
+
+            const skillDims = [
+                ['Communication clarity', 'communication_clarity', 'clarity'],
+                ['Fluency', 'fluency', null],
+                ['Confidence', 'confidence', null],
+                ['Professionalism', 'professionalism', null],
+                ['English proficiency', 'english_proficiency', null],
+                ['Answer relevance', 'answer_relevance', 'relevance'],
+            ];
+            const skillRows = skillDims
+                .map(([label, key, legacy]) => [label, avgSpeechSkillFromHist(speechHist, key, legacy)])
+                .filter(([, v]) => v != null);
+            if (skillRows.length) {
+                html += '<div class="qlabel">Soft skills (overall)</div><div class="speech-skill-grid">';
+                skillRows.forEach(([label, val]) => {
+                    html += '<div class="speech-skill-row"><span class="speech-skill-lbl">' + esc(label) + '</span>' +
+                        scoreBadge(val) + '</div>';
+                });
+                html += '</div>';
+            }
+
+            const feedback = (speechHist || []).map((h) => h.feedback).find((f) => f && String(f).trim() && f !== '—');
+            if (feedback) {
+                html += renderQaBlock('Overall voice feedback', feedback, 'feedback');
+            }
+
+            html += '</div>';
+            return html;
+        }
+
         function renderPhaseCard(h, totalPh, techMax) {
             const phase = Number(h.phase || 0);
             const isSpeech = isSpeechPhaseRow(h, techMax);
@@ -1890,7 +1942,6 @@
             const tech = outcome.techAvg;
             const speech = outcome.speechAvg;
             const combined = outcome.combined ?? outcome.score;
-            const audit = summarizeSpeechScoring(speechHist);
 
             let html = '<div class="section overall-assessment-summary"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>' +
@@ -1907,7 +1958,7 @@
                 '<div class="assess-stat">' + (tech != null ? scoreBadge(tech) : '<span class="c-role">—</span>') +
                 '<span class="assess-stat-lbl">Technical</span></div>' +
                 '<div class="assess-stat">' + (speech != null ? scoreBadge(speech) : '<span class="c-role">—</span>') +
-                '<span class="assess-stat-lbl">Voice</span></div>' +
+                '<span class="assess-stat-lbl">Voice overall</span></div>' +
                 '</div>';
 
             if (tech != null && speech != null && combined != null) {
@@ -1929,7 +1980,7 @@
                     .map(([label, key, legacy]) => [label, avgSpeechSkillFromHist(speechHist, key, legacy)])
                     .filter(([, v]) => v != null);
                 if (skillRows.length) {
-                    html += '<div class="qlabel">Voice communication (average across interview)</div>';
+                    html += '<div class="qlabel">Voice soft skills (overall)</div>';
                     html += '<div class="speech-skill-grid">';
                     skillRows.forEach(([label, val]) => {
                         html += '<div class="speech-skill-row"><span class="speech-skill-lbl">' + esc(label) + '</span>' +
@@ -1938,28 +1989,10 @@
                     html += '</div>';
                 }
 
-                html += '<div class="qlabel">Voice scoring method</div><div class="report-meta">';
-                if (audit.counts.audio_primary) {
-                    html += '<span class="meta-chip">' + audit.counts.audio_primary + ' turn(s) audio-primary</span>';
+                const overallFb = (speechHist || []).map((h) => h.feedback).find((f) => f && String(f).trim() && f !== '—');
+                if (overallFb) {
+                    html += renderQaBlock('Overall voice feedback', overallFb, 'feedback');
                 }
-                if (audit.counts.transcript_only) {
-                    html += '<span class="meta-chip">' + audit.counts.transcript_only + ' transcript-only</span>';
-                }
-                if (audit.counts.transcript_only_fallback) {
-                    html += '<span class="meta-chip">' + audit.counts.transcript_only_fallback + ' transcript fallback</span>';
-                }
-                if (audit.counts.gemini_live_relay_heuristic) {
-                    html += '<span class="meta-chip">' + audit.counts.gemini_live_relay_heuristic + ' heuristic</span>';
-                }
-                if (audit.counts.legacy) {
-                    html += '<span class="meta-chip">' + audit.counts.legacy + ' legacy (re-score to audit)</span>';
-                }
-                if (audit.withChunks > 0) {
-                    html += '<span class="meta-chip">' + audit.withChunks + ' turn(s) had mic audio chunks</span>';
-                } else if (audit.total > 0) {
-                    html += '<span class="meta-chip warn">No audio chunk metadata — likely transcript/heuristic</span>';
-                }
-                html += '</div>';
             }
 
             html += '</div>';
@@ -2255,7 +2288,7 @@
             return html;
         }
 
-        function renderAssessmentReport(sess) {
+        function renderAssessmentReport(sess, opts = {}) {
             const hist = parseHistory(sess);
             const cfg = parseJson(sess.config);
             const outcome = computeFinalOutcome(sess, hist, cfg);
@@ -2280,7 +2313,7 @@
                 '<span class="assess-stat-lbl">Outcome</span></div>' +
                 '<div class="assess-stat">' + scoreBadge(displayScore) + '<span class="assess-stat-lbl">Final score</span></div>' +
                 '<div class="assess-stat">' + (techAvg != null ? scoreBadge(techAvg) : '<span class="c-role">—</span>') + '<span class="assess-stat-lbl">Technical avg</span></div>' +
-                '<div class="assess-stat">' + (speechAvg != null ? scoreBadge(speechAvg) : '<span class="c-role">—</span>') + '<span class="assess-stat-lbl">Voice avg</span></div>' +
+                '<div class="assess-stat">' + (speechAvg != null ? scoreBadge(speechAvg) : '<span class="c-role">—</span>') + '<span class="assess-stat-lbl">Voice overall</span></div>' +
                 '</div>';
 
             html += '<div class="report-meta">' +
@@ -2295,25 +2328,35 @@
                 '</div>';
 
             html += '<div class="qlabel">Score by phase</div><div class="phase-bars">';
-            for (let p = 1; p <= totalPh; p++) {
+            for (let p = 1; p <= techMax; p++) {
                 const row = hist.find((h) => Number(h.phase) === p);
                 const sc = row?.score != null && !row?.integrity_terminated ? Number(row.score) : null;
                 const width = sc != null ? Math.max(4, Math.min(100, sc)) : (row?.question_text || row?.answer_text ? 4 : 0);
-                const lbl = p > techMax ? 'V' + (p - techMax) : 'P' + p;
-                html += '<div class="phase-bar-row"><span class="phase-bar-lbl">' + lbl + '</span>' +
+                html += '<div class="phase-bar-row"><span class="phase-bar-lbl">P' + p + '</span>' +
                     '<div class="phase-bar-track"><div class="phase-bar-fill ' + scoreClass(sc) + '" style="width:' + width + '%"></div></div>' +
                     (sc != null ? scoreBadge(sc) : '<span class="c-role">—</span>') + '</div>';
             }
+            if (speechMax > 0) {
+                const voiceSc = speechAvg != null && Number.isFinite(Number(speechAvg)) ? Number(speechAvg) : null;
+                const voiceWidth = voiceSc != null ? Math.max(4, Math.min(100, voiceSc)) : (speechHist.some((h) => h?.answer_text) ? 4 : 0);
+                html += '<div class="phase-bar-row"><span class="phase-bar-lbl">Voice</span>' +
+                    '<div class="phase-bar-track"><div class="phase-bar-fill ' + scoreClass(voiceSc) + '" style="width:' + voiceWidth + '%"></div></div>' +
+                    (voiceSc != null ? scoreBadge(voiceSc) : '<span class="c-role">—</span>') + '</div>';
+            }
             html += '</div>';
 
-            html += '<div class="qlabel">All phases — questions, answers &amp; scores</div>';
+            if (opts.includeSpeechOverall !== false) {
+                html += renderSpeechOverallBlock(speechAvg, speechHist, sess);
+            }
+
+            html += '<div class="qlabel">Written technical phases — questions, answers &amp; scores</div>';
             const phasesSeen = new Set();
             hist.forEach((h) => {
-                if (!h) return;
+                if (!h || isSpeechPhaseRow(h, techMax)) return;
                 phasesSeen.add(Number(h.phase));
                 html += renderPhaseCard(h, totalPh, techMax);
             });
-            for (let p = 1; p <= totalPh; p++) {
+            for (let p = 1; p <= techMax; p++) {
                 if (!phasesSeen.has(p)) {
                     html += renderPhaseCard({ phase: p }, totalPh, techMax);
                 }
@@ -2347,7 +2390,7 @@
                 (sess.scheduling_status ? kv('Scheduling', esc(sess.scheduling_status)) : '') +
                 '</div>';
 
-            html += renderAssessmentReport(sess);
+            html += renderAssessmentReport(sess, { includeSpeechOverall: false });
             html += renderProctorReport(sess);
 
             if (merged) {

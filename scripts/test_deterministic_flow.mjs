@@ -43,8 +43,8 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
 
   if (lastOf(events, 'question', 1).length === 1) ok('Q1 question committed by relay'); else fail('Q1 question committed by relay');
   if (lastOf(events, 'next_question_ready', 1).length === 1) ok('Q1 next_question_ready'); else fail('Q1 next_question_ready');
-  if (lastOf(events, 'awaiting_answer', 1).length === 1) ok('Q1 awaiting_answer emitted immediately'); else fail('Q1 awaiting_answer emitted immediately');
-  if (bridge.answerPromptOpen && bridge.answerPromptFor === 1) ok('Q1 answer window open on relay'); else fail('Q1 answer window open on relay');
+  if (lastOf(events, 'awaiting_answer', 1).length === 0) ok('Q1 mic stays closed until TTS completes'); else fail('Q1 mic stays closed until TTS completes');
+  if (bridge.answerPromptOpen === false) ok('Q1 answer window closed during TTS'); else fail('Q1 answer window closed during TTS');
 
   for (let q = 1; q <= 5; q += 1) {
     bridge.onModelTurnComplete();
@@ -64,7 +64,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   const { bridge } = makeBridge();
   bridge.warmupPhase = null;
   bridge.speakQuestion(2);
-  assert.ok(bridge.answerPromptOpen);
+  bridge.onModelTurnComplete();
   // Simulate missed user_turn_start — audio alone should still buffer + detect voice.
   bridge.sendAudio(loudPcmB64());
   if (bridge.answerPcmChunks.length > 0) ok('PCM buffered without user_turn_start'); else fail('PCM buffered without user_turn_start');
@@ -79,13 +79,29 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.warmupPhase = null;
   bridge.answers = ['[Voice response recorded]', '[Voice response recorded]'];
   bridge.speakQuestion(3);
+  bridge.onModelTurnComplete();
   bridge.startUserTurn();
   bridge.sendAudio(loudPcmB64());
   bridge.endUserTurn();
   await new Promise((r) => setTimeout(r, 500));
   if (lastOf(events, 'answer', 3).length >= 1) ok('voice-only finalize proceeds after Q3 submit'); else fail('voice-only finalize proceeds after Q3 submit');
   if (bridge.currentQ === 4) ok('Q3 answer advances to Q4 without STT wait'); else fail('Q3 answer advances to Q4', `currentQ=${bridge.currentQ}`);
-  if (lastOf(events, 'awaiting_answer', 4).length >= 1) ok('Q4 awaiting_answer emitted after Q3'); else fail('Q4 awaiting_answer emitted after Q3');
+  if (lastOf(events, 'question', 4).length >= 1) ok('Q4 question committed after Q3'); else fail('Q4 question committed after Q3');
+  bridge.closed = true;
+}
+
+{
+  const { bridge, events } = makeBridge();
+  bridge.warmupPhase = null;
+  let timerFn = null;
+  const realSetTimeout = global.setTimeout;
+  global.setTimeout = (fn, ms) => { if (ms === 16000) { timerFn = fn; return 0; } return realSetTimeout(fn, ms); };
+  bridge.speakQuestion(1);
+  global.setTimeout = realSetTimeout;
+  assert.ok(timerFn, 'TTS safety timer scheduled');
+  timerFn();
+  if (lastOf(events, 'awaiting_answer', 1).length === 1) ok('TTS safety opens answer window without turnComplete');
+  else fail('TTS safety opens answer window without turnComplete');
   bridge.closed = true;
 }
 

@@ -155,6 +155,7 @@ export class GeminiLiveBridge {
     this.modelAudioThisTurn = false;
     this.interviewClosing = false;
     this.warmupSpeakRetries = { mic_check: 0, intro: 0 };
+    this.warmupAudioDelivered = { mic_check: false, intro: false };
     this.closingReprompts = 0;
     this.closingCompleteTimer = null;
   }
@@ -337,7 +338,7 @@ export class GeminiLiveBridge {
     this.nextQuestionWatchdog = setTimeout(() => {
       this.nextQuestionWatchdog = null;
       if (this.interviewEnded || this.closed || this.warmupPhase !== phase) return;
-      if (phase === 'intro' && this.introQuestionAsked && this.answerPromptOpen) return;
+      if (phase === 'intro' && this.introQuestionAsked && this.answerPromptOpen && this.warmupAudioDelivered.intro) return;
       console.warn(`[relay] warmup watchdog — ${phase} not heard, retrying speak`);
       this.retryWarmupSpeak(phase);
     }, 16000);
@@ -573,6 +574,8 @@ export class GeminiLiveBridge {
       const inline = part.inlineData || part.inline_data;
       if (inline?.data && !this.blockModelOutput) {
         this.modelAudioThisTurn = true;
+        if (this.warmupPhase === 'mic_check') this.warmupAudioDelivered.mic_check = true;
+        if (this.warmupPhase === 'intro') this.warmupAudioDelivered.intro = true;
         const chunk = {
           type: 'output_audio',
           data: inline.data,
@@ -809,11 +812,16 @@ export class GeminiLiveBridge {
       this.streamingQuestionText = '';
       this.streamingQuestionNum = 0;
       this.modelBuf = '';
+      this.modelAudioThisTurn = false;
+      this.introQuestionAsked = false;
+      this.warmupAudioDelivered.intro = false;
       this.allowModelAudio = true;
       this.pendingAudioChunks = [];
       this.blockModelOutput = false;
-      this.sendClientText(this.buildIntroPrompt(), true);
       this.flushClientPlayback();
+      const introPrompt =
+        `[Speak out loud in clear English — the candidate must HEAR you. One short turn only, then stop and wait.] ${this.buildIntroPrompt()}`;
+      this.sendClientText(introPrompt, true);
       this.scheduleWarmupWatchdog('intro');
       return;
     }
@@ -1302,9 +1310,9 @@ export class GeminiLiveBridge {
     this.pendingAudioChunks = [];
     let prompt;
     if (this.warmupPhase === 'mic_check') {
-      prompt = this.buildMicCheckPrompt();
+      prompt = `[Speak out loud in clear English — the candidate must HEAR you. One short turn only, then stop and wait.] ${this.buildMicCheckPrompt()}`;
     } else if (this.warmupPhase === 'intro') {
-      prompt = this.buildIntroPrompt();
+      prompt = `[Speak out loud in clear English — the candidate must HEAR you. One short turn only, then stop and wait.] ${this.buildIntroPrompt()}`;
     } else {
       prompt = String(this.context.kickoff_prompt || DEFAULT_KICKOFF).trim();
     }

@@ -238,6 +238,22 @@
       }
     }
 
+    closeMicForInterviewer() {
+      this.cancelMicOpen();
+      this.awaitingAnswerPending = false;
+      if (this.micOpenFallbackTimer) {
+        clearTimeout(this.micOpenFallbackTimer);
+        this.micOpenFallbackTimer = null;
+      }
+      if (this.answering || this.streamingAudio) {
+        this.flushAnswerAudio();
+      }
+      this.answering = false;
+      this.allowInterviewerDuringAnswer = false;
+      this.processingAnswer = false;
+      this.onLevel(0);
+    }
+
     forceEndAnswer() {
       if (!this.answering && !this.streamingAudio) return;
       this.flushAnswerAudio();
@@ -406,6 +422,9 @@
         this.onQuestion({ number: msg.number, text: msg.text || '', partial: false, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
       }
       if (msg.type === 'answer') {
+        if (msg.warmup === 'mic_check') {
+          this.closeMicForInterviewer();
+        }
         this.onAnswer({ number: msg.number, text: msg.text, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
       }
       if (msg.type === 'saving_turn') {
@@ -425,6 +444,9 @@
         this.setStatus('Follow-up — listen to the interviewer…');
       }
       if (msg.type === 'warmup_phase') {
+        if (msg.phase === 'intro') {
+          this.closeMicForInterviewer();
+        }
         this.onWarmupPhase?.({ phase: msg.phase });
         const s = msg.phase === 'mic_check'
           ? 'Microphone check — listen and say a few words'

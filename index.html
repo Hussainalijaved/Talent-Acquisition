@@ -16,7 +16,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
-    <script src="live-speech.js"></script>
+    <script src="live-speech.js?v=20260624b"></script>
     <script src="proctor-media.js"></script>
     <script src="proctor-activity.js"></script>
     <script>
@@ -2796,6 +2796,16 @@
                                 setSavingAnswer(false);
                                 setLiveCaption('');
                                 setFollowUpActive(!!follow_up);
+                                // Show mic as soon as question text is committed — don't wait
+                                // for awaiting_answer which the relay may delay or miss.
+                                if (number >= 1 && !follow_up) {
+                                    canAnswerRef.current = true;
+                                    awaitingAnswerRef.current = true;
+                                    setCanAnswer(true);
+                                    setIsAnswering(false);
+                                    setAnswerTimerActive(true);
+                                    setTimeLeft((prev) => prev ?? questionTimeLimitRef.current ?? defaultAnswerSeconds);
+                                }
                             },
                             onFollowUpProbe: () => {
                                 questionLockedRef.current = false;

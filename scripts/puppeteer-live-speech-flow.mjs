@@ -95,12 +95,7 @@ function createMockRelay() {
         });
       }, 2200);
 
-      setTimeout(() => {
-        sendJson(ws, {
-          type: 'awaiting_answer', number: 1, maxTurns: 5,
-          time_limit_seconds: 120,
-        });
-      }, 2600);
+      // Deliberately NO awaiting_answer for Q1 — client must open mic via fallback.
 
       // Q2 handoff after simulated Q1 answer
       setTimeout(() => {
@@ -159,14 +154,11 @@ async function main() {
     if (result.flushIgnoredWithQueuedAudio) ok('stale flush ignored when audio queued');
     else fail('stale flush ignored when audio queued');
 
-    if (result.q1AwaitingAnswer) ok('Q1 awaiting_answer received');
-    else fail('Q1 awaiting_answer received');
+    if (result.q1AwaitingAnswer) ok('Q1 awaiting_answer received (or synthesised by fallback)');
+    else fail('Q1 awaiting_answer received (or synthesised by fallback)');
 
-    if (result.q1MicOpened) ok('mic opens after Q1 (realistic audio→question→awaiting order)');
+    if (result.q1MicOpened) ok('mic opens after Q1 even without relay awaiting_answer');
     else fail('mic opens after Q1', JSON.stringify(result));
-
-    if (result.q1MicAfterQuestionOrder) ok('mic opens after question then awaiting_answer');
-    else fail('mic opens after question then awaiting_answer', JSON.stringify(result));
 
     if (result.q2AwaitingAnswer) ok('Q2 awaiting_answer received after Q1 answer');
     else fail('Q2 awaiting_answer received', JSON.stringify(result));

@@ -100,6 +100,7 @@ export class GeminiLiveBridge {
     this.maxQuestions = Number(context.max_questions || 5);
     this.prematureClosingReprompts = 0;
     this.nextQuestionWatchdog = null;
+    this.answerWindowSafetyTimer = null;
     this.questionTimeLimits = {};
     this.timerRefineTokens = {};
     this.streamingQuestionText = '';
@@ -372,7 +373,28 @@ export class GeminiLiveBridge {
       this.allowModelAudio = true;
       const fallback = fallbackInterviewQuestion(nextQ, this.maxTurns);
       this.commitQuestionText(nextQ, fallback);
-    }, 12000);
+    }, 8000);
+  }
+
+  /** Force awaiting_answer if Gemini turnComplete never commits the question. */
+  scheduleAnswerWindowSafety(nextQ) {
+    if (this.answerWindowSafetyTimer) clearTimeout(this.answerWindowSafetyTimer);
+    this.answerWindowSafetyTimer = setTimeout(() => {
+      this.answerWindowSafetyTimer = null;
+      if (this.interviewEnded || this.closed || this.warmupPhase) return;
+      if (this.answerPromptOpen && this.answerPromptFor === nextQ) return;
+      const streamed = this.streamingQuestionNum === nextQ ? this.streamingQuestionText : '';
+      const qText = this.questions[nextQ - 1]
+        || extractInterviewQuestion(streamed)
+        || fallbackInterviewQuestion(nextQ, this.maxTurns);
+      console.warn(`[relay] answer-window safety — forcing awaiting_answer for Q${nextQ}`);
+      if (this.questions.length < nextQ) {
+        this.commitQuestionText(nextQ, qText);
+      } else {
+        this.onEvent({ type: 'question', number: nextQ, text: this.questions[nextQ - 1] || qText });
+        this.emitAwaitingAnswer(nextQ, this.questions[nextQ - 1] || qText);
+      }
+    }, 8000);
   }
 
   commitQuestionText(qNum, text, opts = {}) {
@@ -852,6 +874,7 @@ export class GeminiLiveBridge {
       this.onEvent({ type: 'next_question_ready', number: 1 });
       this.sendSpokenPrompt(this.buildFirstQuestionPrompt(), { flushFirst: false });
       this.scheduleNextQuestionWatchdog(1);
+      this.scheduleAnswerWindowSafety(1);
       return;
     }
 
@@ -979,6 +1002,7 @@ export class GeminiLiveBridge {
     this.blockModelOutput = false;
     this.sendSpokenPrompt(this.buildNextQuestionPrompt(aNum, nextQ));
     this.scheduleNextQuestionWatchdog(nextQ);
+    this.scheduleAnswerWindowSafety(nextQ);
   }
 
   // ---- Relay-side silence handling (transcript-driven) -------------------

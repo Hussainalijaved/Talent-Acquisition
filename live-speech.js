@@ -112,6 +112,9 @@
       this.nextQuestionForceFallbackTimer = null;
       this.questionAnswerFallbackTimer = null;
       this.playbackWaitTimer = null;
+      this.playbackIdleAnswerTimer = null;
+      this.pendingAnswerQ = 0;
+      this.pendingAnswerSeconds = 120;
       this.streamingAudio = false;
       this.audioFlushTimer = null;
       this.playbackGeneration = 0;
@@ -174,25 +177,59 @@
       // from question/flush handlers while waiting for audio to finish.
     }
 
-    // Called after next_question_ready. If awaiting_answer never arrives from relay
-    // (old relay version, network hiccup, etc.) this guarantees mic opens anyway.
-    // Only fires when AI has NOT started speaking — if modelAudioHeardThisTurn is true
-    // the relay will send awaiting_answer naturally after Gemini finishes.
+    // Called after next_question_ready. If awaiting_answer never arrives from relay,
+    // synthesise it so the mic UI opens — even when AI audio was heard.
     scheduleNextQuestionForceFallback(timeLimitSeconds = 120) {
       if (this.nextQuestionForceFallbackTimer) {
         clearTimeout(this.nextQuestionForceFallbackTimer);
         this.nextQuestionForceFallbackTimer = null;
       }
+      this.pendingAnswerSeconds = timeLimitSeconds;
       this.nextQuestionForceFallbackTimer = setTimeout(() => {
         this.nextQuestionForceFallbackTimer = null;
         if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
-        // If AI has already started speaking, awaiting_answer will arrive via normal path.
-        if (this.modelAudioHeardThisTurn) return;
-        // awaiting_answer never arrived and AI never spoke — synthesise it so mic opens.
-        this.awaitingAnswerPending = true;
-        this.onAwaitingAnswer({ time_limit_seconds: timeLimitSeconds, warmup: null });
+        this.openAnswerWindow(this.pendingAnswerQ || 1, timeLimitSeconds);
+      }, 8000);
+    }
+
+    openAnswerWindow(qNum, timeLimitSeconds = 120, warmup = null) {
+      if (this.ended || this.interviewEnded || this.answering) return;
+      if (this.awaitingAnswerPending && this.pendingAnswerQ === qNum) {
+        // Already open for this question — just ensure mic opens after playback.
         void this.scheduleMicAfterPlayback();
-      }, 12000);
+        return;
+      }
+      this.awaitingAnswerPending = true;
+      this.pendingAnswerQ = qNum;
+      this.pendingAnswerSeconds = timeLimitSeconds;
+      this.onAwaitingAnswer({
+        number: qNum,
+        time_limit_seconds: timeLimitSeconds,
+        warmup,
+      });
+      void this.scheduleMicAfterPlayback();
+    }
+
+    maybeOpenAnswerAfterPlaybackIdle() {
+      if (this.playbackIdleAnswerTimer) clearTimeout(this.playbackIdleAnswerTimer);
+      if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
+      if (this.pendingAnswerQ < 1) return;
+      if (this.playing || this.playQueue.length > 0) return;
+      // AI finished speaking but relay never sent awaiting_answer — open mic soon.
+      this.playbackIdleAnswerTimer = setTimeout(() => {
+        this.playbackIdleAnswerTimer = null;
+        if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
+        if (this.playing || this.playQueue.length > 0) return;
+        if (this.pendingAnswerQ < 1) return;
+        this.openAnswerWindow(this.pendingAnswerQ, this.pendingAnswerSeconds);
+      }, 600);
+    }
+
+    clearPlaybackIdleAnswerTimer() {
+      if (this.playbackIdleAnswerTimer) {
+        clearTimeout(this.playbackIdleAnswerTimer);
+        this.playbackIdleAnswerTimer = null;
+      }
     }
 
     clearNextQuestionForceFallback() {
@@ -210,10 +247,8 @@
       this.questionAnswerFallbackTimer = setTimeout(() => {
         this.questionAnswerFallbackTimer = null;
         if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
-        this.awaitingAnswerPending = true;
-        this.onAwaitingAnswer({ number: qNum, time_limit_seconds: timeLimitSeconds, warmup: null });
-        void this.scheduleMicAfterPlayback();
-      }, 4000);
+        this.openAnswerWindow(qNum, timeLimitSeconds);
+      }, 3000);
     }
 
     clearQuestionAnswerFallback() {
@@ -242,6 +277,13 @@
         clearTimeout(this.playbackWaitTimer);
         this.playbackWaitTimer = null;
       }
+    }
+
+    clearPendingAnswerQ() {
+      this.pendingAnswerQ = 0;
+      this.clearNextQuestionForceFallback();
+      this.clearQuestionAnswerFallback();
+      this.clearPlaybackIdleAnswerTimer();
     }
 
     scheduleMicOpenFallback(maxMs = 25000) {
@@ -500,6 +542,7 @@
         }
       }
       if (msg.type === 'answer') {
+        if (msg.number >= 1 && !msg.warmup) this.clearPendingAnswerQ();
         this.clearNextQuestionForceFallback();
         if (msg.warmup === 'mic_check') {
           this.closeMicForInterviewer();
@@ -564,9 +607,12 @@
         this.processingAnswer = false;
         this.modelAudioHeardThisTurn = false;
         this.awaitingAnswerPending = false;
+        if (msg.number >= 1) {
+          this.pendingAnswerQ = msg.number;
+          this.pendingAnswerSeconds = 120;
+        }
         this.onNextQuestionReady({ number: msg.number });
         this.setStatus('The interviewer is speaking…');
-        // Relay (old versions) may not send awaiting_answer — this guarantees mic opens.
         if (msg.number >= 1) this.scheduleNextQuestionForceFallback(120);
       }
       if (msg.type === 'turn_saved_status') {
@@ -588,9 +634,12 @@
       if (msg.type === 'awaiting_answer') {
         this.clearNextQuestionForceFallback();
         this.clearQuestionAnswerFallback();
+        this.clearPlaybackIdleAnswerTimer();
         this.cancelMicOpen();
         this.processingAnswer = false;
         this.awaitingAnswerPending = true;
+        if (msg.number >= 1) this.pendingAnswerQ = msg.number;
+        if (msg.time_limit_seconds) this.pendingAnswerSeconds = Number(msg.time_limit_seconds) || 120;
         this.onAwaitingAnswer({
           number: msg.number,
           maxTurns: msg.maxTurns,
@@ -761,7 +810,10 @@
         if (gen !== this.playbackGeneration) break;
       }
       this.playing = false;
-      if (gen === this.playbackGeneration && !this.playQueue.length) this.onPlaybackIdle?.();
+      if (gen === this.playbackGeneration && !this.playQueue.length) {
+        this.maybeOpenAnswerAfterPlaybackIdle();
+        this.onPlaybackIdle?.();
+      }
     }
 
     async end() {
@@ -848,8 +900,7 @@
     }
 
     cleanup() {
-      this.clearNextQuestionForceFallback();
-      this.clearQuestionAnswerFallback();
+      this.clearPendingAnswerQ();
       this.clearPlaybackWait();
       this.cancelMicOpen();
       try {

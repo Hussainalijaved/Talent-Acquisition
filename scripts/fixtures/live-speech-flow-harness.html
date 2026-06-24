@@ -52,7 +52,7 @@
         if (number === 2) result.q2AwaitingAnswer = true;
       },
       onMicOpen: () => {
-        if (result.q1AwaitingAnswer && !result.q2AwaitingAnswer) {
+        if (!result.q2AwaitingAnswer) {
           result.q1MicOpened = true;
           q1MicAt = Date.now();
         }

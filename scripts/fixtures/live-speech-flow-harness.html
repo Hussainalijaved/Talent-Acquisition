@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Live speech flow harness</title>
+  <script src="/live-speech.js"></script>
+</head>
+<body>
+<script>
+(async () => {
+  const params = new URLSearchParams(location.search);
+  const relayUrl = params.get('relay') || 'ws://127.0.0.1:8792';
+  const result = {
+    sessionStarts: 0,
+    flushIgnoredWithQueuedAudio: false,
+    q1AwaitingAnswer: false,
+    q1CanAnswer: false,
+    q1MicOpened: false,
+    playbackChunksAfterLateFlush: 0,
+    errors: [],
+  };
+
+  try {
+    if (!window.TA_LIVE?.LiveSpeechSession) {
+      throw new Error('TA_LIVE.LiveSpeechSession missing');
+    }
+    const session = new window.TA_LIVE.LiveSpeechSession({
+      relayUrl,
+      context: { session_id: 'flow-test', speech_phases: 5, speech_answer_seconds: 120 },
+      tabSwitches: 0,
+      onStatus: () => {},
+      onTranscript: () => {},
+      onLevel: () => {},
+      onTurn: () => {},
+      onQuestion: () => {},
+      onAnswer: () => {},
+      onAwaitingAnswer: ({ number }) => {
+        if (number === 1) result.q1AwaitingAnswer = true;
+      },
+      onMicOpen: () => {
+        result.q1MicOpened = true;
+      },
+      onNextQuestionReady: () => {},
+      onInterviewComplete: () => {},
+      onComplete: () => {},
+      onError: (err) => result.errors.push(err?.message || String(err)),
+    });
+
+    result.sessionStarts += 1;
+    const startPromise = session.start();
+    const startTimeout = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('session.start timeout')), 15000);
+    });
+    await Promise.race([startPromise, startTimeout]);
+
+    // Verify stale flush does not drop already-queued interviewer audio.
+    const tinyPcm = btoa(String.fromCharCode(0, 0, 0, 0));
+    session.playQueue.push({ b64: tinyPcm, rate: 24000 });
+    session.playQueue.push({ b64: tinyPcm, rate: 24000 });
+    const queuedBeforeFlush = session.playQueue.length;
+    session.handleMessage(JSON.stringify({ type: 'flush_playback' }));
+    result.flushIgnoredWithQueuedAudio = queuedBeforeFlush > 0 && session.playQueue.length === queuedBeforeFlush;
+
+    // Wait for mock relay to reach Q1 and open mic.
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+      if (result.q1AwaitingAnswer) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    const playbackDeadline = Date.now() + 15000;
+    while (Date.now() < playbackDeadline) {
+      if (result.q1MicOpened) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    result.playbackChunksAfterLateFlush = session.playQueue.length;
+    result.q1CanAnswer = result.q1AwaitingAnswer && (result.q1MicOpened || session.awaitingAnswerPending === false);
+
+    await session.cancel?.();
+  } catch (e) {
+    result.errors.push(e?.message || String(e));
+  } finally {
+    window.__flowTestResult = result;
+    window.__flowTestDone = true;
+  }
+})();
+</script>
+</body>
+</html>

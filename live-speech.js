@@ -405,6 +405,8 @@
         });
       }
       if (msg.type === 'flush_playback') {
+        // Ignore stale flush if interviewer audio for the current turn is already queued.
+        if (this.playQueue.length > 0 || this.playing) return;
         this.clearPlayback();
         this.cancelMicOpen();
         return;
@@ -478,9 +480,8 @@
         this.onSilenceNudge?.({ stage, text: msg.text });
       }
       if (msg.type === 'next_question_ready') {
+        this.closeMicForInterviewer();
         this.clearPlayback();
-        this.cancelMicOpen();
-        this.forceEndAnswer();
         this.processingAnswer = false;
         this.modelAudioHeardThisTurn = false;
         this.awaitingAnswerPending = false;
@@ -505,7 +506,7 @@
       }
       if (msg.type === 'awaiting_answer') {
         this.cancelMicOpen();
-        this.forceEndAnswer();
+        this.closeMicForInterviewer();
         this.processingAnswer = false;
         this.awaitingAnswerPending = true;
         this.onAwaitingAnswer({

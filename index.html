@@ -2607,7 +2607,18 @@
             const warmupPhaseRef = React.useRef(warmupPhase);
             React.useEffect(() => { warmupPhaseRef.current = warmupPhase; }, [warmupPhase]);
             const questionLockedRef = React.useRef(false);
+            const onFinishedRef = React.useRef(onFinished);
+            const onErrorRef = React.useRef(onError);
+            const awaitingAnswerRef = React.useRef(false);
+            const contextRef = React.useRef(context);
+            const relayFallbackRef = React.useRef(relayFallback);
+            const tabSwitchesRef = React.useRef(tabSwitches);
 
+            React.useEffect(() => { onFinishedRef.current = onFinished; }, [onFinished]);
+            React.useEffect(() => { onErrorRef.current = onError; }, [onError]);
+            React.useEffect(() => { contextRef.current = context; }, [context]);
+            React.useEffect(() => { relayFallbackRef.current = relayFallback; }, [relayFallback]);
+            React.useEffect(() => { tabSwitchesRef.current = tabSwitches; }, [tabSwitches]);
             React.useEffect(() => { isAnsweringRef.current = isAnswering; }, [isAnswering]);
             React.useEffect(() => { canAnswerRef.current = canAnswer; }, [canAnswer]);
 
@@ -2667,15 +2678,15 @@
                 setConnecting(true);
                 (async () => {
                     if (!window.TA_LIVE) {
-                        onError?.('Live speech module not loaded.');
+                        onErrorRef.current?.('Live speech module not loaded.');
                         return;
                     }
                     try {
-                        const relayUrl = window.TA_LIVE.resolveRelayUrl(context, relayFallback);
+                        const relayUrl = window.TA_LIVE.resolveRelayUrl(contextRef.current, relayFallbackRef.current);
                         const session = new window.TA_LIVE.LiveSpeechSession({
                             relayUrl,
-                            context,
-                            tabSwitches,
+                            context: contextRef.current,
+                            tabSwitches: tabSwitchesRef.current,
                             onStatus: setStatus,
                             onTranscript: ({ speaker, text, partial, closing }) => {
                                 if (speaker === 'model') {
@@ -2718,9 +2729,8 @@
                                 }
                             },
                             onPlaybackIdle: () => {
-                                if (!canAnswerRef.current && !isAnsweringRef.current) {
-                                    setIsInterviewerSpeaking(false);
-                                }
+                                if (awaitingAnswerRef.current || canAnswerRef.current || isAnsweringRef.current) return;
+                                setIsInterviewerSpeaking(false);
                             },
                             onWarmupPhase: ({ phase }) => {
                                 setWarmupPhase(phase);
@@ -2804,6 +2814,8 @@
                             },
                             onAnswer: ({ number, text, warmup }) => {
                                 if (warmup != null || number <= 0) {
+                                    awaitingAnswerRef.current = false;
+                                    canAnswerRef.current = false;
                                     setWarmupAnswer(cleanText(text, 'user') || 'Answer captured');
                                     setIsAnswering(false);
                                     setCanAnswer(false);
@@ -2813,6 +2825,8 @@
                                     setSilenceHint('');
                                     return;
                                 }
+                                awaitingAnswerRef.current = false;
+                                canAnswerRef.current = false;
                                 setAnswerForQuestion(number, text);
                                 setIsAnswering(false);
                                 setSavingAnswer(true);
@@ -2828,6 +2842,8 @@
                                     ? limit
                                     : defaultAnswerSeconds;
                                 setQuestionTimeLimit(nextLimit);
+                                canAnswerRef.current = true;
+                                awaitingAnswerRef.current = true;
                                 setCanAnswer(true);
                                 setIsAnswering(false);
                                 setSavingAnswer(false);
@@ -2850,11 +2866,15 @@
                                 });
                             },
                             onMicOpen: () => {
+                                awaitingAnswerRef.current = false;
+                                canAnswerRef.current = true;
                                 setIsAnswering(true);
                                 setCanAnswer(true);
                                 setSilenceHint('');
                             },
                             onNextQuestionReady: ({ number }) => {
+                                awaitingAnswerRef.current = false;
+                                canAnswerRef.current = false;
                                 setSavingAnswer(false);
                                 setCanAnswer(false);
                                 setIsAnswering(false);
@@ -2896,14 +2916,14 @@
                                 finishedRef.current = true;
                                 setEnding(true);
                                 const done = normalizeLiveCompleteResult(result);
-                                onFinished?.({
+                                onFinishedRef.current?.({
                                     result: done.result,
                                     score: done.score,
                                     feedback: done.feedback,
                                     isFinal: true,
                                 });
                             },
-                            onError: (err) => onError?.(err?.message || 'Live speech error'),
+                            onError: (err) => onErrorRef.current?.(err?.message || 'Live speech error'),
                         });
                         sessionRef.current = session;
                         await session.start();
@@ -2915,7 +2935,7 @@
                         if (!cancelled) {
                             setConnecting(false);
                             setSessionLive(false);
-                            onError?.(e?.message || 'Could not start live speech');
+                            onErrorRef.current?.(e?.message || 'Could not start live speech');
                         }
                     }
                 })();
@@ -2924,7 +2944,7 @@
                     sessionRef.current?.cancel?.();
                     sessionRef.current = null;
                 };
-            }, [sessionLive, context, relayFallback, tabSwitches, onError, addQuestion, setAnswerForQuestion, setScoreForQuestion, cleanText]);
+            }, [sessionLive, context?.session_id]);
 
             React.useEffect(() => {
                 cardsEndRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'end' });
@@ -3027,7 +3047,7 @@
                         isFinal: true,
                     });
                 } catch (e) {
-                    onError?.(e?.message || 'Could not complete live speech');
+                    onErrorRef.current?.(e?.message || 'Could not complete live speech');
                     setEnding(false);
                 }
             };

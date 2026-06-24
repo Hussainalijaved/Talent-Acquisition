@@ -9,7 +9,8 @@
     "test:e2e:prod": "node scripts/e2e-puppeteer.mjs --base=https://talent-acquisition-six.vercel.app",
     "test:all": "npm run test && npm run test:e2e",
     "test:scoring": "node scripts/diagnose_speech_scoring.mjs",
-    "test:live-speech-scoring": "node scripts/puppeteer-live-speech-scoring.mjs"
+    "test:live-speech-scoring": "node scripts/puppeteer-live-speech-scoring.mjs",
+    "test:live-speech-flow": "node scripts/puppeteer-live-speech-flow.mjs"
   },
   "devDependencies": {
     "puppeteer": "^24.2.0"

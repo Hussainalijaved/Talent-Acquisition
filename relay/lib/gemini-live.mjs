@@ -393,6 +393,8 @@ export class GeminiLiveBridge {
     this.clearAnswerPromptWindow();
     if (this.nextQuestionWatchdog) { clearTimeout(this.nextQuestionWatchdog); this.nextQuestionWatchdog = null; }
     if (this.answerWindowSafetyTimer) { clearTimeout(this.answerWindowSafetyTimer); this.answerWindowSafetyTimer = null; }
+    if (this.pendingFinalize) { clearTimeout(this.pendingFinalize); this.pendingFinalize = null; }
+    if (this.answerTimer) { clearTimeout(this.answerTimer); this.answerTimer = null; }
     this.awaitingAnswer = false;
     this.answerPromptOpen = false;
     this.userTurnActive = false;
@@ -424,17 +426,23 @@ export class GeminiLiveBridge {
       { flushFirst: false }
     );
 
-    // Open the answer window once the question audio finishes — or force it after
-    // a hard cap so a slow/missing Gemini turn can never freeze the interview.
+    // Open the answer window NOW — the client waits for interviewer playback to
+    // finish before opening the mic (same as warmup). Never block progression on
+    // Gemini turnComplete, which is what caused Q3→Q4 stalls in production.
+    this.emitAwaitingAnswer(qNum, text);
+
+    // Backup: re-emit if the answer window was somehow cleared before the candidate
+    // could respond (e.g. missed websocket event after a tab glitch).
     if (this.questionAudioSafety) clearTimeout(this.questionAudioSafety);
     this.questionAudioSafety = setTimeout(() => {
       this.questionAudioSafety = null;
       if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
-      if (this.awaitingAnswer || this.answerPromptOpen) return;
-      console.warn(`[relay] question ${qNum} audio safety — opening answer window`);
       this.ttsOnlyTurn = false;
-      this.emitAwaitingAnswer(qNum, text);
-    }, 14000);
+      if (!this.answerPromptOpen || this.answerPromptFor !== qNum) {
+        console.warn(`[relay] question ${qNum} answer-window safety — re-opening`);
+        this.emitAwaitingAnswer(qNum, text);
+      }
+    }, 8000);
   }
 
   computeAndEmitTimer(qNum, text) {
@@ -906,9 +914,8 @@ export class GeminiLiveBridge {
       return;
     }
 
-    // Deterministic question TTS finished speaking → open the answer window.
-    // We do NOT commit a question from the buffer here; the relay already sent
-    // the exact question text. This is the single, reliable Q1→QN hand-off.
+    // Deterministic question TTS finished — answer window was already opened in
+    // speakQuestion(); just clear TTS state so late captions cannot interfere.
     if (this.ttsOnlyTurn) {
       this.ttsOnlyTurn = false;
       this.modelBuf = '';
@@ -916,10 +923,6 @@ export class GeminiLiveBridge {
       if (this.questionAudioSafety) {
         clearTimeout(this.questionAudioSafety);
         this.questionAudioSafety = null;
-      }
-      const qNum = this.ttsForQ;
-      if (!this.awaitingAnswer && !this.answerPromptOpen && !this.interviewEnded && !this.closed) {
-        this.emitAwaitingAnswer(qNum, this.questions[qNum - 1] || '');
       }
       return;
     }
@@ -943,7 +946,7 @@ export class GeminiLiveBridge {
       this.pendingFinalize = setTimeout(() => {
         this.pendingFinalize = null;
         this.completeAnswerTurn();
-      }, 600);
+      }, 400);
       return;
     }
     const startedAt = Date.now();
@@ -1004,15 +1007,19 @@ export class GeminiLiveBridge {
     if (!this.awaitingAnswer) return;
     this.stopSilenceMonitor();
 
-    // Mic may still be open (auto-open) — close activity so transcription flushes.
+    // Mic may still be open — close the Gemini activity window.
     if (this.userTurnActive) {
       this.userTurnActive = false;
       if (this.geminiWs?.readyState === WebSocket.OPEN) {
         this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
       }
       this.userTurnEndedAt = Date.now();
-      this.scheduleFinalizeAnswer();
-      return;
+      // Voice-only: PCM is already buffered — never wait on Gemini STT flush.
+      // Waiting here was causing Q3→Q4 stalls when activityEnd turnComplete lagged.
+      if (!this.voiceOnly) {
+        this.scheduleFinalizeAnswer();
+        return;
+      }
     }
 
     this.awaitingAnswer = false;
@@ -1637,7 +1644,6 @@ export class GeminiLiveBridge {
       this.userTurnActive = true;
       this.userBuf = '';
       this.lateUserBuf = '';
-      this.voiceDetectedThisTurn = false;
       if (this.geminiWs.readyState === WebSocket.OPEN) {
         this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
       }
@@ -1657,7 +1663,7 @@ export class GeminiLiveBridge {
           sumSq += s * s;
         }
         rms = Math.sqrt(sumSq / samples);
-        if (rms > 80) {
+        if (rms > 50) {
           this.voiceDetectedThisTurn = true;
           if (this.inNudgePlayback) this.cancelNudgeForUserSpeech();
           this.noteUserActivity();
@@ -1668,9 +1674,11 @@ export class GeminiLiveBridge {
     // During nudge playback with no detected speech, pause forwarding so Gemini can finish the nudge.
     if (this.inNudgePlayback) return;
 
-    // Buffer PCM for audio-primary scoring (real questions only, not warmup).
+    // Buffer PCM for end-of-interview scoring (real questions only, not warmup).
+    // Buffer whenever the answer window is open — not only after userTurnActive —
+    // so voice is captured even if user_turn_start was missed on the client.
     // Cap at 120 s (120 * 1000ms/256ms ≈ 469 chunks of 4096 samples @ 16 kHz).
-    if (this.userTurnActive && this.warmupPhase === null) {
+    if (this.warmupPhase === null && (this.userTurnActive || this.answerPromptOpen)) {
       this.answerPcmChunks.push(base64Pcm);
       if (this.answerPcmChunks.length > 469) this.answerPcmChunks.shift();
     }

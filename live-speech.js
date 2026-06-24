@@ -295,6 +295,8 @@
         // Ensure relay opened the turn before we close it.
         this.ws.send(JSON.stringify({ type: 'user_turn_start' }));
       }
+      // Keep streaming a short tail so the last syllables reach the relay before
+      // the answer window closes on the next question transition.
       this.flushAnswerAudio();
       this.answering = false;
       this.awaitingAnswerPending = false;

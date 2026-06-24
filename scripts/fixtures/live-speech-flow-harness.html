@@ -16,14 +16,17 @@
     q1AwaitingAnswer: false,
     q1CanAnswer: false,
     q1MicOpened: false,
+    q1MicAfterQuestionOrder: false,
     q2AwaitingAnswer: false,
     timerClearedOnNextQuestion: false,
     playbackChunksAfterLateFlush: 0,
     errors: [],
   };
 
-  // Track whether answerTimerActive was cleared when next_question_ready fires.
   let answerTimerActiveAtNextQ = null;
+  let q1QuestionSeenAt = 0;
+  let q1AwaitingAt = 0;
+  let q1MicAt = 0;
 
   try {
     if (!window.TA_LIVE?.LiveSpeechSession) {
@@ -37,17 +40,24 @@
       onTranscript: () => {},
       onLevel: () => {},
       onTurn: () => {},
-      onQuestion: () => {},
+      onQuestion: ({ number }) => {
+        if (number === 1) q1QuestionSeenAt = Date.now();
+      },
       onAnswer: () => {},
       onAwaitingAnswer: ({ number }) => {
-        if (number === 1) result.q1AwaitingAnswer = true;
+        if (number === 1) {
+          result.q1AwaitingAnswer = true;
+          q1AwaitingAt = Date.now();
+        }
         if (number === 2) result.q2AwaitingAnswer = true;
       },
       onMicOpen: () => {
-        if (result.q1AwaitingAnswer && !result.q2AwaitingAnswer) result.q1MicOpened = true;
+        if (result.q1AwaitingAnswer && !result.q2AwaitingAnswer) {
+          result.q1MicOpened = true;
+          q1MicAt = Date.now();
+        }
       },
       onNextQuestionReady: ({ number }) => {
-        // Capture whether the session cleared awaitingAnswerPending on next question.
         if (number === 2) {
           answerTimerActiveAtNextQ = session.awaitingAnswerPending;
         }
@@ -58,13 +68,11 @@
     });
 
     result.sessionStarts += 1;
-    const startPromise = session.start();
-    const startTimeout = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('session.start timeout')), 15000);
-    });
-    await Promise.race([startPromise, startTimeout]);
+    await Promise.race([
+      session.start(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('session.start timeout')), 15000)),
+    ]);
 
-    // Verify stale flush does not drop already-queued interviewer audio.
     const tinyPcm = btoa(String.fromCharCode(0, 0, 0, 0));
     session.playQueue.push({ b64: tinyPcm, rate: 24000 });
     session.playQueue.push({ b64: tinyPcm, rate: 24000 });
@@ -72,30 +80,21 @@
     session.handleMessage(JSON.stringify({ type: 'flush_playback' }));
     result.flushIgnoredWithQueuedAudio = queuedBeforeFlush > 0 && session.playQueue.length === queuedBeforeFlush;
 
-    // Wait for Q1 awaiting_answer.
     const q1Deadline = Date.now() + 20000;
     while (Date.now() < q1Deadline) {
-      if (result.q1AwaitingAnswer) break;
+      if (result.q1MicOpened || session.answering) break;
       await new Promise((r) => setTimeout(r, 100));
     }
 
-    // Wait for Q1 mic to open.
-    const micDeadline = Date.now() + 10000;
-    while (Date.now() < micDeadline) {
-      if (result.q1MicOpened) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-
-    // Wait for Q2 awaiting_answer (mock relay sends it at T+2.8s).
-    const q2Deadline = Date.now() + 10000;
+    const q2Deadline = Date.now() + 8000;
     while (Date.now() < q2Deadline) {
       if (result.q2AwaitingAnswer) break;
       await new Promise((r) => setTimeout(r, 100));
     }
 
     result.playbackChunksAfterLateFlush = session.playQueue.length;
-    result.q1CanAnswer = result.q1AwaitingAnswer && (result.q1MicOpened || session.awaitingAnswerPending === false);
-    // timerClearedOnNextQuestion: awaitingAnswerPending should be false after next_question_ready.
+    result.q1CanAnswer = result.q1AwaitingAnswer;
+    result.q1MicAfterQuestionOrder = q1QuestionSeenAt > 0 && q1AwaitingAt >= q1QuestionSeenAt && q1MicAt >= q1AwaitingAt;
     result.timerClearedOnNextQuestion = answerTimerActiveAtNextQ === false;
 
     session.cancel?.();

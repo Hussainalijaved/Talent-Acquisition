@@ -169,8 +169,7 @@ export class GeminiLiveBridge {
   }
 
   emitAwaitingAnswer(qNum, questionText, opts = {}) {
-    if (this.answerPromptOpen && this.answerPromptFor === qNum) return;
-    // Fresh PCM buffer for every real question turn.
+    // Always emit — client may have missed a prior awaiting_answer during audio handoff.
     if (qNum >= 1) this.answerPcmChunks = [];
     const isWarmup = !!(opts.warmup || qNum <= 0);
     const limits = isWarmup
@@ -1221,15 +1220,22 @@ export class GeminiLiveBridge {
 
     if (!this.roundQuestionEmitted && this.questions.length < this.maxTurns) {
       if (!spokeThisTurn) {
-        console.warn(`[relay] Q${expectedQ} turn had no audible output — re-prompting`);
-        this.roundQuestionEmitted = false;
-        this.blockModelOutput = false;
-        this.allowModelAudio = true;
-        this.flushClientPlayback();
-        const prevA = Math.max(0, expectedQ - 1);
-        this.sendClientText(this.buildNextQuestionPrompt(prevA, expectedQ), true);
-        this.scheduleNextQuestionWatchdog(expectedQ);
-        return;
+        const streamQ = this.streamingQuestionNum === expectedQ ? this.streamingQuestionText : '';
+        const streamText = extractInterviewQuestion(streamQ) || String(streamQ || '').trim();
+        if (streamText && (streamText.includes('?') || streamText.split(/\s+/).filter(Boolean).length >= 8)) {
+          console.warn(`[relay] Q${expectedQ} turnComplete before audio flag — committing streamed text`);
+          modelText = streamText;
+        } else {
+          console.warn(`[relay] Q${expectedQ} turn had no audible output — re-prompting`);
+          this.roundQuestionEmitted = false;
+          this.blockModelOutput = false;
+          this.allowModelAudio = true;
+          this.flushClientPlayback();
+          const prevA = Math.max(0, expectedQ - 1);
+          this.sendClientText(this.buildNextQuestionPrompt(prevA, expectedQ), true);
+          this.scheduleNextQuestionWatchdog(expectedQ);
+          return;
+        }
       }
       this.questions.push(modelText);
       this.roundQuestionEmitted = true;

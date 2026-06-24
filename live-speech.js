@@ -110,6 +110,8 @@
       this.awaitingAnswerPending = false;
       this.micOpenFallbackTimer = null;
       this.nextQuestionForceFallbackTimer = null;
+      this.questionAnswerFallbackTimer = null;
+      this.playbackWaitTimer = null;
       this.streamingAudio = false;
       this.audioFlushTimer = null;
       this.playbackGeneration = 0;
@@ -168,6 +170,8 @@
         clearTimeout(this.micOpenFallbackTimer);
         this.micOpenFallbackTimer = null;
       }
+      // Do NOT clear playbackWaitTimer here — it must survive cancelMicOpen calls
+      // from question/flush handlers while waiting for audio to finish.
     }
 
     // Called after next_question_ready. If awaiting_answer never arrives from relay
@@ -198,6 +202,48 @@
       }
     }
 
+    scheduleQuestionAnswerFallback(qNum, timeLimitSeconds = 120) {
+      if (this.questionAnswerFallbackTimer) {
+        clearTimeout(this.questionAnswerFallbackTimer);
+        this.questionAnswerFallbackTimer = null;
+      }
+      this.questionAnswerFallbackTimer = setTimeout(() => {
+        this.questionAnswerFallbackTimer = null;
+        if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
+        this.awaitingAnswerPending = true;
+        this.onAwaitingAnswer({ number: qNum, time_limit_seconds: timeLimitSeconds, warmup: null });
+        void this.scheduleMicAfterPlayback();
+      }, 4000);
+    }
+
+    clearQuestionAnswerFallback() {
+      if (this.questionAnswerFallbackTimer) {
+        clearTimeout(this.questionAnswerFallbackTimer);
+        this.questionAnswerFallbackTimer = null;
+      }
+    }
+
+    scheduleWaitForPlaybackThenBegin() {
+      if (this.playbackWaitTimer) return;
+      const tick = () => {
+        this.playbackWaitTimer = null;
+        if (this.ended || this.interviewEnded || this.answering) return;
+        if (this.playing || this.playQueue.length > 0) {
+          this.playbackWaitTimer = setTimeout(tick, 300);
+          return;
+        }
+        this.beginAnswer();
+      };
+      this.playbackWaitTimer = setTimeout(tick, 300);
+    }
+
+    clearPlaybackWait() {
+      if (this.playbackWaitTimer) {
+        clearTimeout(this.playbackWaitTimer);
+        this.playbackWaitTimer = null;
+      }
+    }
+
     scheduleMicOpenFallback(maxMs = 25000) {
       if (this.micOpenFallbackTimer) clearTimeout(this.micOpenFallbackTimer);
       this.micOpenFallbackTimer = setTimeout(() => {
@@ -207,8 +253,6 @@
           !this.interviewEnded &&
           !this.answering &&
           this.awaitingAnswerPending
-          // modelAudioHeardThisTurn no longer required — relay watchdog can commit a
-          // question without AI audio (Gemini timeout); mic must open regardless.
         ) {
           this.awaitingAnswerPending = false;
           this.beginAnswer();
@@ -256,8 +300,7 @@
         !this.ended &&
         !this.interviewEnded &&
         !this.answering &&
-        this.awaitingAnswerPending &&
-        this.modelAudioHeardThisTurn
+        this.awaitingAnswerPending
       ) {
         this.awaitingAnswerPending = false;
         if (this.micOpenFallbackTimer) {
@@ -299,14 +342,10 @@
     beginAnswer() {
       if (this.ended || this.interviewEnded || this.answering) return;
       if (this.playing || this.playQueue.length > 0) {
-        if (!this.micOpenTimer) {
-          this.micOpenTimer = setTimeout(() => {
-            this.micOpenTimer = null;
-            this.beginAnswer();
-          }, 400);
-        }
+        this.scheduleWaitForPlaybackThenBegin();
         return;
       }
+      this.clearPlaybackWait();
       this.awaitingAnswerPending = false;
       if (this.micOpenFallbackTimer) {
         clearTimeout(this.micOpenFallbackTimer);
@@ -449,9 +488,16 @@
       if (msg.type === 'question') {
         const isWarmup = msg.warmup != null || msg.number <= 0;
         if (!isWarmup && msg.text && window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
-        if (!isWarmup) { this.cancelMicOpen(); this.forceEndAnswer(); this.processingAnswer = false; }
-        this.modelAudioHeardThisTurn = false;
+        if (!isWarmup && !this.awaitingAnswerPending) {
+          this.cancelMicOpen();
+          this.forceEndAnswer();
+          this.processingAnswer = false;
+        }
+        // Do NOT reset modelAudioHeardThisTurn — question commit follows audio playback.
         this.onQuestion({ number: msg.number, text: msg.text || '', partial: false, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
+        if (!isWarmup && msg.number >= 1 && !this.awaitingAnswerPending) {
+          this.scheduleQuestionAnswerFallback(msg.number, 120);
+        }
       }
       if (msg.type === 'answer') {
         this.clearNextQuestionForceFallback();
@@ -512,6 +558,8 @@
       }
       if (msg.type === 'next_question_ready') {
         this.closeMicForInterviewer();
+        this.clearQuestionAnswerFallback();
+        this.clearPlaybackWait();
         this.clearPlayback();
         this.processingAnswer = false;
         this.modelAudioHeardThisTurn = false;
@@ -539,8 +587,8 @@
       }
       if (msg.type === 'awaiting_answer') {
         this.clearNextQuestionForceFallback();
+        this.clearQuestionAnswerFallback();
         this.cancelMicOpen();
-        this.closeMicForInterviewer();
         this.processingAnswer = false;
         this.awaitingAnswerPending = true;
         this.onAwaitingAnswer({
@@ -712,10 +760,8 @@
         });
         if (gen !== this.playbackGeneration) break;
       }
-      if (gen === this.playbackGeneration) {
-        this.playing = false;
-        if (!this.playQueue.length) this.onPlaybackIdle?.();
-      }
+      this.playing = false;
+      if (gen === this.playbackGeneration && !this.playQueue.length) this.onPlaybackIdle?.();
     }
 
     async end() {
@@ -803,6 +849,8 @@
 
     cleanup() {
       this.clearNextQuestionForceFallback();
+      this.clearQuestionAnswerFallback();
+      this.clearPlaybackWait();
       this.cancelMicOpen();
       try {
         this.processor?.disconnect();

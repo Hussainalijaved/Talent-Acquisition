@@ -364,6 +364,144 @@ export async function postPartialTurnWebhook(context, payload) {
   return { ok: true, status: res.status, body: json };
 }
 
+/**
+ * Score the ENTIRE voice interview in ONE multimodal call.
+ * Sends every answer's audio (as WAV inline_data parts) plus the question/transcript
+ * context, and asks Gemini for a SINGLE overall communication score. This matches
+ * the product requirement: one overall speech score, not per-question scoring.
+ *
+ * Returns: { combined_speech_score, soft_skills, final_feedback, scoring_source }
+ */
+export async function scoreAllTurnsOverall({ apiKey, context, turns, timeoutMs = 60000 }) {
+  if (!apiKey) throw new Error('GEMINI_API_KEY missing for scoring');
+  const role = String(context.requisition_title || 'the role');
+
+  const realTurns = (turns || []).filter((t) => Number(t.phase) != null);
+  if (!realTurns.length) {
+    return {
+      combined_speech_score: 0,
+      soft_skills: null,
+      final_feedback: 'No speech turns captured.',
+      scoring_source: 'no_speech',
+    };
+  }
+
+  // Build the prompt + attach each answer's audio (if available).
+  const parts = [];
+  const qLines = [];
+  let audioCount = 0;
+  realTurns.forEach((t, i) => {
+    const transcript = String(t.answer_text || '').trim();
+    const tLine = transcript && !/^\[(no spoken|non-english|no speech|noise)/i.test(transcript)
+      ? transcript
+      : '(no reliable transcript — judge from the audio)';
+    qLines.push(`Answer ${i + 1} — Question: ${String(t.question_text || '').slice(0, 300)}\nTranscript: ${tLine}`);
+    if (Array.isArray(t.answer_pcm_chunks) && t.answer_pcm_chunks.length) {
+      try {
+        const wav = pcmChunksToWavBase64(t.answer_pcm_chunks, t.answer_pcm_sample_rate || 16000);
+        if (wav) {
+          parts.push({ text: `\n[Audio recording of Answer ${i + 1}]` });
+          parts.push({ inline_data: { mime_type: 'audio/wav', data: wav } });
+          audioCount += 1;
+        }
+      } catch (_) { /* skip this audio */ }
+    }
+  });
+
+  const hasAudio = audioCount > 0;
+  const audioPreamble = hasAudio
+    ? `You are given the candidate's AUDIO recordings for ${audioCount} of their answers. Listen to tone, pace, fluency, confidence, pronunciation, filler words and pauses. Score primarily from what you HEAR; the transcripts are supplementary.`
+    : `No audio was captured — score from the transcripts alone.`;
+
+  const prompt = `You are evaluating a complete live VOICE interview for a ${role} position.
+This is a COMMUNICATION SKILLS round. Produce ONE overall assessment of how well the
+candidate communicates across ALL their answers combined (not per question).
+
+${audioPreamble}
+
+Return JSON only (no markdown):
+{
+  "overall_score": <0-100 overall communication score across the whole interview>,
+  "communication_clarity": <0-100>,
+  "fluency": <0-100>,
+  "confidence": <0-100>,
+  "professionalism": <0-100>,
+  "english_proficiency": <0-100>,
+  "answer_relevance": <0-100>,
+  "final_feedback": "<3-4 sentences: overall communication strengths and what to improve>"
+}
+
+Answers (in order):
+${qLines.join('\n\n')}`;
+
+  parts.unshift({ text: prompt });
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${SCORE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const run = async () => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts }],
+        generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`gemini_overall_score_failed ${res.status}: ${errText.slice(0, 300)}`);
+    }
+    const data = await res.json();
+    return data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+  };
+
+  try {
+    const rawText = await Promise.race([
+      run(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('overall_score_timeout')), timeoutMs)),
+    ]);
+    const parsed = safeParseJson(rawText);
+    const overall = parsed.overall_score != null ? Number(parsed.overall_score) : null;
+    if (Number.isFinite(overall)) {
+      const soft = {
+        communication_clarity: Math.round(Number(parsed.communication_clarity ?? overall)),
+        fluency:               Math.round(Number(parsed.fluency               ?? overall)),
+        confidence:            Math.round(Number(parsed.confidence            ?? overall)),
+        professionalism:       Math.round(Number(parsed.professionalism       ?? overall)),
+        english_proficiency:   Math.round(Number(parsed.english_proficiency   ?? overall)),
+        answer_relevance:      Math.round(Number(parsed.answer_relevance      ?? overall)),
+      };
+      return {
+        combined_speech_score: Math.max(0, Math.min(100, Math.round(overall))),
+        soft_skills: soft,
+        final_feedback: String(parsed.final_feedback || '').trim()
+          || `Overall communication score: ${Math.round(overall)}/100.`,
+        scoring_source: hasAudio ? 'audio_primary_overall' : 'transcript_only_overall',
+      };
+    }
+    console.warn('[relay] scoreAllTurnsOverall parse empty; falling back to per-turn average');
+  } catch (err) {
+    console.warn('[relay] scoreAllTurnsOverall failed:', err.message, '— falling back to per-turn average');
+  }
+
+  // Fallback: per-turn sequential scoring → average (still audio-based per turn).
+  const scored = await scoreTurnsSequential({ apiKey, context, turns: realTurns, timeoutMs: 30000 });
+  const nums = scored.map((t) => Number(t.score)).filter((n) => Number.isFinite(n) && n >= 0);
+  const avg = nums.length ? Math.round(nums.reduce((a, b) => a + b, 0) / nums.length) : 0;
+  // Average the per-turn soft skills too.
+  const dims = ['communication_clarity', 'fluency', 'confidence', 'professionalism', 'english_proficiency', 'answer_relevance'];
+  const soft = {};
+  for (const d of dims) {
+    const vals = scored.map((t) => Number(t.soft_skills?.[d])).filter((n) => Number.isFinite(n));
+    soft[d] = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : avg;
+  }
+  return {
+    combined_speech_score: avg,
+    soft_skills: soft,
+    final_feedback: `Overall communication score: ${avg}/100 (averaged across ${nums.length || realTurns.length} answers).`,
+    scoring_source: 'per_turn_average_fallback',
+  };
+}
+
 export async function scoreLiveTurns({ apiKey, context, turns }) {
   if (!apiKey) throw new Error('GEMINI_API_KEY missing for scoring');
   if (!turns.length) {

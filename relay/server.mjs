@@ -9,9 +9,7 @@ import {
   enrichTurnsFromDb,
   ensureSchedulingWebhook,
   postPartialTurnWebhook,
-  scoreTurnsSequential,
-  scoreTurnGuaranteed,
-  scoreSingleTurn,
+  scoreAllTurnsOverall,
   vercelSaveTurn,
   vercelSaveFinal,
 } from './lib/score-turns.mjs';
@@ -211,9 +209,14 @@ wss.on('connection', (clientWs) => {
           context,
           onEvent: (ev) => sendToClient(clientWs, ev),
           onTurnSaved: async (turnPair) => {
+            // DATA SAVE ONLY — no per-question AI scoring during the interview.
+            // Scoring runs ONCE at the end (scoreAllTurnsOverall) for a single
+            // overall speech score. This also removes heavy in-interview audio
+            // scoring calls that previously competed with the live session and
+            // could stall question-to-question progression.
             pendingTurnSaves += 1;
             try {
-              // Strip raw PCM chunks before any DB save (large array, scoring-only).
+              // Strip raw PCM chunks before DB save (large array, kept in memory for end scoring).
               const unscoredForDb = { ...turnPair, score: null, answer_pcm_chunks: undefined };
               let saved = false;
               let saveError = '';
@@ -238,35 +241,6 @@ wss.on('connection', (clientWs) => {
                 error: saveError || undefined,
                 follow_up: !!turnPair.is_follow_up,
               });
-
-              // Pass FULL turnPair (with pcm chunks) to scoring, then strip before DB.
-              const scored = await scoreTurnGuaranteed({
-                apiKey: GEMINI_API_KEY,
-                context,
-                turn: turnPair, // includes answer_pcm_chunks for audio scoring
-              });
-              // Strip PCM before saving scored result too.
-              const scoredForDb = { ...scored, answer_pcm_chunks: undefined };
-              console.log(`[relay] phase ${turnPair.phase} scored ${scored.score} via ${scored.scoring_source}`);
-              try {
-                await vercelSaveTurn(context, scoredForDb);
-              } catch (vercelErr) {
-                await directSavePartialTurn(context, scoredForDb).catch((dbErr) => {
-                  console.warn('[relay] scored turn patch failed:', dbErr.message);
-                });
-              }
-              // Scored internally so the end-of-interview average is accurate,
-              // but never surfaced per-question to the candidate.
-              sendToClient(clientWs, {
-                type: 'turn_scored',
-                number: turnPair.voice_question_number,
-                phase: turnPair.phase,
-                score: scored.score,
-                feedback: scored.feedback,
-                soft_skills: scored.soft_skills,
-                scoring_source: scored.scoring_source,
-              });
-              return scored;
             } finally {
               pendingTurnSaves -= 1;
             }
@@ -304,38 +278,32 @@ wss.on('connection', (clientWs) => {
         const rawTurns = bridge.buildTurnPairs();
         const durationSeconds = Math.round((Date.now() - bridge.startedAt) / 1000);
 
-        // Merge DB scores, then guarantee every unscored turn gets a score.
+        // ── OVERALL SCORING — one multimodal call over ALL answers ───────────
+        // Single overall speech score (not per-question). The same overall score
+        // is written to every turn so the existing save/average pipeline yields it.
         let turns = await enrichTurnsFromDb(context, rawTurns);
-        const unscored = turns.filter(
-          (t) => t.score == null || !Number.isFinite(Number(t.score))
-        );
-        if (unscored.length > 0) {
-          console.log(`[relay] final pass: scoring ${unscored.length} turn(s)`);
-          const freshlyScored = await scoreTurnsSequential({
-            apiKey: GEMINI_API_KEY,
-            context,
-            turns: unscored,
-            timeoutMs: 35000,
-          });
-          const byPhase = new Map(freshlyScored.map((t) => [Number(t.phase), t]));
-          turns = turns.map((t) => byPhase.get(Number(t.phase)) || t);
-        }
+        const overall = await scoreAllTurnsOverall({
+          apiKey: GEMINI_API_KEY,
+          context,
+          turns: rawTurns, // rawTurns carry the buffered PCM audio
+          timeoutMs: 60000,
+        });
+        console.log(`[relay] overall speech score ${overall.combined_speech_score} via ${overall.scoring_source}`);
+
+        turns = turns.map((t) => ({
+          ...t,
+          score: overall.combined_speech_score,
+          soft_skills: overall.soft_skills || t.soft_skills,
+          feedback: overall.final_feedback || t.feedback,
+          scoring_source: overall.scoring_source,
+          answer_pcm_chunks: undefined,
+        }));
 
         const scored = {
           turns,
-          combined_speech_score: 0,
-          final_feedback: 'Voice interview completed.',
+          combined_speech_score: overall.combined_speech_score,
+          final_feedback: overall.final_feedback || 'Voice interview completed.',
         };
-
-        const allScores = scored.turns
-          .map((t) => Number(t.score))
-          .filter((n) => Number.isFinite(n) && n >= 0);
-        scored.combined_speech_score = allScores.length
-          ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length)
-          : 0;
-        if (allScores.length) {
-          scored.final_feedback = `Voice interview completed. Average communication score: ${scored.combined_speech_score}/100 across ${allScores.length} question${allScores.length === 1 ? '' : 's'}.`;
-        }
 
         if (webhookFired) {
           sendJson(clientWs, {

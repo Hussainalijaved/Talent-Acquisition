@@ -16,7 +16,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
-    <script src="live-speech.js?v=20260624e"></script>
+    <script src="live-speech.js?v=20260624f"></script>
     <script src="proctor-media.js"></script>
     <script src="proctor-activity.js"></script>
     <script>
@@ -4434,7 +4434,7 @@
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
                                     <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-1">Overall voice communication</p>
-                            <p className="text-sm text-slate-600">Averaged across the whole interview ({speechRows.length} question{speechRows.length === 1 ? '' : 's'})</p>
+                            <p className="text-sm text-slate-600">Single overall assessment across all {speechRows.length} answer{speechRows.length === 1 ? '' : 's'}</p>
                                         </div>
                         {avgScore != null ? (
                             <p className={`text-2xl font-bold tabular-nums ${scoreTone(avgScore)}`}>{avgScore}<span className="text-sm text-slate-500 font-medium">/100</span></p>
@@ -4469,7 +4469,11 @@
                                 </span>
                             ) : null}
                         </div>
-                        {item.score !== '—' && Number.isFinite(Number(item.score)) ? (
+                        {isSpeech ? (
+                            // Speech is scored ONCE overall (see the summary card above),
+                            // never per question — so no per-question score badge here.
+                            null
+                        ) : item.score !== '—' && Number.isFinite(Number(item.score)) ? (
                             <div className="text-right">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Score</p>
                                 <p className={`text-xl font-bold tabular-nums ${scoreTone(item.score)}`}>{item.score}<span className="text-sm text-slate-500 font-medium">/100</span></p>

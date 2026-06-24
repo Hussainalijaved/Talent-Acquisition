@@ -763,7 +763,7 @@ export class GeminiLiveBridge {
     this.emitQuestionFromBuffer();
   }
 
-  scheduleFinalizeAnswer(restart = false) {
+  scheduleFinalizeAnswer(restart = false, maxWaitMs = 10000) {
     if (this.pendingFinalize) {
       if (!restart) return;
       clearTimeout(this.pendingFinalize);
@@ -780,8 +780,8 @@ export class GeminiLiveBridge {
 
       if (len > 0 && len === lastLen) {
         if (!stableSince) stableSince = now;
-        // Transcript stable for 1.1s — safe to finalize.
-        if (now - stableSince >= 1100) {
+        // Transcript stable for 0.9s — safe to finalize.
+        if (now - stableSince >= 900) {
           this.pendingFinalize = null;
           this.completeAnswerTurn();
           return;
@@ -791,8 +791,10 @@ export class GeminiLiveBridge {
         lastLen = len;
       }
 
-      // Hard cap — never wait more than 10s for transcription flush.
-      if (now - startedAt >= 10000) {
+      // Hard cap — never wait more than maxWaitMs for transcription flush.
+      // Audio is already buffered for end-of-interview scoring, so a short cap
+      // keeps the question-to-question gap snappy.
+      if (now - startedAt >= maxWaitMs) {
         this.pendingFinalize = null;
         this.completeAnswerTurn();
         return;
@@ -801,7 +803,7 @@ export class GeminiLiveBridge {
       this.pendingFinalize = setTimeout(tick, 200);
     };
 
-    this.pendingFinalize = setTimeout(tick, 500);
+    this.pendingFinalize = setTimeout(tick, 400);
   }
 
   completeAnswerTurn() {
@@ -1411,18 +1413,20 @@ export class GeminiLiveBridge {
   endUserTurn() {
     if (!this.ready || this.closed || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
+    // Scoring now happens once at the end from the buffered audio, so progression
+    // must NOT wait on Gemini transcription. The candidate pressed Submit — move on.
     if (!this.userTurnActive) {
       // Client sent end without a successful start — still finalize if answer window open.
       if (this.answerPromptOpen && !this.interviewEnded) {
         this.awaitingAnswer = true;
         this.blockModelOutput = true;
         this.userTurnEndedAt = Date.now();
-        this.scheduleFinalizeAnswer();
+        this.scheduleFinalizeAnswer(false, 2500);
         if (this.answerTimer) clearTimeout(this.answerTimer);
         this.answerTimer = setTimeout(() => {
           if (!this.awaitingAnswer || this.interviewEnded) return;
           this.completeAnswerTurn();
-        }, 15000);
+        }, 4000);
       }
       return;
     }
@@ -1432,14 +1436,14 @@ export class GeminiLiveBridge {
     this.blockModelOutput = true;
     this.userTurnEndedAt = Date.now();
     this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
-    this.scheduleFinalizeAnswer();
+    this.scheduleFinalizeAnswer(false, 2500);
 
     if (this.answerTimer) clearTimeout(this.answerTimer);
-    // Fallback: finalize after flush window even if model never sends turnComplete.
+    // Hard fallback: finalize quickly even if Gemini never sends turnComplete.
     this.answerTimer = setTimeout(() => {
       if (!this.awaitingAnswer || this.interviewEnded) return;
       this.completeAnswerTurn();
-    }, 15000);
+    }, 4000);
   }
 
   sendAudio(base64Pcm, mimeType = 'audio/pcm;rate=16000') {

@@ -1380,7 +1380,19 @@ export class GeminiLiveBridge {
     if (!this.ready || this.closed || this.interviewEnded || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
     if (this.userTurnActive) return;
-    if (this.awaitingAnswer) return;
+    // Stale awaitingAnswer from a prior half-finished turn must not block a new answer.
+    if (this.awaitingAnswer) {
+      if (!this.answerPromptOpen) return;
+      this.awaitingAnswer = false;
+      if (this.pendingFinalize) {
+        clearTimeout(this.pendingFinalize);
+        this.pendingFinalize = null;
+      }
+      if (this.answerTimer) {
+        clearTimeout(this.answerTimer);
+        this.answerTimer = null;
+      }
+    }
     this.userTurnActive = true;
     this.userBuf = '';
     this.lateUserBuf = '';
@@ -1391,7 +1403,21 @@ export class GeminiLiveBridge {
   endUserTurn() {
     if (!this.ready || this.closed || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
-    if (!this.userTurnActive) return;
+    if (!this.userTurnActive) {
+      // Client sent end without a successful start — still finalize if answer window open.
+      if (this.answerPromptOpen && !this.interviewEnded) {
+        this.awaitingAnswer = true;
+        this.blockModelOutput = true;
+        this.userTurnEndedAt = Date.now();
+        this.scheduleFinalizeAnswer();
+        if (this.answerTimer) clearTimeout(this.answerTimer);
+        this.answerTimer = setTimeout(() => {
+          if (!this.awaitingAnswer || this.interviewEnded) return;
+          this.completeAnswerTurn();
+        }, 15000);
+      }
+      return;
+    }
     this.stopSilenceMonitor();
     this.userTurnActive = false;
     this.awaitingAnswer = true;
@@ -1411,8 +1437,19 @@ export class GeminiLiveBridge {
   sendAudio(base64Pcm, mimeType = 'audio/pcm;rate=16000') {
     if (!this.ready || this.closed || this.interviewEnded || !this.geminiWs) return;
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
-    const canCapture = this.userTurnActive || this.awaitingAnswer;
+    const canCapture = this.userTurnActive || this.awaitingAnswer || this.answerPromptOpen;
     if (!canCapture) return;
+
+    // Auto-start turn on first speech while answer window is open (covers missed user_turn_start).
+    if (!this.userTurnActive && !this.awaitingAnswer && this.answerPromptOpen && !this.inNudgePlayback) {
+      this.userTurnActive = true;
+      this.userBuf = '';
+      this.lateUserBuf = '';
+      if (this.geminiWs.readyState === WebSocket.OPEN) {
+        this.geminiWs.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
+      }
+      this.startSilenceMonitor();
+    }
 
     // Measure RMS energy of the PCM chunk. If above background-noise level,
     // treat it as the candidate speaking and reset the silence timer.

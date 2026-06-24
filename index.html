@@ -16,7 +16,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
-    <script src="live-speech.js?v=20260624b"></script>
+    <script src="live-speech.js?v=20260624c"></script>
     <script src="proctor-media.js"></script>
     <script src="proctor-activity.js"></script>
     <script>
@@ -2822,6 +2822,15 @@
                                 }
                                 setSilenceHint(text || 'The interviewer is encouraging you to speak…');
                             },
+                            onSavingTurn: () => {
+                                awaitingAnswerRef.current = false;
+                                canAnswerRef.current = false;
+                                setIsAnswering(false);
+                                setCanAnswer(false);
+                                setSavingAnswer(true);
+                                setAnswerTimerActive(false);
+                                setTimeLeft(null);
+                            },
                             onAnswer: ({ number, text, warmup }) => {
                                 if (warmup != null || number <= 0) {
                                     awaitingAnswerRef.current = false;
@@ -2965,12 +2974,12 @@
             }, [cards, isAnswering, savingAnswer]);
 
             React.useEffect(() => {
-                if (!answerTimerActive) {
+                if (!answerTimerActive || savingAnswer) {
                     if (timerRef.current) {
                         clearInterval(timerRef.current);
                         timerRef.current = null;
                     }
-                    if (!isAnswering) setTimeLeft(null);
+                    if (!answerTimerActive && !isAnswering && !savingAnswer) setTimeLeft(null);
                     return undefined;
                 }
                 if (timeLeft == null) setTimeLeft(questionTimeLimit);
@@ -3026,6 +3035,8 @@
                     setIsAnswering(false);
                     setCanAnswer(false);
                     setSavingAnswer(true);
+                    setAnswerTimerActive(false);
+                    setTimeLeft(null);
                 } else if (canAnswer) {
                     sessionRef.current?.beginAnswer?.();
                     setIsAnswering(true);
@@ -3070,6 +3081,8 @@
 
             const endBtnLabel = ending ? 'Finishing…' : interviewComplete ? 'Submitting…' : 'End interview';
 
+            const micHeard = micLevel > 0.02 || Boolean(liveCaption && liveCaption.trim().length > 2);
+
             const statusHint = silenceHint
                 ? silenceHint
                 : warmupPhase === 'mic_check' && isAnswering
@@ -3100,7 +3113,7 @@
                 const aiSpeaking = isInterviewerSpeaking && !isAnswering;
                 const candidateSpeaking = isAnswering && !interviewComplete;
                 const micReady = (canAnswer || candidateSpeaking) && !savingAnswer && !answered;
-                const heard = micLevel > 0.05;
+                const heard = micHeard;
 
                 let orbClass = 'idle';
                 let label = 'Getting ready…';
@@ -3174,6 +3187,7 @@
 
             const renderMicControls = (warmup = false, answered = false) => {
                 const isMicCheck = warmup && warmupPhase === 'mic_check';
+                const heard = micHeard;
                 const showMic = (isAnswering || (canAnswer && !answered)) && !savingAnswer;
                 if (!showMic && !answered) return null;
                 return (
@@ -3183,9 +3197,9 @@
                                 <div className={`mic-btn-wrap mb-3 ${isAnswering ? 'mic-btn-active' : ''}`}>
                                     {isAnswering && (
                                         <>
-                                            <div className="mic-ring mic-ring-1" style={{ background: micLevel > 0.05 ? (warmup ? 'rgba(245,158,11,0.18)' : 'rgba(16,185,129,0.18)') : (warmup ? 'rgba(245,158,11,0.12)' : 'rgba(79,70,229,0.15)') }} />
-                                            <div className="mic-ring mic-ring-2" style={{ background: micLevel > 0.05 ? (warmup ? 'rgba(245,158,11,0.14)' : 'rgba(16,185,129,0.14)') : (warmup ? 'rgba(245,158,11,0.08)' : 'rgba(79,70,229,0.12)') }} />
-                                            <div className="mic-ring mic-ring-3" style={{ background: micLevel > 0.05 ? (warmup ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)') : (warmup ? 'rgba(245,158,11,0.05)' : 'rgba(79,70,229,0.08)') }} />
+                                            <div className="mic-ring mic-ring-1" style={{ background: heard ? (warmup ? 'rgba(245,158,11,0.18)' : 'rgba(16,185,129,0.18)') : (warmup ? 'rgba(245,158,11,0.12)' : 'rgba(79,70,229,0.15)') }} />
+                                            <div className="mic-ring mic-ring-2" style={{ background: heard ? (warmup ? 'rgba(245,158,11,0.14)' : 'rgba(16,185,129,0.14)') : (warmup ? 'rgba(245,158,11,0.08)' : 'rgba(79,70,229,0.12)') }} />
+                                            <div className="mic-ring mic-ring-3" style={{ background: heard ? (warmup ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)') : (warmup ? 'rgba(245,158,11,0.05)' : 'rgba(79,70,229,0.08)') }} />
                                         </>
                                     )}
                                     <button
@@ -3215,9 +3229,9 @@
                                 {isAnswering ? (
                                     <div className="flex flex-col items-center gap-1.5 mt-2">
                                         <div className="flex items-center gap-1.5">
-                                            <span className={`w-2 h-2 rounded-full animate-pulse ${micLevel > 0.05 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                                            <span className={`text-xs ${micLevel > 0.05 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                {micLevel > 0.05 ? 'Audio detected' : 'Waiting for audio…'}
+                                            <span className={`w-2 h-2 rounded-full animate-pulse ${heard ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                            <span className={`text-xs ${heard ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                {heard ? 'Audio detected' : 'Waiting for audio…'}
                                             </span>
                                         </div>
                                         {silenceHint ? <p className="text-xs text-amber-700 text-center max-w-xs">{silenceHint}</p> : null}

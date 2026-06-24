@@ -74,6 +74,7 @@
       this.onInterviewComplete = options.onInterviewComplete || (() => {});
       this.onQuestion = options.onQuestion || (() => {});
       this.onAnswer = options.onAnswer || (() => {});
+      this.onSavingTurn = options.onSavingTurn || (() => {});
       this.onAwaitingAnswer = options.onAwaitingAnswer || (() => {});
       this.onTimeLimitUpdate = options.onTimeLimitUpdate || (() => {});
       this.onNextQuestionReady = options.onNextQuestionReady || (() => {});
@@ -404,9 +405,15 @@
 
     // Candidate pressed "Submit" — close their mic and let the interviewer respond.
     submitAnswer() {
-      if (!this.answering) return;
+      if (this.ended || this.interviewEnded) return;
+      if (!this.answering && !this.awaitingAnswerPending) return;
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        // Ensure relay opened the turn before we close it.
+        this.ws.send(JSON.stringify({ type: 'user_turn_start' }));
+      }
       this.flushAnswerAudio();
       this.answering = false;
+      this.awaitingAnswerPending = false;
       this.processingAnswer = true;
       this.allowInterviewerDuringAnswer = false;
       this.onLevel(0);
@@ -552,6 +559,7 @@
       if (msg.type === 'saving_turn') {
         this.clearPlayback();
         this.processingAnswer = true;
+        this.onSavingTurn?.({ number: msg.number, follow_up: !!msg.follow_up });
         this.setStatus(
           msg.follow_up
             ? 'Follow-up captured — saving…'
@@ -754,9 +762,13 @@
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.ended || this.interviewEnded) return;
         if (!this.shouldStreamMic()) return;
         const input = e.inputBuffer.getChannelData(0);
-        let sum = 0;
-        for (let i = 0; i < input.length; i += 1) sum += Math.abs(input[i]);
-        const level = Math.min(1, (sum / input.length) * 8);
+        let sumSq = 0;
+        for (let i = 0; i < input.length; i += 1) {
+          const s = input[i];
+          sumSq += s * s;
+        }
+        const rms = Math.sqrt(sumSq / input.length);
+        const level = Math.min(1, rms * 14);
         this.onLevel(level);
 
         const down = downsample(input, inRate, INPUT_RATE);

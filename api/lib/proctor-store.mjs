@@ -46,9 +46,44 @@ export function normalizeReport(raw) {
     return {
         entries,
         summary: typeof base.summary === 'string' ? base.summary : '',
+        highlights: Array.isArray(base.highlights) ? base.highlights.slice() : [],
+        started_at: base.started_at || null,
         finalized_at: base.finalized_at || null,
         suspicious_count: Number(base.suspicious_count) || 0,
     };
+}
+
+export function stripSnapshotBase64(b64) {
+    const raw = String(b64 || '').trim();
+    const m = /^data:image\/\w+;base64,(.+)$/i.exec(raw);
+    return (m ? m[1] : raw).slice(0, 120000);
+}
+
+export async function uploadProctorSnapshot(sbUrl, sbKey, sessionId, jpegBase64, label) {
+    const bucket = 'proctor-snapshots';
+    const safeSession = String(sessionId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+    const safeLabel = String(label || 'snap').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'snap';
+    const path = `${safeSession}/${Date.now()}-${safeLabel}.jpg`;
+    const bin = Buffer.from(stripSnapshotBase64(jpegBase64), 'base64');
+    if (bin.length < 100) {
+        throw new Error('snapshot_too_small');
+    }
+
+    const res = await fetch(`${sbUrl}/storage/v1/object/${bucket}/${path}`, {
+        method: 'POST',
+        headers: {
+            apikey: sbKey,
+            Authorization: `Bearer ${sbKey}`,
+            'Content-Type': 'image/jpeg',
+            'x-upsert': 'true',
+        },
+        body: bin,
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`snapshot_upload_failed (${res.status}): ${text.slice(0, 160)}`);
+    }
+    return { bucket, path };
 }
 
 export function appendEntry(report, entry) {
@@ -100,6 +135,9 @@ export async function appendProctorEntry(sbUrl, sbKey, sessionId, {
     };
     if (meta && typeof meta === 'object') entry.meta = meta;
     const report = appendEntry(session.proctor_report, entry);
+    if ((entry.category === 'test_started' || entry.category === 'session_start') && !report.started_at) {
+        report.started_at = entry.at;
+    }
     await saveReport(sbUrl, sbKey, sessionId, report);
     return { entry, report };
 }

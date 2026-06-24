@@ -1527,7 +1527,8 @@
                 : '<span class="c-role">—</span>';
             return '<tr data-session-id="' + esc(sess.id) + '">' +
                 '<td><div class="c-email"><span class="avatar" style="background:' + av.color + '">' + esc(av.init) + '</span>' +
-                esc(sess.candidate_email || '—') + '</div></td>' +
+                '<div class="c-email-stack"><span>' + esc(sess.candidate_email || '—') + '</span>' +
+                renderProctorCheatingBadge(sess) + '</div></div></td>' +
                 '<td>' + esc(roleLabel(sessionRoleLabel(sess))) + '</td>' +
                 '<td>' + assessPill(sess, stage) + '</td>' +
                 '<td>' + resultPillHtml(outcome.result) + '</td>' +
@@ -1965,6 +1966,115 @@
             return html;
         }
 
+        function parseProctorReportRaw(sess) {
+            const raw = sess && sess.proctor_report;
+            if (!raw) return null;
+            if (typeof raw === 'string') {
+                try { return JSON.parse(raw); } catch (_) { return null; }
+            }
+            return raw;
+        }
+
+        const PROCTOR_VIOLATION_GROUPS = [
+            { key: 'screenshot', label: 'Took a screenshot', categories: ['screenshot', 'snipping_tool', 'screenshot_tool'] },
+            { key: 'communication', label: 'Used communication applications', categories: ['communication_app', 'window_blur'] },
+            { key: 'ai_tool', label: 'Used AI tools', categories: ['ai_tool'] },
+            { key: 'tab', label: 'Left assessment tab', categories: ['tab_switch'] },
+            { key: 'devtools', label: 'Developer tools / shortcuts', categories: ['devtools', 'blocked_shortcut', 'print_attempt'] },
+            { key: 'screen', label: 'Screen sharing issues', categories: ['screen_blank', 'screen_share_stopped', 'fullscreen_exit'] },
+            { key: 'webcam', label: 'Webcam issues', categories: ['webcam_lost', 'camera_not_restored'] },
+        ];
+
+        function proctorSessionStartMs(report, sess) {
+            if (report && report.started_at) return new Date(report.started_at).getTime();
+            const entries = (report && report.entries) || [];
+            const first = entries.find((e) => e.category === 'test_started' || e.category === 'session_start');
+            if (first && first.at) return new Date(first.at).getTime();
+            if (sess && sess.updated_at) return new Date(sess.updated_at).getTime();
+            return null;
+        }
+
+        function fmtProctorElapsed(atIso, startMs) {
+            if (!atIso || startMs == null) return '—';
+            const delta = Math.max(0, Math.floor((new Date(atIso).getTime() - startMs) / 1000));
+            const m = Math.floor(delta / 60);
+            const s = delta % 60;
+            return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        }
+
+        function computeProctorViolationSummary(report) {
+            const entries = ((report && report.entries) || []).filter((e) => e && e.suspicious);
+            const groups = [];
+            let total = 0;
+            PROCTOR_VIOLATION_GROUPS.forEach((g) => {
+                const count = entries.filter((e) => g.categories.indexOf(e.category) >= 0).length;
+                if (count > 0) {
+                    groups.push({ label: g.label, count });
+                    total += count;
+                }
+            });
+            const ungrouped = entries.filter((e) =>
+                !PROCTOR_VIOLATION_GROUPS.some((g) => g.categories.indexOf(e.category) >= 0)
+            ).length;
+            if (ungrouped > 0) {
+                groups.push({ label: 'Other flagged activity', count: ungrouped });
+                total += ungrouped;
+            }
+            return { groups, total, flagged: Number(report && report.suspicious_count) || total };
+        }
+
+        function proctorTimelineLabel(entry) {
+            const cat = String((entry && entry.category) || '').trim();
+            const meta = (entry && entry.meta) || {};
+            const q = entry.phase || meta.question_number;
+            const screen = meta.screen_index != null ? ' (Screen ' + (Number(meta.screen_index) + 1) + ')' : '';
+            const app = meta.app_name ? ' (' + meta.app_name + ')' : '';
+            if (cat === 'test_started' || cat === 'session_start') return 'Test started';
+            if (cat === 'question_opened') return q ? ('Opened question ' + q) : 'Opened question';
+            if (cat === 'screenshot' || cat === 'snipping_tool' || cat === 'screenshot_tool') {
+                return 'Used screenshot tool' + screen;
+            }
+            if (cat === 'communication_app') return 'Used communication app' + screen + app;
+            if (cat === 'ai_tool') return 'Used AI tool' + screen + app;
+            if (cat === 'tab_switch') return 'Left assessment tab';
+            if (cat === 'window_blur') return 'Switched to another window or app';
+            if (cat === 'devtools') return 'Opened developer tools';
+            if (cat === 'screen_blank') return 'Blank or minimized screen' + screen;
+            if (cat === 'screen_share_stopped') return 'Stopped screen sharing';
+            if (cat === 'webcam_lost') return 'Webcam turned off';
+            if (cat === 'camera_not_restored') return 'Webcam not restored';
+            return (entry && entry.summary) ? String(entry.summary).split(' — ')[0].slice(0, 80) : cat || 'Activity';
+        }
+
+        function isProctorProgressEvent(entry) {
+            const cat = String((entry && entry.category) || '');
+            return cat === 'test_started' || cat === 'session_start' || cat === 'question_opened';
+        }
+
+        function shouldShowProctorTimelineEntry(entry) {
+            if (!entry) return false;
+            if (isProctorProgressEvent(entry)) return true;
+            if (entry.suspicious) return true;
+            return ['webcam_lost', 'webcam_restored', 'camera_not_restored', 'screen_share_stopped'].indexOf(entry.category) >= 0;
+        }
+
+        function renderProctorCheatingBadge(sess) {
+            const report = parseProctorReportRaw(sess);
+            if (!report || !(report.entries || []).length) return '';
+            const summary = computeProctorViolationSummary(report);
+            if (!summary.total) return '';
+            const items = summary.groups.map((g) =>
+                '<li>' + esc(g.label) + ' (' + g.count + '×)</li>'
+            ).join('');
+            return '<div class="proctor-cheating-wrap">' +
+                '<span class="proctor-cheating-badge" tabindex="0">⚠ Possible cheating</span>' +
+                '<div class="proctor-cheating-pop">' +
+                '<p class="proctor-cheating-pop-title">Possible cheating attempts</p>' +
+                '<ul class="proctor-cheating-pop-list">' + items + '</ul>' +
+                '<p class="proctor-cheating-pop-foot">Open session for full timeline &amp; snapshots</p>' +
+                '</div></div>';
+        }
+
         function proctorCategoryLabel(cat) {
             const map = {
                 tab_switch: 'Tab / window hidden',
@@ -1987,18 +2097,100 @@
             return map[String(cat || '').trim()] || String(cat || 'Activity');
         }
 
+        function renderProctorSnapshotHtml(entry, expandable) {
+            const meta = entry && entry.meta && typeof entry.meta === 'object' ? entry.meta : {};
+            const parts = [];
+            if (meta.snapshot_thumb) {
+                parts.push(
+                    '<img class="proctor-snapshot-thumb" alt="Screen snapshot" ' +
+                    (meta.snapshot_path
+                        ? 'data-proctor-path="' + esc(meta.snapshot_path) + '" data-proctor-bucket="' + esc(meta.snapshot_bucket || 'proctor-snapshots') + '" '
+                        : '') +
+                    'src="data:image/jpeg;base64,' + esc(meta.snapshot_thumb) + '" loading="lazy" />'
+                );
+            }
+            if (meta.webcam_snapshot_path) {
+                parts.push(
+                    '<button type="button" class="proctor-snapshot-link" data-proctor-path="' +
+                    esc(meta.webcam_snapshot_path) + '" data-proctor-bucket="' +
+                    esc(meta.webcam_snapshot_bucket || 'proctor-snapshots') + '">Webcam snapshot</button>'
+                );
+            }
+            if (meta.snapshot_path && !meta.snapshot_thumb) {
+                parts.push(
+                    '<button type="button" class="proctor-snapshot-link" data-proctor-path="' +
+                    esc(meta.snapshot_path) + '" data-proctor-bucket="' +
+                    esc(meta.snapshot_bucket || 'proctor-snapshots') + '">View screen snapshot</button>'
+                );
+            } else if (meta.snapshot_path && expandable) {
+                parts.push(
+                    '<button type="button" class="proctor-snapshot-link" data-proctor-path="' +
+                    esc(meta.snapshot_path) + '" data-proctor-bucket="' +
+                    esc(meta.snapshot_bucket || 'proctor-snapshots') + '">Open full screen capture</button>'
+                );
+            }
+            if (!parts.length) return '';
+            return '<div class="proctor-snapshot-row">' + parts.join('') + '</div>';
+        }
+
+        async function openProctorSnapshot(path, bucket) {
+            if (!sb || !path) return;
+            const b = bucket || 'proctor-snapshots';
+            try {
+                const { data, error } = await sb.storage.from(b).createSignedUrl(path, 3600);
+                if (error || !data?.signedUrl) {
+                    banner('Could not open snapshot: ' + (error?.message || 'signed URL failed'), 'err');
+                    return;
+                }
+                window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+            } catch (err) {
+                banner('Could not open snapshot.', 'err');
+            }
+        }
+
+        function bindProctorSnapshotLinks(root) {
+            if (!root) return;
+            root.querySelectorAll('.proctor-snapshot-link[data-proctor-path]').forEach((btn) => {
+                btn.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    openProctorSnapshot(btn.getAttribute('data-proctor-path'), btn.getAttribute('data-proctor-bucket'));
+                });
+            });
+            root.querySelectorAll('.proctor-snapshot-thumb[data-proctor-path]').forEach((img) => {
+                img.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    openProctorSnapshot(img.getAttribute('data-proctor-path'), img.getAttribute('data-proctor-bucket'));
+                });
+            });
+        }
+
         function renderProctorReport(sess) {
-            const raw = sess && sess.proctor_report;
-            const report = typeof raw === 'string' ? (function () { try { return JSON.parse(raw); } catch (_) { return null; } })() : raw;
+            const report = parseProctorReportRaw(sess);
             if (!report || (!report.summary && !(report.entries || []).length)) {
                 return '';
             }
-            const entries = Array.isArray(report.entries) ? report.entries.slice() : [];
-            entries.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+            const allEntries = Array.isArray(report.entries) ? report.entries.slice() : [];
+            allEntries.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+            const entries = allEntries.filter(shouldShowProctorTimelineEntry);
+            const startMs = proctorSessionStartMs(report, sess);
+            const violationSummary = computeProctorViolationSummary(report);
 
             let html = '<div class="section proctor-report-section"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>' +
-                'Proctoring activity (text log)</div>';
+                'Proctoring activity</div>';
+
+            if (violationSummary.total > 0) {
+                html += '<div class="proctor-alert-banner">' +
+                    '<span class="proctor-alert-icon">⚠</span>' +
+                    '<div><strong>Possible cheating attempts</strong>' +
+                    '<ul class="proctor-alert-list">';
+                violationSummary.groups.forEach((g) => {
+                    html += '<li>' + esc(g.label) + ' (' + g.count + '×)</li>';
+                });
+                html += '</ul></div></div>';
+            }
 
             if (report.summary) {
                 html += '<div class="proctor-summary">' + esc(report.summary) + '</div>';
@@ -2012,28 +2204,51 @@
             }
 
             const meta = [];
-            if (report.suspicious_count != null) meta.push('Flagged: ' + report.suspicious_count);
+            if (violationSummary.flagged) meta.push('Flagged events: ' + violationSummary.flagged);
             if (report.finalized_at) meta.push('Finalized ' + fmtDateTime(report.finalized_at));
             if (meta.length) {
                 html += '<div class="report-meta">' + meta.map((m) => '<span class="meta-chip">' + esc(m) + '</span>').join('') + '</div>';
             }
 
             if (entries.length) {
-                html += '<div class="proctor-timeline">';
-                entries.forEach((e) => {
-                    const time = e.at ? fmtDateTime(e.at) : '—';
-                    const phase = e.phase != null ? 'Phase ' + esc(String(e.phase)) : '';
-                    const cat = proctorCategoryLabel(e.category);
-                    const flag = e.suspicious ? ' <span class="pill p-reject" style="font-size:10px;padding:2px 6px">Flagged</span>' : '';
-                    html += '<div class="proctor-entry' + (e.suspicious ? ' suspicious' : '') + '">' +
-                        '<div class="proctor-entry-head"><span class="proctor-time">' + esc(time) + '</span>' +
-                        (phase ? '<span class="meta-chip">' + phase + '</span>' : '') +
-                        '<span class="meta-chip">' + esc(cat) + '</span>' + flag + '</div>' +
-                        '<div class="proctor-entry-body">' + esc(e.summary || '') + '</div></div>';
+                html += '<div class="proctor-activity-timeline">';
+                entries.forEach((e, idx) => {
+                    const elapsed = fmtProctorElapsed(e.at, startMs);
+                    const progress = isProctorProgressEvent(e);
+                    const violation = !progress && !!e.suspicious;
+                    const label = proctorTimelineLabel(e);
+                    const snap = renderProctorSnapshotHtml(e, true);
+                    const detail = e.summary && e.summary !== label
+                        ? '<p class="proctor-timeline-detail">' + esc(e.summary) + '</p>'
+                        : '';
+                    const icon = progress
+                        ? (e.category === 'question_opened'
+                            ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/></svg>'
+                            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>')
+                        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+                    if (violation && snap) {
+                        html += '<details class="proctor-timeline-item violation" open>' +
+                            '<summary class="proctor-timeline-summary">' +
+                            '<span class="proctor-timeline-time">' + esc(elapsed) + '</span>' +
+                            '<span class="proctor-timeline-icon warn">' + icon + '</span>' +
+                            '<span class="proctor-timeline-label">' + esc(label) + '</span>' +
+                            '<span class="proctor-timeline-chevron" aria-hidden="true"></span>' +
+                            '</summary>' +
+                            '<div class="proctor-timeline-body">' + detail + snap + '</div></details>';
+                    } else {
+                        html += '<div class="proctor-timeline-item' + (progress ? ' progress' : (violation ? ' violation' : '')) + '">' +
+                            '<span class="proctor-timeline-time">' + esc(elapsed) + '</span>' +
+                            '<span class="proctor-timeline-icon' + (progress ? ' ok' : ' warn') + '">' + icon + '</span>' +
+                            '<div class="proctor-timeline-main">' +
+                            '<span class="proctor-timeline-label">' + esc(label) + '</span>' +
+                            detail + snap +
+                            '</div></div>';
+                    }
                 });
                 html += '</div>';
             } else {
-                html += '<div class="phase-empty">No individual events recorded.</div>';
+                html += '<div class="phase-empty">No proctoring events recorded for this session.</div>';
             }
 
             html += '</div>';
@@ -2205,7 +2420,10 @@
             }
 
             const body = document.getElementById('assessmentDetailBody');
-            if (body) body.innerHTML = buildAssessmentDetailHtml(sess, merged);
+            if (body) {
+                body.innerHTML = buildAssessmentDetailHtml(sess, merged);
+                bindProctorSnapshotLinks(body);
+            }
 
             const delBtn = document.getElementById('assessmentDetailDelete');
             if (delBtn) {
@@ -2333,6 +2551,7 @@
                 '<div class="raw-json">' + esc(JSON.stringify({ candidate: { id: m.candidateId, notes: m.rawNotes, stage: m.stage, score: m.cvScore }, session: sess }, null, 2)) + '</div></details>';
 
             document.getElementById('drawerBody').innerHTML = html;
+            bindProctorSnapshotLinks(document.getElementById('drawerBody'));
             document.getElementById('overlay').classList.add('show');
             document.getElementById('drawer').classList.add('show');
             if (window.TAAdmin) TAAdmin.bindDrawerNotes(m);

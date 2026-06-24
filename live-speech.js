@@ -83,6 +83,7 @@
       this.onFollowUpProbe = options.onFollowUpProbe || (() => {});
       this.onWarmupPhase = options.onWarmupPhase || (() => {});
       this.onOutputAudio = options.onOutputAudio || (() => {});
+      this.onPlaybackIdle = options.onPlaybackIdle || (() => {});
       this.onError = options.onError || (() => {});
       this.tabSwitches = Number(options.tabSwitches || 0);
 
@@ -207,7 +208,13 @@
         preWait += 200;
         if (this.ended || this.interviewEnded || !this.awaitingAnswerPending) return;
       }
-      if (!this.modelAudioHeardThisTurn) return;
+      if (!this.modelAudioHeardThisTurn) {
+        if (this.awaitingAnswerPending && !this.answering) {
+          this.awaitingAnswerPending = false;
+          this.beginAnswer();
+        }
+        return;
+      }
       let waited = 0;
       while ((this.playing || this.playQueue.length > 0) && waited < 45000) {
         await new Promise((r) => setTimeout(r, 200));
@@ -648,7 +655,10 @@
         });
         if (gen !== this.playbackGeneration) break;
       }
-      if (gen === this.playbackGeneration) this.playing = false;
+      if (gen === this.playbackGeneration) {
+        this.playing = false;
+        if (!this.playQueue.length) this.onPlaybackIdle?.();
+      }
     }
 
     async end() {

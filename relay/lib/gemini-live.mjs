@@ -636,8 +636,13 @@ export class GeminiLiveBridge {
       return;
     }
 
-    // Question committed and mic window open — ignore late interviewer captions.
-    if (this.answerPromptOpen && !this.inFollowUpFor) return;
+    // Ignore late captions only when the mic is already open for THIS question.
+    if (this.answerPromptOpen && !this.inFollowUpFor) {
+      const nextQ = this.roundQuestionEmitted
+        ? this.questions.length
+        : this.questions.length + 1;
+      if (this.answerPromptFor >= nextQ) return;
+    }
 
     if (isClosingOnlyMessage(modelText) && this.answers.length < this.maxTurns) {
       this.onEvent({ type: 'interview_closing_premature', text: modelText });
@@ -795,6 +800,7 @@ export class GeminiLiveBridge {
 
     // ── Mic check phase: any speech = mic confirmed → advance to intro ──
     if (this.warmupPhase === 'mic_check') {
+      this.clearAnswerPromptWindow();
       this.warmupPhase = 'intro';
       this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
       this.onEvent({ type: 'answer', number: -1, text: userText, warmup: 'mic_check' });
@@ -814,6 +820,7 @@ export class GeminiLiveBridge {
 
     // ── Intro phase: candidate answered intro → start real questions ──
     if (this.warmupPhase === 'intro') {
+      this.clearAnswerPromptWindow();
       this.warmupPhase = null;
       this.onEvent({ type: 'transcript', speaker: 'user', text: userText, partial: false });
       this.onEvent({ type: 'answer', number: 0, text: userText, warmup: 'intro' });

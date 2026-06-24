@@ -642,25 +642,11 @@
             flex-direction: column;
         }
 
-        .speech-workspace-full .speech-question-card,
-        .speech-workspace-full .speech-answer-panel {
+        .speech-workspace-full .speech-live-shell {
             flex: 1;
             min-height: 0;
             display: flex;
             flex-direction: column;
-        }
-
-        .speech-workspace-full .speech-interviewer-box,
-        .speech-workspace-full .speech-response-box {
-            flex: 1;
-            min-height: 8rem;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .speech-workspace-full .speech-interviewer-box .transcript-stream,
-        .speech-workspace-full .speech-response-box p:last-child {
-            flex: 1;
         }
 
         .shell-immersive {
@@ -704,52 +690,116 @@
             .speech-top-bar { padding: 0.625rem 1.25rem 0.875rem; }
         }
 
-        .speech-response-box {
-            border-radius: 0.75rem;
-            border: 1px solid rgba(16, 185, 129, 0.25);
-            background: rgba(236, 253, 245, 0.7);
-            padding: 0.875rem 1rem;
-            margin-top: 0.75rem;
+        .speech-live-shell {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem 1rem 1rem;
+            text-align: center;
         }
 
-        .speech-response-box.warmup {
-            border-color: rgba(245, 158, 11, 0.3);
-            background: rgba(255, 251, 235, 0.8);
-        }
-
-        .speech-interviewer-box {
-            border-radius: 0.75rem;
-            border: 1px solid rgba(99, 102, 241, 0.22);
-            background: rgba(238, 242, 255, 0.85);
-            padding: 0.875rem 1rem;
-        }
-
-        .speech-speaker-orb {
-            width: 2.75rem;
-            height: 2.75rem;
-            flex-shrink: 0;
+        .speech-live-orb {
+            width: 7rem;
+            height: 7rem;
             border-radius: 9999px;
             display: flex;
             align-items: center;
             justify-content: center;
+            margin-bottom: 1.25rem;
+            transition: all 0.35s ease;
+            position: relative;
+        }
+
+        @media (min-width: 640px) {
+            .speech-live-orb { width: 8.5rem; height: 8.5rem; }
+        }
+
+        .speech-live-orb.ai-active {
+            color: #ffffff;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+            animation: speechOrbPulse 1.8s ease-out infinite;
+        }
+
+        .speech-live-orb.candidate-active {
+            color: #ffffff;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+            animation: speechOrbPulseGreen 1.8s ease-out infinite;
+        }
+
+        .speech-live-orb.ready {
             color: #6366f1;
             background: #eef2ff;
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            transition: all 0.3s ease;
+            border: 2px dashed rgba(99, 102, 241, 0.35);
         }
 
-        .speech-speaker-orb.speaking {
-            color: #ffffff;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border-color: transparent;
-            box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45);
-            animation: speakerPulse 1.6s ease-out infinite;
+        .speech-live-orb.idle {
+            color: #94a3b8;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
         }
 
-        @keyframes speakerPulse {
+        @keyframes speechOrbPulse {
             0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45); }
-            70% { box-shadow: 0 0 0 14px rgba(99, 102, 241, 0); }
+            70% { box-shadow: 0 0 0 18px rgba(99, 102, 241, 0); }
             100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        }
+
+        @keyframes speechOrbPulseGreen {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45); }
+            70% { box-shadow: 0 0 0 18px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .speech-live-bars {
+            display: flex;
+            gap: 0.25rem;
+            align-items: flex-end;
+            height: 1.75rem;
+        }
+
+        .speech-live-bars span {
+            width: 0.3rem;
+            border-radius: 9999px;
+            animation: speechBarBounce 0.9s ease-in-out infinite;
+        }
+
+        .speech-live-bars.ai span { background: rgba(255, 255, 255, 0.92); }
+        .speech-live-bars.candidate span { background: rgba(255, 255, 255, 0.92); }
+
+        .speech-live-bars span:nth-child(1) { height: 45%; animation-delay: 0ms; }
+        .speech-live-bars span:nth-child(2) { height: 100%; animation-delay: 120ms; }
+        .speech-live-bars span:nth-child(3) { height: 65%; animation-delay: 240ms; }
+        .speech-live-bars span:nth-child(4) { height: 85%; animation-delay: 360ms; }
+
+        @keyframes speechBarBounce {
+            0%, 100% { transform: scaleY(0.55); opacity: 0.65; }
+            50% { transform: scaleY(1); opacity: 1; }
+        }
+
+        .speech-live-label {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: -0.01em;
+            margin-bottom: 0.35rem;
+        }
+
+        .speech-live-hint {
+            font-size: 0.875rem;
+            color: #64748b;
+            max-width: 22rem;
+            line-height: 1.5;
+        }
+
+        .speech-live-mic-area {
+            width: 100%;
+            max-width: 24rem;
+            margin-top: 1.5rem;
         }
 
         /* Pre-assessment proctoring setup + live monitor strip */
@@ -2667,6 +2717,11 @@
                                     setIsInterviewerSpeaking(true);
                                 }
                             },
+                            onPlaybackIdle: () => {
+                                if (!canAnswerRef.current && !isAnsweringRef.current) {
+                                    setIsInterviewerSpeaking(false);
+                                }
+                            },
                             onWarmupPhase: ({ phase }) => {
                                 setWarmupPhase(phase);
                                 if (phase === 'intro') {
@@ -2809,6 +2864,10 @@
                                     setWarmupPhase(null);
                                     setTurn(number);
                                     addQuestion(number, '…');
+                                    window.TA_PROCTOR_ACTIVITY?.logQuestionOpened?.(
+                                        number,
+                                        `Opened voice question ${number}.`
+                                    );
                                 }
                                 setIsInterviewerSpeaking(true);
                                 setLiveQuestionCaption('');
@@ -3001,64 +3060,80 @@
                 ? 'Listen to the follow-up'
                 : 'Listen to the interviewer';
 
-            // Audio-only interviewer indicator — this is a transcription-free
-            // interview, so no question text is ever shown. We only convey whether
-            // the interviewer is currently speaking.
-            const renderInterviewerTranscript = (_text, isSpeaking, placeholder) => (
-                <div className="speech-interviewer-box">
-                    <div className="flex items-center gap-3">
-                        <div className={`speech-speaker-orb ${isSpeaking ? 'speaking' : ''}`}>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5 9v6h4l5 5V4L9 9H5z" />
-                            </svg>
-                        </div>
-                        <div className="min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-1">Interviewer</p>
-                            {isSpeaking ? (
-                                <div className="flex items-center gap-2">
-                                    <span className="flex gap-0.5 items-end h-4">
-                                        <span className="w-1 bg-indigo-400 rounded-full animate-bounce" style={{ height: '45%', animationDelay: '0ms' }} />
-                                        <span className="w-1 bg-indigo-500 rounded-full animate-bounce" style={{ height: '100%', animationDelay: '120ms' }} />
-                                        <span className="w-1 bg-indigo-400 rounded-full animate-bounce" style={{ height: '65%', animationDelay: '240ms' }} />
-                                        <span className="w-1 bg-indigo-500 rounded-full animate-bounce" style={{ height: '85%', animationDelay: '360ms' }} />
-                                    </span>
-                                    <span className="text-sm font-medium text-slate-700">Speaking…</span>
+            // Card-free live stage — only shows who is speaking (AI vs candidate).
+            const renderSpeechLiveStage = (opts = {}) => {
+                const { warmup = false, answered = false, saving = false } = opts;
+                const aiSpeaking = isInterviewerSpeaking && !isAnswering;
+                const candidateSpeaking = isAnswering && !interviewComplete;
+                const micReady = (canAnswer || candidateSpeaking) && !savingAnswer && !answered;
+                const heard = micLevel > 0.05;
+
+                let orbClass = 'idle';
+                let label = 'Getting ready…';
+                let hint = statusHint;
+
+                if (aiSpeaking) {
+                    orbClass = 'ai-active';
+                    label = 'Interviewer is speaking';
+                    hint = warmup
+                        ? (warmupPhase === 'mic_check' ? 'Mic check in progress — listen first' : 'Introduction prompt — listen first')
+                        : (followUpActive ? 'Follow-up question — listen carefully' : 'Listen to the question');
+                } else if (candidateSpeaking) {
+                    orbClass = 'candidate-active';
+                    label = "You're speaking";
+                    hint = heard ? 'Keep going — tap the button when finished' : 'Start speaking — the mic is open';
+                } else if (micReady && canAnswer && !isAnswering) {
+                    orbClass = 'ready';
+                    label = 'Your turn';
+                    hint = warmup
+                        ? (warmupPhase === 'mic_check' ? 'Tap the mic and say a few words' : 'Tap the mic and introduce yourself')
+                        : 'Tap the mic when you are ready to answer';
+                } else if (saving) {
+                    orbClass = 'idle';
+                    label = 'Saving your answer';
+                    hint = 'Please wait while we save your response…';
+                } else if (answered && !interviewComplete) {
+                    orbClass = 'idle';
+                    label = 'Answer captured';
+                    hint = 'Preparing the next step…';
+                } else if (warmup && !warmupPhase) {
+                    orbClass = 'idle';
+                    label = 'Connecting…';
+                    hint = 'The interviewer will begin shortly';
+                } else {
+                    orbClass = 'idle';
+                    label = 'Listen to the interviewer';
+                    hint = answerTimerActive ? 'Mic opens shortly after they finish' : 'Use headphones for the best experience';
+                }
+
+                return (
+                    <div className="speech-live-shell fade-in animate-slide-up">
+                        <div className={`speech-live-orb ${orbClass}`}>
+                            {aiSpeaking || candidateSpeaking ? (
+                                <div className={`speech-live-bars ${aiSpeaking ? 'ai' : 'candidate'}`}>
+                                    <span /><span /><span /><span />
                                 </div>
+                            ) : micReady ? (
+                                <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1a4 4 0 014 4v6a4 4 0 01-8 0V5a4 4 0 014-4zm0 2a2 2 0 00-2 2v6a2 2 0 004 0V5a2 2 0 00-2-2zm-1 15.93V21h2v-2.07A8.001 8.001 0 0020 11h-2a6 6 0 01-12 0H4a8.001 8.001 0 007 7.93z" /></svg>
                             ) : (
-                                <p className="text-sm text-slate-500">{placeholder}</p>
+                                <svg className="w-9 h-9" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5 9v6h4l5 5V4L9 9H5z" />
+                                </svg>
                             )}
                         </div>
-                    </div>
-                </div>
-            );
-
-            // Audio-only candidate indicator — no spoken transcript is displayed.
-            const renderCandidateTranscript = (answered, warmup = false) => {
-                const live = isAnswering && !interviewComplete;
-                if (!live && !answered) return null;
-                const heard = micLevel > 0.05;
-                return (
-                    <div ref={live ? liveTranscriptRef : null} className={`speech-response-box ${warmup ? 'warmup' : ''}`}>
-                        <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${warmup ? 'text-amber-800' : 'text-emerald-800'}`}>
-                            Your response
-                        </p>
-                        {live ? (
-                            <div className="flex items-center gap-2.5">
-                                <span className={`flex gap-0.5 items-end h-4`}>
-                                    <span className={`w-1 rounded-full animate-bounce ${heard ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ height: '50%', animationDelay: '0ms' }} />
-                                    <span className={`w-1 rounded-full animate-bounce ${heard ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ height: '100%', animationDelay: '150ms' }} />
-                                    <span className={`w-1 rounded-full animate-bounce ${heard ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ height: '70%', animationDelay: '300ms' }} />
-                                </span>
-                                <span className="text-sm font-medium text-slate-700">
-                                    {heard ? 'Recording your answer…' : 'Listening — start speaking…'}
+                        <p className="speech-live-label">{label}</p>
+                        <p className="speech-live-hint">{hint}</p>
+                        {candidateSpeaking ? (
+                            <div className="flex items-center justify-center gap-2 mt-3">
+                                <span className={`w-2 h-2 rounded-full ${heard ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+                                <span className={`text-xs font-medium ${heard ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                    {heard ? 'Audio detected' : 'Waiting for audio…'}
                                 </span>
                             </div>
-                        ) : (
-                            <div className="flex items-center gap-2">
-                                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs">✓</span>
-                                <span className="text-sm font-medium text-slate-700">Answer captured</span>
-                            </div>
-                        )}
+                        ) : null}
+                        {silenceHint ? (
+                            <p className="text-xs text-amber-700 mt-3 max-w-xs">{silenceHint}</p>
+                        ) : null}
                     </div>
                 );
             };
@@ -3068,7 +3143,7 @@
                 const showMic = (isAnswering || (canAnswer && !answered)) && !savingAnswer;
                 if (!showMic && !answered) return null;
                 return (
-                    <div className="px-5 sm:px-6 py-5 border-t border-slate-100">
+                    <div className="speech-live-mic-area">
                         {showMic ? (
                             <div className="flex flex-col items-center">
                                 <div className={`mic-btn-wrap mb-3 ${isAnswering ? 'mic-btn-active' : ''}`}>
@@ -3213,82 +3288,22 @@
                                             </p>
                                         </div>
                                     </div>
-                                ) : warmupPhase ? (() => {
-                                    const isMicCheck = warmupPhase === 'mic_check';
-                                    const interviewerText = isInterviewerSpeaking
-                                        ? warmupCaption
-                                        : (warmupCaption || warmupQuestion);
-                                    const placeholder = isMicCheck
-                                        ? 'The interviewer is about to greet you…'
-                                        : 'The interviewer will ask you to introduce yourself…';
-                                    return (
-                                        <div className="fade-in speech-question-card animate-slide-up">
-                                            <div className="px-5 sm:px-6 py-5">
-                                                <p className="text-xs text-violet-700 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2 mb-4 leading-relaxed">
-                                                    Use headphones — the interviewer speaks through your speakers.
-                                                </p>
-                                                {renderInterviewerTranscript(interviewerText, isInterviewerSpeaking, placeholder)}
-                                                {renderCandidateTranscript(warmupAnswer, true)}
-                                            </div>
-                                            {renderMicControls(true, !!warmupAnswer)}
-                                        </div>
-                                    );
-                                })() : (() => {
-                                    const card = cards.length ? cards[cards.length - 1] : null;
-                                    const committedQ = card?.question && card.question !== '…';
-                                    const questionLocked = committedQ && (
-                                        questionLockedRef.current || canAnswer || isAnswering || savingAnswer
-                                    );
-                                    const questionDisplay = questionLocked
-                                        ? card.question
-                                        : isInterviewerSpeaking
-                                        ? (liveQuestionCaption || card?.question || '')
-                                        : (liveQuestionCaption || card?.question || '');
-                                    if (!card && !questionDisplay && !isInterviewerSpeaking) {
-                                        return (
-                                            <div className="flex-1 min-h-[40vh] flex flex-col items-center justify-center text-center gap-3 text-slate-500">
-                                                <div className="w-14 h-14 rounded-full border border-indigo-100 bg-indigo-50 flex items-center justify-center text-indigo-600 text-2xl animate-float">🎧</div>
-                                                <p className="text-sm max-w-sm text-slate-600">The interviewer will speak each prompt out loud. Your mic opens after they finish — speak in English, then submit.</p>
-                                            </div>
-                                        );
-                                    }
-                                    const answered = Boolean(card?.answer);
-                                    const saving = savingAnswer;
-                                    const savedResponse = answered ? card?.answer : (saving && card?.answer ? card.answer : null);
-                                    const interviewerPlaceholder = followUpActive ? 'Follow-up coming…' : 'Listen to the interviewer…';
-                                    const showInterviewerSpeaking = isInterviewerSpeaking && !questionLocked;
-                                    return (
-                                        <div className="fade-in speech-question-card animate-slide-up">
-                                            <div className="px-5 sm:px-6 py-5">
-                                                {renderInterviewerTranscript(questionDisplay, showInterviewerSpeaking, interviewerPlaceholder)}
-                                                {renderCandidateTranscript(savedResponse, false)}
-                                                {saving && !answered ? (
-                                                    <p className="text-xs text-amber-700 flex items-center gap-2 mt-3">
-                                                        <span className="inline-block w-3 h-3 border-2 border-amber-200 border-t-amber-600 rounded-full animate-spin" />
-                                                        Saving your answer…
-                                                    </p>
-                                                ) : null}
-                                                {!isAnswering && !canAnswer && !answered && !saving ? (
-                                                    <div className="flex items-center gap-3 mt-3 py-2">
-                                                        <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
-                                                            <svg className="w-4 h-4 text-indigo-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                                                        </div>
-                                                        <p className="text-sm text-slate-500">
-                                                            {answerTimerActive ? 'Mic opens shortly…' : 'Listen to the interviewer…'}
-                                                        </p>
-                                                    </div>
-                                                ) : null}
-                                                {answered && !interviewComplete && !isAnswering && !saving ? (
-                                                    <p className="text-xs text-indigo-600 mt-3 flex items-center gap-2">
-                                                        <span className="inline-block w-3 h-3 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-                                                        Preparing next step…
-                                                    </p>
-                                                ) : null}
-                                            </div>
-                                            {renderMicControls(false, answered)}
-                                        </div>
-                                    );
-                                })()}
+                                ) : warmupPhase ? (
+                                    <div className="flex-1 min-h-0 flex flex-col items-center justify-center">
+                                        {renderSpeechLiveStage({ warmup: true, answered: !!warmupAnswer, saving: savingAnswer })}
+                                        <div ref={isAnswering ? liveTranscriptRef : null} />
+                                        {renderMicControls(true, !!warmupAnswer)}
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 min-h-0 flex flex-col items-center justify-center">
+                                        {renderSpeechLiveStage({
+                                            answered: Boolean(cards[cards.length - 1]?.answer),
+                                            saving: savingAnswer,
+                                        })}
+                                        <div ref={isAnswering ? liveTranscriptRef : null} />
+                                        {renderMicControls(false, Boolean(cards[cards.length - 1]?.answer))}
+                                    </div>
+                                )}
                                 <div ref={cardsEndRef} />
                             </div>
                             <div className="shrink-0 px-4 sm:px-5 py-3 border-t border-slate-100 bg-white/95 backdrop-blur-sm">
@@ -4814,6 +4829,7 @@
             const integrityViolationCountRef = useRef(0);
             const terminatingRef = useRef(false);
             const lastViolationAtRef = useRef(0);
+            const lastTabLogAtRef = useRef(0);
             const devToolsOpenRef = useRef(false);
             const escExitRef = useRef(false);
             const fullscreenRestoreInProgressRef = useRef(false);
@@ -4893,6 +4909,16 @@
             useEffect(() => { candidateEmailRef.current = candidateEmail; }, [candidateEmail]);
             useEffect(() => { currentStepRef.current = currentStep; }, [currentStep]);
             useEffect(() => { integrityViolationCountRef.current = integrityViolationCount; }, [integrityViolationCount]);
+
+            const lastProctorQuestionRef = useRef(0);
+            useEffect(() => {
+                if (view !== 'assessment' || !sessionIdRef.current) return;
+                const n = Number(currentStep);
+                if (!Number.isFinite(n) || n < 1) return;
+                if (lastProctorQuestionRef.current === n) return;
+                lastProctorQuestionRef.current = n;
+                window.TA_PROCTOR_ACTIVITY?.logQuestionOpened?.(n);
+            }, [view, currentStep]);
 
             const supabaseUrl = 'https://vnxstyadacgntnsvcvzn.supabase.co';
             const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
@@ -5085,6 +5111,17 @@
                 }
             }, [stopProctorMedia]);
 
+            const logTabMonitoringOnly = useCallback((reason) => {
+                if (PROCTORING_DISABLED) return;
+                const activeView = viewRef.current;
+                if (!['assessment', 'live-speech', 'speech-intro'].includes(activeView) || terminatingRef.current) return;
+                if (escExitRef.current || fullscreenRestoreInProgressRef.current) return;
+                const now = Date.now();
+                if (now - lastTabLogAtRef.current < VIOLATION_DEBOUNCE_MS) return;
+                lastTabLogAtRef.current = now;
+                window.TA_PROCTOR_ACTIVITY?.logViolation?.(reason);
+            }, []);
+
             const recordIntegrityViolation = useCallback((reason) => {
                 if (PROCTORING_DISABLED) return;
                 const activeView = viewRef.current;
@@ -5220,12 +5257,11 @@
 
                     if (document.visibilityState === 'hidden') {
                         if (
-                            viewRef.current === 'assessment'
+                            ['assessment', 'live-speech', 'speech-intro'].includes(viewRef.current)
                             && !escExitRef.current
-                            && !fullscreenRequiredRef.current
                             && !fullscreenRestoreInProgressRef.current
                         ) {
-                            recordIntegrityViolation('tab_switch');
+                            logTabMonitoringOnly('tab_switch');
                         }
                         return;
                     }
@@ -5237,14 +5273,17 @@
                 };
                 document.addEventListener('visibilitychange', handleVisibilityChange);
                 return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-            }, [recordIntegrityViolation, isSecurityActive]);
+            }, [logTabMonitoringOnly, isSecurityActive]);
 
             useEffect(() => {
                 const handleWindowBlur = () => {
                     if (!isSecurityActive() || terminatingRef.current) return;
-                    if (escExitRef.current || fullscreenRequiredRef.current || fullscreenRestoreInProgressRef.current) return;
-                    if (viewRef.current === 'assessment' && document.visibilityState === 'visible') {
-                        recordIntegrityViolation('window_blur');
+                    if (escExitRef.current || fullscreenRestoreInProgressRef.current) return;
+                    if (
+                        ['assessment', 'live-speech', 'speech-intro'].includes(viewRef.current)
+                        && document.visibilityState === 'visible'
+                    ) {
+                        logTabMonitoringOnly('window_blur');
                     }
                 };
 
@@ -5275,7 +5314,7 @@
                     document.removeEventListener('fullscreenchange', handleFullscreenChange);
                     document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
                 };
-            }, [view, recordIntegrityViolation, syncFullscreenState, isSecurityActive]);
+            }, [view, logTabMonitoringOnly, syncFullscreenState, isSecurityActive]);
 
             useEffect(() => {
                 const handleContextMenu = (e) => {
@@ -5596,6 +5635,7 @@
                     setCurrentStep(phaseNum);
                     setIntegrityViolationCount(0);
                     integrityViolationCountRef.current = 0;
+                    lastProctorQuestionRef.current = 0;
                     terminatingRef.current = false;
                     lastViolationAtRef.current = 0;
                     devToolsOpenRef.current = false;

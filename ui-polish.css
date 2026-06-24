@@ -243,6 +243,179 @@ body.admin-body {
 }
 
 /* Admin — text proctor activity log */
+/* Admin — proctor activity timeline */
+.proctor-alert-banner {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 0.85rem 1rem;
+    margin-bottom: 0.85rem;
+    border-radius: 0.65rem;
+    border: 1px solid #fecaca;
+    background: linear-gradient(180deg, #fff5f5 0%, #fff 100%);
+    color: #991b1b;
+}
+.proctor-alert-icon {
+    font-size: 1.125rem;
+    line-height: 1;
+    margin-top: 0.1rem;
+}
+.proctor-alert-list {
+    margin: 0.35rem 0 0 1rem;
+    padding: 0;
+    font-size: 0.8125rem;
+    color: #b91c1c;
+}
+.proctor-activity-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: 0.85rem;
+}
+.proctor-timeline-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 0.65rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+}
+.proctor-timeline-item.progress {
+    border-color: #bfdbfe;
+    background: #f8fbff;
+}
+.proctor-timeline-item.violation {
+    border-color: #fecaca;
+    background: #fff7f7;
+}
+.proctor-timeline-item.violation details {
+    width: 100%;
+}
+.proctor-timeline-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    cursor: pointer;
+    list-style: none;
+}
+.proctor-timeline-summary::-webkit-details-marker { display: none; }
+.proctor-timeline-time {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #64748b;
+    min-width: 3rem;
+}
+.proctor-timeline-icon {
+    width: 1.65rem;
+    height: 1.65rem;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.proctor-timeline-icon svg {
+    width: 0.95rem;
+    height: 0.95rem;
+}
+.proctor-timeline-icon.ok {
+    color: #2563eb;
+    background: #dbeafe;
+}
+.proctor-timeline-icon.warn {
+    color: #dc2626;
+    background: #fee2e2;
+}
+.proctor-timeline-main,
+.proctor-timeline-body {
+    flex: 1;
+    min-width: 0;
+}
+.proctor-timeline-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+.proctor-timeline-detail {
+    margin: 0.25rem 0 0;
+    font-size: 0.8125rem;
+    color: #64748b;
+    line-height: 1.45;
+}
+.proctor-timeline-chevron {
+    margin-left: auto;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-right: 2px solid #94a3b8;
+    border-bottom: 2px solid #94a3b8;
+    transform: rotate(45deg);
+    transition: transform 0.2s ease;
+}
+details[open] .proctor-timeline-chevron {
+    transform: rotate(-135deg);
+    margin-top: 0.25rem;
+}
+.c-email-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+.proctor-cheating-wrap {
+    position: relative;
+    display: inline-block;
+}
+.proctor-cheating-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #b91c1c;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 9999px;
+    padding: 0.15rem 0.5rem;
+    cursor: help;
+}
+.proctor-cheating-pop {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: calc(100% + 6px);
+    z-index: 40;
+    min-width: 220px;
+    max-width: 280px;
+    padding: 0.65rem 0.75rem;
+    border-radius: 0.55rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+}
+.proctor-cheating-wrap:hover .proctor-cheating-pop,
+.proctor-cheating-wrap:focus-within .proctor-cheating-pop {
+    display: block;
+}
+.proctor-cheating-pop-title {
+    margin: 0 0 0.35rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.proctor-cheating-pop-list {
+    margin: 0 0 0.35rem 1rem;
+    padding: 0;
+    font-size: 0.75rem;
+    color: #475569;
+}
+.proctor-cheating-pop-foot {
+    margin: 0;
+    font-size: 0.6875rem;
+    color: #6366f1;
+}
+
 .proctor-summary {
     font-size: 0.9375rem;
     line-height: 1.6;
@@ -325,6 +498,35 @@ body.admin-body {
 }
 .proctor-entry-body {
     font-size: 0.875rem;
+    color: #334155;
     line-height: 1.5;
-    color: #1e293b;
+}
+.proctor-snapshot-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-top: 0.55rem;
+}
+.proctor-snapshot-thumb {
+    max-width: min(100%, 220px);
+    max-height: 140px;
+    border-radius: 0.45rem;
+    border: 1px solid #e2e8f0;
+    object-fit: cover;
+    cursor: zoom-in;
+    background: #0f172a;
+}
+.proctor-snapshot-link {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #4f46e5;
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 9999px;
+    padding: 0.25rem 0.65rem;
+    cursor: pointer;
+}
+.proctor-snapshot-link:hover {
+    background: #e0e7ff;
 }

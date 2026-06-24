@@ -28,6 +28,7 @@ ok('normalizeReport empty', () => {
     const r = normalizeReport(null);
     assert(Array.isArray(r.entries) && r.entries.length === 0, 'entries');
     assert(r.summary === '', 'summary');
+    assert(Array.isArray(r.highlights) && r.highlights.length === 0, 'highlights');
 });
 
 ok('appendEntry adds suspicious count', () => {

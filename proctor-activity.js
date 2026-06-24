@@ -1,5 +1,5 @@
 /**
- * CONVO — text-only proctor activity (events + ephemeral screen describe; no image storage).
+ * CONVO — proctor activity (events + screen describe + snapshots on flagged events).
  */
 (function (global) {
   'use strict';
@@ -22,6 +22,8 @@
   ]);
 
   const CATEGORY_SUMMARY = {
+    test_started: 'Assessment test started.',
+    question_opened: 'Candidate opened an assessment question.',
     tab_switch: 'Candidate left the assessment tab or hid the browser window.',
     window_blur: 'Assessment window lost focus — another app or window may be active.',
     devtools: 'Developer tools shortcut or inspect attempt detected.',
@@ -29,6 +31,9 @@
     blocked_shortcut: 'Blocked keyboard shortcut used (F12, view source, etc.).',
     screenshot: 'Print Screen or screenshot key attempt blocked.',
     snipping_tool: 'Snipping Tool or Win+Shift+S screen capture attempt blocked.',
+    screenshot_tool: 'Screenshot or screen capture tool attempt detected.',
+    ai_tool: 'AI assistant or generative AI tool detected on shared screen.',
+    communication_app: 'Messaging, email, or communication application detected on shared screen.',
     print_attempt: 'Print or save-page attempt blocked.',
     webcam_lost: 'Webcam was turned off or blocked.',
     webcam_restored: 'Webcam was re-enabled within the grace period.',
@@ -36,6 +41,7 @@
     screen_share_stopped: 'Screen sharing was stopped.',
     screen_blank: 'Shared screen appears blank, minimized, or showing desktop only.',
     screen_content: 'Periodic shared-screen activity check.',
+    session_start: 'Proctored assessment monitoring started.',
     activity: 'Proctoring activity noted.',
   };
 
@@ -104,10 +110,62 @@
     }
 
     logViolation(reason, extra) {
-      this.logEvent(reason, summaryFor(reason, extra), { suspicious: true });
+      void this.logViolationAsync(reason, extra);
+    }
+
+    async captureViolationSnapshots() {
+      const streams = this.getStreams?.();
+      if (!streams) return null;
+      const out = { screen: null, webcam: null, thumb: null };
+      const screens = streams.screens || [];
+      if (screens[0]) {
+        const frame = await this.captureFrameFromStream(screens[0]);
+        if (frame?.base64) {
+          out.screen = frame.base64;
+          out.thumb = frame.thumbBase64 || null;
+        }
+      }
+      if (streams.webcam) {
+        const frame = await this.captureFrameFromStream(streams.webcam);
+        if (frame?.base64) out.webcam = frame.base64;
+      }
+      return out;
+    }
+
+    async logViolationAsync(reason, extra) {
+      if (!this.running || !this.sessionId) return;
+      const cat = String(reason || 'activity').trim();
+      const text = summaryFor(cat, extra);
+      const snaps = await this.captureViolationSnapshots();
+      void this.post({
+        action: 'event',
+        phase: this.getPhase?.(),
+        category: cat,
+        summary: text,
+        suspicious: true,
+        frame_base64: snaps?.screen || undefined,
+        webcam_base64: snaps?.webcam || undefined,
+        thumb_base64: snaps?.thumb || undefined,
+      });
       if (reason === 'snipping_tool' || reason === 'screenshot') {
         void this.describeNow({ suspicious: true });
+      } else if (reason === 'tab_switch' || reason === 'window_blur') {
+        void this.describeNow({ suspicious: true });
       }
+    }
+
+    logQuestionOpened(questionNumber, label) {
+      const n = Number(questionNumber);
+      if (!Number.isFinite(n) || n < 1) return;
+      const text = label || `Opened question ${n}.`;
+      this.logEvent('question_opened', text, {
+        suspicious: false,
+        meta: { question_number: n },
+      });
+    }
+
+    logTestStarted() {
+      this.logEvent('test_started', 'Assessment test started.', { suspicious: false });
     }
 
     captureFrameFromStream(stream) {
@@ -153,8 +211,18 @@
             const brightness = sum / (img.data.length / 4);
             const dataUrl = canvas.toDataURL('image/jpeg', 0.52);
             const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+            let thumbBase64 = '';
+            try {
+              const tw = Math.min(240, w);
+              const th = Math.max(1, Math.round(h * (tw / w)));
+              const tc = document.createElement('canvas');
+              tc.width = tw;
+              tc.height = th;
+              tc.getContext('2d').drawImage(canvas, 0, 0, tw, th);
+              thumbBase64 = tc.toDataURL('image/jpeg', 0.38).replace(/^data:image\/\w+;base64,/, '');
+            } catch (_) { /* ignore */ }
             clearTimeout(timer);
-            finish({ base64, brightness, width: w, height: h });
+            finish({ base64, thumbBase64, brightness, width: w, height: h });
           } catch (_) {
             clearTimeout(timer);
             finish(null);
@@ -181,11 +249,16 @@
             const now = Date.now();
             if (now - this.lastBlankLogAt > 30000) {
               this.lastBlankLogAt = now;
-              this.logEvent(
-                'screen_blank',
-                `Screen ${i + 1} appears blank or minimized (dark frame).`,
-                { suspicious: true, phase: opts?.phase }
-              );
+              void this.post({
+                action: 'event',
+                phase: typeof opts?.phase === 'number' ? opts.phase : this.getPhase?.(),
+                category: 'screen_blank',
+                summary: `Screen ${i + 1} appears blank or minimized (dark frame).`,
+                suspicious: true,
+                frame_base64: frame.base64,
+                thumb_base64: frame.thumbBase64 || undefined,
+                meta: { screen_index: i },
+              });
             }
             continue;
           }
@@ -195,6 +268,7 @@
             phase: typeof opts?.phase === 'number' ? opts.phase : this.getPhase?.(),
             screen_index: i,
             frame_base64: frame.base64,
+            thumb_base64: frame.thumbBase64 || undefined,
             suspicious: !!opts?.suspicious,
           });
           this.lastDescribeAt = Date.now();
@@ -217,11 +291,16 @@
         const now = Date.now();
         if (now - this.lastBlankLogAt < 30000) return;
         this.lastBlankLogAt = now;
-        this.logEvent(
-          'screen_blank',
-          `Screen ${i + 1} appears blank or minimized.`,
-          { suspicious: true }
-        );
+        void this.post({
+          action: 'event',
+          phase: this.getPhase?.(),
+          category: 'screen_blank',
+          summary: `Screen ${i + 1} appears blank or minimized.`,
+          suspicious: true,
+          frame_base64: frame.base64,
+          thumb_base64: frame.thumbBase64 || undefined,
+          meta: { screen_index: i },
+        });
       });
     }
 
@@ -234,7 +313,7 @@
       if (!this.sessionId) return;
 
       this.running = true;
-      this.logEvent('session_start', 'Proctored assessment monitoring started.', { suspicious: false });
+      this.logTestStarted();
 
       this.describeTimer = setInterval(() => {
         void this.describeScreens({ suspicious: false });
@@ -275,6 +354,8 @@
     stop: (opts) => monitor.stop(opts),
     logEvent: (category, summary, opts) => monitor.logEvent(category, summary, opts),
     logViolation: (reason, extra) => monitor.logViolation(reason, extra),
+    logQuestionOpened: (n, label) => monitor.logQuestionOpened(n, label),
+    logTestStarted: () => monitor.logTestStarted(),
     describeNow: (opts) => monitor.describeNow(opts),
     summaryFor,
     isSuspicious,

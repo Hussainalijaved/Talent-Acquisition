@@ -2879,6 +2879,10 @@
                                 setCanAnswer(false);
                                 setIsAnswering(false);
                                 setSilenceHint('');
+                                // Clear any stale timer from the previous turn so it doesn't
+                                // bleed into the loading phase of the next question.
+                                setAnswerTimerActive(false);
+                                setTimeLeft(null);
                                 questionLockedRef.current = false;
                                 if (number >= 1) {
                                     setWarmupPhase(null);

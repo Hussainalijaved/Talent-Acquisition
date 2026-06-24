@@ -945,6 +945,7 @@ export class GeminiLiveBridge {
     }
 
     const nextQ = aNum + 1;
+    this.flushClientPlayback();
     this.onEvent({ type: 'next_question_ready', number: nextQ });
     this.proceedToNextQuestion(aNum, nextQ);
   }

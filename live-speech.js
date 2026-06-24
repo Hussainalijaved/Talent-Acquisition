@@ -172,6 +172,8 @@
 
     // Called after next_question_ready. If awaiting_answer never arrives from relay
     // (old relay version, network hiccup, etc.) this guarantees mic opens anyway.
+    // Only fires when AI has NOT started speaking — if modelAudioHeardThisTurn is true
+    // the relay will send awaiting_answer naturally after Gemini finishes.
     scheduleNextQuestionForceFallback(timeLimitSeconds = 120) {
       if (this.nextQuestionForceFallbackTimer) {
         clearTimeout(this.nextQuestionForceFallbackTimer);
@@ -180,7 +182,9 @@
       this.nextQuestionForceFallbackTimer = setTimeout(() => {
         this.nextQuestionForceFallbackTimer = null;
         if (this.ended || this.interviewEnded || this.answering || this.awaitingAnswerPending) return;
-        // awaiting_answer never arrived — synthesise it so mic opens.
+        // If AI has already started speaking, awaiting_answer will arrive via normal path.
+        if (this.modelAudioHeardThisTurn) return;
+        // awaiting_answer never arrived and AI never spoke — synthesise it so mic opens.
         this.awaitingAnswerPending = true;
         this.onAwaitingAnswer({ time_limit_seconds: timeLimitSeconds, warmup: null });
         void this.scheduleMicAfterPlayback();
@@ -202,8 +206,9 @@
           !this.ended &&
           !this.interviewEnded &&
           !this.answering &&
-          this.awaitingAnswerPending &&
-          this.modelAudioHeardThisTurn
+          this.awaitingAnswerPending
+          // modelAudioHeardThisTurn no longer required — relay watchdog can commit a
+          // question without AI audio (Gemini timeout); mic must open regardless.
         ) {
           this.awaitingAnswerPending = false;
           this.beginAnswer();

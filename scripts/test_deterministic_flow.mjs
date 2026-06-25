@@ -51,7 +51,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
     bridge.startUserTurn();
     bridge.sendAudio(loudPcmB64());
     bridge.endUserTurn();
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 2800));
     if (lastOf(events, 'answer', q).length >= 1) ok(`Q${q} answer recorded`); else fail(`Q${q} answer recorded`);
     if (q < 5 && bridge.currentQ === q + 1) ok(`Q${q} -> Q${q + 1} advanced`); else if (q < 5) fail(`Q${q} -> Q${q + 1} advanced`, `currentQ=${bridge.currentQ}`);
   }
@@ -83,10 +83,56 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.startUserTurn();
   bridge.sendAudio(loudPcmB64());
   bridge.endUserTurn();
-  await new Promise((r) => setTimeout(r, 500));
+  await new Promise((r) => setTimeout(r, 2800));
   if (lastOf(events, 'answer', 3).length >= 1) ok('voice-only finalize proceeds after Q3 submit'); else fail('voice-only finalize proceeds after Q3 submit');
   if (bridge.currentQ === 4) ok('Q3 answer advances to Q4 without STT wait'); else fail('Q3 answer advances to Q4', `currentQ=${bridge.currentQ}`);
   if (lastOf(events, 'question', 4).length >= 1) ok('Q4 question committed after Q3'); else fail('Q4 question committed after Q3');
+  bridge.closed = true;
+}
+
+{
+  const { bridge, events } = makeBridge();
+  bridge.warmupPhase = null;
+  bridge.speakQuestion(1);
+  bridge.onModelTurnComplete();
+  bridge.startUserTurn();
+  bridge.userBuf = 'Can you repeat the question please';
+  bridge.sendAudio(loudPcmB64());
+  bridge.endUserTurn();
+  await new Promise((r) => setTimeout(r, 2800));
+  if (bridge.currentQ === 1) ok('repeat request stays on Q1'); else fail('repeat request stays on Q1', `currentQ=${bridge.currentQ}`);
+  if (bridge.answers.length === 0) ok('repeat does not count as answer'); else fail('repeat does not count as answer');
+  if (events.some((e) => e.type === 'same_question_retry' && e.reason === 'repeat')) ok('repeat retry event emitted');
+  else fail('repeat retry event emitted');
+  bridge.closed = true;
+}
+
+{
+  const { bridge, events } = makeBridge();
+  bridge.warmupPhase = null;
+  bridge.speakQuestion(2);
+  bridge.onModelTurnComplete();
+  bridge.endUserTurn();
+  await new Promise((r) => setTimeout(r, 2800));
+  if (bridge.currentQ === 2) ok('no-speech submit stays on same Q'); else fail('no-speech submit stays on same Q', `currentQ=${bridge.currentQ}`);
+  if (bridge.answers.length === 0) ok('no-speech does not advance answers'); else fail('no-speech does not advance answers');
+  if (events.some((e) => e.type === 'same_question_retry' && e.reason === 'no_speech')) ok('no-speech retry event emitted');
+  else fail('no-speech retry event emitted');
+  bridge.closed = true;
+}
+
+{
+  const { bridge } = makeBridge();
+  bridge.warmupPhase = null;
+  bridge.speakQuestion(1);
+  bridge.onModelTurnComplete();
+  bridge.startUserTurn();
+  bridge.userBuf = "I don't know the answer";
+  bridge.sendAudio(loudPcmB64());
+  bridge.endUserTurn();
+  await new Promise((r) => setTimeout(r, 2800));
+  if (bridge.answers.length === 1) ok('"I don\'t know" counts as Q1 answer'); else fail('"I don\'t know" counts as Q1 answer');
+  if (bridge.currentQ === 2) ok('"I don\'t know" advances to Q2'); else fail('"I don\'t know" advances to Q2', `currentQ=${bridge.currentQ}`);
   bridge.closed = true;
 }
 

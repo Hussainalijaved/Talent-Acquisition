@@ -61,6 +61,64 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
 }
 
 {
+  const { bridge, events } = makeBridge();
+  bridge.warmupPhase = null;
+  bridge.speakQuestion(1);
+  bridge.onModelTurnComplete();
+  bridge.startUserTurn();
+  bridge.userBuf = 'Can you repeat the question please';
+  bridge.sendAudio(loudPcmB64());
+  bridge.endUserTurn();
+  await new Promise((r) => setTimeout(r, 700));
+  if (bridge.currentQ === 1) ok('repeat request stays on Q1'); else fail('repeat request stays on Q1', `currentQ=${bridge.currentQ}`);
+  if (bridge.answers.length === 0) ok('repeat does not count as answer'); else fail('repeat does not count as answer');
+  if (events.some((e) => e.type === 'question_repeat' && e.number === 1)) ok('question_repeat event emitted');
+  else fail('question_repeat event emitted');
+  bridge.closed = true;
+}
+
+{
+  const { bridge } = makeBridge();
+  bridge.warmupPhase = 'intro';
+  bridge.currentQ = 0;
+  bridge.awaitingAnswer = true;
+  bridge.answerPromptOpen = true;
+  bridge.userBuf = 'Can you repeat the question please';
+  bridge.sendAudio(loudPcmB64());
+  bridge.completeAnswerTurn();
+  if (bridge.warmupPhase === null && bridge.currentQ === 1 && !bridge.questionRepeatUsed[1]) {
+    ok('intro repeat phrase does not trigger speech repeat');
+  } else {
+    fail('intro repeat phrase does not trigger speech repeat', `warmup=${bridge.warmupPhase} currentQ=${bridge.currentQ}`);
+  }
+  bridge.closed = true;
+}
+
+{
+  const { bridge, events } = makeBridge();
+  bridge.warmupPhase = null;
+  bridge.answers = ['[Voice response recorded]'];
+  bridge.speakQuestion(2);
+  bridge.onModelTurnComplete();
+  bridge.startUserTurn();
+  bridge.userBuf = 'Can you repeat the question please';
+  bridge.sendAudio(loudPcmB64());
+  bridge.endUserTurn();
+  await new Promise((r) => setTimeout(r, 700));
+  if (bridge.questionRepeatUsed[2]) ok('first repeat marks questionRepeatUsed');
+  else fail('first repeat marks questionRepeatUsed');
+  bridge.onModelTurnComplete();
+  bridge.startUserTurn();
+  bridge.userBuf = 'Can you repeat the question please';
+  bridge.sendAudio(loudPcmB64());
+  bridge.endUserTurn();
+  await new Promise((r) => setTimeout(r, 700));
+  if (bridge.answers.length === 2) ok('second repeat counts as Q2 answer'); else fail('second repeat counts as Q2 answer', `len=${bridge.answers.length}`);
+  if (bridge.currentQ === 3) ok('second repeat advances to Q3'); else fail('second repeat advances to Q3', `currentQ=${bridge.currentQ}`);
+  bridge.closed = true;
+}
+
+{
   const { bridge } = makeBridge();
   bridge.warmupPhase = null;
   bridge.speakQuestion(2);

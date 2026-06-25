@@ -16,6 +16,7 @@ import {
   deriveTimeLimitSeconds,
   fallbackTimeLimit,
 } from './time-limit.mjs';
+import { isRepeatRequest, mightBeRepeatRequest } from './repeat-request.mjs';
 
 const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
@@ -183,6 +184,8 @@ export class GeminiLiveBridge {
     this.warmupAudioDelivered = { mic_check: false, intro: false };
     this.closingReprompts = 0;
     this.closingCompleteTimer = null;
+    // Speech Q1–Q5 only: allow one full question repeat per question number.
+    this.questionRepeatUsed = {};
   }
 
   timerConfig() {
@@ -803,7 +806,6 @@ export class GeminiLiveBridge {
 
   // Stream the candidate's speech-to-text to the client as a live caption.
   appendUserTranscription(text) {
-    if (this.voiceOnly) return;
     const piece = String(text || '');
     if (!piece) return;
     if (this.userTurnActive) {
@@ -814,6 +816,7 @@ export class GeminiLiveBridge {
       this.noteUserActivity();
       if (this.pendingFinalize) this.scheduleFinalizeAnswer(true);
     }
+    if (this.voiceOnly) return;
     this.emitUserPartialTranscript();
   }
 
@@ -966,12 +969,66 @@ export class GeminiLiveBridge {
       clearTimeout(this.pendingFinalize);
       this.pendingFinalize = null;
     }
-    // Voice-only: never wait for Gemini STT — PCM is already buffered.
+    // Voice-only: PCM is primary; wait briefly for internal STT only when a repeat
+    // phrase may still be forming — normal answers still finalize quickly.
     if (this.voiceOnly) {
-      this.pendingFinalize = setTimeout(() => {
-        this.pendingFinalize = null;
-        this.completeAnswerTurn();
-      }, 400);
+      const startedAt = Date.now();
+      const minWaitMs = 400;
+      const maxWaitMs = 2000;
+      let lastLen = -1;
+      let stableSince = 0;
+      const tick = () => {
+        const transcript = this.getInternalUserTranscript();
+        const len = transcript.length;
+        const now = Date.now();
+        const elapsed = now - startedAt;
+        const qNum = this.currentQ;
+
+        if (
+          qNum >= 1 &&
+          qNum <= this.maxTurns &&
+          !this.questionRepeatUsed[qNum] &&
+          isRepeatRequest(transcript)
+        ) {
+          this.pendingFinalize = null;
+          this.completeAnswerTurn();
+          return;
+        }
+
+        if (len > 0 && len === lastLen) {
+          if (!stableSince) stableSince = now;
+          if (now - stableSince >= 450 && elapsed >= minWaitMs) {
+            this.pendingFinalize = null;
+            this.completeAnswerTurn();
+            return;
+          }
+        } else {
+          stableSince = 0;
+          lastLen = len;
+        }
+
+        if (elapsed >= minWaitMs) {
+          const repeatPending =
+            qNum >= 1 &&
+            qNum <= this.maxTurns &&
+            !this.questionRepeatUsed[qNum] &&
+            mightBeRepeatRequest(transcript);
+          if (!repeatPending) {
+            this.pendingFinalize = null;
+            this.completeAnswerTurn();
+            return;
+          }
+        }
+
+        if (elapsed >= maxWaitMs) {
+          this.pendingFinalize = null;
+          this.completeAnswerTurn();
+          return;
+        }
+
+        this.pendingFinalize = setTimeout(tick, 150);
+      };
+      this.pendingFinalize = setTimeout(tick, minWaitMs);
       return;
     }
     const startedAt = Date.now();
@@ -1028,6 +1085,52 @@ export class GeminiLiveBridge {
     return cleanUserAnswer(combined) || '[No spoken response captured]';
   }
 
+  getInternalUserTranscript() {
+    return `${this.userBuf}${this.lateUserBuf}`.trim();
+  }
+
+  resetAnswerTurnForRetry() {
+    if (this.answerTimer) {
+      clearTimeout(this.answerTimer);
+      this.answerTimer = null;
+    }
+    if (this.pendingFinalize) {
+      clearTimeout(this.pendingFinalize);
+      this.pendingFinalize = null;
+    }
+    this.answerPcmChunks = [];
+    this.userBuf = '';
+    this.lateUserBuf = '';
+    this.voiceDetectedThisTurn = false;
+    this.awaitingAnswer = false;
+    this.blockModelOutput = true;
+    this.stopSilenceMonitor();
+    this.clearAnswerPromptWindow();
+    if (this.userTurnActive) {
+      this.userTurnActive = false;
+      if (this.geminiWs?.readyState === WebSocket.OPEN) {
+        this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
+      }
+    }
+  }
+
+  handleRepeatRequest(qNum) {
+    this.resetAnswerTurnForRetry();
+    this.questionRepeatUsed[qNum] = true;
+    console.log(`[relay] Q${qNum} repeat requested — re-speaking question (once)`);
+    this.onEvent({ type: 'question_repeat', number: qNum });
+    this.speakQuestion(qNum);
+  }
+
+  tryHandleRepeatRequest(activeQ) {
+    if (activeQ < 1 || activeQ > this.maxTurns) return false;
+    if (this.warmupPhase) return false;
+    if (this.questionRepeatUsed[activeQ]) return false;
+    if (!isRepeatRequest(this.getInternalUserTranscript())) return false;
+    this.handleRepeatRequest(activeQ);
+    return true;
+  }
+
   completeAnswerTurn() {
     if (!this.awaitingAnswer) return;
     this.stopSilenceMonitor();
@@ -1061,13 +1164,13 @@ export class GeminiLiveBridge {
     }
 
     const pcmSnapshot = this.answerPcmChunks.slice();
-    this.userBuf = '';
-    this.lateUserBuf = '';
-    let userText = this.resolveUserAnswerText(pcmSnapshot);
-    this.voiceDetectedThisTurn = false;
 
     // ── Mic check phase: any speech = mic confirmed → advance to intro ──
     if (this.warmupPhase === 'mic_check') {
+      this.userBuf = '';
+      this.lateUserBuf = '';
+      let userText = this.resolveUserAnswerText(pcmSnapshot);
+      this.voiceDetectedThisTurn = false;
       this.clearAnswerPromptWindow();
       this.warmupPhase = 'intro';
       if (!this.voiceOnly) {
@@ -1094,6 +1197,10 @@ export class GeminiLiveBridge {
 
     // ── Intro phase: candidate answered intro → start real questions ──
     if (this.warmupPhase === 'intro') {
+      this.userBuf = '';
+      this.lateUserBuf = '';
+      let userText = this.resolveUserAnswerText(pcmSnapshot);
+      this.voiceDetectedThisTurn = false;
       this.clearAnswerPromptWindow();
       this.warmupPhase = null;
       if (!this.voiceOnly) {
@@ -1108,6 +1215,14 @@ export class GeminiLiveBridge {
       this.speakQuestion(1);
       return;
     }
+
+    const activeQ = this.currentQ || Math.max(1, this.answers.length + 1);
+    if (this.tryHandleRepeatRequest(activeQ)) return;
+
+    this.userBuf = '';
+    this.lateUserBuf = '';
+    let userText = this.resolveUserAnswerText(pcmSnapshot);
+    this.voiceDetectedThisTurn = false;
 
     let aNum;
     let isFollowUpResponse = false;

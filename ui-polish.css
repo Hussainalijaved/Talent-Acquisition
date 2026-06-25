@@ -530,3 +530,534 @@ details[open] .proctor-timeline-chevron {
 .proctor-snapshot-link:hover {
     background: #e0e7ff;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONVO UI ENHANCEMENT LAYER — visual only, no behavior changes
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Global typography polish ── */
+body.convo-body,
+body.admin-body,
+.app-bg {
+    font-feature-settings: 'cv11', 'ss01', 'liga' 1;
+    text-rendering: optimizeLegibility;
+}
+
+/* Eyebrow / section labels — bolder, richer */
+.text-\[10px\].font-bold.uppercase,
+.sidebar-label,
+.screen-panel-title,
+.assessment-detail-body .section > h3,
+.section-head h2,
+.section-head .section-title {
+    font-weight: 800 !important;
+    letter-spacing: var(--convo-tracking-widest, 0.12em) !important;
+}
+
+.page-title,
+.convo-hero-mega,
+.tpl-title {
+    font-weight: 800 !important;
+    letter-spacing: var(--convo-tracking-tight, -0.025em) !important;
+}
+
+/* ── Login page ── */
+body:has(.login-card) {
+    background:
+        radial-gradient(ellipse 90% 70% at 15% 0%, rgba(59, 130, 246, 0.18), transparent 52%),
+        radial-gradient(ellipse 60% 50% at 95% 100%, rgba(79, 70, 229, 0.08), transparent 45%),
+        linear-gradient(165deg, #0c4a8a 0%, #1e40af 36%, #f1f5f9 36%, #f8fafc 100%) !important;
+}
+
+.login-card {
+    border-radius: var(--convo-radius-xl, 20px) !important;
+    padding: 2.75rem 2.25rem !important;
+    box-shadow: var(--convo-shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.65) !important;
+    border: 1px solid rgba(226, 232, 240, 0.95) !important;
+}
+
+.login-brand {
+    font-size: 2rem !important;
+    font-weight: 900 !important;
+    letter-spacing: -0.05em !important;
+    background: linear-gradient(135deg, #1e40af 0%, #4338ca 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent !important;
+}
+
+.login-sub {
+    font-weight: 600 !important;
+    color: #475569 !important;
+}
+
+.field label {
+    font-weight: 700 !important;
+    font-size: 0.8125rem !important;
+    letter-spacing: 0.02em !important;
+}
+
+.field input {
+    border-radius: 12px !important;
+    font-weight: 500 !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.btn-login {
+    border-radius: 12px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.02em !important;
+    padding: 0.875rem !important;
+    box-shadow: 0 4px 16px rgba(30, 64, 175, 0.28) !important;
+}
+
+/* ── Careers & apply ── */
+.convo-hero-mega {
+    font-size: clamp(2.5rem, 6vw, 3.75rem) !important;
+    text-shadow: 0 2px 24px rgba(0, 0, 0, 0.2);
+}
+
+.convo-hero-sub {
+    font-weight: 700 !important;
+    font-size: 1.125rem !important;
+}
+
+.convo-job,
+.convo-card,
+.wrap .card {
+    border-radius: var(--convo-radius-lg, 16px) !important;
+    box-shadow: var(--convo-shadow) !important;
+    border: 1px solid rgba(226, 232, 240, 0.95) !important;
+}
+
+.convo-job-title,
+.card h2,
+.card h3 {
+    font-weight: 800 !important;
+    letter-spacing: -0.02em !important;
+}
+
+.apply-layout .tpl-title {
+    font-size: clamp(1.5rem, 3vw, 2rem) !important;
+    line-height: 1.2 !important;
+}
+
+.apply-layout .tpl-hiring {
+    font-weight: 800 !important;
+    letter-spacing: 0.08em !important;
+}
+
+.apply-layout .tpl-apply-btn {
+    font-weight: 800 !important;
+    box-shadow: var(--convo-shadow-brand) !important;
+}
+
+#applyLayout.form-open .page-split-right {
+    box-shadow: var(--convo-shadow-violet) !important;
+}
+
+.outcome-card,
+.screening-result,
+#outcomeView .card {
+    border-radius: var(--convo-radius-xl) !important;
+    box-shadow: var(--convo-shadow-md) !important;
+}
+
+.outcome-score,
+.score-display {
+    font-weight: 900 !important;
+    letter-spacing: -0.04em !important;
+}
+
+.convo-file-zone:hover {
+    border-color: rgba(30, 64, 175, 0.35) !important;
+    box-shadow: 0 0 0 4px rgba(30, 64, 175, 0.08) !important;
+}
+
+.back-link {
+    font-weight: 700 !important;
+}
+
+.badge,
+.convo-badge {
+    font-weight: 800 !important;
+    letter-spacing: 0.04em !important;
+}
+
+/* ── Admin dashboard ── */
+.page-title {
+    font-size: 1.375rem !important;
+    font-weight: 800 !important;
+}
+
+.page-sub,
+.topbar-meta {
+    font-weight: 500 !important;
+}
+
+.kpi {
+    border-radius: var(--convo-radius-lg) !important;
+    overflow: hidden;
+}
+
+.kpi-val {
+    font-size: 2rem !important;
+    font-weight: 900 !important;
+    letter-spacing: -0.04em !important;
+}
+
+.kpi-label {
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.6875rem !important;
+}
+
+.kpi:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--convo-shadow-md) !important;
+}
+
+.table-card thead th {
+    font-weight: 800 !important;
+    font-size: 0.6875rem !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+}
+
+.table-card tbody td {
+    font-weight: 500;
+}
+
+.table-card tbody td strong,
+.table-card .c-name {
+    font-weight: 700 !important;
+    color: var(--convo-ink) !important;
+}
+
+.score-badge {
+    font-weight: 900 !important;
+    font-size: 0.8125rem !important;
+    padding: 0.35rem 0.65rem !important;
+    border-radius: 9999px !important;
+    letter-spacing: -0.02em !important;
+}
+
+.assessment-detail-hero {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 50%, #eef2ff 100%) !important;
+    border-radius: var(--convo-radius-xl) !important;
+    box-shadow: var(--convo-shadow) !important;
+    border: 1px solid rgba(199, 210, 254, 0.5) !important;
+    padding: 1.5rem 1.75rem !important;
+}
+
+.assessment-detail-hero .detail-title {
+    font-weight: 900 !important;
+    font-size: 1.375rem !important;
+    letter-spacing: -0.03em !important;
+}
+
+.assessment-detail-hero .detail-avatar {
+    box-shadow: 0 4px 16px rgba(79, 70, 229, 0.15) !important;
+    border: 2px solid rgba(255, 255, 255, 0.9) !important;
+}
+
+.assessment-detail-body .section {
+    border-radius: var(--convo-radius-lg) !important;
+    box-shadow: var(--convo-shadow-sm) !important;
+}
+
+.phase-accordion summary,
+.phase-accordion-head {
+    font-weight: 700 !important;
+}
+
+.overall-score-grid .score-badge,
+.assess-summary .kpi-val {
+    font-size: 2.25rem !important;
+}
+
+/* CV screening workspace */
+#view-screen .screen-split {
+    gap: 1.25rem !important;
+}
+
+.screen-panel {
+    border-radius: var(--convo-radius-lg) !important;
+    box-shadow: var(--convo-shadow) !important;
+    border: 1px solid rgba(226, 232, 240, 0.95) !important;
+    background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%) !important;
+    padding: 1.25rem 1.5rem !important;
+}
+
+.screen-panel-title {
+    font-size: 0.6875rem !important;
+    font-weight: 800 !important;
+    color: var(--convo-brand) !important;
+    margin-bottom: 1rem !important;
+    padding-bottom: 0.65rem !important;
+    border-bottom: 2px solid rgba(30, 64, 175, 0.12) !important;
+}
+
+.screen-progress {
+    height: 6px !important;
+    border-radius: 9999px !important;
+    background: #e2e8f0 !important;
+    overflow: hidden !important;
+}
+
+.screen-progress-fill {
+    background: linear-gradient(90deg, #2563eb, #4f46e5) !important;
+    border-radius: 9999px !important;
+    transition: width 0.35s ease !important;
+}
+
+.mode-btn {
+    font-weight: 700 !important;
+}
+
+.mode-btn.active {
+    box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.15) !important;
+}
+
+.drawer {
+    box-shadow: -8px 0 40px rgba(15, 23, 42, 0.12) !important;
+}
+
+.sidebar .brand-name {
+    font-weight: 900 !important;
+    letter-spacing: -0.03em !important;
+}
+
+.nav-dropdown-label {
+    font-weight: 700 !important;
+}
+
+/* ── Assessment portal (index.html) ── */
+
+/* Header brand */
+.app-bg header .font-bold,
+.app-bg header [class*="font-bold"] {
+    letter-spacing: -0.03em;
+}
+
+/* Onboarding hero */
+.onboarding-hero h1,
+.onboarding-hero h2 {
+    font-weight: 800 !important;
+    letter-spacing: -0.03em !important;
+}
+
+.onboarding-hero p.leading-relaxed,
+.onboarding-hero .text-slate-600 {
+    font-weight: 500 !important;
+    line-height: 1.65 !important;
+}
+
+.rule-card {
+    border-radius: var(--convo-radius-lg) !important;
+    border: 1px solid rgba(199, 210, 254, 0.45) !important;
+}
+
+.rule-card h3,
+.rule-card .font-semibold {
+    font-weight: 800 !important;
+}
+
+/* Primary / secondary buttons */
+.btn-primary {
+    font-weight: 800 !important;
+    letter-spacing: 0.015em !important;
+    box-shadow: 0 4px 16px rgba(79, 70, 229, 0.28) !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 22px rgba(79, 70, 229, 0.34) !important;
+}
+
+.btn-secondary {
+    font-weight: 700 !important;
+}
+
+.badge,
+.badge-accent,
+.badge-success,
+.badge-warning {
+    font-weight: 800 !important;
+    letter-spacing: 0.05em !important;
+}
+
+/* Question workspace */
+.assessment-main h2,
+.assessment-main .text-xl.font-bold {
+    font-weight: 800 !important;
+    letter-spacing: -0.02em !important;
+}
+
+.phase-list-item .font-semibold,
+.phase-list-item .font-bold {
+    font-weight: 700 !important;
+}
+
+/* Speech / voice UI */
+.speech-workspace-full .panel {
+    border-radius: var(--convo-radius-xl) !important;
+}
+
+.voice-submit-pill {
+    font-weight: 800 !important;
+    letter-spacing: 0.02em !important;
+}
+
+/* ═══ SCORING / FINISHED PAGE — premium treatment ═══ */
+.result-hero-gradient {
+    position: relative;
+    background:
+        linear-gradient(145deg, #eef2ff 0%, #f0fdf4 42%, #ffffff 72%, #faf5ff 100%) !important;
+    overflow: hidden;
+}
+
+.result-hero-gradient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 20% 20%, rgba(79, 70, 229, 0.12), transparent 40%),
+        radial-gradient(circle at 80% 30%, rgba(16, 185, 129, 0.1), transparent 38%),
+        radial-gradient(circle at 50% 100%, rgba(37, 99, 235, 0.06), transparent 45%);
+    pointer-events: none;
+}
+
+.result-hero-gradient > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* Big overall score */
+.result-hero-gradient .text-4xl,
+.result-hero-gradient .text-5xl {
+    font-weight: 900 !important;
+    letter-spacing: -0.05em !important;
+    line-height: 1 !important;
+    text-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
+}
+
+.result-hero-gradient h1 {
+    font-weight: 900 !important;
+    letter-spacing: -0.03em !important;
+}
+
+.result-hero-gradient .badge {
+    font-size: 0.6875rem !important;
+    padding: 0.4rem 0.85rem !important;
+    border-radius: 9999px !important;
+}
+
+/* Technical / Voice breakdown chips */
+.result-hero-gradient .rounded-full.bg-white\/80 {
+    font-weight: 700 !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06) !important;
+    border-color: rgba(226, 232, 240, 0.9) !important;
+}
+
+/* Scheduling & feedback cards on finished page */
+.result-hero-gradient + div .rounded-2xl,
+.app-bg .rounded-2xl.border-emerald-200,
+.app-bg .rounded-2xl.border-indigo-100 {
+    box-shadow: var(--convo-shadow-sm) !important;
+}
+
+.app-bg .rounded-2xl.border-emerald-200 {
+    background: linear-gradient(135deg, rgba(236, 253, 245, 0.95) 0%, rgba(255, 255, 255, 0.9) 100%) !important;
+}
+
+.app-bg .rounded-2xl.border-indigo-100 {
+    background: linear-gradient(135deg, rgba(238, 242, 255, 0.95) 0%, rgba(255, 255, 255, 0.92) 100%) !important;
+}
+
+/* Review page */
+.review-card {
+    border-radius: var(--convo-radius-xl) !important;
+    box-shadow: var(--convo-shadow) !important;
+}
+
+.review-card:hover {
+    box-shadow: var(--convo-shadow-violet) !important;
+    border-color: rgba(79, 70, 229, 0.15) !important;
+}
+
+.review-card .text-xl.font-bold {
+    font-weight: 900 !important;
+}
+
+/* Speech summary on review */
+.panel.rounded-2xl.border-indigo-100.bg-gradient-to-br {
+    border-radius: var(--convo-radius-xl) !important;
+    box-shadow: var(--convo-shadow-violet) !important;
+    border-color: rgba(199, 210, 254, 0.7) !important;
+}
+
+/* Skill bars */
+[class*="SkillBar"],
+.review-card .h-2.rounded-full {
+    border-radius: 9999px !important;
+}
+
+/* Portal narrow page container */
+[class*="PortalPage"] .panel,
+.portal-page-card {
+    border-radius: var(--convo-radius-2xl) !important;
+    box-shadow: var(--convo-shadow-lg) !important;
+    overflow: hidden;
+}
+
+/* Scheduling / portal pages */
+.convo-portal-page {
+    background:
+        radial-gradient(ellipse 100% 80% at 50% -20%, rgba(30, 64, 175, 0.07), transparent 55%),
+        var(--convo-bg) !important;
+}
+
+.convo-portal-card h1,
+.convo-portal-card h2 {
+    font-weight: 800 !important;
+    letter-spacing: -0.03em !important;
+}
+
+.convo-portal-btn {
+    font-weight: 800 !important;
+}
+
+/* Setup admin */
+.convo-auth-card h1 {
+    font-weight: 900 !important;
+}
+
+/* Stagger animation helpers (assessment) */
+.stagger-2 { animation-delay: 0.08s; }
+.stagger-3 { animation-delay: 0.16s; }
+.stagger-4 { animation-delay: 0.24s; }
+
+/* Focus rings — consistent brand */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+    outline: 2px solid rgba(79, 70, 229, 0.45);
+    outline-offset: 2px;
+}
+
+body.convo-body button:focus-visible,
+body.convo-body a:focus-visible,
+body.convo-body input:focus-visible {
+    outline-color: rgba(30, 64, 175, 0.45);
+}
+
+body.admin-body button:focus-visible,
+body.admin-body a:focus-visible,
+body.admin-body input:focus-visible {
+    outline-color: rgba(37, 99, 235, 0.45);
+}

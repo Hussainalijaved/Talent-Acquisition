@@ -1,0 +1,67 @@
+/**
+ * CONVO — unified design tokens (visual only).
+ * Bridges careers (blue), admin (Inter), and assessment (violet) themes.
+ */
+:root {
+    /* Brand */
+    --convo-brand: #1e40af;
+    --convo-brand-dark: #1e3a8a;
+    --convo-accent: #2563eb;
+    --convo-accent-violet: #4f46e5;
+    --convo-accent-violet-dark: #4338ca;
+
+    /* Surfaces */
+    --convo-ink: #0f172a;
+    --convo-ink-soft: #334155;
+    --convo-muted: #64748b;
+    --convo-line: #e2e8f0;
+    --convo-bg: #eef2f7;
+    --convo-surface: #ffffff;
+
+    /* Semantic */
+    --convo-success: #059669;
+    --convo-success-bg: #ecfdf5;
+    --convo-danger: #dc2626;
+    --convo-danger-bg: #fef2f2;
+    --convo-warn: #d97706;
+    --convo-warn-bg: #fffbeb;
+
+    /* Typography */
+    --convo-font-display: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
+    --convo-font-body: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
+    --convo-text-xs: 0.6875rem;
+    --convo-text-sm: 0.875rem;
+    --convo-text-base: 1rem;
+    --convo-text-lg: 1.125rem;
+    --convo-text-xl: 1.25rem;
+    --convo-text-2xl: 1.5rem;
+    --convo-text-3xl: 1.875rem;
+    --convo-text-4xl: 2.25rem;
+    --convo-weight-medium: 500;
+    --convo-weight-semibold: 600;
+    --convo-weight-bold: 700;
+    --convo-weight-extrabold: 800;
+    --convo-tracking-tight: -0.025em;
+    --convo-tracking-wide: 0.06em;
+    --convo-tracking-widest: 0.12em;
+
+    /* Radius & elevation */
+    --convo-radius-sm: 8px;
+    --convo-radius: 12px;
+    --convo-radius-lg: 16px;
+    --convo-radius-xl: 20px;
+    --convo-radius-2xl: 24px;
+    --convo-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+    --convo-shadow: 0 4px 24px -6px rgba(15, 23, 42, 0.08);
+    --convo-shadow-md: 0 8px 32px -8px rgba(15, 23, 42, 0.1);
+    --convo-shadow-lg: 0 20px 60px -16px rgba(15, 23, 42, 0.14);
+    --convo-shadow-brand: 0 8px 28px -6px rgba(30, 64, 175, 0.22);
+    --convo-shadow-violet: 0 12px 40px -10px rgba(79, 70, 229, 0.22);
+
+    /* Aliases for admin-ui.css */
+    --accent: var(--convo-accent);
+    --text: var(--convo-ink);
+    --text-faint: var(--convo-muted);
+    --shadow-card: var(--convo-shadow-sm);
+    --shadow-md: var(--convo-shadow-md);
+}

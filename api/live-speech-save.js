@@ -107,10 +107,22 @@ function uniqueUrls(urls) {
     const seen = new Set();
     return urls.filter((u) => {
         const key = String(u || '').trim();
-        if (!key || seen.has(key)) return false;
+        if (!isUsableWebhookUrl(key) || seen.has(key)) return false;
         seen.add(key);
         return true;
     });
+}
+
+function isUsableWebhookUrl(url) {
+    const u = String(url || '').trim();
+    if (!u) return false;
+    if (/YOUR[-_]N8N|YOUR[-_]NGROK|example\.com/i.test(u)) return false;
+    try {
+        const parsed = new URL(u);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch (_) {
+        return false;
+    }
 }
 
 async function resolveLiveCompleteWebhookUrls(sbUrl, sbKey, body = {}, session = {}) {
@@ -331,7 +343,7 @@ export default async function handler(req, res) {
 
         // 1. Fetch current session row.
         const fetchRes = await fetch(
-            `${sbUrl}/rest/v1/${TABLE}?id=eq.${encodeURIComponent(sessionId)}&select=id,interview_history,technical_score,config,candidate_email,email,scheduling_status,result,status,speech_score`,
+            `${sbUrl}/rest/v1/${TABLE}?id=eq.${encodeURIComponent(sessionId)}&select=id,interview_history,technical_score,config,candidate_email,scheduling_status,result,status,speech_score`,
             { headers }
         );
         if (!fetchRes.ok) {

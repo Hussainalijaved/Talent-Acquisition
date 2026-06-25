@@ -150,8 +150,9 @@ return [
       system_instruction: systemInstruction,
       kickoff_prompt: kickoffPrompt,
       gemini_live_model: String(
-        cfg.gemini_live_model || 'gemini-2.0-flash-live-001'
+        cfg.gemini_live_model || 'gemini-2.5-flash-native-audio-preview-12-2025'
       ),
+      gemini_text_model: String(cfg.gemini_text_model || 'gemini-2.5-flash'),
       live_relay_url: relayUrl,
       live_complete_webhook: completeWebhook,
       portal_base_url: portalBase,

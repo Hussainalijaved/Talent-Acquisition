@@ -39,7 +39,8 @@ const buildMailJs = readJs('n8n_code_build_assessment_result_mail.js').replace(
 const cfgAssignments = [
   { id: 'ls-cfg-1', name: 'supabase_url', value: 'https://vnxstyadacgntnsvcvzn.supabase.co', type: 'string' },
   { id: 'ls-cfg-2', name: 'supabase_key', value: '={{ $env.SUPABASE_SERVICE_ROLE_KEY }}', type: 'string' },
-  { id: 'ls-cfg-3', name: 'gemini_live_model', value: 'gemini-2.0-flash-live-001', type: 'string' },
+  { id: 'ls-cfg-3', name: 'gemini_live_model', value: 'gemini-2.5-flash-native-audio-preview-12-2025', type: 'string' },
+  { id: 'ls-cfg-3b', name: 'gemini_text_model', value: 'gemini-2.5-flash', type: 'string' },
   { id: 'ls-cfg-4', name: 'max_questions', value: '5', type: 'string' },
   { id: 'ls-cfg-5', name: 'live_speech_turns', value: 5, type: 'number' },
   { id: 'ls-cfg-6', name: 'speech_phases', value: 5, type: 'number' },

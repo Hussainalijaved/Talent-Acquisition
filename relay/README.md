@@ -90,8 +90,9 @@ live_relay_url = wss://YOUR-ID.ngrok-free.app/live
 | `GEMINI_API_KEY` | Yes | Google AI Studio API key |
 | `PORT` | No | Default `8080` |
 | `ALLOWED_ORIGINS` | No | Comma-separated CORS origins (`*` = all) |
-| `GEMINI_LIVE_MODEL` | No | Default `gemini-2.0-flash-live-001` |
-| `GEMINI_SCORE_MODEL` | No | Post-session scoring, default `gemini-2.0-flash` |
+| `GEMINI_LIVE_MODEL` | No | Default `gemini-2.5-flash-native-audio-preview-12-2025` |
+| `GEMINI_TEXT_MODEL` | No | Question bank + timer AI, default `gemini-2.5-flash` |
+| `GEMINI_SCORE_MODEL` | No | Post-session scoring, default `gemini-2.5-flash` |
 | `PORTAL_BASE_URL` | **Yes** | Vercel URL e.g. `https://talent-acquisition-six.vercel.app` — relay posts saves here |
 | `LIVE_COMPLETE_WEBHOOK` | No | n8n webhook URL for email notifications (DB save works without this) |
 

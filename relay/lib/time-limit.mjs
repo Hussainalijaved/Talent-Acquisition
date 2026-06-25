@@ -1,4 +1,4 @@
-const TIMER_MODEL = process.env.GEMINI_TIMER_MODEL || process.env.GEMINI_SCORE_MODEL || 'gemini-2.0-flash';
+const TIMER_MODEL = process.env.GEMINI_TIMER_MODEL || process.env.GEMINI_SCORE_MODEL || 'gemini-2.5-flash';
 
 export function timerBounds(config = {}) {
   const min = Number(config?.timer_min_seconds);

@@ -2,7 +2,7 @@
 // POST JSON: { prompt, audio_url, is_final? }
 // Requires GEMINI_API_KEY in Vercel env (server-side only).
 
-const MODEL = 'gemini-2.0-flash';
+const MODEL = process.env.GEMINI_SCORE_MODEL || 'gemini-2.5-flash';
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 
 export default async function handler(req, res) {

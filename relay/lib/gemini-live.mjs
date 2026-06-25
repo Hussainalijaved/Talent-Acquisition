@@ -20,10 +20,11 @@ import {
 const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 
-const DEFAULT_MODEL = 'gemini-2.0-flash-live-001';
+const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+const TEXT_MODEL_DEFAULT = process.env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash';
 const MODEL_FALLBACKS = [
-  'gemini-2.0-flash-live-001',
   'gemini-2.5-flash-native-audio-preview-12-2025',
+  'gemini-2.0-flash-live-001',
 ];
 const SETUP_TIMEOUT_MS = 15000;
 const DEFAULT_KICKOFF =
@@ -337,7 +338,9 @@ export class GeminiLiveBridge {
       `problem solving, composure under pressure, motivation). Each question must be ONE or TWO sentences, ` +
       `clear, spoken-English friendly, and answerable out loud in under a minute. Do NOT number them and do ` +
       `NOT add any preamble. Return ONLY a JSON array of ${n} strings.`;
-    const model = String(this.context.gemini_text_model || 'gemini-2.0-flash').replace(/^models\//, '');
+    const model = String(
+      this.context.gemini_text_model || process.env.GEMINI_TEXT_MODEL || TEXT_MODEL_DEFAULT
+    ).replace(/^models\//, '');
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
     try {
       const ctrl = new AbortController();

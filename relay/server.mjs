@@ -170,6 +170,20 @@ wss.on('connection', (clientWs) => {
           ...rawCtx,
           config: { ...(rawCtx.config || {}) },
         };
+        if (!context.supabase_url && process.env.SUPABASE_URL) {
+          context.supabase_url = String(process.env.SUPABASE_URL).trim();
+        }
+        if (!context.supabase_key && (process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)) {
+          context.supabase_key = String(
+            process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+          ).trim();
+        }
+        if (context.supabase_url && !context.config.supabase_url) {
+          context.config.supabase_url = context.supabase_url;
+        }
+        if (context.supabase_key && !context.config.supabase_key) {
+          context.config.supabase_key = context.supabase_key;
+        }
         if (!context.live_complete_webhook && context.config?.live_complete_webhook) {
           context.live_complete_webhook = context.config.live_complete_webhook;
         }

@@ -1,6 +1,6 @@
 import { cleanUserAnswerText } from './transcript-utils.mjs';
 
-const SCORE_MODEL = process.env.GEMINI_SCORE_MODEL || 'gemini-2.0-flash';
+const SCORE_MODEL = process.env.GEMINI_SCORE_MODEL || 'gemini-2.5-flash';
 
 /**
  * Encode an array of base64 PCM-16 chunks (16-bit LE signed, mono) into a WAV
@@ -830,10 +830,22 @@ function uniqueUrls(urls) {
   const seen = new Set();
   return urls.filter((u) => {
     const key = String(u || '').trim();
-    if (!key || seen.has(key)) return false;
+    if (!isUsableWebhookUrl(key) || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function isUsableWebhookUrl(url) {
+  const u = String(url || '').trim();
+  if (!u) return false;
+  if (/YOUR[-_]N8N|YOUR[-_]NGROK|example\.com/i.test(u)) return false;
+  try {
+    const parsed = new URL(u);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch (_) {
+    return false;
+  }
 }
 
 export function resolveCompleteWebhookUrls(context = {}) {

@@ -1061,3 +1061,37 @@ body.admin-body a:focus-visible,
 body.admin-body input:focus-visible {
     outline-color: rgba(37, 99, 235, 0.45);
 }
+
+/* ── Assessment structured layout (index.html) ── */
+.assessment-stage-bar {
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04) !important;
+}
+
+.assessment-work-card {
+    border-radius: var(--convo-radius-xl, 20px) !important;
+}
+
+.assessment-question-panel {
+    border-bottom-color: rgba(199, 210, 254, 0.35) !important;
+}
+
+.assessment-panel-label {
+    font-weight: 800 !important;
+}
+
+.sidebar-progress-card {
+    box-shadow: var(--convo-shadow-sm) !important;
+}
+
+.sidebar-phase-timeline .phase-list-item.active {
+    border-color: rgba(79, 70, 229, 0.22) !important;
+    background: rgba(79, 70, 229, 0.06) !important;
+}
+
+.guidelines-layout .rule-card {
+    border-radius: var(--convo-radius) !important;
+}
+
+.guidelines-phases .grid > div {
+    box-shadow: var(--convo-shadow-sm);
+}

@@ -452,6 +452,18 @@
             box-shadow: 0 6px 20px -4px rgba(79, 70, 229, 0.12);
         }
 
+        .guidelines-layout {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .guidelines-header,
+        .guidelines-phases,
+        .guidelines-rules,
+        .guidelines-footer {
+            width: 100%;
+        }
+
         .assessment-lock, .portal-lock {
             -webkit-user-select: none;
             user-select: none;
@@ -621,6 +633,335 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            background: linear-gradient(180deg, #f8fafc 0%, #ffffff 35%, #f1f5f9 100%);
+        }
+
+        /* ── Structured assessment layout ── */
+        .assessment-stage-bar {
+            flex-shrink: 0;
+            border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(12px);
+            box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+        }
+
+        .assessment-stage-bar-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 0.875rem 1rem;
+            max-width: 56rem;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        @media (min-width: 640px) {
+            .assessment-stage-bar-inner { padding: 1rem 1.5rem; }
+        }
+
+        @media (min-width: 1280px) {
+            .assessment-stage-bar-inner { max-width: none; padding: 1rem 1.75rem; }
+        }
+
+        .assessment-breadcrumb {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem 0.5rem;
+            min-width: 0;
+        }
+
+        .assessment-breadcrumb-phase {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.65rem;
+            border-radius: 9999px;
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(99, 102, 241, 0.08));
+            border: 1px solid rgba(79, 70, 229, 0.18);
+            font-size: 0.6875rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #4338ca;
+        }
+
+        .assessment-breadcrumb-divider {
+            color: #cbd5e1;
+            font-weight: 600;
+            user-select: none;
+        }
+
+        .assessment-breadcrumb-current {
+            font-size: 1.125rem;
+            font-weight: 800;
+            color: #0f172a;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+        }
+
+        @media (min-width: 640px) {
+            .assessment-breadcrumb-current { font-size: 1.25rem; }
+        }
+
+        .assessment-breadcrumb-sub {
+            width: 100%;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            color: #64748b;
+            margin-top: 0.125rem;
+        }
+
+        .assessment-segment-progress {
+            display: flex;
+            gap: 0.25rem;
+            padding: 0 1rem 0.75rem;
+            max-width: 56rem;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        @media (min-width: 640px) {
+            .assessment-segment-progress { padding: 0 1.5rem 0.875rem; }
+        }
+
+        @media (min-width: 1280px) {
+            .assessment-segment-progress { max-width: none; padding: 0 1.75rem 0.875rem; }
+        }
+
+        .assessment-segment {
+            flex: 1;
+            height: 4px;
+            border-radius: 9999px;
+            background: #e2e8f0;
+            transition: background 0.35s ease, box-shadow 0.35s ease;
+        }
+
+        .assessment-segment.done {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+
+        .assessment-segment.active {
+            background: linear-gradient(90deg, #6366f1, #4f46e5);
+            box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+        }
+
+        .assessment-body {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        @media (min-width: 640px) {
+            .assessment-body { padding: 1.25rem 1.5rem; }
+        }
+
+        @media (min-width: 1280px) {
+            .assessment-body { padding: 1.5rem 1.75rem; }
+        }
+
+        .assessment-body-inner {
+            max-width: 52rem;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        @media (min-width: 1280px) {
+            .assessment-body-inner { max-width: none; }
+        }
+
+        .assessment-work-card {
+            display: flex;
+            flex-direction: column;
+            min-height: min(100%, 32rem);
+            border-radius: 1.25rem;
+            border: 1px solid rgba(226, 232, 240, 0.95);
+            background: #ffffff;
+            box-shadow: 0 8px 40px -12px rgba(79, 70, 229, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.03);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .assessment-question-panel {
+            flex-shrink: 0;
+            padding: 1.25rem 1.25rem 1rem;
+            border-bottom: 1px solid rgba(241, 245, 249, 0.95);
+            background: linear-gradient(180deg, #fafbff 0%, #ffffff 100%);
+        }
+
+        @media (min-width: 640px) {
+            .assessment-question-panel { padding: 1.5rem 1.75rem 1.25rem; }
+        }
+
+        .assessment-panel-head {
+            display: flex;
+            align-items: center;
+            gap: 0.625rem;
+            margin-bottom: 1rem;
+        }
+
+        .assessment-panel-icon {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 0.625rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.6875rem;
+            font-weight: 800;
+        }
+
+        .assessment-panel-icon.question {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.28);
+        }
+
+        .assessment-panel-icon.answer {
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            color: #64748b;
+        }
+
+        .assessment-panel-label {
+            font-size: 0.6875rem;
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+
+        .assessment-answer-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 12rem;
+            padding: 1rem 1.25rem 0;
+        }
+
+        @media (min-width: 640px) {
+            .assessment-answer-panel { padding: 1.25rem 1.75rem 0; }
+        }
+
+        .assessment-answer-panel textarea.input-field {
+            flex: 1;
+            min-height: 11rem;
+            border-radius: 0.875rem;
+            border-color: #e2e8f0;
+            background: #fafbfc;
+        }
+
+        .assessment-answer-panel textarea.input-field:focus {
+            background: #ffffff;
+        }
+
+        .assessment-action-bar {
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.875rem;
+            padding: 1rem 1.25rem 1.25rem;
+            border-top: 1px solid rgba(241, 245, 249, 0.95);
+            background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+        }
+
+        @media (min-width: 640px) {
+            .assessment-action-bar {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                padding: 1rem 1.75rem 1.5rem;
+            }
+        }
+
+        .assessment-action-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.125rem;
+        }
+
+        .assessment-action-status {
+            font-size: 0.8125rem;
+            font-weight: 700;
+        }
+
+        .assessment-action-status.ready { color: #059669; }
+        .assessment-action-status.pending { color: #64748b; }
+        .assessment-action-status.waiting { color: #6366f1; }
+
+        .assessment-action-chars {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #94a3b8;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Sidebar structure */
+        .sidebar-header {
+            padding: 1rem 1rem 0.875rem;
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+            background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%);
+        }
+
+        @media (min-width: 1280px) {
+            .sidebar-header { display: none; }
+        }
+
+        .sidebar-progress-card {
+            padding: 0.875rem 1rem;
+            margin: 0.75rem 1rem 0;
+            border-radius: 0.875rem;
+            border: 1px solid rgba(199, 210, 254, 0.55);
+            background: linear-gradient(135deg, rgba(238, 242, 255, 0.9) 0%, #ffffff 100%);
+        }
+
+        @media (min-width: 1280px) {
+            .sidebar-progress-card { margin: 0 0 1rem; padding: 1rem; }
+        }
+
+        .sidebar-phase-timeline {
+            position: relative;
+            padding-left: 0.25rem;
+        }
+
+        .sidebar-phase-timeline::before {
+            content: '';
+            position: absolute;
+            left: 1.875rem;
+            top: 1.25rem;
+            bottom: 1.25rem;
+            width: 2px;
+            background: linear-gradient(180deg, #e2e8f0 0%, #c7d2fe 50%, #e2e8f0 100%);
+            border-radius: 9999px;
+        }
+
+        .sidebar-phase-timeline .phase-list-item {
+            position: relative;
+            z-index: 1;
+        }
+
+        .sidebar-session-card {
+            padding: 0.875rem;
+            border-radius: 0.75rem;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+
+        .sidebar-instructions-card {
+            padding: 0.875rem;
+            border-radius: 0.75rem;
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px dashed rgba(199, 210, 254, 0.6);
+        }
+
+        @media (min-width: 1280px) {
+            .assessment-sidebar {
+                width: 22rem;
+                min-width: 22rem;
+            }
         }
 
         /* ── Full-width speech interview (no sidebar) ── */
@@ -1503,6 +1844,12 @@
         }) => (
             <aside className="assessment-sidebar" aria-label="Assessment sidebar">
 
+                {/* Mobile header strip */}
+                <div className="sidebar-header">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-0.5">Assessment progress</p>
+                    <p className="text-sm font-bold text-slate-800 truncate">{sessionLabel}</p>
+                </div>
+
                 {/* ── Compact strip shown only on small/medium screens (<1280px) ── */}
                 <div className="sidebar-compact">
                     <div className="sidebar-compact-count">
@@ -1520,24 +1867,25 @@
 
                 {/* ── Full sidebar shown only on desktop (≥1280px) ── */}
                 <div className="sidebar-full">
-                    <div className="sidebar-section">
-                        <p className="sidebar-label">Question count</p>
+                    <div className="sidebar-progress-card">
+                        <p className="sidebar-label">Current progress</p>
                         <p className="text-3xl font-bold text-slate-900 tabular-nums leading-none">
                             {currentStep}
                             <span className="text-slate-400 text-xl font-semibold"> / {totalSteps}</span>
                         </p>
-                        <p className="text-sm text-slate-500 mt-2">{sessionLabel}</p>
-                        <div className="h-1.5 bg-violet-100 rounded-full overflow-hidden mt-4">
+                        <p className="text-sm font-semibold text-slate-600 mt-2 leading-snug">{sessionLabel}</p>
+                        <div className="h-2 bg-violet-100 rounded-full overflow-hidden mt-4">
                             <div
-                                className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-500 ease-out"
+                                className="h-full bg-gradient-to-r from-violet-500 via-indigo-500 to-violet-600 rounded-full transition-all duration-500 ease-out"
                                 style={{ width: `${pct}%` }}
                             />
                         </div>
+                        <p className="text-xs font-semibold text-violet-600 mt-2 tabular-nums">{Math.round(pct)}% complete</p>
                     </div>
 
                     <div className="sidebar-section">
-                        <p className="sidebar-label">All phases</p>
-                        <ul className="list-none p-0 m-0" role="list">
+                        <p className="sidebar-label">Question roadmap</p>
+                        <ul className="list-none p-0 m-0 sidebar-phase-timeline" role="list">
                             {phases.map((p) => {
                                 const done = phaseDone ? phaseDone(p) : p < currentStep;
                                 const active = p === currentStep;
@@ -1565,7 +1913,7 @@
                                             <p className={`text-sm font-semibold leading-tight ${active ? 'text-slate-900' : 'text-slate-600'}`}>
                                                 {phaseLabels?.[p] || `${questionLabel}${questionLabel ? ' ' : ''}${p}`.trim()}
                                             </p>
-                                            <p className={`text-xs mt-1 ${active ? 'text-violet-600' : 'text-slate-400'}`}>{statusLabel}</p>
+                                            <p className={`text-xs mt-1 font-medium ${active ? 'text-violet-600' : 'text-slate-400'}`}>{statusLabel}</p>
                                         </div>
                                     </li>
                                 );
@@ -1578,34 +1926,38 @@
                     ) : null}
 
                     <div className="sidebar-section">
-                        <p className="sidebar-label">Session</p>
-                        {candidateEmail ? (
-                            <div className="mb-3">
-                                <p className="text-xs text-slate-400 mb-1">Candidate</p>
-                                <p className="text-sm text-slate-700 break-all leading-snug">{candidateEmail}</p>
+                        <p className="sidebar-label">Your session</p>
+                        <div className="sidebar-session-card space-y-3">
+                            {candidateEmail ? (
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Candidate</p>
+                                    <p className="text-sm font-semibold text-slate-700 break-all leading-snug">{candidateEmail}</p>
+                                </div>
+                            ) : null}
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Integrity monitor</p>
+                                <p className="text-sm text-slate-700 tabular-nums">
+                                    <span className={integrityViolationCount > 0 ? 'text-amber-600 font-bold' : 'font-bold text-slate-800'}>
+                                        {integrityViolationCount}
+                                    </span>
+                                    <span className="text-slate-400 font-medium"> / {MAX_INTEGRITY_VIOLATIONS - 1} warnings</span>
+                                </p>
                             </div>
-                        ) : null}
-                        <div>
-                            <p className="text-xs text-slate-400 mb-1">Integrity monitor</p>
-                            <p className="text-sm text-slate-700 tabular-nums">
-                                <span className={integrityViolationCount > 0 ? 'text-amber-600 font-semibold' : 'font-medium'}>
-                                    {integrityViolationCount}
-                                </span>
-                                <span className="text-slate-400"> / {MAX_INTEGRITY_VIOLATIONS - 1} warnings</span>
-                            </p>
                         </div>
                     </div>
 
-                    <div className="sidebar-section">
-                        <p className="sidebar-label">Instructions</p>
-                        <ul className="space-y-2.5 m-0 p-0 list-none">
-                            {instructions.map((line, i) => (
-                                <li key={i} className="flex gap-2.5 text-xs text-slate-500 leading-relaxed">
-                                    <span className="text-blue-600 font-bold shrink-0 mt-px">{i + 1}.</span>
-                                    <span>{line}</span>
-                                </li>
-                            ))}
-                        </ul>
+                    <div className="sidebar-section flex-1 min-h-0">
+                        <p className="sidebar-label">Quick tips</p>
+                        <div className="sidebar-instructions-card">
+                            <ul className="space-y-2.5 m-0 p-0 list-none">
+                                {instructions.map((line, i) => (
+                                    <li key={i} className="flex gap-2.5 text-xs text-slate-600 leading-relaxed">
+                                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-violet-100 text-[9px] font-bold text-violet-700 mt-0.5">{i + 1}</span>
+                                        <span>{line}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </aside>
@@ -1909,15 +2261,16 @@
             return (
                 <Shell subtitle="Guidelines & integrity" footerNote="By starting, you agree to proctored session rules below">
                     <PortalPage size="guidelines">
+                        <div className="guidelines-layout">
                             {/* Header */}
-                            <div className="p-4 sm:p-6 xl:p-8 border-b border-violet-100 bg-gradient-to-br from-violet-50 via-indigo-50/40 to-white relative overflow-hidden">
+                            <header className="guidelines-header p-4 sm:p-6 xl:p-8 border-b border-violet-100 bg-gradient-to-br from-violet-50 via-indigo-50/40 to-white relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-violet-100/40 -translate-y-1/2 translate-x-1/4 pointer-events-none" />
-                                <div className="relative z-10">
+                                <div className="relative z-10 max-w-2xl">
                                     <p className="badge badge-accent mb-3">{isSpeechResume ? 'Phase 1 complete' : 'Before you begin'}</p>
                                     <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                                         {isSpeechResume ? 'Continue to Phase 2' : 'Two-phase assessment'}
                                     </h1>
-                                    <p className="text-sm text-slate-600 mt-2 leading-relaxed max-w-xl">
+                                    <p className="text-sm text-slate-600 mt-2 leading-relaxed">
                                         {introLead}
                                     </p>
                                     {isSpeechResume ? (
@@ -1931,44 +2284,45 @@
                                         </p>
                                     ) : null}
                                 </div>
-                            </div>
+                            </header>
 
-                            {/* Phase cards */}
-                            <div className="px-4 sm:px-6 xl:px-8 pt-5 pb-4">
-                                <div className="grid grid-cols-2 gap-3 mb-4">
-                                    <div className="rounded-xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-white p-3.5">
+                            {/* Phase overview */}
+                            <section className="guidelines-phases px-4 sm:px-6 xl:px-8 pt-5 pb-4">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Assessment structure</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                                    <div className="rounded-xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4">
                                         <p className="text-[10px] font-bold uppercase tracking-widest text-violet-700 mb-1">Phase 1</p>
-                                        <p className="text-sm font-bold text-slate-900 leading-snug">Written assessment</p>
-                                        <p className="text-xs text-slate-500 mt-1">{techCount} questions · AI-timed</p>
+                                        <p className="text-base font-bold text-slate-900 leading-snug">Written assessment</p>
+                                        <p className="text-xs text-slate-500 mt-1.5">{techCount} questions · AI-timed · type answers</p>
                                     </div>
-                                    <div className="rounded-xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3.5">
+                                    <div className="rounded-xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4">
                                         <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-700 mb-1">Phase 2</p>
-                                        <p className="text-sm font-bold text-slate-900 leading-snug">Voice interview</p>
-                                        <p className="text-xs text-slate-500 mt-1">{speechCount} questions · mic required</p>
+                                        <p className="text-base font-bold text-slate-900 leading-snug">Voice interview</p>
+                                        <p className="text-xs text-slate-500 mt-1.5">{speechCount} questions · mic required · speak clearly</p>
                                     </div>
                                 </div>
-                                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 flex items-center gap-3">
-                                    <div className="w-6 h-6 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
-                                        <svg className="w-3 h-3 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+                                        <svg className="w-4 h-4 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                     </div>
                                     <div>
                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">You {isSpeechResume || isTechResume ? 'resume with' : 'start with'}</p>
-                                        <p className="text-xs font-semibold text-slate-800">{youStartWith}</p>
+                                        <p className="text-sm font-bold text-slate-800">{youStartWith}</p>
                                     </div>
                                 </div>
-                            </div>
+                            </section>
 
                             {/* Rules */}
-                            <div className="px-4 sm:px-6 xl:px-8 py-4 bg-slate-50/60 border-t border-slate-100">
+                            <section className="guidelines-rules px-4 sm:px-6 xl:px-8 py-4 bg-slate-50/60 border-t border-b border-slate-100">
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Rules &amp; integrity</p>
-                                <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
                                     {rules.map((rule, i) => (
                                         <div
                                             key={i}
-                                            className="rule-card flex gap-2.5 p-2.5 rounded-xl border border-slate-200 bg-white"
+                                            className="rule-card flex gap-3 p-3 rounded-xl border border-slate-200 bg-white"
                                         >
-                                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-50 border border-violet-100 text-violet-600">
-                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 border border-violet-100 text-violet-600">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                                     {rule.icon}
                                                 </svg>
                                             </div>
@@ -1976,15 +2330,15 @@
                                                 <p className="text-xs font-bold text-slate-800 leading-snug">
                                                     {rule.title}
                                                 </p>
-                                                <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{rule.body}</p>
+                                                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">{rule.body}</p>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
-                            </div>
+                            </section>
 
                             {/* Confirm + start */}
-                            <div className="px-4 sm:px-6 xl:px-8 pb-5 sm:pb-6 xl:pb-8 pt-4 space-y-3">
+                            <footer className="guidelines-footer px-4 sm:px-6 xl:px-8 pb-5 sm:pb-6 xl:pb-8 pt-4 space-y-3">
                                 {sessionBlockMsg ? (
                                     <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 leading-relaxed flex items-start gap-2">
                                         <svg className="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
@@ -1999,7 +2353,7 @@
                                         disabled={!!sessionBlockMsg}
                                         onChange={(e) => setAgreed(e.target.checked)}
                                     />
-                                    <span className="text-sm text-slate-600 group-hover:text-slate-800 leading-relaxed">
+                                    <span className="text-sm text-slate-600 group-hover:text-slate-800 leading-relaxed font-medium">
                                         I have read and agree to follow these guidelines for the duration of the assessment.
                                     </span>
                                 </label>
@@ -2026,7 +2380,8 @@
                                         ? 'Each assessment must be completed in one sitting. Contact your recruiter for assistance.'
                                         : 'Complete the assessment in one sitting — resuming later is not supported.'}
                                 </p>
-                            </div>
+                            </footer>
+                        </div>
                     </PortalPage>
                 </Shell>
             );
@@ -3565,14 +3920,15 @@
                         />
 
                         <div className="assessment-main">
-                            <div className="shrink-0 px-4 sm:px-5 lg:px-6 py-4 border-b border-slate-100 bg-white/90 backdrop-blur-sm">
-                                <div className="flex items-center justify-between gap-4">
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-1">Phase 1 · Written assessment</p>
-                                        <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                                            Question {currentStep}
-                                        </h1>
-                                        <p className="text-sm text-slate-400 mt-1">Type your answer — reviewed after you submit</p>
+                            <div className="assessment-stage-bar">
+                                <div className="assessment-stage-bar-inner">
+                                    <div className="assessment-breadcrumb">
+                                        <span className="assessment-breadcrumb-phase">Phase 1 · Written</span>
+                                        <span className="assessment-breadcrumb-divider" aria-hidden="true">›</span>
+                                        <div>
+                                            <p className="assessment-breadcrumb-current">Question {currentStep} of {totalSteps}</p>
+                                            <p className="assessment-breadcrumb-sub">Type your answer below — reviewed after you submit</p>
+                                        </div>
                                     </div>
                                     {phaseTimeLimit != null && timeLeft != null ? (
                                         <TimerRing
@@ -3582,89 +3938,107 @@
                                         />
                                     ) : null}
                                 </div>
+                                <div className="assessment-segment-progress" role="progressbar" aria-valuenow={currentStep} aria-valuemin={1} aria-valuemax={totalSteps} aria-label="Question progress">
+                                    {phases.map((p) => (
+                                        <div
+                                            key={p}
+                                            className={`assessment-segment ${p < currentStep ? 'done' : p === currentStep ? 'active' : ''}`}
+                                        />
+                                    ))}
+                                </div>
                             </div>
 
-                            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 lg:px-6 py-5 flex flex-col">
-                            <div className="flex-1 min-h-[280px] flex flex-col rounded-2xl border-2 border-slate-100 bg-white shadow-card relative animate-fade-up">
-                                    {isLoading && (
-                                        <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 rounded-2xl flex flex-col items-center justify-center gap-4">
-                                            <div className="w-10 h-10 border-2 border-violet-100 border-t-violet-600 rounded-full animate-spin" />
-                                            <p className="text-sm text-slate-500">Processing your response…</p>
-                                        </div>
-                                    )}
-                                <div className="shrink-0 px-5 sm:px-6 pt-6 pb-5 border-b border-slate-100">
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-600 text-[10px] font-bold text-white shrink-0">{currentStep}</span>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Question</p>
-                                    </div>
-                                    {contentMasked ? (
-                                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-8 text-center">
-                                            <p className="text-base font-semibold text-amber-800 mb-2">Content protected</p>
-                                            <p className="text-sm text-slate-600 leading-relaxed">
-                                                Return to fullscreen and close developer tools to continue.
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <div
-                                            className="question-protected question-text question-reveal-shell"
-                                            onCopy={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
-                                            onCut={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
-                                            onContextMenu={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
-                                            onDragStart={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
-                                        >
-                                            {questionReveal.isPending ? (
-                                                <p className="text-sm text-slate-500 question-reveal-pending flex items-center gap-2">
-                                                    <span className="inline-flex gap-1">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '120ms' }} />
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '240ms' }} />
-                                                    </span>
-                                                    Generating your question…
+                            <div className="assessment-body">
+                                <div className="assessment-body-inner">
+                                    <div className="assessment-work-card animate-fade-up">
+                                        {isLoading && (
+                                            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-4">
+                                                <div className="w-10 h-10 border-2 border-violet-100 border-t-violet-600 rounded-full animate-spin" />
+                                                <p className="text-sm font-semibold text-slate-600">Processing your response…</p>
+                                            </div>
+                                        )}
+
+                                        <section className="assessment-question-panel">
+                                            <div className="assessment-panel-head">
+                                                <span className="assessment-panel-icon question">{currentStep}</span>
+                                                <p className="assessment-panel-label">Question prompt</p>
+                                            </div>
+                                            {contentMasked ? (
+                                                <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-8 text-center">
+                                                    <p className="text-base font-bold text-amber-800 mb-2">Content protected</p>
+                                                    <p className="text-sm text-slate-600 leading-relaxed">
+                                                        Return to fullscreen and close developer tools to continue.
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <div
+                                                    className="question-protected question-text question-reveal-shell rounded-xl border border-slate-100 bg-white px-4 py-4 sm:px-5 sm:py-5"
+                                                    onCopy={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                                    onCut={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                                    onContextMenu={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                                    onDragStart={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                                >
+                                                    {questionReveal.isPending ? (
+                                                        <p className="text-sm text-slate-500 question-reveal-pending flex items-center gap-2">
+                                                            <span className="inline-flex gap-1">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '120ms' }} />
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '240ms' }} />
+                                                            </span>
+                                                            Generating your question…
+                                                        </p>
+                                                    ) : questionReady ? (
+                                                        <p className="question-protected question-text">{questionReveal.displayed}</p>
+                                                    ) : null}
+                                                </div>
+                                            )}
+                                        </section>
+
+                                        <section className="assessment-answer-panel">
+                                            <div className="assessment-panel-head">
+                                                <span className="assessment-panel-icon answer">
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                                </span>
+                                                <p className="assessment-panel-label">Your answer</p>
+                                            </div>
+                                            <textarea
+                                                id="answer"
+                                                className="input-field w-full flex-1 px-4 py-4 text-sm sm:text-base leading-relaxed resize-none"
+                                                placeholder={questionLocked ? 'Question loading…' : 'Write a clear, complete answer here. Aim for specific examples where possible.'}
+                                                value={answer}
+                                                onChange={(e) => setAnswer(e.target.value)}
+                                                onPaste={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                                onCopy={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                                onCut={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                                onDrop={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
+                                                autoComplete="off"
+                                                autoCorrect="off"
+                                                autoCapitalize="off"
+                                                spellCheck="false"
+                                                disabled={contentMasked || isLoading || questionLocked}
+                                            />
+                                        </section>
+
+                                        <div className="assessment-action-bar">
+                                            <div className="assessment-action-meta">
+                                                <p className={`assessment-action-status ${canSubmit ? 'ready' : questionLocked ? 'waiting' : 'pending'}`}>
+                                                    {canSubmit
+                                                        ? '✓ Ready to submit'
+                                                        : questionLocked
+                                                            ? 'Question is being prepared…'
+                                                            : 'Type at least 5 characters to submit'}
                                                 </p>
-                                            ) : questionReady ? (
-                                                <p className="question-protected question-text">{questionReveal.displayed}</p>
-                                            ) : null}
+                                                <p className="assessment-action-chars">{charCount} characters</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleAssessmentSubmit}
+                                                disabled={!canSubmit}
+                                                className="btn-primary px-10 py-3.5 rounded-xl text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed w-full sm:w-auto shrink-0"
+                                            >
+                                                Submit answer
+                                            </button>
                                         </div>
-                                    )}
-                                </div>
-                                <div className="flex-1 flex flex-col min-h-0 px-5 sm:px-6 py-5">
-                                    <label htmlFor="answer" className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Your answer</label>
-                                    <textarea
-                                        id="answer"
-                                        className="input-field w-full flex-1 min-h-[180px] px-4 py-4 rounded-xl text-sm sm:text-base leading-relaxed resize-none"
-                                        placeholder={questionLocked ? 'Question loading…' : 'Type your answer here.'}
-                                        value={answer}
-                                        onChange={(e) => setAnswer(e.target.value)}
-                                        onPaste={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
-                                        onCopy={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
-                                        onCut={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
-                                        onDrop={(e) => { if (!PROCTORING_DISABLED) e.preventDefault(); }}
-                                        autoComplete="off"
-                                        autoCorrect="off"
-                                        autoCapitalize="off"
-                                        spellCheck="false"
-                                        disabled={contentMasked || isLoading || questionLocked}
-                                    />
-                                </div>
-                                <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/60 rounded-b-2xl">
-                                    <div>
-                                        <p className={`text-xs font-medium ${canSubmit ? 'text-emerald-600' : questionLocked ? 'text-violet-500' : 'text-slate-400'}`}>
-                                            {canSubmit
-                                                ? '✓ Ready to submit'
-                                                : questionLocked
-                                                    ? 'Question is being prepared…'
-                                                    : 'Type at least 5 characters'}
-                                        </p>
-                                        <p className="text-xs text-slate-400 mt-0.5 tabular-nums">{charCount} characters</p>
-                                    </div>
-                                        <button
-                                            type="button"
-                                            onClick={handleAssessmentSubmit}
-                                        disabled={!canSubmit}
-                                        className="btn-primary px-10 py-3.5 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed w-full sm:w-auto"
-                                        >
-                                            Submit answer
-                                        </button>
                                     </div>
                                 </div>
                             </div>

@@ -163,5 +163,33 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.closed = true;
 }
 
+{
+  const { bridge, events } = makeBridge();
+  bridge.warmupPhase = null;
+  for (let q = 1; q <= 4; q += 1) {
+    bridge.speakQuestion(q);
+    bridge.onModelTurnComplete();
+    bridge.startUserTurn();
+    bridge.sendAudio(loudPcmB64());
+    bridge.endUserTurn();
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  bridge.speakQuestion(5);
+  bridge.onModelTurnComplete();
+  bridge.endUserTurn();
+  await new Promise((r) => setTimeout(r, 300));
+  if (lastOf(events, 'interview_closing').length === 0) ok('Q5 stays open after stale user_turn_end');
+  else fail('Q5 stays open after stale user_turn_end');
+  if (bridge.answers.length === 4) ok('Q5 stale end did not record empty answer');
+  else fail('Q5 stale end did not record empty answer', `len=${bridge.answers.length}`);
+  bridge.startUserTurn();
+  bridge.sendAudio(loudPcmB64());
+  bridge.endUserTurn();
+  await new Promise((r) => setTimeout(r, 500));
+  if (lastOf(events, 'interview_closing').length === 1) ok('interview closes after real Q5 answer');
+  else fail('interview closes after real Q5 answer');
+  bridge.closed = true;
+}
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILURES`}`);
 process.exit(failures === 0 ? 0 : 1);

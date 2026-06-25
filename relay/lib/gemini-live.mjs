@@ -100,6 +100,10 @@ export class GeminiLiveBridge {
     this.awaitingAnswer = false;
     this.answerPromptOpen = false;
     this.answerPromptFor = 0;
+    this.answerPromptGeneration = 0;
+    this.activeAnswerGeneration = 0;
+    this.pendingAnswerGeneration = null;
+    this.answerWindowOpenedAt = 0;
     this.blockModelOutput = false;
     this.userTurnActive = false;
     this.answerTimer = null;
@@ -206,6 +210,8 @@ export class GeminiLiveBridge {
     this.questionTimeLimits[qNum] = limits;
     this.answerPromptOpen = true;
     this.answerPromptFor = qNum;
+    this.activeAnswerGeneration = this.answerPromptGeneration;
+    this.answerWindowOpenedAt = Date.now();
     // Do NOT block model audio here — turnComplete can arrive before the last
     // audio chunk; blocking here causes clipped/garbled interviewer speech.
     const ev = {
@@ -272,6 +278,28 @@ export class GeminiLiveBridge {
   clearAnswerPromptWindow() {
     this.answerPromptOpen = false;
     this.answerPromptFor = 0;
+    this.answerWindowOpenedAt = 0;
+  }
+
+  answerWindowAgeMs() {
+    return this.answerWindowOpenedAt ? Date.now() - this.answerWindowOpenedAt : 0;
+  }
+
+  hasAnswerContent(pcmChunks = this.answerPcmChunks) {
+    if (this.hasVoiceCapture(pcmChunks)) return true;
+    if (this.voiceOnly) return false;
+    return Boolean(this.getInternalUserTranscript());
+  }
+
+  minAnswerWindowMsFor(qNum) {
+    return qNum === this.maxTurns ? 2500 : 800;
+  }
+
+  shouldRejectPrematureAnswerEnd(qNum) {
+    if (this.warmupPhase || qNum <= 0) return false;
+    if (!this.answerPromptOpen || qNum !== this.answerPromptFor) return true;
+    if (this.hasAnswerContent()) return false;
+    return this.answerWindowAgeMs() < this.minAnswerWindowMsFor(qNum);
   }
 
   refineQuestionTimeLimit(qNum, questionText) {
@@ -395,6 +423,8 @@ export class GeminiLiveBridge {
       fallbackInterviewQuestion(qNum, this.maxTurns);
     this.questions[qNum - 1] = text;
     this.currentQ = qNum;
+    this.answerPromptGeneration += 1;
+    this.pendingAnswerGeneration = null;
 
     // Reset all turn state so nothing from the previous answer leaks in.
     this.clearAnswerPromptWindow();
@@ -428,8 +458,13 @@ export class GeminiLiveBridge {
     this.onEvent({ type: 'question', number: qNum, text });
     this.computeAndEmitTimer(qNum, text);
 
+    const lastQuestionHint =
+      qNum === this.maxTurns
+        ? ' This is the LAST interview question — do NOT thank the candidate, do NOT say goodbye, and do NOT say the interview is complete. '
+        : ' ';
     this.sendSpokenPrompt(
-      `Read this interview question aloud to the candidate, word for word, in a warm professional tone. ` +
+      `Read this interview question aloud to the candidate, word for word, in a warm professional tone.` +
+        `${lastQuestionHint}` +
         `Say ONLY this question and nothing else — no preamble, no numbering, no follow-up:\n"${text}"`,
       { flushFirst: false }
     );
@@ -956,6 +991,29 @@ export class GeminiLiveBridge {
     }
 
     if (this.awaitingAnswer) {
+      const qNum = this.warmupPhase === 'mic_check'
+        ? -1
+        : this.warmupPhase === 'intro'
+          ? 0
+          : (this.answerPromptFor >= 1 ? this.answerPromptFor : this.currentQ);
+      if (qNum >= 1 && this.shouldRejectPrematureAnswerEnd(qNum)) {
+        console.warn(
+          `[relay] ignoring premature turnComplete finalize for Q${qNum} (${this.answerWindowAgeMs()}ms, no speech yet)`
+        );
+        this.awaitingAnswer = false;
+        if (this.pendingFinalize) {
+          clearTimeout(this.pendingFinalize);
+          this.pendingFinalize = null;
+        }
+        if (this.answerTimer) {
+          clearTimeout(this.answerTimer);
+          this.answerTimer = null;
+        }
+        if (this.answerPromptOpen && qNum >= 1) {
+          this.emitAwaitingAnswer(qNum, this.questions[qNum - 1] || '');
+        }
+        return;
+      }
       this.scheduleFinalizeAnswer();
       return;
     }
@@ -1133,6 +1191,39 @@ export class GeminiLiveBridge {
 
   completeAnswerTurn() {
     if (!this.awaitingAnswer) return;
+    if (
+      this.pendingAnswerGeneration != null &&
+      this.pendingAnswerGeneration !== this.activeAnswerGeneration
+    ) {
+      console.warn('[relay] stale answer finalize ignored — question changed');
+      this.awaitingAnswer = false;
+      return;
+    }
+    const activeQ = this.warmupPhase === 'mic_check'
+      ? -1
+      : this.warmupPhase === 'intro'
+        ? 0
+        : (this.answerPromptFor >= 1
+          ? this.answerPromptFor
+          : (this.currentQ >= 1 ? this.currentQ : Math.max(1, this.answers.length + 1)));
+    if (this.shouldRejectPrematureAnswerEnd(activeQ)) {
+      console.warn(
+        `[relay] rejecting premature empty answer for Q${activeQ} (${this.answerWindowAgeMs()}ms)`
+      );
+      this.awaitingAnswer = false;
+      if (this.pendingFinalize) {
+        clearTimeout(this.pendingFinalize);
+        this.pendingFinalize = null;
+      }
+      if (this.answerTimer) {
+        clearTimeout(this.answerTimer);
+        this.answerTimer = null;
+      }
+      if (this.answerPromptOpen && activeQ >= 1) {
+        this.emitAwaitingAnswer(activeQ, this.questions[activeQ - 1] || '');
+      }
+      return;
+    }
     this.stopSilenceMonitor();
 
     // Mic may still be open — close the Gemini activity window.
@@ -1216,7 +1307,6 @@ export class GeminiLiveBridge {
       return;
     }
 
-    const activeQ = this.currentQ || Math.max(1, this.answers.length + 1);
     if (this.tryHandleRepeatRequest(activeQ)) return;
 
     this.userBuf = '';
@@ -1299,6 +1389,12 @@ export class GeminiLiveBridge {
     // Deterministic: move straight to the next question or finish. No follow-up
     // branch, no waiting on Gemini to decide — progression is relay-owned.
     if (aNum >= this.maxTurns) {
+      if (this.answers.length < this.maxTurns) {
+        console.warn(
+          `[relay] blocked early finish — only ${this.answers.length}/${this.maxTurns} answers recorded`
+        );
+        return;
+      }
       this.finishInterview();
       return;
     }
@@ -1638,6 +1734,16 @@ export class GeminiLiveBridge {
 
   finishInterview() {
     if (this.interviewEnded || this.interviewClosing) return;
+    if (this.answers.length < this.maxTurns) {
+      console.warn(
+        `[relay] finishInterview blocked — only ${this.answers.length}/${this.maxTurns} answers`
+      );
+      return;
+    }
+    if (this.answerPromptOpen && this.answerPromptFor === this.maxTurns) {
+      console.warn('[relay] finishInterview blocked — still awaiting final answer');
+      return;
+    }
     this.interviewClosing = true;
     this.closingReprompts = 0;
     this.clearAnswerPromptWindow();
@@ -1745,6 +1851,18 @@ export class GeminiLiveBridge {
     if (!this.userTurnActive) {
       // Client sent end without a successful start — still finalize if answer window open.
       if (this.answerPromptOpen && !this.interviewEnded) {
+        const qNum = this.warmupPhase === 'mic_check'
+          ? -1
+          : this.warmupPhase === 'intro'
+            ? 0
+            : (this.answerPromptFor >= 1 ? this.answerPromptFor : this.currentQ);
+        if (qNum >= 1 && this.shouldRejectPrematureAnswerEnd(qNum)) {
+          console.warn(
+            `[relay] ignoring stale user_turn_end for Q${qNum} (${this.answerWindowAgeMs()}ms, no speech yet)`
+          );
+          return;
+        }
+        this.pendingAnswerGeneration = this.activeAnswerGeneration;
         this.awaitingAnswer = true;
         this.blockModelOutput = true;
         this.userTurnEndedAt = Date.now();
@@ -1759,6 +1877,7 @@ export class GeminiLiveBridge {
     }
     this.stopSilenceMonitor();
     this.userTurnActive = false;
+    this.pendingAnswerGeneration = this.activeAnswerGeneration;
     this.awaitingAnswer = true;
     this.blockModelOutput = true;
     this.userTurnEndedAt = Date.now();

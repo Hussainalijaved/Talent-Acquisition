@@ -3271,7 +3271,12 @@
                             onTurnScored: ({ number, score, feedback, soft_skills }) => {
                                 setScoreForQuestion(number, score, feedback, soft_skills);
                             },
-                            onInterviewComplete: () => {
+                            onInterviewComplete: (msg) => {
+                                if (msg?.type === 'interview_closing') {
+                                    setIsInterviewerSpeaking(true);
+                                    setSavingAnswer(false);
+                                    return;
+                                }
                                 setInterviewComplete(true);
                                 setCanAnswer(false);
                                 setIsAnswering(false);

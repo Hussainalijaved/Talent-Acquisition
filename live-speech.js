@@ -575,7 +575,8 @@
       }
       if (msg.type === 'interview_closing') {
         this.processingAnswer = false;
-        this.interviewEnded = true;
+        // Keep the mic open until interview_complete — premature closing must not
+        // block the candidate from answering the final question.
         this.onInterviewComplete(msg);
       }
       if (msg.type === 'interview_complete') {

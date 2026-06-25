@@ -17,7 +17,7 @@
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
     <script src="live-speech.js?v=20260624h"></script>
-    <script src="proctor-media.js"></script>
+    <script src="proctor-media.js?v=20260626"></script>
     <script src="proctor-activity.js"></script>
     <script>
         tailwind.config = {
@@ -2625,11 +2625,10 @@
                     setWebcamStream(stream);
                     setStep('start');
                 } catch (err) {
-                    setError(
-                        err.code === 'PERMISSION_DENIED' || /permission/i.test(err.message)
-                            ? 'Webcam permission was not granted. Allow camera access in your browser and try again.'
-                            : (err.message || 'Could not access webcam.')
-                    );
+                    const mapped = window.TA_PROCTOR?.formatWebcamError
+                        ? window.TA_PROCTOR.formatWebcamError(err)
+                        : err;
+                    setError(mapped.message || 'Could not access webcam.');
                 } finally {
                     setBusy(false);
                 }
@@ -5634,7 +5633,10 @@
                     clearCameraGrace();
                     window.TA_PROCTOR_ACTIVITY?.logEvent?.('webcam_restored', null, { suspicious: false });
                 } catch (err) {
-                    alert(err.message || 'Could not access webcam. Please allow camera permission and try again.');
+                    const mapped = window.TA_PROCTOR?.formatWebcamError
+                        ? window.TA_PROCTOR.formatWebcamError(err)
+                        : err;
+                    alert(mapped.message || 'Could not access webcam. Please allow camera permission and try again.');
                 } finally {
                     setCameraGraceBusy(false);
                 }

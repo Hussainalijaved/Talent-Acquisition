@@ -72,24 +72,126 @@
     }
   }
 
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** Map browser getUserMedia errors to actionable candidate messages. */
+  function formatWebcamError(err) {
+    const name = String(err?.name || '');
+    const raw = String(err?.message || '').trim();
+
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      const e = new Error('Webcam permission was not granted.');
+      e.code = 'PERMISSION_DENIED';
+      e.name = name;
+      return e;
+    }
+
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      const e = new Error('No camera was found. Connect a webcam (or enable your built-in camera in device settings) and try again.');
+      e.code = 'NOT_FOUND';
+      e.name = name;
+      return e;
+    }
+
+    if (name === 'NotReadableError' || /could not start video source/i.test(raw)) {
+      const e = new Error(
+        'Could not start your camera even though permission is allowed. ' +
+        'Another app may be using it (Zoom, Teams, WhatsApp, OBS), or the camera driver failed. ' +
+        'Close other apps that use the camera, refresh this page, and click Share Webcam again. ' +
+        'If it still fails, restart your browser or try Chrome/Edge on a desktop/laptop.'
+      );
+      e.code = 'NOT_READABLE';
+      e.name = name || 'NotReadableError';
+      return e;
+    }
+
+    if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
+      const e = new Error('Your camera does not support the required settings. Try a different webcam or browser.');
+      e.code = 'OVERCONSTRAINED';
+      e.name = name;
+      return e;
+    }
+
+    if (name === 'AbortError') {
+      const e = new Error('Camera access was interrupted. Click Share Webcam to try again.');
+      e.code = 'ABORTED';
+      e.name = name;
+      return e;
+    }
+
+    const e = new Error(raw || 'Could not access webcam.');
+    e.code = 'UNKNOWN';
+    e.name = name;
+    return e;
+  }
+
+  async function tryGetUserMedia(constraints) {
+    return navigator.mediaDevices.getUserMedia(constraints);
+  }
+
+  /**
+   * Open the webcam with progressive constraint fallbacks.
+   * "Could not start video source" (NotReadableError) is usually environmental —
+   * camera busy in another app, driver glitch, or OS privacy — not missing permission.
+   */
   async function requestWebcam() {
-    try {
-      return await navigator.mediaDevices.getUserMedia({
+    const attempts = [
+      {
         video: {
           facingMode: 'user',
           width: { ideal: 640, max: 1280 },
           height: { ideal: 480, max: 720 },
         },
         audio: false,
-      });
-    } catch (err) {
-      if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
-        const e = new Error('Webcam permission was not granted.');
-        e.code = 'PERMISSION_DENIED';
-        throw e;
+      },
+      { video: { facingMode: 'user' }, audio: false },
+      { video: true, audio: false },
+    ];
+
+    let lastErr = null;
+
+    for (let i = 0; i < attempts.length; i += 1) {
+      try {
+        return await tryGetUserMedia(attempts[i]);
+      } catch (err) {
+        lastErr = err;
+        if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
+          throw formatWebcamError(err);
+        }
+        if (err && err.name === 'NotReadableError') {
+          // Brief pause — sometimes the driver releases after screen-share step.
+          await sleep(350);
+        }
       }
-      throw err;
     }
+
+    // Last resort: pick the first available videoinput explicitly.
+    try {
+      if (navigator.mediaDevices.enumerateDevices) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter((d) => d.kind === 'videoinput');
+        for (const cam of cams) {
+          try {
+            return await tryGetUserMedia({
+              video: cam.deviceId ? { deviceId: { exact: cam.deviceId } } : true,
+              audio: false,
+            });
+          } catch (err) {
+            lastErr = err;
+            if (err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')) {
+              throw formatWebcamError(err);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (err && err.code === 'PERMISSION_DENIED') throw err;
+      lastErr = err || lastErr;
+    }
+
+    throw formatWebcamError(lastErr || new Error('Could not access webcam.'));
   }
 
   function attachStream(videoEl, stream) {
@@ -154,6 +256,7 @@
     multiDisplayBlockMessage,
     requestScreenShare,
     requestWebcam,
+    formatWebcamError,
     attachStream,
     stopStream,
     stopAll,

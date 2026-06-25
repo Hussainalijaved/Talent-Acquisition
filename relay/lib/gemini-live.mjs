@@ -16,7 +16,6 @@ import {
   deriveTimeLimitSeconds,
   fallbackTimeLimit,
 } from './time-limit.mjs';
-import { classifyAnswerIntent } from './answer-intent.mjs';
 
 const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
@@ -184,12 +183,6 @@ export class GeminiLiveBridge {
     this.warmupAudioDelivered = { mic_check: false, intro: false };
     this.closingReprompts = 0;
     this.closingCompleteTimer = null;
-    // Same-question retry tracking (repeat once, nudge/English prompts capped).
-    this.questionRepeatUsed = {};
-    this.noSpeechRetries = {};
-    this.englishPromptRetries = {};
-    this.maxNoSpeechRetries = Number(context.max_no_speech_retries ?? 3);
-    this.maxEnglishPromptRetries = Number(context.max_english_prompt_retries ?? 2);
   }
 
   timerConfig() {
@@ -810,6 +803,7 @@ export class GeminiLiveBridge {
 
   // Stream the candidate's speech-to-text to the client as a live caption.
   appendUserTranscription(text) {
+    if (this.voiceOnly) return;
     const piece = String(text || '');
     if (!piece) return;
     if (this.userTurnActive) {
@@ -820,7 +814,6 @@ export class GeminiLiveBridge {
       this.noteUserActivity();
       if (this.pendingFinalize) this.scheduleFinalizeAnswer(true);
     }
-    if (this.voiceOnly) return;
     this.emitUserPartialTranscript();
   }
 
@@ -973,34 +966,12 @@ export class GeminiLiveBridge {
       clearTimeout(this.pendingFinalize);
       this.pendingFinalize = null;
     }
-    // Voice-only: wait briefly for internal STT so repeat/non-English can be detected.
+    // Voice-only: never wait for Gemini STT — PCM is already buffered.
     if (this.voiceOnly) {
-      const startedAt = Date.now();
-      let lastLen = -1;
-      let stableSince = 0;
-      const tick = () => {
-        const transcript = this.getInternalUserTranscript();
-        const len = transcript.length;
-        const now = Date.now();
-        if (len > 0 && len === lastLen) {
-          if (!stableSince) stableSince = now;
-          if (now - stableSince >= 600) {
-            this.pendingFinalize = null;
-            this.completeAnswerTurn();
-            return;
-          }
-        } else {
-          stableSince = 0;
-          lastLen = len;
-        }
-        if (now - startedAt >= maxWaitMs) {
-          this.pendingFinalize = null;
-          this.completeAnswerTurn();
-          return;
-        }
-        this.pendingFinalize = setTimeout(tick, 150);
-      };
-      this.pendingFinalize = setTimeout(tick, 300);
+      this.pendingFinalize = setTimeout(() => {
+        this.pendingFinalize = null;
+        this.completeAnswerTurn();
+      }, 400);
       return;
     }
     const startedAt = Date.now();
@@ -1057,125 +1028,6 @@ export class GeminiLiveBridge {
     return cleanUserAnswer(combined) || '[No spoken response captured]';
   }
 
-  getInternalUserTranscript() {
-    return `${this.userBuf}${this.lateUserBuf}`.trim();
-  }
-
-  resetAnswerTurnState() {
-    if (this.answerTimer) {
-      clearTimeout(this.answerTimer);
-      this.answerTimer = null;
-    }
-    if (this.pendingFinalize) {
-      clearTimeout(this.pendingFinalize);
-      this.pendingFinalize = null;
-    }
-    this.answerPcmChunks = [];
-    this.userBuf = '';
-    this.lateUserBuf = '';
-    this.voiceDetectedThisTurn = false;
-    this.awaitingAnswer = false;
-    this.blockModelOutput = true;
-    this.stopSilenceMonitor();
-    this.clearAnswerPromptWindow();
-    if (this.userTurnActive) {
-      this.userTurnActive = false;
-      if (this.geminiWs?.readyState === WebSocket.OPEN) {
-        this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
-      }
-    }
-  }
-
-  /** Stay on the current question — do not save an answer or advance. */
-  stayOnSameQuestion(qNum, reason) {
-    this.resetAnswerTurnState();
-    console.log(`[relay] Q${qNum} same-phase retry — ${reason}`);
-    this.onEvent({ type: 'same_question_retry', number: qNum, reason });
-
-    if (reason === 'repeat') {
-      this.repeatCurrentQuestion(qNum);
-      return;
-    }
-    if (reason === 'non_english') {
-      this.englishPromptRetries[qNum] = (this.englishPromptRetries[qNum] || 0) + 1;
-      this.speakSamePhasePrompt(
-        qNum,
-        'Please continue in English. Take your time and answer the question in English only.'
-      );
-      return;
-    }
-    this.noSpeechRetries[qNum] = (this.noSpeechRetries[qNum] || 0) + 1;
-    const nudgeText =
-      this.context.silence_nudge_text ||
-      "Take your time — whenever you're ready, please go ahead and share your answer.";
-    this.speakSamePhasePrompt(qNum, nudgeText);
-  }
-
-  repeatCurrentQuestion(qNum) {
-    if (this.questionRepeatUsed[qNum]) {
-      this.speakSamePhasePrompt(
-        qNum,
-        'Please go ahead with your best answer in English when you are ready.'
-      );
-      return;
-    }
-    this.questionRepeatUsed[qNum] = true;
-    this.speakQuestion(qNum);
-  }
-
-  /** Speak a short coaching line on the same question, then re-open the answer window. */
-  speakSamePhasePrompt(qNum, message) {
-    if (this.interviewEnded || this.interviewClosing || this.closed) return;
-    this.clearAnswerPromptWindow();
-    if (this.questionAudioSafety) {
-      clearTimeout(this.questionAudioSafety);
-      this.questionAudioSafety = null;
-    }
-    if (this.questionSpeakWatchdog) {
-      clearTimeout(this.questionSpeakWatchdog);
-      this.questionSpeakWatchdog = null;
-    }
-    this.modelBuf = '';
-    this.modelAudioThisTurn = false;
-    this.blockModelOutput = false;
-    this.allowModelAudio = true;
-    this.pendingAudioChunks = [];
-    this.ttsOnlyTurn = true;
-    this.ttsForQ = qNum;
-    this.flushClientPlayback();
-    this.sendSpokenPrompt(
-      `Say ONLY this one warm professional English sentence to the candidate, then stop: "${String(message || '').trim()}"`,
-      { flushFirst: false }
-    );
-    if (this.questionAudioSafety) clearTimeout(this.questionAudioSafety);
-    this.questionAudioSafety = setTimeout(() => {
-      this.questionAudioSafety = null;
-      if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
-      this.ttsOnlyTurn = false;
-      if (!this.answerPromptOpen) {
-        console.warn(`[relay] Q${qNum} coaching TTS safety — opening answer window`);
-        this.emitAwaitingAnswer(qNum, this.questions[qNum - 1] || '');
-      }
-    }, 12000);
-  }
-
-  shouldStayOnSameQuestion(qNum, pcmSnapshot) {
-    if (qNum < 1 || qNum > this.maxTurns || this.warmupPhase) return null;
-    const hasVoice = this.hasVoiceCapture(pcmSnapshot);
-    const intent = classifyAnswerIntent(this.getInternalUserTranscript(), { hasVoice });
-    if (intent === 'repeat_request') {
-      if (!this.questionRepeatUsed[qNum]) return 'repeat';
-      return 'repeat_prompt_only';
-    }
-    if (intent === 'non_english' && (this.englishPromptRetries[qNum] || 0) < this.maxEnglishPromptRetries) {
-      return 'non_english';
-    }
-    if (intent === 'no_speech' && (this.noSpeechRetries[qNum] || 0) < this.maxNoSpeechRetries) {
-      return 'no_speech';
-    }
-    return null;
-  }
-
   completeAnswerTurn() {
     if (!this.awaitingAnswer) return;
     this.stopSilenceMonitor();
@@ -1209,29 +1061,6 @@ export class GeminiLiveBridge {
     }
 
     const pcmSnapshot = this.answerPcmChunks.slice();
-    const activeQ = this.currentQ || Math.max(1, this.answers.length + 1);
-    const samePhase = this.shouldStayOnSameQuestion(activeQ, pcmSnapshot);
-    if (samePhase === 'repeat') {
-      this.stayOnSameQuestion(activeQ, 'repeat');
-      return;
-    }
-    if (samePhase === 'repeat_prompt_only') {
-      this.resetAnswerTurnState();
-      this.speakSamePhasePrompt(
-        activeQ,
-        'Please go ahead with your best answer in English when you are ready.'
-      );
-      return;
-    }
-    if (samePhase === 'non_english') {
-      this.stayOnSameQuestion(activeQ, 'non_english');
-      return;
-    }
-    if (samePhase === 'no_speech') {
-      this.stayOnSameQuestion(activeQ, 'no_speech');
-      return;
-    }
-
     this.userBuf = '';
     this.lateUserBuf = '';
     let userText = this.resolveUserAnswerText(pcmSnapshot);
@@ -1475,7 +1304,8 @@ export class GeminiLiveBridge {
       return;
     }
 
-    // Sustained silence after a nudge — stay on the same question (do not advance).
+    // Already nudged. Auto-submit only if they stayed silent through the nudge.
+    // During the intro warm-up, we never auto-submit — candidate must press Submit.
     if (
       this.warmupPhase !== 'intro' &&
       this.silenceNudgedAt &&
@@ -1483,18 +1313,6 @@ export class GeminiLiveBridge {
       this.lastUserActivityAt <= this.silenceNudgedAt
     ) {
       this.stopSilenceMonitor();
-      const qNum = this.currentQ || Math.max(1, this.answers.length + 1);
-      if ((this.noSpeechRetries[qNum] || 0) < this.maxNoSpeechRetries) {
-        this.onEvent({ type: 'silence_nudge', stage: 'same_phase_retry' });
-        if (this.userTurnActive) {
-          this.userTurnActive = false;
-          if (this.geminiWs?.readyState === WebSocket.OPEN) {
-            this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
-          }
-        }
-        this.stayOnSameQuestion(qNum, 'no_speech');
-        return;
-      }
       this.onEvent({ type: 'silence_nudge', stage: 'auto_submit' });
       this.endUserTurn();
     }

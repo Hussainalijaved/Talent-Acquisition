@@ -1369,7 +1369,7 @@ export class GeminiLiveBridge {
   }
 
   emitQuestionFromBuffer() {
-    const { modelText, spokeThisTurn } = this.resolveModelTextAfterTurn();
+    let { modelText, spokeThisTurn } = this.resolveModelTextAfterTurn();
     if (!modelText) {
       if (this.warmupPhase === 'mic_check' || this.warmupPhase === 'intro') {
         this.retryWarmupSpeak(this.warmupPhase);

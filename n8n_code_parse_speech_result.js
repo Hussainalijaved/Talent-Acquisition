@@ -234,6 +234,10 @@ const body = {
   updated_at: iso,
   assessment_stage: isFinal ? 'completed' : 'speech',
 };
+const tabSwitches = Number(current.tab_switches);
+if (Number.isFinite(tabSwitches) && tabSwitches >= 0) {
+  body.tab_switches = tabSwitches;
+}
 
 if (!isFinal) body.current_phase = ph + 1;
 else body.current_phase = ph;

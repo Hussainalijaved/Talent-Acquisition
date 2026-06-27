@@ -1065,7 +1065,7 @@
         async function fetchAssessmentSessions() {
             // Note: assessment_sessions has updated_at but no created_at in production schema.
             const fullSelect =
-                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, proctor_report, updated_at';
+                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, proctor_report, tab_switches, updated_at';
             const baseSelect =
                 'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, updated_at';
             const minimalSelect =
@@ -2013,7 +2013,6 @@
             { key: 'screenshot', label: 'Took a screenshot', categories: ['screenshot', 'snipping_tool', 'screenshot_tool'] },
             { key: 'communication', label: 'Used communication applications', categories: ['communication_app', 'window_blur'] },
             { key: 'ai_tool', label: 'Used AI tools', categories: ['ai_tool'] },
-            { key: 'tab', label: 'Left assessment tab', categories: ['tab_switch'] },
             { key: 'devtools', label: 'Developer tools / shortcuts', categories: ['devtools', 'blocked_shortcut', 'print_attempt'] },
             { key: 'screen', label: 'Screen sharing issues', categories: ['screen_blank', 'screen_share_stopped', 'fullscreen_exit'] },
             { key: 'webcam', label: 'Webcam issues', categories: ['webcam_lost', 'camera_not_restored'] },
@@ -2034,6 +2033,14 @@
             const m = Math.floor(delta / 60);
             const s = delta % 60;
             return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        }
+
+        function countProctorTabShifts(report, sess) {
+            const fromDb = Number(sess && sess.tab_switches);
+            const entries = ((report && report.entries) || []).filter((e) => e && e.category === 'tab_switch');
+            if (entries.length > 0) return entries.length;
+            if (Number.isFinite(fromDb) && fromDb >= 0) return fromDb;
+            return 0;
         }
 
         function computeProctorViolationSummary(report) {
@@ -2211,9 +2218,15 @@
             const startMs = proctorSessionStartMs(report, sess);
             const violationSummary = computeProctorViolationSummary(report);
 
+            const tabShiftCount = countProctorTabShifts(report, sess);
+
             let html = '<div class="section proctor-report-section"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>' +
                 'Proctoring activity</div>';
+
+            html += '<div class="report-meta" style="margin-bottom:12px">' +
+                '<span class="meta-chip">Tab shifts: ' + esc(String(tabShiftCount)) + '</span>' +
+                '</div>';
 
             if (violationSummary.total > 0) {
                 html += '<div class="proctor-alert-banner">' +

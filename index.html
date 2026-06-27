@@ -750,8 +750,10 @@
         .assessment-body {
             flex: 1;
             min-height: 0;
-            overflow-y: auto;
+            overflow: hidden;
             padding: 1rem;
+            display: flex;
+            flex-direction: column;
         }
 
         @media (min-width: 640px) {
@@ -766,6 +768,10 @@
             max-width: 52rem;
             margin: 0 auto;
             width: 100%;
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
         }
 
         @media (min-width: 1280px) {
@@ -775,7 +781,8 @@
         .assessment-work-card {
             display: flex;
             flex-direction: column;
-            min-height: min(100%, 32rem);
+            flex: 1;
+            min-height: 0;
             border-radius: 1.25rem;
             border: 1px solid rgba(226, 232, 240, 0.95);
             background: #ffffff;
@@ -838,7 +845,7 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            min-height: 12rem;
+            min-height: 0;
             padding: 1rem 1.25rem 0;
         }
 
@@ -848,10 +855,17 @@
 
         .assessment-answer-panel textarea.input-field {
             flex: 1;
-            min-height: 11rem;
+            min-height: 0;
+            height: 100%;
             border-radius: 0.875rem;
             border-color: #e2e8f0;
             background: #fafbfc;
+        }
+
+        @media (max-height: 640px) {
+            .assessment-answer-panel textarea.input-field {
+                min-height: 6rem;
+            }
         }
 
         .assessment-answer-panel textarea.input-field:focus {
@@ -1832,7 +1846,7 @@
             currentStep,
             totalSteps,
             candidateEmail,
-            integrityViolationCount,
+            tabSwitchCount,
             pct,
             sessionLabel = 'Questions in this session',
             instructions = ASSESSMENT_INSTRUCTIONS,
@@ -1937,11 +1951,12 @@
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Integrity monitor</p>
                                 <p className="text-sm text-slate-700 tabular-nums">
-                                    <span className={integrityViolationCount > 0 ? 'text-amber-600 font-bold' : 'font-bold text-slate-800'}>
-                                        {integrityViolationCount}
+                                    <span className={tabSwitchCount > 0 ? 'text-amber-600 font-bold' : 'font-bold text-slate-800'}>
+                                        {tabSwitchCount}
                                     </span>
-                                    <span className="text-slate-400 font-medium"> / {MAX_INTEGRITY_VIOLATIONS - 1} warnings</span>
+                                    <span className="text-slate-500 font-medium"> tab shift{tabSwitchCount === 1 ? '' : 's'}</span>
                                 </p>
+                                <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">Monitoring only — no limit on tab changes</p>
                             </div>
                         </div>
                     </div>
@@ -3900,7 +3915,7 @@
             handleAssessmentSubmit,
             isLoading,
             candidateEmail,
-            integrityViolationCount,
+            tabSwitchCount,
             contentMasked,
         }) => {
             const pct = totalSteps > 0 ? Math.min(100, (currentStep / totalSteps) * 100) : 0;
@@ -3911,14 +3926,14 @@
             const questionReady = questionReveal.isDone;
             const canSubmit = charCount >= 5 && !contentMasked && !isLoading && !questionLocked;
             return (
-                <Shell subtitle={`Phase 1 · Written assessment · Question ${currentStep} of ${totalSteps}`} fullWidth>
-                    <div className="assessment-workspace fade-in assessment-lock">
+                <Shell subtitle={`Phase 1 · Written assessment · Question ${currentStep} of ${totalSteps}`} fullWidth immersive>
+                    <div className="assessment-workspace fade-in assessment-lock h-full">
                         <AssessmentSidebar
                             phases={phases}
                             currentStep={currentStep}
                             totalSteps={totalSteps}
                             candidateEmail={candidateEmail}
-                            integrityViolationCount={integrityViolationCount}
+                            tabSwitchCount={tabSwitchCount}
                             pct={pct}
                             sessionLabel="Phase 1 — written technical questions"
                         />
@@ -5245,6 +5260,7 @@
             const [overallScore, setOverallScore] = useState(null);
             const [feedback, setFeedback] = useState('');
             const [integrityViolationCount, setIntegrityViolationCount] = useState(0);
+            const [tabSwitchCount, setTabSwitchCount] = useState(0);
             const [assessmentHistory, setAssessmentHistory] = useState([]);
             const [sessionConfig, setSessionConfig] = useState({});
             const [urlEntryError, setUrlEntryError] = useState('');
@@ -5256,6 +5272,7 @@
             const candidateEmailRef = useRef(candidateEmail);
             const currentStepRef = useRef(currentStep);
             const integrityViolationCountRef = useRef(0);
+            const tabSwitchCountRef = useRef(0);
             const terminatingRef = useRef(false);
             const lastViolationAtRef = useRef(0);
             const lastTabLogAtRef = useRef(0);
@@ -5338,6 +5355,7 @@
             useEffect(() => { candidateEmailRef.current = candidateEmail; }, [candidateEmail]);
             useEffect(() => { currentStepRef.current = currentStep; }, [currentStep]);
             useEffect(() => { integrityViolationCountRef.current = integrityViolationCount; }, [integrityViolationCount]);
+            useEffect(() => { tabSwitchCountRef.current = tabSwitchCount; }, [tabSwitchCount]);
 
             const lastProctorQuestionRef = useRef(0);
             useEffect(() => {
@@ -5500,7 +5518,7 @@
                             answer: `[SYSTEM TERMINATION: Integrity violation #${currentCount} (${reason}). Cheating detected.]`,
                             phase: currentStepRef.current,
                             email: candidateEmailRef.current,
-                            tabSwitches: currentCount,
+                            tabSwitches: tabSwitchCountRef.current,
                             integrityViolations: currentCount,
                             violationReason: reason,
                         }),
@@ -5548,6 +5566,11 @@
                 const now = Date.now();
                 if (now - lastTabLogAtRef.current < VIOLATION_DEBOUNCE_MS) return;
                 lastTabLogAtRef.current = now;
+                if (reason === 'tab_switch') {
+                    const next = tabSwitchCountRef.current + 1;
+                    tabSwitchCountRef.current = next;
+                    setTabSwitchCount(next);
+                }
                 window.TA_PROCTOR_ACTIVITY?.logViolation?.(reason);
             }, []);
 
@@ -6067,6 +6090,8 @@
                     setCurrentStep(phaseNum);
                     setIntegrityViolationCount(0);
                     integrityViolationCountRef.current = 0;
+                    setTabSwitchCount(0);
+                    tabSwitchCountRef.current = 0;
                     lastProctorQuestionRef.current = 0;
                     terminatingRef.current = false;
                     lastViolationAtRef.current = 0;
@@ -6327,8 +6352,8 @@
                             answer: finalAnswer,
                             phase: currentStep,
                             email: candidateEmail,
-                        tabSwitches: integrityViolationCount,
-                        integrityViolations: integrityViolationCount,
+                        tabSwitches: tabSwitchCountRef.current,
+                        integrityViolations: integrityViolationCountRef.current,
                     };
 
                     let data = await postAssessmentAnswer(payload);
@@ -6590,8 +6615,8 @@
                         assessment_mode: 'speech',
                         audio_url: audioUrl,
                         speech_metrics: metrics,
-                        tabSwitches: integrityViolationCount,
-                        integrityViolations: integrityViolationCount,
+                        tabSwitches: tabSwitchCountRef.current,
+                        integrityViolations: integrityViolationCountRef.current,
                     };
                     let data = await postAssessmentAnswer(payload);
                     const nextPhaseNum = currentStep + 1;
@@ -6788,7 +6813,7 @@
                             <LiveSpeechView
                                 context={liveSpeechContext}
                                 relayFallback={LIVE_SPEECH_RELAY_FALLBACK}
-                                tabSwitches={integrityViolationCount}
+                                tabSwitches={tabSwitchCount}
                                 candidateEmail={candidateEmail}
                                 integrityViolationCount={integrityViolationCount}
                                 isLoading={isLoading}
@@ -6829,7 +6854,7 @@
                                 handleAssessmentSubmit={handleAssessmentSubmit}
                                 isLoading={isLoading}
                                 candidateEmail={candidateEmail}
-                                integrityViolationCount={integrityViolationCount}
+                                tabSwitchCount={tabSwitchCount}
                                 contentMasked={devToolsDetected || fullscreenRequired}
                             />
                         );

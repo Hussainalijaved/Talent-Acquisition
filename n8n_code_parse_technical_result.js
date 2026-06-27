@@ -935,6 +935,10 @@ if (isActualFinalPhase && !integrityTerminated) {
 }
 
 const body = { interview_history: history, updated_at: iso };
+const tabSwitches = Number(current.tab_switches);
+if (Number.isFinite(tabSwitches) && tabSwitches >= 0) {
+  body.tab_switches = tabSwitches;
+}
 if (startSpeech) {
   body.assessment_stage = 'speech';
   body.technical_score = technicalScore;

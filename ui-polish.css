@@ -742,11 +742,32 @@ body:has(.login-card) {
 }
 
 .score-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: auto !important;
+    width: auto !important;
+    min-width: 1.85rem !important;
+    min-height: 1.85rem !important;
+    padding: 0.3rem 0.45rem !important;
     font-weight: 900 !important;
     font-size: 0.8125rem !important;
-    padding: 0.35rem 0.65rem !important;
-    border-radius: 9999px !important;
+    line-height: 1 !important;
+    aspect-ratio: 1 !important;
+    border-radius: 50% !important;
     letter-spacing: -0.02em !important;
+    box-sizing: border-box !important;
+    vertical-align: middle;
+}
+
+.score-badge.lo {
+    aspect-ratio: unset !important;
+    min-width: unset !important;
+    min-height: unset !important;
+    border-radius: 9999px !important;
+    padding: 0.35rem 0.65rem !important;
+    font-size: 0.6875rem !important;
+    font-weight: 700 !important;
 }
 
 .assessment-detail-hero {
@@ -782,7 +803,7 @@ body:has(.login-card) {
     font-size: 2.25rem !important;
 }
 
-.overall-score-grid .assess-stat {
+.assess-summary .assess-stat {
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
@@ -790,20 +811,15 @@ body:has(.login-card) {
     gap: 0.35rem !important;
 }
 
-.overall-score-grid .score-badge {
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+.assess-summary .assess-stat-lbl {
+    margin-top: 0 !important;
+}
+
+.assess-summary .assess-stat .score-badge:not(.lo) {
     min-width: 3.75rem !important;
     min-height: 3.75rem !important;
-    width: auto !important;
-    height: auto !important;
     padding: 0.55rem 0.7rem !important;
     font-size: 2rem !important;
-    line-height: 1 !important;
-    aspect-ratio: 1 !important;
-    border-radius: 50% !important;
-    box-sizing: border-box !important;
     letter-spacing: -0.03em !important;
 }
 

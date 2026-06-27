@@ -41,6 +41,7 @@
     screen_share_stopped: 'Screen sharing was stopped.',
     screen_blank: 'Shared screen appears blank, minimized, or showing desktop only.',
     screen_content: 'Periodic shared-screen activity check.',
+    webcam_content: 'Webcam monitoring snapshot captured.',
     session_start: 'Proctored assessment monitoring started.',
     activity: 'Proctoring activity noted.',
   };
@@ -116,7 +117,7 @@
     async captureViolationSnapshots() {
       const streams = this.getStreams?.();
       if (!streams) return null;
-      const out = { screen: null, webcam: null, thumb: null };
+      const out = { screen: null, webcam: null, thumb: null, webcamThumb: null };
       const screens = streams.screens || [];
       if (screens[0]) {
         const frame = await this.captureFrameFromStream(screens[0]);
@@ -127,9 +128,20 @@
       }
       if (streams.webcam) {
         const frame = await this.captureFrameFromStream(streams.webcam);
-        if (frame?.base64) out.webcam = frame.base64;
+        if (frame?.base64) {
+          out.webcam = frame.base64;
+          out.webcamThumb = frame.thumbBase64 || null;
+        }
       }
       return out;
+    }
+
+    async captureWebcamSnapshot() {
+      const streams = this.getStreams?.();
+      if (!streams?.webcam) return null;
+      const frame = await this.captureFrameFromStream(streams.webcam);
+      if (!frame?.base64 || frame.base64.length < 500) return null;
+      return frame;
     }
 
     async logViolationAsync(reason, extra) {
@@ -146,6 +158,7 @@
         frame_base64: snaps?.screen || undefined,
         webcam_base64: snaps?.webcam || undefined,
         thumb_base64: snaps?.thumb || undefined,
+        webcam_thumb_base64: snaps?.webcamThumb || undefined,
       });
       if (reason === 'snipping_tool' || reason === 'screenshot') {
         void this.describeNow({ suspicious: true });
@@ -237,7 +250,8 @@
       if (!this.running || this.pendingDescribe) return;
       const streams = this.getStreams?.();
       const screens = streams?.screens || [];
-      if (!screens.length) return;
+      const webcamFrame = await this.captureWebcamSnapshot();
+      if (!screens.length && !webcamFrame) return;
 
       this.pendingDescribe = true;
       try {
@@ -257,6 +271,8 @@
                 suspicious: true,
                 frame_base64: frame.base64,
                 thumb_base64: frame.thumbBase64 || undefined,
+                webcam_base64: webcamFrame?.base64 || undefined,
+                webcam_thumb_base64: webcamFrame?.thumbBase64 || undefined,
                 meta: { screen_index: i },
               });
             }
@@ -269,9 +285,24 @@
             screen_index: i,
             frame_base64: frame.base64,
             thumb_base64: frame.thumbBase64 || undefined,
+            webcam_base64: webcamFrame?.base64 || undefined,
+            webcam_thumb_base64: webcamFrame?.thumbBase64 || undefined,
             suspicious: !!opts?.suspicious,
           });
           this.lastDescribeAt = Date.now();
+        }
+
+        // Periodic / flagged checks: store webcam even when screen describe is skipped.
+        if (webcamFrame && !screens.length) {
+          await this.post({
+            action: 'event',
+            phase: typeof opts?.phase === 'number' ? opts.phase : this.getPhase?.(),
+            category: 'webcam_content',
+            summary: 'Webcam monitoring snapshot captured.',
+            suspicious: !!opts?.suspicious,
+            webcam_base64: webcamFrame.base64,
+            webcam_thumb_base64: webcamFrame.thumbBase64 || undefined,
+          });
         }
       } finally {
         this.pendingDescribe = false;
@@ -291,6 +322,7 @@
         const now = Date.now();
         if (now - this.lastBlankLogAt < 30000) return;
         this.lastBlankLogAt = now;
+        const webcamFrame = await this.captureWebcamSnapshot();
         void this.post({
           action: 'event',
           phase: this.getPhase?.(),
@@ -299,6 +331,8 @@
           suspicious: true,
           frame_base64: frame.base64,
           thumb_base64: frame.thumbBase64 || undefined,
+          webcam_base64: webcamFrame?.base64 || undefined,
+          webcam_thumb_base64: webcamFrame?.thumbBase64 || undefined,
           meta: { screen_index: i },
         });
       });

@@ -33,6 +33,22 @@ function stripDataUrl(b64) {
     return (m ? m[1] : raw).slice(0, MAX_FRAME_BYTES);
 }
 
+async function attachWebcamSnapshot(meta, sbUrl, sbKey, sessionId, webcam, webcamThumb, label = 'webcam') {
+    const out = { ...meta };
+    if (!webcam || webcam.length <= 500) return out;
+    try {
+        const uploaded = await uploadProctorSnapshot(sbUrl, sbKey, sessionId, webcam, label);
+        out.webcam_snapshot_path = uploaded.path;
+        out.webcam_snapshot_bucket = uploaded.bucket;
+        const thumb = stripSnapshotBase64(webcamThumb);
+        if (thumb && thumb.length > 200) out.webcam_snapshot_thumb = thumb.slice(0, 80000);
+    } catch (err) {
+        console.warn('[proctor-log] webcam snapshot upload failed:', err.message);
+        out.webcam_snapshot_error = 'upload_failed';
+    }
+    return out;
+}
+
 async function analyzeScreenWithGemini(apiKey, jpegBase64) {
     const url =
         `https://generativelanguage.googleapis.com/v1beta/models/${VISION_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -236,6 +252,7 @@ export default async function handler(req, res) {
             const frame = stripSnapshotBase64(body.frame_base64 || body.frameBase64);
             const webcam = stripSnapshotBase64(body.webcam_base64 || body.webcamBase64);
             const thumb = stripSnapshotBase64(body.thumb_base64 || body.thumbBase64);
+            const webcamThumb = stripSnapshotBase64(body.webcam_thumb_base64 || body.webcamThumbBase64);
             const screenIdx = meta.screen_index != null ? Number(meta.screen_index) : null;
             const apiKey = process.env.GEMINI_API_KEY;
 
@@ -292,14 +309,9 @@ export default async function handler(req, res) {
                     meta.snapshot_error = 'upload_failed';
                 }
             }
-            if (suspicious && webcam && webcam.length > 500) {
-                try {
-                    const uploaded = await uploadProctorSnapshot(sbUrl, sbKey, sessionId, webcam, `${category}-webcam`);
-                    meta.webcam_snapshot_path = uploaded.path;
-                    meta.webcam_snapshot_bucket = uploaded.bucket;
-                } catch (err) {
-                    console.warn('[proctor-log] webcam snapshot upload failed:', err.message);
-                }
+            const shouldStoreWebcam = (suspicious || category === 'webcam_content') && webcam && webcam.length > 500;
+            if (shouldStoreWebcam) {
+                meta = await attachWebcamSnapshot(meta, sbUrl, sbKey, sessionId, webcam, webcamThumb, `${category}-webcam`);
             }
 
             const result = await appendProctorEntry(sbUrl, sbKey, sessionId, {
@@ -362,6 +374,9 @@ export default async function handler(req, res) {
                 } catch (err) {
                     console.warn('[proctor-log] describe snapshot upload failed:', err.message);
                 }
+                const webcam = stripSnapshotBase64(body.webcam_base64 || body.webcamBase64);
+                const webcamThumb = stripSnapshotBase64(body.webcam_thumb_base64 || body.webcamThumbBase64);
+                meta = await attachWebcamSnapshot(meta, sbUrl, sbKey, sessionId, webcam, webcamThumb, 'screen_content-webcam');
             }
             const result = await appendProctorEntry(sbUrl, sbKey, sessionId, {
                 phase: body.phase,

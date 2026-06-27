@@ -901,13 +901,29 @@
             return matches[0];
         }
 
+        function resolveTechMaxQuestions(sess) {
+            const cfg = parseJson(sess?.config);
+            const fromCfg = Number(cfg.max_questions);
+            if (Number.isFinite(fromCfg) && fromCfg > 0) return fromCfg;
+            const speechMax = Number(cfg.speech_phases ?? 5);
+            const mp = Number(sess?.max_phases);
+            if (Number.isFinite(mp) && mp > 0) {
+                if (speechMax > 0 && mp > speechMax && mp <= speechMax + 20) {
+                    const asWritten = mp - speechMax;
+                    if (asWritten >= 1 && asWritten <= 20) return asWritten;
+                }
+                return mp;
+            }
+            return 5;
+        }
+
         function inferTechMax(hist, cfg, sess) {
             const speech = (hist || []).filter((h) => {
                 const mode = String(h.mode || '').toLowerCase();
                 return mode === 'speech' || mode === 'live_speech';
             });
             if (speech.length) return Math.min(...speech.map((h) => Number(h.phase))) - 1;
-            return Number(sess?.max_phases || cfg?.max_questions || 5);
+            return resolveTechMaxQuestions(sess);
         }
 
         function inferTotalPhases(sess, hist, cfg) {
@@ -2113,6 +2129,7 @@
             if (!entry) return false;
             if (isProctorProgressEvent(entry)) return true;
             if (entry.category === 'tab_switch') return true;
+            if (entry.category === 'webcam_content') return true;
             if (entry.suspicious) return true;
             return ['webcam_lost', 'webcam_restored', 'camera_not_restored', 'screen_share_stopped'].indexOf(entry.category) >= 0;
         }
@@ -2150,6 +2167,7 @@
                 screen_share_stopped: 'Screen share stopped',
                 screen_blank: 'Blank / minimized screen',
                 screen_content: 'Screen activity',
+                webcam_content: 'Webcam snapshot',
                 session_start: 'Monitoring started',
                 activity: 'Activity',
             };
@@ -2168,7 +2186,15 @@
                     'src="data:image/jpeg;base64,' + esc(meta.snapshot_thumb) + '" loading="lazy" />'
                 );
             }
-            if (meta.webcam_snapshot_path) {
+            if (meta.webcam_snapshot_thumb) {
+                parts.push(
+                    '<img class="proctor-snapshot-thumb proctor-webcam-thumb" alt="Webcam snapshot" ' +
+                    (meta.webcam_snapshot_path
+                        ? 'data-proctor-path="' + esc(meta.webcam_snapshot_path) + '" data-proctor-bucket="' + esc(meta.webcam_snapshot_bucket || 'proctor-snapshots') + '" '
+                        : '') +
+                    'src="data:image/jpeg;base64,' + esc(meta.webcam_snapshot_thumb) + '" loading="lazy" />'
+                );
+            } else if (meta.webcam_snapshot_path) {
                 parts.push(
                     '<button type="button" class="proctor-snapshot-link" data-proctor-path="' +
                     esc(meta.webcam_snapshot_path) + '" data-proctor-bucket="' +
@@ -2393,11 +2419,11 @@
             hist.forEach((h) => {
                 if (!h || isSpeechPhaseRow(h, techMax)) return;
                 phasesSeen.add(Number(h.phase));
-                html += renderPhaseCard(h, totalPh, techMax);
+                html += renderPhaseCard(h, techMax, techMax);
             });
             for (let p = 1; p <= techMax; p++) {
                 if (!phasesSeen.has(p)) {
-                    html += renderPhaseCard({ phase: p }, totalPh, techMax);
+                    html += renderPhaseCard({ phase: p }, techMax, techMax);
                 }
             }
             if (!hist.length) {

@@ -517,6 +517,12 @@ details[open] .proctor-timeline-chevron {
     cursor: zoom-in;
     background: #0f172a;
 }
+.proctor-webcam-thumb {
+    border-color: #c7d2fe;
+    max-width: min(100%, 180px);
+    max-height: 180px;
+    object-fit: cover;
+}
 .proctor-snapshot-link {
     font-size: 0.75rem;
     font-weight: 600;

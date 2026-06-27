@@ -188,8 +188,17 @@ export class GeminiLiveBridge {
     this.warmupAudioDelivered = { mic_check: false, intro: false };
     this.closingReprompts = 0;
     this.closingCompleteTimer = null;
-    // Speech Q1–Q5 only: allow one full question repeat per question number.
-    this.questionRepeatUsed = {};
+    // Speech Q1–Q5 only: realistic "repeat the question" + "continue in English"
+    // handling. Both keep the candidate on the SAME question (no phase advance).
+    this.questionRepeatUsed = {};        // legacy flag (kept for back-compat)
+    this.questionRepeatCount = {};       // qNum → times the question was re-spoken
+    this.nonEnglishNudgeCount = {};      // qNum → times we asked to continue in English
+    // How many times a candidate may ask to repeat a single question before the
+    // relay simply waits for their answer (avoids an endless repeat loop).
+    this.maxQuestionRepeats = Math.max(1, Number(context.max_question_repeats ?? 3));
+    // How many times the relay re-asks the SAME question in English before it
+    // accepts whatever audio it has and moves on (scoring still runs at the end).
+    this.maxNonEnglishNudges = Math.max(1, Number(context.max_non_english_nudges ?? 2));
   }
 
   timerConfig() {
@@ -412,7 +421,7 @@ export class GeminiLiveBridge {
   // Commit the question text, send it to the client, have Gemini SPEAK it, then
   // open the answer window when the spoken audio completes (or a safety timeout).
   // Progression never waits on Gemini to "decide" to ask the next question.
-  speakQuestion(qNum) {
+  speakQuestion(qNum, opts = {}) {
     if (this.interviewEnded || this.interviewClosing || this.closed) return;
     if (qNum > this.maxTurns) {
       this.finishInterview();
@@ -462,10 +471,15 @@ export class GeminiLiveBridge {
       qNum === this.maxTurns
         ? ' This is the LAST interview question — do NOT thank the candidate, do NOT say goodbye, and do NOT say the interview is complete. '
         : ' ';
+    // When the candidate answered in another language, first ask them — warmly and
+    // in ONE short sentence — to continue in English, then re-read the SAME question.
+    const englishNudge = opts.prefaceEnglishNudge
+      ? 'In ONE short, warm sentence, ask the candidate to please continue in English. Then '
+      : '';
     this.sendSpokenPrompt(
-      `Read this interview question aloud to the candidate, word for word, in a warm professional tone.` +
+      `${englishNudge}Read this interview question aloud to the candidate, word for word, in a warm professional tone.` +
         `${lastQuestionHint}` +
-        `Say ONLY this question and nothing else — no preamble, no numbering, no follow-up:\n"${text}"`,
+        `Say ONLY this${englishNudge ? ' brief request and the' : ''} question and nothing else — no extra preamble, no numbering, no follow-up:\n"${text}"`,
       { flushFirst: false }
     );
 
@@ -798,7 +812,11 @@ export class GeminiLiveBridge {
       return;
     }
 
-    if (!this.voiceOnly && (msg.inputTranscription?.text || msg.serverContent?.inputTranscription?.text)) {
+    // Capture the candidate's STT internally even in voice-only mode. It is NEVER
+    // shown to the candidate (appendUserTranscription gates emission on !voiceOnly),
+    // but the relay needs the text to detect "repeat the question" requests and
+    // non-English speech so it can stay on the SAME question instead of advancing.
+    if (msg.inputTranscription?.text || msg.serverContent?.inputTranscription?.text) {
       const top = msg.inputTranscription?.text;
       const nested = msg.serverContent?.inputTranscription?.text;
       if (top) this.appendUserTranscription(top);
@@ -1175,17 +1193,53 @@ export class GeminiLiveBridge {
   handleRepeatRequest(qNum) {
     this.resetAnswerTurnForRetry();
     this.questionRepeatUsed[qNum] = true;
-    console.log(`[relay] Q${qNum} repeat requested — re-speaking question (once)`);
+    this.questionRepeatCount[qNum] = (this.questionRepeatCount[qNum] || 0) + 1;
+    console.log(
+      `[relay] Q${qNum} repeat requested — re-speaking SAME question ` +
+        `(${this.questionRepeatCount[qNum]}/${this.maxQuestionRepeats})`
+    );
     this.onEvent({ type: 'question_repeat', number: qNum });
+    // Stay on the same question number — speakQuestion(qNum) re-asks without
+    // recording an answer or advancing the phase.
     this.speakQuestion(qNum);
   }
 
   tryHandleRepeatRequest(activeQ) {
     if (activeQ < 1 || activeQ > this.maxTurns) return false;
     if (this.warmupPhase) return false;
-    if (this.questionRepeatUsed[activeQ]) return false;
+    if ((this.questionRepeatCount[activeQ] || 0) >= this.maxQuestionRepeats) return false;
     if (!isRepeatRequest(this.getInternalUserTranscript())) return false;
     this.handleRepeatRequest(activeQ);
+    return true;
+  }
+
+  // Candidate answered (or partly answered) in a non-English language. Keep them
+  // on the SAME question: politely ask them to continue in English and re-read the
+  // question. Never record this as their answer and never advance the phase.
+  handleNonEnglishResponse(qNum) {
+    this.resetAnswerTurnForRetry();
+    this.nonEnglishNudgeCount[qNum] = (this.nonEnglishNudgeCount[qNum] || 0) + 1;
+    console.log(
+      `[relay] Q${qNum} non-English response — asking to continue in English, ` +
+        `staying on SAME question (${this.nonEnglishNudgeCount[qNum]}/${this.maxNonEnglishNudges})`
+    );
+    // Reuse the existing client status handler ("Please answer in English only.").
+    this.onEvent({ type: 'non_english_detected', number: qNum, hint: 'Please continue in English.' });
+    this.onEvent({ type: 'language_nudge', number: qNum });
+    this.speakQuestion(qNum, { prefaceEnglishNudge: true });
+  }
+
+  tryHandleNonEnglishResponse(activeQ) {
+    if (activeQ < 1 || activeQ > this.maxTurns) return false;
+    if (this.warmupPhase) return false;
+    if ((this.nonEnglishNudgeCount[activeQ] || 0) >= this.maxNonEnglishNudges) return false;
+    const transcript = this.getInternalUserTranscript();
+    // Need real speech to classify — empty transcript = silence/STT miss, not a
+    // language problem (handled by the silence nudge / no-response path instead).
+    const words = transcript.split(/\s+/).filter(Boolean);
+    if (words.length < 2) return false;
+    if (isEnglishTranscript(transcript)) return false;
+    this.handleNonEnglishResponse(activeQ);
     return true;
   }
 
@@ -1308,6 +1362,7 @@ export class GeminiLiveBridge {
     }
 
     if (this.tryHandleRepeatRequest(activeQ)) return;
+    if (this.tryHandleNonEnglishResponse(activeQ)) return;
 
     this.userBuf = '';
     this.lateUserBuf = '';

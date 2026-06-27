@@ -620,18 +620,20 @@
     <main class="wrap">
         <a href="careers.html" class="back-link">← Back to all open roles</a>
 
-        <div id="loadingView" class="card pad">
+        <div id="loadingView" class="card pad" role="status" aria-busy="true" aria-label="Loading job details">
             <span class="badge">Loading</span>
             <div class="skeleton lg"></div>
             <div class="skeleton" style="width:45%"></div>
             <div class="skeleton" style="width:80%;margin-top:20px"></div>
         </div>
 
-        <div id="errorView" class="card pad" style="display:none">
-            <span class="badge">Not available</span>
-            <h1>Job not found</h1>
-            <p id="errorMsg" style="color:var(--muted);line-height:1.6"></p>
-            <a href="careers.html" class="btn" style="display:inline-block;text-align:center;text-decoration:none;margin-top:20px">View open roles</a>
+        <div id="errorView" class="card pad cv-state cv-state-error" style="display:none" role="alert">
+            <div class="cv-state-icon" aria-hidden="true">!</div>
+            <h1 class="cv-state-title">Job not found</h1>
+            <p id="errorMsg" class="cv-state-desc"></p>
+            <div class="cv-state-actions">
+                <a href="careers.html" class="btn" style="display:inline-block;text-align:center;text-decoration:none">View open roles</a>
+            </div>
         </div>
 
         <div id="applyView" style="display:none">

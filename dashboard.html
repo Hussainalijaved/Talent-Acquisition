@@ -114,7 +114,13 @@
 
             <!-- OVERVIEW -->
             <section class="view active" id="view-overview">
-                <div class="kpi-grid" id="kpiGrid"></div>
+                <div class="kpi-grid" id="kpiGrid">
+                    <div class="kpi cv-kpi-skeleton" aria-hidden="true"><div class="cv-skeleton cv-skeleton-title"></div><div class="cv-skeleton cv-skeleton-val"></div><div class="cv-skeleton cv-skeleton-foot"></div></div>
+                    <div class="kpi cv-kpi-skeleton" aria-hidden="true"><div class="cv-skeleton cv-skeleton-title"></div><div class="cv-skeleton cv-skeleton-val"></div><div class="cv-skeleton cv-skeleton-foot"></div></div>
+                    <div class="kpi cv-kpi-skeleton" aria-hidden="true"><div class="cv-skeleton cv-skeleton-title"></div><div class="cv-skeleton cv-skeleton-val"></div><div class="cv-skeleton cv-skeleton-foot"></div></div>
+                    <div class="kpi cv-kpi-skeleton" aria-hidden="true"><div class="cv-skeleton cv-skeleton-title"></div><div class="cv-skeleton cv-skeleton-val"></div><div class="cv-skeleton cv-skeleton-foot"></div></div>
+                    <div class="kpi cv-kpi-skeleton" aria-hidden="true"><div class="cv-skeleton cv-skeleton-title"></div><div class="cv-skeleton cv-skeleton-val"></div><div class="cv-skeleton cv-skeleton-foot"></div></div>
+                </div>
                 <div class="grid-2">
                     <div class="card">
                         <div class="card-head">
@@ -137,7 +143,7 @@
                     <div class="table-card table-scroll" style="border:none;box-shadow:none">
                         <table>
                             <thead><tr><th>Candidate</th><th>Role</th><th>CV Score</th><th>Stage</th><th>Assessment</th></tr></thead>
-                            <tbody id="recentBody"><tr><td class="loading-row" colspan="5">Loading…</td></tr></tbody>
+                            <tbody id="recentBody"><tr><td class="loading-row" colspan="5"><span class="cv-loading-cell"><span class="cv-spinner cv-spinner-sm" aria-hidden="true"></span><span>Loading…</span></span></td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -174,7 +180,7 @@
                 <div class="table-card table-scroll">
                     <table>
                         <thead><tr><th>Candidate</th><th>Role</th><th>CV Score</th><th>Stage</th><th>Assessment</th><th>Applied</th></tr></thead>
-                        <tbody id="candBody"><tr><td class="loading-row" colspan="6">Loading candidates…</td></tr></tbody>
+                        <tbody id="candBody"><tr><td class="loading-row" colspan="6"><span class="cv-loading-cell"><span class="cv-spinner cv-spinner-sm" aria-hidden="true"></span><span>Loading candidates…</span></span></td></tr></tbody>
                     </table>
                 </div>
                 <div class="pagination-bar" id="candPagination" hidden></div>
@@ -182,7 +188,13 @@
 
             <!-- ASSESSMENTS -->
             <section class="view" id="view-assessments">
-                <div class="kpi-grid assess-kpi-grid" id="assessKpiGrid"></div>
+                <div class="kpi-grid assess-kpi-grid" id="assessKpiGrid">
+                    <div class="kpi cv-kpi-skeleton" aria-hidden="true"><div class="cv-skeleton cv-skeleton-title"></div><div class="cv-skeleton cv-skeleton-val"></div><div class="cv-skeleton cv-skeleton-foot"></div></div>
+                    <div class="kpi cv-kpi-skeleton" aria-hidden="true"><div class="cv-skeleton cv-skeleton-title"></div><div class="cv-skeleton cv-skeleton-val"></div><div class="cv-skeleton cv-skeleton-foot"></div></div>
+                    <div class="kpi cv-kpi-skeleton" aria-hidden="true"><div class="cv-skeleton cv-skeleton-title"></div><div class="cv-skeleton cv-skeleton-val"></div><div class="cv-skeleton cv-skeleton-foot"></div></div>
+                    <div class="kpi cv-kpi-skeleton" aria-hidden="true"><div class="cv-skeleton cv-skeleton-title"></div><div class="cv-skeleton cv-skeleton-val"></div><div class="cv-skeleton cv-skeleton-foot"></div></div>
+                    <div class="kpi cv-kpi-skeleton" aria-hidden="true"><div class="cv-skeleton cv-skeleton-title"></div><div class="cv-skeleton cv-skeleton-val"></div><div class="cv-skeleton cv-skeleton-foot"></div></div>
+                </div>
                 <div class="toolbar">
                     <select class="filter" id="fAssessStatus">
                         <option value="">All statuses</option>
@@ -215,7 +227,7 @@
                                 <th>Updated</th>
                             </tr>
                         </thead>
-                        <tbody id="assessBody"><tr><td class="loading-row" colspan="7">Loading assessments…</td></tr></tbody>
+                        <tbody id="assessBody"><tr><td class="loading-row" colspan="7"><span class="cv-loading-cell"><span class="cv-spinner cv-spinner-sm" aria-hidden="true"></span><span>Loading assessments…</span></span></td></tr></tbody>
                     </table>
                 </div>
                 <div class="pagination-bar" id="assessPagination" hidden></div>
@@ -254,7 +266,7 @@
                 <div class="table-card table-flat">
                     <table>
                         <thead><tr><th>Job</th><th>Location</th><th>Status</th><th>Updated</th><th>Live</th><th></th><th></th></tr></thead>
-                        <tbody id="jobsBody"><tr><td class="loading-row" colspan="7">Loading jobs…</td></tr></tbody>
+                        <tbody id="jobsBody"><tr><td class="loading-row" colspan="7"><span class="cv-loading-cell"><span class="cv-spinner cv-spinner-sm" aria-hidden="true"></span><span>Loading jobs…</span></span></td></tr></tbody>
                     </table>
                 </div>
                 <div class="pagination-bar" id="jobsPagination" hidden></div>
@@ -567,7 +579,7 @@
                     <div class="table-card table-scroll">
                         <table>
                             <thead><tr><th>Candidate</th><th>Job</th><th>When</th><th>Type</th><th>Outcome</th><th></th></tr></thead>
-                            <tbody id="onsiteBody"><tr><td class="loading-row" colspan="6">Loading…</td></tr></tbody>
+                            <tbody id="onsiteBody"><tr><td class="loading-row" colspan="6"><span class="cv-loading-cell"><span class="cv-spinner cv-spinner-sm" aria-hidden="true"></span><span>Loading…</span></span></td></tr></tbody>
                         </table>
                     </div>
                     <div class="pagination-bar" id="onsitePagination" hidden></div>
@@ -583,7 +595,7 @@
                 <div class="table-card table-scroll">
                     <table>
                         <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Joined</th><th></th></tr></thead>
-                        <tbody id="usersBody"><tr><td class="loading-row" colspan="5">Loading users…</td></tr></tbody>
+                        <tbody id="usersBody"><tr><td class="loading-row" colspan="5"><span class="cv-loading-cell"><span class="cv-spinner cv-spinner-sm" aria-hidden="true"></span><span>Loading users…</span></span></td></tr></tbody>
                     </table>
                 </div>
                 <div class="pagination-bar" id="usersPagination" hidden></div>
@@ -642,7 +654,7 @@
                 <div class="table-card table-scroll">
                     <table>
                         <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead>
-                        <tbody id="auditBody"><tr><td class="loading-row" colspan="5">Loading audit log…</td></tr></tbody>
+                        <tbody id="auditBody"><tr><td class="loading-row" colspan="5"><span class="cv-loading-cell"><span class="cv-spinner cv-spinner-sm" aria-hidden="true"></span><span>Loading audit log…</span></span></td></tr></tbody>
                     </table>
                 </div>
                 <div class="pagination-bar" id="auditPagination" hidden></div>

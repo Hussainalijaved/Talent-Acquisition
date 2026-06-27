@@ -1750,7 +1750,7 @@
             if (typeof cfg === 'string') {
                 try { cfg = JSON.parse(cfg); } catch (_) { cfg = {}; }
             }
-            const maxQ = Number(session.max_phases) || Number(cfg.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
+            const maxQ = resolveTechMaxQuestions(session);
             const speechPhases = Number(cfg.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
             const totalPh = maxQ + speechPhases;
             const answered = history.filter(isPhaseAnsweredPortal).length;
@@ -4478,6 +4478,24 @@
             try { return JSON.parse(raw); } catch (e) { return {}; }
         };
 
+        /** Written (Phase 1) question count — prefer config.max_questions over max_phases. */
+        const resolveTechMaxQuestions = (data) => {
+            const cfg = parseSessionConfig(data?.config);
+            const fromCfg = Number(cfg.max_questions);
+            if (Number.isFinite(fromCfg) && fromCfg > 0) return fromCfg;
+            const speechPhases = Number(cfg.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
+            const mp = Number(data?.max_phases);
+            if (Number.isFinite(mp) && mp > 0) {
+                // Some rows store total phases (written + speech) in max_phases — split when obvious.
+                if (speechPhases > 0 && mp > speechPhases && mp <= speechPhases + 20) {
+                    const asWrittenOnly = mp - speechPhases;
+                    if (asWrittenOnly >= 1 && asWrittenOnly <= 20) return asWrittenOnly;
+                }
+                return mp;
+            }
+            return ASSESSMENT_PHASE_DEFAULTS.tech;
+        };
+
         const isVoiceHistoryMode = (mode) => {
             const m = String(mode || '').toLowerCase();
             return m === 'speech' || m === 'live_speech' || m === 'live speech';
@@ -4485,7 +4503,7 @@
 
         const resolveAssessmentMode = (data, phaseNum, phaseRow) => {
             const cfg = parseSessionConfig(data?.config);
-            const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
+            const maxQ = resolveTechMaxQuestions(data);
             const speechPhases = Number(cfg?.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
             const stage = String(data?.assessment_stage || 'technical').toLowerCase();
             const isSpeech =
@@ -4520,7 +4538,7 @@
 
         const resolveQuestionForPhase = (row, phaseNum, data) => {
             const cfg = parseSessionConfig(data?.config);
-            const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
+            const maxQ = resolveTechMaxQuestions(data);
             let q = String(row?.question_text || row?.question || '').trim();
             if (!q && Number(phaseNum) > maxQ) {
                 q = buildClientSpeechFallback(cfg, Number(phaseNum) - maxQ);
@@ -4548,7 +4566,7 @@
         const inspectSessionProgress = (data) => {
             const history = buildHistoryFromSession(data);
             const cfg = parseSessionConfig(data?.config);
-            const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
+            const maxQ = resolveTechMaxQuestions(data);
             const speechPhases = Number(cfg?.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
             const stage = String(data?.assessment_stage || 'technical').toLowerCase();
             const techAnswered = history.filter((h) => {
@@ -5926,15 +5944,12 @@
                     if (!resume) return;
 
                     const { phaseNum, row, questionText } = resume;
-                    const cfg = parseSessionConfig(data.config);
-                    const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
-                    const speechPhases = Number(cfg?.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
                     const modeInfo = resolveAssessmentMode(data, phaseNum, row);
 
                     setQuestion(questionText || row?.question_text || row?.question || '');
-                    setTechMaxSteps(maxQ);
-                    setSpeechTotalSteps(speechPhases);
-                    setTotalSteps(maxQ + speechPhases);
+                    setTechMaxSteps(modeInfo.techMaxSteps);
+                    setSpeechTotalSteps(modeInfo.speechTotalSteps);
+                    setTotalSteps(modeInfo.totalSteps);
                     setCurrentStep(phaseNum);
                     if (modeInfo.mode === 'speech') {
                         armSpeechPhaseTimer({
@@ -6060,7 +6075,7 @@
 
                     if (!resume?.questionText) {
                         const cfg = parseSessionConfig(data?.config);
-                        const maxQ = Number(data?.max_phases) || Number(cfg?.max_questions) || ASSESSMENT_PHASE_DEFAULTS.tech;
+                        const maxQ = resolveTechMaxQuestions(data);
                         const stage = String(data?.assessment_stage || '').toLowerCase();
                         const speechPhase = Number(data.current_phase) || maxQ + 1;
                         if (stage === 'speech' || speechPhase > maxQ) {
@@ -6845,7 +6860,7 @@
                         return (
                             <AssessmentView
                                 currentStep={currentStep}
-                                totalSteps={totalSteps}
+                                totalSteps={techMaxSteps}
                                 timeLeft={timeLeft}
                                 phaseTimeLimit={phaseTimeLimit}
                                 question={question}

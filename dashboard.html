@@ -1076,22 +1076,27 @@
 
         async function fetchAssessmentSessions() {
             // Note: assessment_sessions has updated_at but no created_at in production schema.
-            const fullSelect =
-                'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, proctor_report, tab_switches, updated_at';
-            const baseSelect =
+            const coreSelect =
                 'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, updated_at';
+            const withProctor = coreSelect + ', proctor_report';
+            const withProctorAndTabs = withProctor + ', tab_switches';
             const minimalSelect =
                 'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, updated_at';
 
             let res = await sb.from('assessment_sessions')
-                .select(fullSelect)
+                .select(withProctorAndTabs)
                 .order('updated_at', { ascending: false })
                 .limit(1000);
             if (res.error) {
                 const msg = String(res.error.message || '');
-                if (/proctor_report|screening|scheduling_status|requisition_id|column.*does not exist/i.test(msg)) {
+                if (/tab_switches|column.*does not exist/i.test(msg)) {
                     res = await sb.from('assessment_sessions')
-                        .select(baseSelect)
+                        .select(withProctor)
+                        .order('updated_at', { ascending: false })
+                        .limit(1000);
+                } else if (/proctor_report|screening|scheduling_status|requisition_id/i.test(msg)) {
+                    res = await sb.from('assessment_sessions')
+                        .select(coreSelect)
                         .order('updated_at', { ascending: false })
                         .limit(1000);
                 }
@@ -2107,6 +2112,7 @@
         function shouldShowProctorTimelineEntry(entry) {
             if (!entry) return false;
             if (isProctorProgressEvent(entry)) return true;
+            if (entry.category === 'tab_switch') return true;
             if (entry.suspicious) return true;
             return ['webcam_lost', 'webcam_restored', 'camera_not_restored', 'screen_share_stopped'].indexOf(entry.category) >= 0;
         }
@@ -2221,16 +2227,23 @@
 
         function renderProctorReport(sess) {
             const report = parseProctorReportRaw(sess);
+            const tabShiftCount = countProctorTabShifts(report, sess);
             if (!report || (!report.summary && !(report.entries || []).length)) {
-                return '';
+                if (!tabShiftCount) return '';
+                return '<div class="section proctor-report-section"><div class="section-h">' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>' +
+                    'Proctoring activity</div>' +
+                    '<div class="report-meta" style="margin-bottom:12px">' +
+                    '<span class="meta-chip">Tab shifts: ' + esc(String(tabShiftCount)) + '</span>' +
+                    '</div>' +
+                    '<div class="phase-empty">Tab shift count recorded — detailed proctor timeline not available for this session.</div>' +
+                    '</div>';
             }
             const allEntries = Array.isArray(report.entries) ? report.entries.slice() : [];
             allEntries.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
             const entries = allEntries.filter(shouldShowProctorTimelineEntry);
             const startMs = proctorSessionStartMs(report, sess);
             const violationSummary = computeProctorViolationSummary(report);
-
-            const tabShiftCount = countProctorTabShifts(report, sess);
 
             let html = '<div class="section proctor-report-section"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>' +

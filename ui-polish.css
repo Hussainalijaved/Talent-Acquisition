@@ -778,9 +778,33 @@ body:has(.login-card) {
     font-weight: 700 !important;
 }
 
-.overall-score-grid .score-badge,
 .assess-summary .kpi-val {
     font-size: 2.25rem !important;
+}
+
+.overall-score-grid .assess-stat {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.35rem !important;
+}
+
+.overall-score-grid .score-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 3.75rem !important;
+    min-height: 3.75rem !important;
+    width: auto !important;
+    height: auto !important;
+    padding: 0.55rem 0.7rem !important;
+    font-size: 2rem !important;
+    line-height: 1 !important;
+    aspect-ratio: 1 !important;
+    border-radius: 50% !important;
+    box-sizing: border-box !important;
+    letter-spacing: -0.03em !important;
 }
 
 /* CV screening workspace */

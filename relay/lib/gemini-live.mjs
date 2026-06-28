@@ -199,6 +199,19 @@ export class GeminiLiveBridge {
     // How many times the relay re-asks the SAME question in English before it
     // accepts whatever audio it has and moves on (scoring still runs at the end).
     this.maxNonEnglishNudges = Math.max(1, Number(context.max_non_english_nudges ?? 2));
+    // Off-topic guard: if the candidate answers in English but clearly off-topic
+    // (e.g. a random counter-question), gently redirect and stay on the SAME
+    // question. Bounded so a false positive only costs ONE gentle re-ask.
+    this.relevanceGuardEnabled = context.relevance_guard_enabled !== false;
+    this.maxIrrelevantRedirects = Math.max(0, Number(context.max_irrelevant_redirects ?? 1));
+    this.irrelevantRedirectCount = {};   // qNum → times we redirected for off-topic
+    this.relevanceChecking = false;      // guard: a relevance check is in flight
+    // Brief, varied acknowledgement of the previous answer before the next
+    // question ("Thank you for sharing that." etc.) — warmer, production feel.
+    this.appreciationEnabled = context.appreciation_enabled !== false;
+    // Turns answered in a non-English language (after nudges) → scored ZERO at the
+    // end. The interview must be conducted in English.
+    this.nonEnglishTurns = {};           // aNum → true when recorded answer was non-English
   }
 
   timerConfig() {
@@ -471,15 +484,34 @@ export class GeminiLiveBridge {
       qNum === this.maxTurns
         ? ' This is the LAST interview question — do NOT thank the candidate, do NOT say goodbye, and do NOT say the interview is complete. '
         : ' ';
-    // When the candidate answered in another language, first ask them — warmly and
-    // in ONE short sentence — to continue in English, then re-read the SAME question.
-    const englishNudge = opts.prefaceEnglishNudge
-      ? 'In ONE short, warm sentence, ask the candidate to please continue in English. Then '
-      : '';
+    // ONE short spoken preface before the question is re-read, depending on context:
+    //  - English nudge  → candidate answered in another language
+    //  - Repeat         → candidate asked to hear the question again
+    //  - Off-topic      → candidate's answer was unrelated; redirect them
+    //  - Appreciation   → warm acknowledgement of the previous answer (next question)
+    let preface = '';
+    let prefaceDesc = '';
+    if (opts.prefaceEnglishNudge) {
+      preface =
+        'In ONE short, warm, polite sentence, let the candidate know this interview must be in English and ask them to please answer in English (for example: "I\'m sorry, this interview is in English — could you please answer in English?"). Then ';
+      prefaceDesc = ' brief request and the';
+    } else if (opts.prefaceRepeat) {
+      preface =
+        'In ONE short, warm sentence, reassure the candidate that it is no problem and you will repeat the question (for example: "No problem — let me repeat the question."). Then ';
+      prefaceDesc = ' brief reassurance and the';
+    } else if (opts.prefaceIrrelevant) {
+      preface =
+        'In ONE short, warm, encouraging sentence, gently let the candidate know that response seems off-topic and you would like them to focus on the question being asked (for example: "That seems a little off-topic — let\'s focus on this question."). Do NOT be harsh. Then ';
+      prefaceDesc = ' brief redirection and the';
+    } else if (opts.prefaceAppreciation) {
+      preface =
+        "In ONE short, warm, professional sentence, briefly acknowledge the candidate's previous answer using natural, varied wording (for example: \"Thank you for sharing that.\", \"Great, I appreciate the detail.\", or \"Understood, thank you.\"). Do NOT rate, score, critique, or give feedback on the answer. Then ";
+      prefaceDesc = ' brief acknowledgement and the';
+    }
     this.sendSpokenPrompt(
-      `${englishNudge}Read this interview question aloud to the candidate, word for word, in a warm professional tone.` +
+      `${preface}Read this interview question aloud to the candidate, word for word, in a warm professional tone.` +
         `${lastQuestionHint}` +
-        `Say ONLY this${englishNudge ? ' brief request and the' : ''} question and nothing else — no extra preamble, no numbering, no follow-up:\n"${text}"`,
+        `Say ONLY this${prefaceDesc} question and nothing else — no extra preamble, no numbering, no second question, no follow-up:\n"${text}"`,
       { flushFirst: false }
     );
 
@@ -1200,8 +1232,9 @@ export class GeminiLiveBridge {
     );
     this.onEvent({ type: 'question_repeat', number: qNum });
     // Stay on the same question number — speakQuestion(qNum) re-asks without
-    // recording an answer or advancing the phase.
-    this.speakQuestion(qNum);
+    // recording an answer or advancing the phase. Preface with a warm
+    // "No problem, let me repeat the question." acknowledgement.
+    this.speakQuestion(qNum, { prefaceRepeat: true });
   }
 
   tryHandleRepeatRequest(activeQ) {
@@ -1243,8 +1276,83 @@ export class GeminiLiveBridge {
     return true;
   }
 
-  completeAnswerTurn() {
-    if (!this.awaitingAnswer) return;
+  // Candidate answered in English but clearly off-topic (e.g. a random
+  // counter-question). Keep them on the SAME question with a warm redirection.
+  handleIrrelevantResponse(qNum) {
+    this.resetAnswerTurnForRetry();
+    this.irrelevantRedirectCount[qNum] = (this.irrelevantRedirectCount[qNum] || 0) + 1;
+    console.log(
+      `[relay] Q${qNum} off-topic answer — redirecting to SAME question ` +
+        `(${this.irrelevantRedirectCount[qNum]}/${this.maxIrrelevantRedirects})`
+    );
+    this.onEvent({ type: 'answer_off_topic', number: qNum });
+    this.speakQuestion(qNum, { prefaceIrrelevant: true });
+  }
+
+  shouldCheckRelevance(qNum, transcript) {
+    if (!this.relevanceGuardEnabled || this.maxIrrelevantRedirects < 1) return false;
+    if (this.warmupPhase || qNum < 1 || qNum > this.maxTurns) return false;
+    if ((this.irrelevantRedirectCount[qNum] || 0) >= this.maxIrrelevantRedirects) return false;
+    const words = String(transcript || '').split(/\s+/).filter(Boolean);
+    // Too little to judge → accept (silence/short answers handled elsewhere).
+    if (words.length < 3) return false;
+    // Non-English is handled by the language nudge, not the relevance guard.
+    if (!isEnglishTranscript(transcript)) return false;
+    return true;
+  }
+
+  // Fast on-topic check via the text model. Tight timeout; ACCEPTS (returns true)
+  // on any failure so the interview never stalls on the classifier.
+  async classifyAnswerRelevance(questionText, transcript) {
+    const apiKey = this.apiKey || process.env.GEMINI_API_KEY;
+    const q = String(questionText || '').trim();
+    const a = String(transcript || '').trim();
+    if (!apiKey || !q || !a) return true;
+    const model = String(
+      this.context.gemini_text_model || process.env.GEMINI_TEXT_MODEL || TEXT_MODEL_DEFAULT
+    ).replace(/^models\//, '');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const prompt =
+      `You are screening a spoken interview answer for basic on-topic relevance.\n` +
+      `Interview question: "${q.slice(0, 300)}"\n` +
+      `Candidate's answer (speech transcript, may be imperfect): "${a.slice(0, 500)}"\n\n` +
+      `Decide if the answer is a genuine ATTEMPT to address the question. A weak, short, ` +
+      `uncertain, rambling, or "I don't know" answer STILL counts as on-topic (relevant=true). ` +
+      `Mark relevant=false ONLY when the response is clearly off-topic: unrelated chatter, a ` +
+      `random counter-question, or something with nothing to do with the question (for example ` +
+      `asking "who is the prime minister of Pakistan" when that was not the question).\n` +
+      `Return JSON only: {"relevant": true} or {"relevant": false}`;
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 2500);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ctrl.signal,
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+        }),
+      }).finally(() => clearTimeout(t));
+      if (!res.ok) return true;
+      const data = await res.json();
+      const raw = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+      let parsed = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (_) {
+        const m = raw.match(/\{[\s\S]*\}/);
+        if (m) { try { parsed = JSON.parse(m[0]); } catch (_) {} }
+      }
+      if (parsed && typeof parsed.relevant === 'boolean') return parsed.relevant;
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  async completeAnswerTurn() {
+    if (!this.awaitingAnswer || this.relevanceChecking) return;
     if (
       this.pendingAnswerGeneration != null &&
       this.pendingAnswerGeneration !== this.activeAnswerGeneration
@@ -1364,6 +1472,34 @@ export class GeminiLiveBridge {
     if (this.tryHandleRepeatRequest(activeQ)) return;
     if (this.tryHandleNonEnglishResponse(activeQ)) return;
 
+    // Capture the internal STT BEFORE buffers are cleared — used for the off-topic
+    // relevance check and to flag non-English answers for zero-scoring.
+    const internalTranscript = this.getInternalUserTranscript();
+
+    // Off-topic guard: if the (English) answer is clearly unrelated to the
+    // question, gently redirect and stay on the SAME question. Bounded so a
+    // false positive only ever costs ONE gentle re-ask.
+    if (this.shouldCheckRelevance(activeQ, internalTranscript)) {
+      this.relevanceChecking = true;
+      let relevant = true;
+      try {
+        relevant = await this.classifyAnswerRelevance(this.questions[activeQ - 1] || '', internalTranscript);
+      } catch (_) {
+        relevant = true;
+      }
+      this.relevanceChecking = false;
+      if (this.interviewEnded || this.closed) return;
+      if (!relevant) {
+        this.handleIrrelevantResponse(activeQ);
+        return;
+      }
+    }
+
+    // A non-English answer that survived the language nudges is scored ZERO at the
+    // end — the interview must be conducted in English.
+    const answerWords = internalTranscript.split(/\s+/).filter(Boolean);
+    const answerNonEnglish = answerWords.length >= 2 && !isEnglishTranscript(internalTranscript);
+
     this.userBuf = '';
     this.lateUserBuf = '';
     let userText = this.resolveUserAnswerText(pcmSnapshot);
@@ -1385,6 +1521,9 @@ export class GeminiLiveBridge {
       aNum = this.answers.length;
     }
 
+    // Flag a non-English answer so the end-of-interview scoring gives it ZERO.
+    if (answerNonEnglish) this.nonEnglishTurns[aNum] = true;
+
     // Snapshot + clear the PCM buffer for this answer turn.
     const pcmChunks = pcmSnapshot.length ? pcmSnapshot : this.answerPcmChunks.slice();
     this.answerPcmChunks = [];
@@ -1405,6 +1544,7 @@ export class GeminiLiveBridge {
       time_limit_seconds: qLimits.seconds,
       complexity_tier: qLimits.tier,
       is_follow_up: isFollowUpResponse,
+      non_english: !!this.nonEnglishTurns[aNum],
       stt_source: this.voiceOnly ? 'voice_pcm' : 'gemini_live',
     };
     // Store for buildTurnPairs final-pass fallback.
@@ -1453,7 +1593,8 @@ export class GeminiLiveBridge {
       this.finishInterview();
       return;
     }
-    this.speakQuestion(aNum + 1);
+    // Preface the next question with a brief, warm acknowledgement of the answer.
+    this.speakQuestion(aNum + 1, { prefaceAppreciation: this.appreciationEnabled });
   }
 
   askFollowUp(qNum, questionText, answerText) {
@@ -2042,6 +2183,7 @@ export class GeminiLiveBridge {
         answer_text: this.answers[i] || '',
         answer_pcm_chunks: this.answerPcmChunksByTurn[i + 1] || [],
         answer_pcm_sample_rate: this._answerPcmSampleRate,
+        non_english: !!this.nonEnglishTurns[i + 1],
         stt_source: this.voiceOnly ? 'voice_pcm' : 'gemini_live',
         sent_at: new Date(this.startedAt + i * 60000).toISOString(),
         received_at: new Date().toISOString(),

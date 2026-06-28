@@ -196,7 +196,7 @@
         .flow-panel.show { display: block; }
         body.convo-flow-active .convo-page-main .back-link { display: none; }
         body.convo-flow-active .page-split-left { display: none; }
-        body.convo-flow-active .page-split { grid-template-columns: 1fr; min-height: 68vh; }
+        body.convo-flow-active .page-split { grid-template-columns: 1fr; min-height: calc(100dvh - 64px); align-items: center; }
         body.convo-flow-active .apply-layout.form-open {
             display: block !important;
             grid-template-columns: 1fr !important;
@@ -236,20 +236,25 @@
         body.convo-flow-active .convo-hero-mega { font-size: clamp(40px, 8vw, 64px); }
         /* Keep apply results visible — convo-ui hides .convo-page-main only when .convo-flow-screen exists */
         body.convo-flow-active .convo-page-main { display: block; }
+        body.convo-outcome-active .convo-hero { display: none; }
         body.convo-outcome-active .convo-page-main {
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
             width: 100%;
+            min-height: calc(100dvh - 64px);
         }
         body.convo-outcome-active .wrap {
             width: 100%;
             max-width: 900px;
             margin: 0 auto;
-            padding: 24px 20px 56px;
+            padding: clamp(28px, 6vh, 56px) 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
+            flex: 1;
         }
         body.convo-outcome-active #applyView {
             width: 100%;
@@ -278,7 +283,7 @@
             width: 100%;
             max-width: 680px;
             margin: 0 auto;
-            padding: 8px 16px 32px;
+            padding: 0 16px 32px;
             border: none;
             background: transparent;
         }
@@ -287,6 +292,11 @@
             width: 100%;
             max-width: 680px;
             margin: 0 auto;
+            align-items: center;
+        }
+        body.convo-outcome-active .outcome-card {
+            margin-left: auto;
+            margin-right: auto;
         }
         .outcome-stage {
             display: inline-block;
@@ -318,11 +328,17 @@
             from { opacity: 0; transform: translateX(12px); }
             to { opacity: 1; transform: translateX(0); }
         }
+        @media (min-width: 901px) {
+            .apply-layout.form-open .apply-form-panel {
+                padding-top: calc(28px + 24px + 3rem + 20px);
+            }
+        }
         @media (max-width: 900px) {
             .apply-layout.form-open { grid-template-columns: 1fr; }
             .apply-layout.form-open .apply-form-panel {
                 border-left: none;
                 border-top: 1px solid var(--convo-line);
+                padding-top: 24px;
             }
         }
 

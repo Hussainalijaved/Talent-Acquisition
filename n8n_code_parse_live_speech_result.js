@@ -26,6 +26,23 @@ function cleanEmail(raw) {
   return first.split(/\s+regards/i)[0].trim();
 }
 
+// Optional session columns from supabase_live_speech_meta.sql — only PATCH keys that
+// have values so missing columns (before migration) never break the save.
+function buildLiveSpeechPatchMeta(norm) {
+  const meta = {};
+  const audioUrl = String(norm?.session_audio_url || '').trim();
+  if (audioUrl) meta.live_speech_audio_url = audioUrl;
+  const duration = Number(norm?.duration_seconds);
+  if (Number.isFinite(duration) && duration > 0) {
+    meta.live_speech_duration_seconds = Math.round(duration);
+  }
+  const tabSwitches = Number(norm?.tab_switches);
+  if (Number.isFinite(tabSwitches) && tabSwitches >= 0) {
+    meta.tab_switches = tabSwitches;
+  }
+  return meta;
+}
+
 function buildConfig(cfg) {
   const c = cfg || {};
   return {
@@ -328,9 +345,7 @@ const body = {
   speech_score: speechAvg,
   score: combinedScore,
   result: finalResult,
-  live_speech_audio_url: norm.session_audio_url || null,
-  live_speech_duration_seconds: norm.duration_seconds || null,
-  tab_switches: norm.tab_switches || 0,
+  ...buildLiveSpeechPatchMeta(norm),
 };
 
 const lastTurn = turns[turns.length - 1] || {};

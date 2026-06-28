@@ -9,9 +9,10 @@ function readJs(name) {
   return fs.readFileSync(path.join(root, name), 'utf8').trim();
 }
 
-const file = 'Talent Acquisition — Live Speech.json';
-const wfPath = path.join(root, file);
-const wf = JSON.parse(fs.readFileSync(wfPath, 'utf8'));
+const files = [
+  'Talent Acquisition — Live Speech.json',
+  'Talent Acquisition — CV+Assessment+Live Speech+Scheduling.json',
+];
 
 const mapping = [
   ['CODE - Normalize Live Speech Start', 'n8n_code_normalize_live_speech_start.js'],
@@ -20,15 +21,24 @@ const mapping = [
   ['CODE - Parse Live Speech Result', 'n8n_code_parse_live_speech_result.js'],
 ];
 
-for (const [nodeName, jsFile] of mapping) {
-  const node = wf.nodes.find((n) => n.name === nodeName);
-  if (!node) {
-    console.warn('Node not found, skipping:', nodeName);
+for (const file of files) {
+  const wfPath = path.join(root, file);
+  if (!fs.existsSync(wfPath)) {
+    console.warn('Workflow not found, skipping:', file);
     continue;
   }
-  node.parameters.jsCode = readJs(jsFile);
-  console.log('Patched:', nodeName, '<-', jsFile);
-}
+  const wf = JSON.parse(fs.readFileSync(wfPath, 'utf8'));
 
-fs.writeFileSync(wfPath, JSON.stringify(wf, null, 2), 'utf8');
-console.log('Written:', file);
+  for (const [nodeName, jsFile] of mapping) {
+    const node = wf.nodes.find((n) => n.name === nodeName);
+    if (!node) {
+      console.warn(`[${file}] Node not found, skipping:`, nodeName);
+      continue;
+    }
+    node.parameters.jsCode = readJs(jsFile);
+    console.log(`[${file}] Patched:`, nodeName, '<-', jsFile);
+  }
+
+  fs.writeFileSync(wfPath, JSON.stringify(wf, null, 2), 'utf8');
+  console.log('Written:', file);
+}

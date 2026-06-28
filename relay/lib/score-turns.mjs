@@ -406,11 +406,20 @@ export async function scoreAllTurnsOverall({ apiKey, context, turns, timeoutMs =
     };
   }
 
-  // Build the prompt + attach each answer's audio ONLY (no transcripts).
+  // Answers given in a non-English language are scored ZERO — the interview must
+  // be conducted in English. Their audio is NOT sent for quality scoring; instead
+  // they are folded into the overall as zeros (see weighting below).
+  const nonEnglishCount = realTurns.filter((t) => t.non_english).length;
+
+  // Build the prompt + attach each scorable (English) answer's audio ONLY.
   const parts = [];
   const qLines = [];
   let audioCount = 0;
   realTurns.forEach((t, i) => {
+    if (t.non_english) {
+      qLines.push(`Answer ${i + 1} — Question asked: ${String(t.question_text || '').slice(0, 300)} [answered in a non-English language → scored 0]`);
+      return;
+    }
     qLines.push(`Answer ${i + 1} — Question asked: ${String(t.question_text || '').slice(0, 300)}`);
     if (Array.isArray(t.answer_pcm_chunks) && t.answer_pcm_chunks.length) {
       try {
@@ -427,11 +436,24 @@ export async function scoreAllTurnsOverall({ apiKey, context, turns, timeoutMs =
   if (!audioCount) {
     return {
       combined_speech_score: 0,
-      soft_skills: null,
-      final_feedback: 'No voice responses were captured for scoring.',
-      scoring_source: 'no_speech',
+      soft_skills: nonEnglishCount
+        ? {
+            communication_clarity: 0, fluency: 0, confidence: 0,
+            professionalism: 0, english_proficiency: 0, answer_relevance: 0,
+          }
+        : null,
+      final_feedback: nonEnglishCount
+        ? 'The candidate did not answer in English. This interview must be conducted in English, so the voice responses were scored zero.'
+        : 'No voice responses were captured for scoring.',
+      scoring_source: nonEnglishCount ? 'non_english_zero' : 'no_speech',
     };
   }
+
+  // Weight: non-English answers count as zero in the overall. Silent / no-audio
+  // turns are simply excluded (no penalty) — only language failures pull it down.
+  const scoredDenominator = audioCount + nonEnglishCount;
+  const englishFactor = scoredDenominator > 0 ? audioCount / scoredDenominator : 1;
+  const applyFactor = (val) => Math.max(0, Math.min(100, Math.round(Number(val || 0) * englishFactor)));
 
   const prompt = `You are evaluating a complete live VOICE interview for a ${role} position.
 This is a COMMUNICATION SKILLS round. Produce ONE overall assessment of how well the
@@ -484,20 +506,26 @@ ${qLines.join('\n\n')}`;
     const parsed = safeParseJson(rawText);
     const overall = parsed.overall_score != null ? Number(parsed.overall_score) : null;
     if (Number.isFinite(overall)) {
+      // Fold non-English answers in as zeros via englishFactor.
       const soft = {
-        communication_clarity: Math.round(Number(parsed.communication_clarity ?? overall)),
-        fluency:               Math.round(Number(parsed.fluency               ?? overall)),
-        confidence:            Math.round(Number(parsed.confidence            ?? overall)),
-        professionalism:       Math.round(Number(parsed.professionalism       ?? overall)),
-        english_proficiency:   Math.round(Number(parsed.english_proficiency   ?? overall)),
-        answer_relevance:      Math.round(Number(parsed.answer_relevance      ?? overall)),
+        communication_clarity: applyFactor(parsed.communication_clarity ?? overall),
+        fluency:               applyFactor(parsed.fluency               ?? overall),
+        confidence:            applyFactor(parsed.confidence            ?? overall),
+        professionalism:       applyFactor(parsed.professionalism       ?? overall),
+        english_proficiency:   applyFactor(parsed.english_proficiency   ?? overall),
+        answer_relevance:      applyFactor(parsed.answer_relevance      ?? overall),
       };
+      const combined = applyFactor(overall);
+      let feedback = String(parsed.final_feedback || '').trim()
+        || `Overall communication score: ${combined}/100.`;
+      if (nonEnglishCount > 0) {
+        feedback += ` Note: ${nonEnglishCount} answer${nonEnglishCount === 1 ? ' was' : 's were'} not in English and scored zero — this interview must be conducted in English.`;
+      }
       return {
-        combined_speech_score: Math.max(0, Math.min(100, Math.round(overall))),
+        combined_speech_score: combined,
         soft_skills: soft,
-        final_feedback: String(parsed.final_feedback || '').trim()
-          || `Overall communication score: ${Math.round(overall)}/100.`,
-        scoring_source: 'audio_primary_overall',
+        final_feedback: feedback,
+        scoring_source: nonEnglishCount > 0 ? 'audio_primary_overall_english_weighted' : 'audio_primary_overall',
       };
     }
     console.warn('[relay] scoreAllTurnsOverall parse empty; using audio-chunk heuristic');
@@ -506,20 +534,29 @@ ${qLines.join('\n\n')}`;
   }
 
   // Fallback: score from audio presence / duration heuristic (never transcript).
-  const withAudio = realTurns.filter((t) => Array.isArray(t.answer_pcm_chunks) && t.answer_pcm_chunks.length > 0);
+  // English answers only — non-English are folded in as zeros via englishFactor.
+  const withAudio = realTurns.filter(
+    (t) => !t.non_english && Array.isArray(t.answer_pcm_chunks) && t.answer_pcm_chunks.length > 0
+  );
   const avgChunks = withAudio.length
     ? withAudio.reduce((s, t) => s + t.answer_pcm_chunks.length, 0) / withAudio.length
     : 0;
   const base = avgChunks >= 80 ? 65 : avgChunks >= 30 ? 55 : avgChunks >= 8 ? 45 : 30;
   const soft = {
-    communication_clarity: base, fluency: base, confidence: Math.max(0, base - 5),
-    professionalism: base, english_proficiency: base, answer_relevance: Math.max(0, base - 8),
+    communication_clarity: applyFactor(base), fluency: applyFactor(base),
+    confidence: applyFactor(Math.max(0, base - 5)),
+    professionalism: applyFactor(base), english_proficiency: applyFactor(base),
+    answer_relevance: applyFactor(Math.max(0, base - 8)),
   };
+  let feedback = `Voice responses captured (${withAudio.length} answer${withAudio.length === 1 ? '' : 's'}). Automatic fallback score — detailed audio analysis was unavailable.`;
+  if (nonEnglishCount > 0) {
+    feedback += ` ${nonEnglishCount} answer${nonEnglishCount === 1 ? ' was' : 's were'} not in English and scored zero.`;
+  }
   return {
-    combined_speech_score: base,
+    combined_speech_score: applyFactor(base),
     soft_skills: soft,
-    final_feedback: `Voice responses captured (${withAudio.length} answer${withAudio.length === 1 ? '' : 's'}). Automatic fallback score — detailed audio analysis was unavailable.`,
-    scoring_source: 'voice_pcm_heuristic',
+    final_feedback: feedback,
+    scoring_source: nonEnglishCount > 0 ? 'voice_pcm_heuristic_english_weighted' : 'voice_pcm_heuristic',
   };
 }
 

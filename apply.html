@@ -329,6 +329,18 @@
             to { opacity: 1; transform: translateX(0); }
         }
         @media (min-width: 901px) {
+            .apply-layout.form-open.page-split {
+                align-items: start;
+            }
+            .apply-layout.form-open .page-split-left {
+                padding-top: 28px;
+            }
+            .apply-layout.form-open .tpl-inner {
+                min-height: 0;
+            }
+            .apply-layout.form-open .tpl-top-bar {
+                padding-top: 0;
+            }
             .apply-layout.form-open .apply-form-panel {
                 padding-top: calc(28px + 24px + 3rem + 20px);
             }
@@ -608,6 +620,14 @@
         }
         .apply-layout.form-open .tpl-poster-apply-btn {
             display: none;
+        }
+
+        /* Form open — left column top-aligns with the application panel (right stays put) */
+        @media (min-width: 901px) {
+            .apply-layout.form-open .apply-tpl-hiring-card .page-split-left,
+            .apply-layout.form-open .apply-tpl-hiring-poster .page-split-left {
+                padding-top: 28px;
+            }
         }
     </style>
 </head>

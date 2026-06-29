@@ -31,21 +31,15 @@ function loudPcmB64() {
   return buf.toString('base64');
 }
 
-/** Wait for post-answer question TTS prompt delivery. */
-async function awaitPromptDelivery(bridge) {
-  const deadline = Date.now() + 3500;
-  while (Date.now() < deadline) {
-    if (!bridge.postAnswerTtsDelivery && bridge.ttsPromptPendingFor === 0) return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  if (typeof bridge.flushPostAnswerTtsDelivery === 'function') {
-    bridge.flushPostAnswerTtsDelivery();
-  }
+/** Wait for post-answer delay before the next question TTS is sent. */
+async function awaitNextQuestionSpeak(bridge) {
+  if (!bridge.voiceOnly || bridge.answers.length === 0) return;
+  await new Promise((r) => setTimeout(r, 1300));
 }
 
 /** Mock Gemini returning spoken audio for a deterministic question TTS turn. */
 async function completeQuestionTts(bridge) {
-  await awaitPromptDelivery(bridge);
+  await awaitNextQuestionSpeak(bridge);
   const qNum = bridge.ttsForQ || bridge.currentQ || 1;
   const text = bridge.questions[qNum - 1] || 'Tell me about your experience with customer support.';
   bridge.modelAudioThisTurn = true;
@@ -84,7 +78,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
     bridge.sendAudio(loudPcmB64());
     bridge.endUserTurn();
     completeActivityEnd(bridge);
-    await new Promise((r) => setTimeout(r, 900));
+    await new Promise((r) => setTimeout(r, 2000));
     if (lastOf(events, 'answer', q).length >= 1) ok(`Q${q} answer recorded`); else fail(`Q${q} answer recorded`);
     if (q < 5 && bridge.currentQ === q + 1) ok(`Q${q} -> Q${q + 1} advanced`); else if (q < 5) fail(`Q${q} -> Q${q + 1} advanced`, `currentQ=${bridge.currentQ}`);
   }
@@ -120,6 +114,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.userBuf = 'Can you repeat the question please';
   bridge.sendAudio(loudPcmB64());
   bridge.completeAnswerTurn();
+  await new Promise((r) => setTimeout(r, 1400));
   if (bridge.warmupPhase === null && bridge.currentQ === 1 && !bridge.questionRepeatUsed[1]) {
     ok('intro repeat phrase does not trigger speech repeat');
   } else {
@@ -180,7 +175,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.sendAudio(loudPcmB64());
   bridge.endUserTurn();
   completeActivityEnd(bridge);
-  await new Promise((r) => setTimeout(r, 500));
+  await new Promise((r) => setTimeout(r, 2000));
   if (lastOf(events, 'answer', 3).length >= 1) ok('voice-only finalize proceeds after Q3 submit'); else fail('voice-only finalize proceeds after Q3 submit');
   if (bridge.currentQ === 4) ok('Q3 answer advances to Q4 without STT wait'); else fail('Q3 answer advances to Q4', `currentQ=${bridge.currentQ}`);
   if (lastOf(events, 'question', 4).length >= 1) ok('Q4 question committed after Q3'); else fail('Q4 question committed after Q3');
@@ -216,7 +211,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
     bridge.sendAudio(loudPcmB64());
     bridge.endUserTurn();
     completeActivityEnd(bridge);
-    await new Promise((r) => setTimeout(r, 900));
+    await new Promise((r) => setTimeout(r, 2000));
   }
   bridge.speakQuestion(5);
   await completeQuestionTts(bridge);
@@ -301,7 +296,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.sendAudio(loudPcmB64());
   bridge.endUserTurn();
   completeActivityEnd(bridge);
-  await new Promise((r) => setTimeout(r, 700));
+  await new Promise((r) => setTimeout(r, 2000));
   if (bridge.answers.length === 1) ok('skip records a no-answer turn'); else fail('skip records a no-answer turn', `len=${bridge.answers.length}`);
   if (bridge.skippedTurns && bridge.skippedTurns[1]) ok('skip flags the turn as skipped'); else fail('skip flags the turn as skipped');
   if (bridge.currentQ === 2) ok('skip advances to next question'); else fail('skip advances to next question', `currentQ=${bridge.currentQ}`);

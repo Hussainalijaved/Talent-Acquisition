@@ -126,6 +126,32 @@ app.post('/test-db', async (req, res) => {
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
+const activeSessions = new Set();
+let shuttingDown = false;
+
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[relay] ${signal} received — closing ${activeSessions.size} live session(s)…`);
+  wss.close();
+  for (const ws of activeSessions) {
+    try {
+      sendJson(ws, { type: 'error', message: 'server_restarting' });
+      ws.close();
+    } catch (_) {}
+  }
+  server.close(() => {
+    console.log('[relay] graceful shutdown complete');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.warn('[relay] shutdown timeout — forcing exit');
+    process.exit(1);
+  }, 10000).unref();
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url || '/', `http://${req.headers.host}`);
@@ -145,6 +171,7 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 wss.on('connection', (clientWs) => {
+  activeSessions.add(clientWs);
   let bridge = null;
   let context = null;
   let finishing = false;
@@ -427,6 +454,7 @@ wss.on('connection', (clientWs) => {
   });
 
   clientWs.on('close', async () => {
+    activeSessions.delete(clientWs);
     if (bridge) bridge.closeGemini();
 
     // Fallback: client disconnected before session.end (tab close / network drop).

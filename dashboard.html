@@ -382,12 +382,7 @@
                                             <div class="form-group">
                                                 <label for="jobPassThresholdIn">Pass threshold (%)</label>
                                                 <input id="jobPassThresholdIn" type="number" min="0" max="100" step="1" value="60" placeholder="60" />
-                                                <div class="form-hint">Default 60 — raise for senior roles, lower for junior.</div>
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="jobFailThresholdIn">Fail threshold (%)</label>
-                                                <input id="jobFailThresholdIn" type="number" min="0" max="100" step="1" value="30" placeholder="30" />
-                                                <div class="form-hint">Below this during phased assessment = hard fail.</div>
+                                                <div class="form-hint">Default 60 — combined technical + voice score must meet this to PASS. Change per job, or update all jobs from Settings.</div>
                                             </div>
                                         </div>
                                     </section>
@@ -698,6 +693,30 @@
                     <div class="form-actions">
                         <button type="button" class="btn-primary" id="saveWebhookBtn" data-requires-perm="save_webhooks">Save webhook</button>
                     </div>
+                </div>
+
+                <div class="card card-limit-md settings-scoring-card">
+                    <div class="card-head">
+                        <div class="card-title">Assessment scoring defaults
+                            <small>Global pass threshold — per-job override stays on Create / Edit job</small>
+                        </div>
+                    </div>
+                    <div class="form-grid cols-1">
+                        <div class="form-group">
+                            <label for="admDefaultPassThreshold">Default pass threshold (%)</label>
+                            <input id="admDefaultPassThreshold" type="number" min="0" max="100" step="1" value="60" placeholder="60" />
+                            <div class="form-hint">
+                                Combined technical + voice score must meet this to PASS.
+                                Used as the default on <strong>Create job</strong> and when you apply to all jobs below.
+                                Individual jobs can still be edited one-by-one.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-actions settings-scoring-actions">
+                        <button type="button" class="btn-primary" id="saveDefaultPassBtn" data-requires-perm="edit_jobs">Save default</button>
+                        <button type="button" class="btn-secondary" id="applyPassAllJobsBtn" data-requires-perm="edit_jobs">Apply to all jobs</button>
+                    </div>
+                    <p class="form-hint settings-scoring-note" id="assessmentScoringStatus"></p>
                 </div>
             </section>
         </div>
@@ -2678,7 +2697,7 @@
             'jobs-create': ['Create job', 'Generate JD from criteria and publish a role'],
             screen: ['CV Screening', 'Screen single or batch CVs via AI'],
             onsite: ['Onsite Interviews', 'Record interview outcomes — recruiters & hiring managers'],
-            settings: ['Settings', 'Webhooks and integrations'],
+            settings: ['Settings', 'Webhooks, integrations, and assessment scoring defaults'],
             'role-permissions': ['Role access', 'Platform Admin — pages & actions per role'],
             users: ['Users', 'Team members, roles, and access'],
             'users-invite': ['Invite user', 'Add a new team member to Talent Admin'],

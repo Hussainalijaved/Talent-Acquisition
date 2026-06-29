@@ -7,7 +7,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import puppeteer from 'puppeteer';
+import { launchPuppeteer } from './puppeteer-launch.mjs';
 import { scoreSingleTurn } from '../relay/lib/score-turns.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -207,8 +207,7 @@ async function testPuppeteerClientPipeline() {
   const server = await startStaticServer(port);
   const base = `http://127.0.0.1:${port}`;
 
-  const browser = await puppeteer.launch({
-    headless: true,
+  const browser = await launchPuppeteer({
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 

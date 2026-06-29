@@ -14,7 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import http from 'http';
 import { fileURLToPath } from 'url';
-import puppeteer from 'puppeteer';
+import { launchPuppeteer } from './puppeteer-launch.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -143,8 +143,7 @@ function startStaticServer(port) {
 
 async function puppeteerSchedulingProbe(base) {
   console.log('\n--- Puppeteer: portal finish view (network) ---');
-  const browser = await puppeteer.launch({
-    headless: true,
+  const browser = await launchPuppeteer({
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 

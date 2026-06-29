@@ -21,3 +21,4 @@ Thumbs.db
 *.log
 .n8n/
 workflows_exported.json
+chrome/

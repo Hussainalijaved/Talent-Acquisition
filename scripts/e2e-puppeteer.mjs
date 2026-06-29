@@ -6,7 +6,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import puppeteer from 'puppeteer';
+import { launchPuppeteer } from './puppeteer-launch.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -212,8 +212,7 @@ async function main() {
     console.log(`=== E2E Puppeteer (${base}) ===\n`);
   }
 
-  const browser = await puppeteer.launch({
-    headless: true,
+  const browser = await launchPuppeteer({
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 

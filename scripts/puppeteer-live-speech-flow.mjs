@@ -11,7 +11,7 @@ import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import puppeteer from 'puppeteer';
+import { launchPuppeteer } from './puppeteer-launch.mjs';
 import { WebSocketServer } from 'ws';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -132,8 +132,7 @@ async function main() {
   const relay = createMockRelay();
   const httpServer = await startStaticServer(HTTP_PORT);
 
-  const browser = await puppeteer.launch({
-    headless: true,
+  const browser = await launchPuppeteer({
     args: [
       '--use-fake-ui-for-media-stream',
       '--use-fake-device-for-media-stream',

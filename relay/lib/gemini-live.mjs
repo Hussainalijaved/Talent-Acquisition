@@ -210,6 +210,8 @@ export class GeminiLiveBridge {
     this.warmupTtsOnly = false;
     this.warmupTtsPhase = null;
     this.warmupDisplayText = '';
+    /** Once mic is opened for a warmup phase, never re-speak or clear that window. */
+    this.warmupAnswerLatched = null;
     // Non-voice modes defer next-question TTS until Gemini acknowledges activityEnd.
     this.pendingUserActivityEnd = false;
     this.activityEndTurnTimer = null;
@@ -276,6 +278,7 @@ export class GeminiLiveBridge {
       complexity_tier: limits.tier,
     };
     if (isWarmup) ev.warmup = opts.warmup || this.warmupPhase;
+    if (isWarmup && ev.warmup) this.warmupAnswerLatched = ev.warmup;
     this.onEvent(ev);
     if (qNum >= 1) this.refineQuestionTimeLimit(qNum, questionText);
   }
@@ -463,15 +466,22 @@ export class GeminiLiveBridge {
 
   retryWarmupSpeak(phase) {
     if (this.interviewEnded || this.closed || this.warmupPhase !== phase) return;
+    if (this.warmupAnswerLatched === phase) return;
+    const wNum = phase === 'mic_check' ? -1 : 0;
+    if (this.answerPromptOpen && this.answerPromptFor === wNum) return;
+    if (!this.canSendTtsPromptNow()) {
+      setTimeout(() => this.retryWarmupSpeak(phase), 800);
+      return;
+    }
     const key = phase === 'mic_check' ? 'mic_check' : 'intro';
     this.warmupSpeakRetries[key] = (this.warmupSpeakRetries[key] || 0) + 1;
-    if (this.warmupSpeakRetries[key] > 3) {
-      console.warn(`[relay] warmup ${phase} speak retries exhausted — using fallback prompt`);
+    if (this.warmupSpeakRetries[key] > 2) {
+      console.warn(`[relay] warmup ${phase} speak retries exhausted — opening mic without TTS`);
       this.emitWarmupFallback(phase);
       return;
     }
     console.warn(`[relay] warmup ${phase} had no audible output — retry #${this.warmupSpeakRetries[key]}`);
-    this.speakWarmupDeterministic(phase);
+    this.speakWarmupDeterministic(phase, { flushFirst: true });
   }
 
   warmupDisplayFor(phase) {
@@ -494,10 +504,12 @@ export class GeminiLiveBridge {
   }
 
   // Deterministic warmup TTS — same reliable path as numbered questions.
-  speakWarmupDeterministic(phase) {
+  speakWarmupDeterministic(phase, opts = {}) {
     if (this.interviewEnded || this.closed) return;
     if (this.warmupPhase !== phase) return;
     const wNum = phase === 'mic_check' ? -1 : 0;
+    if (this.warmupAnswerLatched === phase) return;
+    if (this.answerPromptOpen && this.answerPromptFor === wNum) return;
     const displayText = this.warmupDisplayFor(phase);
 
     this.voiceActivityEndPending = false;
@@ -528,11 +540,14 @@ export class GeminiLiveBridge {
       number: wNum,
     });
     this.onEvent({ type: 'question', number: wNum, text: displayText, warmup: phase });
-    this.sendSpokenPrompt(this.buildWarmupSpeechPrompt(displayText), { flushFirst: false });
+    this.sendSpokenPrompt(this.buildWarmupSpeechPrompt(displayText), {
+      flushFirst: opts.flushFirst !== false,
+    });
     this.scheduleWarmupWatchdog(phase);
   }
 
   emitWarmupFallback(phase) {
+    if (this.warmupAnswerLatched === phase) return;
     const wNum = phase === 'mic_check' ? -1 : 0;
     const fallbackText = phase === 'mic_check'
       ? 'Please say a few words so I can confirm your microphone is working.'
@@ -950,11 +965,13 @@ export class GeminiLiveBridge {
     this.nextQuestionWatchdog = setTimeout(() => {
       this.nextQuestionWatchdog = null;
       if (this.interviewEnded || this.closed || this.warmupPhase !== phase) return;
-      if (this.answerPromptOpen && this.answerPromptFor === (phase === 'mic_check' ? -1 : 0)) return;
+      if (this.warmupAnswerLatched === phase) return;
+      const wNum = phase === 'mic_check' ? -1 : 0;
+      if (this.answerPromptOpen && this.answerPromptFor === wNum) return;
       if (phase === 'intro' && this.introQuestionAsked && this.answerPromptOpen && this.warmupAudioDelivered.intro) return;
       console.warn(`[relay] warmup watchdog — ${phase} not heard, retrying speak`);
       this.retryWarmupSpeak(phase);
-    }, 16000);
+    }, 12000);
   }
 
   scheduleNextQuestionWatchdog(nextQ) {
@@ -1227,6 +1244,12 @@ export class GeminiLiveBridge {
             this.scheduleTtsAnswerWindow(this.ttsForQ, this.questions[this.ttsForQ - 1] || '');
           }
         }
+        if (this.warmupTtsOnly && this.warmupTtsPhase) {
+          try {
+            this.ttsAudioBytesThisTurn += Buffer.from(inline.data, 'base64').length;
+          } catch (_) {}
+          this.lastModelAudioSentAt = Date.now();
+        }
         if (this.warmupPhase === 'mic_check') this.warmupAudioDelivered.mic_check = true;
         if (this.warmupPhase === 'intro') this.warmupAudioDelivered.intro = true;
         const chunk = {
@@ -1413,7 +1436,8 @@ export class GeminiLiveBridge {
       const phase = this.warmupTtsPhase;
       const wNum = phase === 'mic_check' ? -1 : 0;
       const text = this.warmupDisplayText || this.warmupDisplayFor(phase);
-      const hadAudio = this.modelAudioThisTurn;
+      const hadAudio =
+        this.modelAudioThisTurn || (this.ttsAudioBytesThisTurn || 0) >= 2000;
 
       if (this.nextQuestionWatchdog) {
         clearTimeout(this.nextQuestionWatchdog);
@@ -1959,7 +1983,11 @@ export class GeminiLiveBridge {
       this.pendingAudioChunks = [];
       this.blockModelOutput = false;
       this.flushClientPlayback();
-      this.speakWarmupDeterministic('intro');
+      const introDelayMs = this.voiceOnly ? 1500 : 600;
+      setTimeout(() => {
+        if (this.interviewEnded || this.closed || this.warmupPhase !== 'intro') return;
+        this.speakWarmupDeterministic('intro');
+      }, introDelayMs);
       return;
     }
 
@@ -2510,6 +2538,8 @@ export class GeminiLiveBridge {
     if (!clean) return;
     if (this.ttsOnlyTurn && this.ttsForQ >= 1) {
       this.markTtsPromptSent();
+    } else if (this.warmupTtsOnly && this.warmupTtsPhase) {
+      this.markTtsPromptSent();
     } else {
       this.modelAudioThisTurn = false;
     }
@@ -2559,15 +2589,26 @@ export class GeminiLiveBridge {
     if (this.userTurnActive) return;
     // Stale awaitingAnswer from a prior half-finished turn must not block a new answer.
     if (this.awaitingAnswer) {
-      if (!this.answerPromptOpen) return;
-      this.awaitingAnswer = false;
-      if (this.pendingFinalize) {
-        clearTimeout(this.pendingFinalize);
-        this.pendingFinalize = null;
-      }
-      if (this.answerTimer) {
-        clearTimeout(this.answerTimer);
-        this.answerTimer = null;
+      if (!this.answerPromptOpen) {
+        if (this.warmupPhase === 'mic_check' || this.warmupPhase === 'intro') {
+          const wNum = this.warmupPhase === 'mic_check' ? -1 : 0;
+          this.answerPromptOpen = true;
+          this.answerPromptFor = wNum;
+          this.answerWindowOpenedAt = Date.now();
+          this.awaitingAnswer = false;
+        } else {
+          return;
+        }
+      } else {
+        this.awaitingAnswer = false;
+        if (this.pendingFinalize) {
+          clearTimeout(this.pendingFinalize);
+          this.pendingFinalize = null;
+        }
+        if (this.answerTimer) {
+          clearTimeout(this.answerTimer);
+          this.answerTimer = null;
+        }
       }
     }
     this.userTurnActive = true;

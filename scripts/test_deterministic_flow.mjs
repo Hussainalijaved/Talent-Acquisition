@@ -349,6 +349,14 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   else fail('warmup fallback emits awaiting_answer');
   if (!bridge.warmupTtsOnly) ok('warmup fallback clears warmupTtsOnly');
   else fail('warmup fallback clears warmupTtsOnly');
+  bridge.warmupTtsOnly = true;
+  bridge.warmupTtsPhase = 'intro';
+  bridge.retryWarmupSpeak('intro');
+  if (bridge.answerPromptOpen && bridge.warmupAnswerLatched === 'intro') {
+    ok('warmup latch blocks retry after mic window opened');
+  } else {
+    fail('warmup latch blocks retry after mic window opened');
+  }
   bridge.closed = true;
 }
 

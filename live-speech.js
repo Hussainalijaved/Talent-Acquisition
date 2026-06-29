@@ -201,7 +201,7 @@
 
     scheduleMicOpenWatchdog() {
       this.clearMicOpenWatchdog();
-      const delayMs = this.pendingAnswerQ <= 0 ? 2500 : 6000;
+      const delayMs = this.pendingAnswerQ <= 0 ? 1200 : 6000;
       this.micOpenWatchdogTimer = setTimeout(() => this.runMicOpenWatchdog(), delayMs);
     }
 
@@ -211,6 +211,10 @@
     runMicOpenWatchdog() {
       this.micOpenWatchdogTimer = null;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
+      if (this.pendingAnswerQ <= 0) {
+        this.beginAnswer({ force: true });
+        return;
+      }
       if (this.pendingAnswerQ >= 1 && !this.heardQuestionAudioThisTurn) {
         const waited = Date.now() - (this.awaitingAnswerAt || Date.now());
         if (waited < 45000) {
@@ -307,6 +311,21 @@
     async openMicAfterPlayback() {
       const myToken = ++this.micOpenToken;
       if (this.ended || this.interviewEnded) return;
+      const isWarmupTurn = this.pendingAnswerQ <= 0;
+      if (isWarmupTurn) {
+        const warmupDeadline = Date.now() + 3500;
+        while (Date.now() < warmupDeadline) {
+          if (this.ended || this.interviewEnded) return;
+          if (myToken !== this.micOpenToken) return;
+          if (!this.awaitingAnswerPending || this.answering) return;
+          if (!this.playing && this.playQueue.length === 0) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        if (myToken !== this.micOpenToken) return;
+        if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
+        this.beginAnswer({ force: true });
+        return;
+      }
       const deadline = Date.now() + 30000;
       while (Date.now() < deadline) {
         if (this.ended || this.interviewEnded) return;
@@ -347,11 +366,6 @@
       }
       if (myToken !== this.micOpenToken) return;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
-      const isWarmupTurn = this.pendingAnswerQ <= 0;
-      if (isWarmupTurn && !this.heardQuestionAudioThisTurn) {
-        this.beginAnswer({ force: true });
-        return;
-      }
       if (this.pendingAnswerQ >= 1 && !this.heardQuestionAudioThisTurn) {
         this.ensureMicReady();
         return;

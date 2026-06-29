@@ -22,6 +22,8 @@
     const DEFAULT_JD_WEBHOOK_PUBLIC = N8N_WEBHOOK_BASE + '/talent/jd-generate';
     let deps = null;
     let JOBS = [];
+    /** UUID of job being edited — survives jobEditId dropdown rebuild after loadJobs(). */
+    let editingJobId = '';
     let ONSITE = [];
     let SCOPED_JOB_SLUGS = null;
     let screenMode = 'single';
@@ -973,8 +975,13 @@
             const el = document.getElementById(id);
             if (!el) return;
             if (id === 'jobEditId') {
+                const keep = el.value || editingJobId;
                 el.innerHTML = '<option value="">New job</option>' +
                     JOBS.map((j) => `<option value="${j.id}">${deps.esc(j.title)} (${j.status})</option>`).join('');
+                if (keep && JOBS.some((j) => j.id === keep)) {
+                    el.value = keep;
+                    editingJobId = keep;
+                }
                 return;
             }
             const openJobs = JOBS.filter((j) => j.status === 'open');
@@ -1060,6 +1067,7 @@
     function fillJobForm(id) {
         const j = JOBS.find((x) => x.id === id);
         if (!j) return;
+        editingJobId = id;
         document.getElementById('jobEditId').value = j.id;
         document.getElementById('jobTitleIn').value = j.title || '';
         document.getElementById('jobDeptIn').value = j.department || '';
@@ -1081,6 +1089,13 @@
         clearJobFieldErrors();
         resetJobTemplateUi();
         deps.setView('jobs-create');
+        requestAnimationFrame(() => {
+            const sel = document.getElementById('jobEditId');
+            if (sel && JOBS.some((x) => x.id === id)) {
+                sel.value = id;
+                editingJobId = id;
+            }
+        });
     }
 
     async function saveJob() {
@@ -1090,8 +1105,9 @@
         }
         clearJobFieldErrors();
 
-        const id = document.getElementById('jobEditId').value;
+        const id = document.getElementById('jobEditId').value || editingJobId;
         const existing = id ? JOBS.find((x) => x.id === id) : null;
+        const isUpdate = Boolean(id);
         const title = document.getElementById('jobTitleIn').value.trim();
         const jd_text = document.getElementById('jobJdIn').value.trim();
         const interviewer_email = document.getElementById('jobIntIn').value.trim().toLowerCase();
@@ -1136,7 +1152,7 @@
         const row = {
             title,
             jd_text,
-            job_id: existing ? existing.job_id : uniqueJobSlug(title),
+            job_id: isUpdate && existing ? existing.job_id : uniqueJobSlug(title, id || undefined),
             department: document.getElementById('jobDeptIn').value.trim() || null,
             location: document.getElementById('jobLocIn').value || 'Remote',
             employment_type: document.getElementById('jobTypeIn').value || 'Full-time',
@@ -1152,11 +1168,16 @@
         };
 
         async function trySave(payload) {
-            if (id) return deps.sb.from('jobs').update(payload).eq('id', id);
-            return deps.sb.from('jobs').insert(payload);
+            if (isUpdate) {
+                const updatePayload = { ...payload };
+                if (!existing) delete updatePayload.job_id;
+                return deps.sb.from('jobs').update(updatePayload).eq('id', id).select('id').maybeSingle();
+            }
+            return deps.sb.from('jobs').insert(payload).select('id').maybeSingle();
         }
 
-        let { error } = await trySave(row);
+        let result = await trySave(row);
+        let error = result?.error;
         let usedFallback = false;
         if (error && /column|schema|does not exist/i.test(error.message || '')) {
             const fallback = { ...row };
@@ -1175,7 +1196,8 @@
             if (extras.length) {
                 fallback.jd_text = extras.join('\n') + '\n\n' + jd_text;
             }
-            ({ error } = await trySave(fallback));
+            result = await trySave(fallback);
+            error = result?.error;
             usedFallback = !error;
         }
         if (error) {
@@ -1192,13 +1214,18 @@
             }
             return;
         }
+        if (isUpdate && !result?.data?.id) {
+            deps.banner('Update failed — job not found. Refresh the page and try again.', 'err');
+            return;
+        }
         deps.banner(
             usedFallback
-                ? 'Job saved (run supabase_jobs_expand.sql, supabase_jobs_scoring.sql, and supabase_jobs_cv_scoring.sql for full column support).'
-                : 'Job saved.',
+                ? (isUpdate ? 'Job updated' : 'Job saved') + ' (run supabase_jobs_expand.sql, supabase_jobs_scoring.sql, and supabase_jobs_cv_scoring.sql for full column support).'
+                : (isUpdate ? 'Job updated.' : 'Job created.'),
             'ok'
         );
-        if (deps.auth) await deps.auth.logAudit('save_job', 'job', row.job_id, { title: row.title, status: row.status });
+        if (deps.auth) await deps.auth.logAudit(isUpdate ? 'update_job' : 'save_job', 'job', row.job_id || existing?.job_id, { title: row.title, status: row.status });
+        editingJobId = '';
         document.getElementById('jobForm').reset();
         document.getElementById('jobEditId').value = '';
         resetJobTemplateUi();
@@ -3036,6 +3063,7 @@
         document.getElementById('jobForm')?.addEventListener('submit', (e) => { e.preventDefault(); saveJob(); });
         document.getElementById('jobGenBtn')?.addEventListener('click', onJobCriteriaGenerate);
         document.getElementById('jobResetBtn')?.addEventListener('click', () => {
+            editingJobId = '';
             document.getElementById('jobForm').reset();
             document.getElementById('jobEditId').value = '';
             document.getElementById('jobPassThresholdIn').value = String(resolveDefaultPassThreshold());
@@ -3052,6 +3080,7 @@
                 fillJobForm(val);
                 return;
             }
+            editingJobId = '';
             document.getElementById('jobForm')?.reset();
             document.getElementById('jobPassThresholdIn').value = String(resolveDefaultPassThreshold());
             document.getElementById('jobCvShortlistIn').value = '62';

@@ -3033,6 +3033,7 @@
             const [cards, setCards] = React.useState([]);
             const [canAnswer, setCanAnswer] = React.useState(false);
             const [isAnswering, setIsAnswering] = React.useState(false);
+            const [micOpening, setMicOpening] = React.useState(false);
             const [savingAnswer, setSavingAnswer] = React.useState(false);
             const [ending, setEnding] = React.useState(false);
             const [interviewComplete, setInterviewComplete] = React.useState(false);
@@ -3274,6 +3275,7 @@
                                 questionLockedRef.current = false;
                                 setFollowUpActive(true);
                                 setSavingAnswer(false);
+                                setMicOpening(false);
                                 setCanAnswer(false);
                                 setIsAnswering(false);
                                 setSilenceHint('');
@@ -3288,6 +3290,7 @@
                             onSavingTurn: () => {
                                 awaitingAnswerRef.current = false;
                                 canAnswerRef.current = false;
+                                setMicOpening(false);
                                 setIsAnswering(false);
                                 setCanAnswer(false);
                                 setSavingAnswer(true);
@@ -3298,6 +3301,7 @@
                                 if (warmup != null || number <= 0) {
                                     awaitingAnswerRef.current = false;
                                     canAnswerRef.current = false;
+                                    setMicOpening(false);
                                     setWarmupAnswer(cleanText(text, 'user') || 'Answer captured');
                                     setIsAnswering(false);
                                     setCanAnswer(false);
@@ -3309,6 +3313,7 @@
                                 }
                                 awaitingAnswerRef.current = false;
                                 canAnswerRef.current = false;
+                                setMicOpening(false);
                                 setAnswerForQuestion(number, text);
                                 setIsAnswering(false);
                                 setSavingAnswer(true);
@@ -3324,17 +3329,18 @@
                                     ? limit
                                     : defaultAnswerSeconds;
                                 setQuestionTimeLimit(nextLimit);
-                                canAnswerRef.current = true;
                                 awaitingAnswerRef.current = true;
-                                setCanAnswer(true);
+                                canAnswerRef.current = false;
+                                setMicOpening(true);
+                                setCanAnswer(false);
                                 setIsAnswering(false);
                                 setSavingAnswer(false);
                                 setLiveCaption('');
                                 setLiveQuestionCaption('');
                                 setWarmupCaption('');
                                 setIsInterviewerSpeaking(false);
-                                setAnswerTimerActive(true);
-                                setTimeLeft(nextLimit);
+                                setAnswerTimerActive(false);
+                                setTimeLeft(null);
                                 setSilenceHint('');
                             },
                             onTimeLimitUpdate: ({ time_limit_seconds }) => {
@@ -3350,13 +3356,17 @@
                             onMicOpen: () => {
                                 awaitingAnswerRef.current = false;
                                 canAnswerRef.current = true;
+                                setMicOpening(false);
                                 setIsAnswering(true);
                                 setCanAnswer(true);
+                                setAnswerTimerActive(true);
+                                setTimeLeft((prev) => (prev != null ? prev : questionTimeLimitRef.current));
                                 setSilenceHint('');
                             },
                             onNextQuestionReady: ({ number }) => {
                                 awaitingAnswerRef.current = false;
                                 canAnswerRef.current = false;
+                                setMicOpening(false);
                                 setSavingAnswer(false);
                                 setCanAnswer(false);
                                 setIsAnswering(false);
@@ -3503,13 +3513,12 @@
                     sessionRef.current?.submitAnswer?.();
                     setIsAnswering(false);
                     setCanAnswer(false);
+                    setMicOpening(false);
                     setSavingAnswer(true);
                     setAnswerTimerActive(false);
                     setTimeLeft(null);
-                } else if (canAnswer) {
-                    // Don't optimistically flip to "recording" — onMicOpen will, once the
-                    // mic is genuinely streaming, so the audio indicator stays truthful.
-                    sessionRef.current?.beginAnswer?.();
+                } else if (canAnswer || micOpening) {
+                    sessionRef.current?.beginAnswer?.({ force: true });
                 }
             };
 
@@ -3571,6 +3580,8 @@
                 ? 'Answer saved — next step…'
                 : savingAnswer
                 ? 'Saving your answer…'
+                : micOpening
+                ? 'Opening your microphone…'
                 : canAnswer
                 ? 'Mic opens when the interviewer finishes'
                 : followUpActive
@@ -3589,7 +3600,11 @@
                 let label = 'Getting ready…';
                 let hint = statusHint;
 
-                if (aiSpeaking) {
+                if (micOpening && !candidateSpeaking) {
+                    orbClass = 'ready';
+                    label = 'Opening microphone';
+                    hint = 'Your mic will open automatically in a moment';
+                } else if (aiSpeaking) {
                     orbClass = 'ai-active';
                     label = 'Interviewer is speaking';
                     hint = warmup
@@ -3663,7 +3678,7 @@
             const renderMicControls = (warmup = false, answered = false) => {
                 const isMicCheck = warmup && warmupPhase === 'mic_check';
                 const heard = micHeard;
-                const showMic = (isAnswering || (canAnswer && !answered)) && !savingAnswer;
+                const showMic = (isAnswering || micOpening || (canAnswer && !answered)) && !savingAnswer;
                 if (!showMic && !answered) return null;
                 return (
                     <div className="speech-live-mic-area">
@@ -3680,7 +3695,7 @@
                                     <button
                                         type="button"
                                         onClick={handleAnswerToggle}
-                                        disabled={(!canAnswer && !isAnswering) || savingAnswer}
+                                        disabled={(!canAnswer && !isAnswering && !micOpening) || savingAnswer}
                                         className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-4 shadow-lg disabled:opacity-50 ${
                                             isAnswering
                                                 ? 'bg-red-500 hover:bg-red-600 focus:ring-red-200 shadow-red-200'
@@ -3699,6 +3714,8 @@
                                 <p className={`text-sm font-semibold ${isAnswering ? 'text-red-600' : warmup ? 'text-amber-600' : 'text-indigo-600'}`}>
                                     {isAnswering
                                         ? (isMicCheck ? 'Mic on — tap to submit' : 'Recording — tap to submit')
+                                        : micOpening
+                                        ? 'Opening mic… (tap if it does not open)'
                                         : (isMicCheck ? 'Tap to start mic check' : 'Tap to start speaking')}
                                 </p>
                                 {isAnswering ? (

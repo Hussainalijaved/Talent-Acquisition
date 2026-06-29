@@ -122,7 +122,9 @@
       this.lastOutputAudioAt = 0;
       this.playbackIdleSentForQ = null;
       this.playbackIdleTimer = null;
-      this.questionAudioTailMs = 1800;
+      this.questionAudioTailMs = 900;
+      this.awaitingAnswerAt = 0;
+      this.micOpenWatchdogTimer = null;
     }
 
     clearPlayback() {
@@ -181,6 +183,26 @@
         clearTimeout(this.micOpenTimer);
         this.micOpenTimer = null;
       }
+      if (this.micOpenWatchdogTimer) {
+        clearTimeout(this.micOpenWatchdogTimer);
+        this.micOpenWatchdogTimer = null;
+      }
+    }
+
+    clearMicOpenWatchdog() {
+      if (this.micOpenWatchdogTimer) {
+        clearTimeout(this.micOpenWatchdogTimer);
+        this.micOpenWatchdogTimer = null;
+      }
+    }
+
+    scheduleMicOpenWatchdog() {
+      this.clearMicOpenWatchdog();
+      this.micOpenWatchdogTimer = setTimeout(() => {
+        this.micOpenWatchdogTimer = null;
+        if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
+        this.beginAnswer({ force: true });
+      }, 3500);
     }
 
     clearQuestionSafetyTimer() {
@@ -211,16 +233,21 @@
       const number = payload.number ?? 0;
       const seconds = Number(payload.time_limit_seconds) > 0 ? Number(payload.time_limit_seconds) : 120;
       this.clearQuestionSafetyTimer();
+      const duplicate = this.awaitingAnswerPending && this.pendingAnswerQ === number;
       this.awaitingAnswerPending = true;
       this.pendingAnswerQ = number;
       this.pendingAnswerSeconds = seconds;
-      this.onAwaitingAnswer({
-        number,
-        maxTurns: payload.maxTurns,
-        time_limit_seconds: seconds,
-        complexity_tier: payload.complexity_tier,
-        warmup: payload.warmup || null,
-      });
+      this.awaitingAnswerAt = Date.now();
+      if (!duplicate) {
+        this.onAwaitingAnswer({
+          number,
+          maxTurns: payload.maxTurns,
+          time_limit_seconds: seconds,
+          complexity_tier: payload.complexity_tier,
+          warmup: payload.warmup || null,
+        });
+      }
+      this.scheduleMicOpenWatchdog();
       void this.openMicAfterPlayback();
     }
 
@@ -230,19 +257,14 @@
     async openMicAfterPlayback() {
       const myToken = ++this.micOpenToken;
       if (this.ended || this.interviewEnded) return;
-      const deadline = Date.now() + 40000;
+      const deadline = Date.now() + 12000;
       while (Date.now() < deadline) {
         if (this.ended || this.interviewEnded) return;
         if (myToken !== this.micOpenToken) return;
         if (!this.awaitingAnswerPending || this.answering) return;
-        if (
-          this.pendingAnswerQ >= 1 &&
-          !this.heardQuestionAudioThisTurn &&
-          Date.now() < this.questionAudioWaitDeadline
-        ) {
-          await new Promise((r) => setTimeout(r, 200));
-          continue;
-        }
+        // Relay already opened the answer window — do not block on a long audio-wait
+        // deadline from next_question_ready (that caused Q2 silent + mic never open).
+        if (this.awaitingAnswerAt && Date.now() - this.awaitingAnswerAt > 6000) break;
         if (this.playing || this.playQueue.length > 0) {
           await new Promise((r) => setTimeout(r, 150));
           continue;
@@ -257,7 +279,7 @@
       if (myToken !== this.micOpenToken) return;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
       this.maybeSendPlaybackIdle();
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 150));
       if (myToken !== this.micOpenToken) return;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
       this.beginAnswer();
@@ -321,20 +343,24 @@
     // Open the candidate's mic NOW. If interviewer audio is somehow still queued,
     // drop it instead of waiting forever — the relay only asks for an answer once
     // the question has been fully spoken.
-    beginAnswer() {
+    beginAnswer(opts = {}) {
+      const force = !!opts.force;
       if (this.ended || this.interviewEnded || this.answering) return;
+      if (!force) {
+        if (this.playing || this.playQueue.length > 0) {
+          this.ensureMicReady();
+          return;
+        }
+        const sinceLastAudio = Date.now() - (this.lastOutputAudioAt || 0);
+        if (this.lastOutputAudioAt && sinceLastAudio < this.questionAudioTailMs) {
+          this.ensureMicReady();
+          return;
+        }
+      }
       this.cancelMicOpen();
       this.clearQuestionSafetyTimer();
-      if (this.playing || this.playQueue.length > 0) {
-        this.ensureMicReady();
-        return;
-      }
-      const sinceLastAudio = Date.now() - (this.lastOutputAudioAt || 0);
-      if (this.lastOutputAudioAt && sinceLastAudio < this.questionAudioTailMs) {
-        this.ensureMicReady();
-        return;
-      }
       this.awaitingAnswerPending = false;
+      this.awaitingAnswerAt = 0;
       this.answering = true;
       this.allowInterviewerDuringAnswer = false;
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {

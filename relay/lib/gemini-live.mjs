@@ -31,8 +31,8 @@ const SETUP_TIMEOUT_MS = 15000;
 /** Gemini turnComplete often arrives before the last audio chunk — wait this long after the final chunk. */
 const TTS_AUDIO_QUIET_MS = 2000;
 /** Minimum PCM bytes (24 kHz mono int16) expected for a spoken question. */
-const TTS_MIN_BASE_BYTES = 24000 * 2 * 2;
-const TTS_BYTES_PER_WORD = 2400;
+const TTS_MIN_BASE_BYTES = 24000 * 2;
+const TTS_BYTES_PER_WORD = 1600;
 const DEFAULT_KICKOFF =
   'Begin the interview now. In the SAME turn, greet the candidate in one short sentence and then ask interview question 1. Ask exactly one question, then stop talking and wait. Do not say anything else.';
 
@@ -314,7 +314,13 @@ export class GeminiLiveBridge {
 
     const minBytes = this.estimateMinTtsBytes(questionText, this.ttsSpeakOpts || {});
     const bytes = this.ttsAudioBytesThisTurn || 0;
-    if (bytes > 0 && bytes < minBytes && (this.questionSpeakRetries[qNum] || 0) < 3) {
+    const clientHeard = this.clientPlaybackIdleForQ === qNum;
+    if (
+      bytes > 0 &&
+      bytes < minBytes &&
+      !clientHeard &&
+      (this.questionSpeakRetries[qNum] || 0) < 2
+    ) {
       console.warn(`[relay] Q${qNum} TTS truncated (${bytes}/${minBytes} bytes) — retry`);
       this.ttsTurnCompleteReceived = false;
       this.clientPlaybackIdleForQ = 0;
@@ -655,14 +661,9 @@ export class GeminiLiveBridge {
     this.questionSpeakWatchdog = setTimeout(() => {
       this.questionSpeakWatchdog = null;
       if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
+      if (this.answerPromptOpen) return;
       const minBytes = this.estimateMinTtsBytes(text, this.ttsSpeakOpts || {});
       if ((this.ttsAudioBytesThisTurn || 0) >= minBytes && this.ttsTurnCompleteReceived) return;
-      if (this.answerPromptOpen && (this.ttsAudioBytesThisTurn || 0) >= minBytes) return;
-      if (this.answerPromptOpen) {
-        console.warn(`[relay] Q${qNum} answer window open without TTS — resetting for retry`);
-        this.clearAnswerPromptWindow();
-        this.ttsOnlyTurn = true;
-      }
       console.warn(`[relay] question ${qNum} had no TTS audio — watchdog retry`);
       this.retryQuestionSpeak(qNum, text, { flushFirst: true });
     }, 6000);
@@ -670,6 +671,7 @@ export class GeminiLiveBridge {
 
   retryQuestionSpeak(qNum, text, opts = {}) {
     if (this.interviewEnded || this.closed || this.ttsForQ !== qNum) return;
+    if (this.answerPromptOpen) return;
     const questionText = String(text || this.questions[qNum - 1] || '').trim()
       || fallbackInterviewQuestion(qNum, this.maxTurns);
     const retries = (this.questionSpeakRetries[qNum] || 0) + 1;

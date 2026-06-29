@@ -31,6 +31,17 @@ function loudPcmB64() {
   return buf.toString('base64');
 }
 
+/** Mock Gemini returning spoken audio for a deterministic question TTS turn. */
+function completeQuestionTts(bridge) {
+  bridge.modelAudioThisTurn = true;
+  bridge.onModelTurnComplete();
+}
+
+/** Mock Gemini acknowledging activityEnd after the candidate submits. */
+function completeActivityEnd(bridge) {
+  bridge.onModelTurnComplete();
+}
+
 console.log('=== deterministic Q1..Q5 driver ===\n');
 let failures = 0;
 const ok = (l) => console.log(`  ok   - ${l}`);
@@ -47,10 +58,11 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   if (bridge.answerPromptOpen === false) ok('Q1 answer window closed during TTS'); else fail('Q1 answer window closed during TTS');
 
   for (let q = 1; q <= 5; q += 1) {
-    bridge.onModelTurnComplete();
+    completeQuestionTts(bridge);
     bridge.startUserTurn();
     bridge.sendAudio(loudPcmB64());
     bridge.endUserTurn();
+    completeActivityEnd(bridge);
     await new Promise((r) => setTimeout(r, 500));
     if (lastOf(events, 'answer', q).length >= 1) ok(`Q${q} answer recorded`); else fail(`Q${q} answer recorded`);
     if (q < 5 && bridge.currentQ === q + 1) ok(`Q${q} -> Q${q + 1} advanced`); else if (q < 5) fail(`Q${q} -> Q${q + 1} advanced`, `currentQ=${bridge.currentQ}`);
@@ -64,11 +76,12 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   const { bridge, events } = makeBridge();
   bridge.warmupPhase = null;
   bridge.speakQuestion(1);
-  bridge.onModelTurnComplete();
+  completeQuestionTts(bridge);
   bridge.startUserTurn();
   bridge.userBuf = 'Can you repeat the question please';
   bridge.sendAudio(loudPcmB64());
   bridge.endUserTurn();
+  completeActivityEnd(bridge);
   await new Promise((r) => setTimeout(r, 700));
   if (bridge.currentQ === 1) ok('repeat request stays on Q1'); else fail('repeat request stays on Q1', `currentQ=${bridge.currentQ}`);
   if (bridge.answers.length === 0) ok('repeat does not count as answer'); else fail('repeat does not count as answer');
@@ -99,22 +112,26 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.warmupPhase = null;
   bridge.answers = ['[Voice response recorded]'];
   bridge.speakQuestion(2);
-  bridge.onModelTurnComplete();
+  completeQuestionTts(bridge);
   bridge.startUserTurn();
   bridge.userBuf = 'Can you repeat the question please';
   bridge.sendAudio(loudPcmB64());
   bridge.endUserTurn();
+  completeActivityEnd(bridge);
   await new Promise((r) => setTimeout(r, 700));
   if (bridge.questionRepeatUsed[2]) ok('first repeat marks questionRepeatUsed');
   else fail('first repeat marks questionRepeatUsed');
-  bridge.onModelTurnComplete();
+  completeQuestionTts(bridge);
   bridge.startUserTurn();
   bridge.userBuf = 'Can you repeat the question please';
   bridge.sendAudio(loudPcmB64());
   bridge.endUserTurn();
+  completeActivityEnd(bridge);
   await new Promise((r) => setTimeout(r, 700));
-  if (bridge.answers.length === 2) ok('second repeat counts as Q2 answer'); else fail('second repeat counts as Q2 answer', `len=${bridge.answers.length}`);
-  if (bridge.currentQ === 3) ok('second repeat advances to Q3'); else fail('second repeat advances to Q3', `currentQ=${bridge.currentQ}`);
+  if ((bridge.questionRepeatCount[2] || 0) >= 2) ok('second repeat triggers another re-speak');
+  else fail('second repeat triggers another re-speak', `count=${bridge.questionRepeatCount[2]}`);
+  if (bridge.answers.length === 1 && bridge.currentQ === 2) ok('second repeat stays on Q2 without recording an answer');
+  else fail('second repeat stays on Q2 without recording an answer', `len=${bridge.answers.length} currentQ=${bridge.currentQ}`);
   bridge.closed = true;
 }
 
@@ -122,7 +139,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   const { bridge } = makeBridge();
   bridge.warmupPhase = null;
   bridge.speakQuestion(2);
-  bridge.onModelTurnComplete();
+  completeQuestionTts(bridge);
   // Simulate missed user_turn_start — audio alone should still buffer + detect voice.
   bridge.sendAudio(loudPcmB64());
   if (bridge.answerPcmChunks.length > 0) ok('PCM buffered without user_turn_start'); else fail('PCM buffered without user_turn_start');
@@ -137,10 +154,11 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.warmupPhase = null;
   bridge.answers = ['[Voice response recorded]', '[Voice response recorded]'];
   bridge.speakQuestion(3);
-  bridge.onModelTurnComplete();
+  completeQuestionTts(bridge);
   bridge.startUserTurn();
   bridge.sendAudio(loudPcmB64());
   bridge.endUserTurn();
+  completeActivityEnd(bridge);
   await new Promise((r) => setTimeout(r, 500));
   if (lastOf(events, 'answer', 3).length >= 1) ok('voice-only finalize proceeds after Q3 submit'); else fail('voice-only finalize proceeds after Q3 submit');
   if (bridge.currentQ === 4) ok('Q3 answer advances to Q4 without STT wait'); else fail('Q3 answer advances to Q4', `currentQ=${bridge.currentQ}`);
@@ -168,14 +186,15 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.warmupPhase = null;
   for (let q = 1; q <= 4; q += 1) {
     bridge.speakQuestion(q);
-    bridge.onModelTurnComplete();
+    completeQuestionTts(bridge);
     bridge.startUserTurn();
     bridge.sendAudio(loudPcmB64());
     bridge.endUserTurn();
+    completeActivityEnd(bridge);
     await new Promise((r) => setTimeout(r, 500));
   }
   bridge.speakQuestion(5);
-  bridge.onModelTurnComplete();
+  completeQuestionTts(bridge);
   bridge.endUserTurn();
   await new Promise((r) => setTimeout(r, 300));
   if (lastOf(events, 'interview_closing').length === 0) ok('Q5 stays open after stale user_turn_end');
@@ -185,9 +204,24 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.startUserTurn();
   bridge.sendAudio(loudPcmB64());
   bridge.endUserTurn();
+  completeActivityEnd(bridge);
   await new Promise((r) => setTimeout(r, 500));
   if (lastOf(events, 'interview_closing').length === 1) ok('interview closes after real Q5 answer');
   else fail('interview closes after real Q5 answer');
+  bridge.closed = true;
+}
+
+{
+  const { bridge } = makeBridge();
+  bridge.warmupPhase = null;
+  bridge.pendingUserActivityEnd = true;
+  bridge.speakQuestion(4, { prefaceAppreciation: true });
+  if (bridge.deferredSpeakRequest?.qNum === 4) ok('next question TTS deferred while activityEnd pending');
+  else fail('next question TTS deferred while activityEnd pending');
+  completeActivityEnd(bridge);
+  await new Promise((r) => setTimeout(r, 0));
+  if (bridge.currentQ === 4 && !bridge.deferredSpeakRequest) ok('deferred Q4 speak runs after activityEnd turnComplete');
+  else fail('deferred Q4 speak runs after activityEnd turnComplete', `currentQ=${bridge.currentQ}`);
   bridge.closed = true;
 }
 

@@ -187,6 +187,12 @@ export class GeminiLiveBridge {
     this.warmupSpeakRetries = { mic_check: 0, intro: 0 };
     this.questionSpeakRetries = {};
     this.warmupAudioDelivered = { mic_check: false, intro: false };
+    // Defer next-question TTS until Gemini acknowledges activityEnd — sending
+    // speakQuestion too early yields silent turnComplete on Q3+ (repeat works
+    // because the user delay gives Gemini time to settle).
+    this.pendingUserActivityEnd = false;
+    this.activityEndTurnTimer = null;
+    this.deferredSpeakRequest = null;
     this.closingReprompts = 0;
     this.closingCompleteTimer = null;
     // Speech Q1–Q5 only: realistic "repeat the question" + "continue in English"
@@ -251,6 +257,24 @@ export class GeminiLiveBridge {
 
   flushClientPlayback() {
     this.onEvent({ type: 'flush_playback' });
+  }
+
+  scheduleActivityEndTurnFallback() {
+    if (this.activityEndTurnTimer) clearTimeout(this.activityEndTurnTimer);
+    this.activityEndTurnTimer = setTimeout(() => {
+      this.activityEndTurnTimer = null;
+      if (!this.pendingUserActivityEnd) return;
+      console.warn('[relay] activityEnd turnComplete timeout — flushing deferred question TTS');
+      this.pendingUserActivityEnd = false;
+      this.flushDeferredSpeak();
+    }, 3500);
+  }
+
+  flushDeferredSpeak() {
+    if (!this.deferredSpeakRequest) return;
+    const { qNum, opts } = this.deferredSpeakRequest;
+    this.deferredSpeakRequest = null;
+    this.speakQuestion(qNum, opts);
   }
 
   sendSpokenPrompt(text, { flushFirst = true } = {}) {
@@ -437,6 +461,11 @@ export class GeminiLiveBridge {
   // Progression never waits on Gemini to "decide" to ask the next question.
   speakQuestion(qNum, opts = {}) {
     if (this.interviewEnded || this.interviewClosing || this.closed) return;
+    if (this.pendingUserActivityEnd) {
+      this.deferredSpeakRequest = { qNum, opts };
+      console.log(`[relay] deferring Q${qNum} TTS until activityEnd turnComplete`);
+      return;
+    }
     if (qNum > this.maxTurns) {
       this.finishInterview();
       return;
@@ -564,18 +593,22 @@ export class GeminiLiveBridge {
       }
       return;
     }
-    this.modelBuf = '';
-    this.modelAudioThisTurn = false;
-    this.blockModelOutput = false;
-    this.allowModelAudio = true;
-    this.ttsOnlyTurn = true;
-    this.ttsForQ = qNum;
-    this.sendSpokenPrompt(
-      `Read this interview question aloud to the candidate, word for word, in a warm professional tone. ` +
-        `Say ONLY this question and nothing else — no preamble, no numbering, no follow-up:\n"${questionText}"`,
-      { flushFirst: opts.flushFirst !== false }
-    );
-    this.scheduleQuestionSpeakWatchdog(qNum, questionText);
+    const delayMs = Math.min(800, 200 + retries * 150);
+    setTimeout(() => {
+      if (this.interviewEnded || this.closed || this.ttsForQ !== qNum) return;
+      this.modelBuf = '';
+      this.modelAudioThisTurn = false;
+      this.blockModelOutput = false;
+      this.allowModelAudio = true;
+      this.ttsOnlyTurn = true;
+      this.ttsForQ = qNum;
+      this.sendSpokenPrompt(
+        `Read this interview question aloud to the candidate, word for word, in a warm professional tone. ` +
+          `Say ONLY this question and nothing else — no preamble, no numbering, no follow-up:\n"${questionText}"`,
+        { flushFirst: opts.flushFirst !== false }
+      );
+      this.scheduleQuestionSpeakWatchdog(qNum, questionText);
+    }, delayMs);
   }
 
   computeAndEmitTimer(qNum, text) {
@@ -1014,6 +1047,22 @@ export class GeminiLiveBridge {
   }
 
   onModelTurnComplete() {
+    if (this.pendingUserActivityEnd) {
+      this.pendingUserActivityEnd = false;
+      if (this.activityEndTurnTimer) {
+        clearTimeout(this.activityEndTurnTimer);
+        this.activityEndTurnTimer = null;
+      }
+      this.modelBuf = '';
+      this.modelAudioThisTurn = false;
+      if (this.deferredSpeakRequest) {
+        const { qNum, opts } = this.deferredSpeakRequest;
+        this.deferredSpeakRequest = null;
+        queueMicrotask(() => this.speakQuestion(qNum, opts));
+      }
+      return;
+    }
+
     if (this.inNudgePlayback) {
       // Nudge finished speaking — re-open the mic and start the auto-submit
       // window. If the candidate stays silent through it, we auto-submit.
@@ -2118,6 +2167,8 @@ export class GeminiLiveBridge {
     this.awaitingAnswer = true;
     this.blockModelOutput = true;
     this.userTurnEndedAt = Date.now();
+    this.pendingUserActivityEnd = true;
+    this.scheduleActivityEndTurnFallback();
     this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
     this.scheduleFinalizeAnswer(false, 2500);
 

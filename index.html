@@ -17,7 +17,7 @@
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
     <script src="live-speech.js?v=20260628"></script>
-    <script src="proctor-media.js?v=20260628"></script>
+    <script src="proctor-media.js?v=20260629"></script>
     <script src="proctor-activity.js"></script>
     <script>
         tailwind.config = {
@@ -2562,6 +2562,7 @@
             const [screenMeta, setScreenMeta] = React.useState([]);
             const [sharedScreens, setSharedScreens] = React.useState([]);
             const [webcamStream, setWebcamStream] = React.useState(null);
+            const [mediaQuality, setMediaQuality] = React.useState({ webcam: false, screen: false, message: '' });
             const [, setLiveCheckTick] = React.useState(0);
             const screenStreamsRef = React.useRef([]);
             const webcamStreamRef = React.useRef(null);
@@ -2595,8 +2596,36 @@
 
             React.useEffect(() => {
                 if (step !== 'start') return undefined;
-                const id = setInterval(() => setLiveCheckTick((n) => n + 1), 1000);
-                return () => clearInterval(id);
+                let cancelled = false;
+                const checkQuality = async () => {
+                    if (!window.TA_PROCTOR?.validateWebcamReady || !window.TA_PROCTOR?.validateScreenReady) return;
+                    const wc = webcamStreamRef.current;
+                    const sc = screenStreamsRef.current?.[0];
+                    const [webcamResult, screenResult] = await Promise.all([
+                        wc ? window.TA_PROCTOR.validateWebcamReady(wc, { warmupMs: 400, samples: 1 }) : { ok: false, message: 'Enable your webcam.' },
+                        sc ? window.TA_PROCTOR.validateScreenReady(sc, { warmupMs: 400, samples: 1 }) : { ok: false, message: 'Share your screen.' },
+                    ]);
+                    if (cancelled) return;
+                    const message = !webcamResult.ok
+                        ? (webcamResult.message || 'Webcam check failed.')
+                        : !screenResult.ok
+                          ? (screenResult.message || 'Screen check failed.')
+                          : '';
+                    setMediaQuality({
+                        webcam: !!webcamResult.ok,
+                        screen: !!screenResult.ok,
+                        message,
+                    });
+                };
+                void checkQuality();
+                const id = setInterval(() => {
+                    setLiveCheckTick((n) => n + 1);
+                    void checkQuality();
+                }, 2500);
+                return () => {
+                    cancelled = true;
+                    clearInterval(id);
+                };
             }, [step]);
 
             const handleDetectScreens = async () => {
@@ -2640,6 +2669,11 @@
                         throw new Error('Share your entire monitor only — not a window or browser tab.');
                     }
                     const next = [...screenStreamsRef.current, stream];
+                    const screenCheck = await window.TA_PROCTOR.validateScreenReady(stream);
+                    if (!screenCheck.ok) {
+                        window.TA_PROCTOR.stopStream(stream);
+                        throw new Error(screenCheck.message || 'Shared screen appears blank. Try again.');
+                    }
                     screenStreamsRef.current = next;
                     setSharedScreens(next);
                     if (next.length >= screenCount) {
@@ -2661,8 +2695,14 @@
                 setBusy(true);
                 try {
                     const stream = await window.TA_PROCTOR.requestWebcam();
+                    const webcamCheck = await window.TA_PROCTOR.validateWebcamReady(stream);
+                    if (!webcamCheck.ok) {
+                        window.TA_PROCTOR.stopStream(stream);
+                        throw new Error(webcamCheck.message || 'Webcam is blank or you are not visible on camera.');
+                    }
                     webcamStreamRef.current = stream;
                     setWebcamStream(stream);
+                    setMediaQuality({ webcam: true, screen: screenStreamsRef.current.length > 0, message: '' });
                     setStep('start');
                 } catch (err) {
                     const mapped = window.TA_PROCTOR?.formatWebcamError
@@ -2691,6 +2731,14 @@
                     if (!sharedScreens.length || !sharedScreens.every((s) => window.TA_PROCTOR.isStreamLive(s))) {
                         throw new Error('Screen sharing must stay active. Share your monitor again from the previous step.');
                     }
+                    const webcamCheck = await window.TA_PROCTOR.validateWebcamReady(webcamStreamRef.current);
+                    if (!webcamCheck.ok) {
+                        throw new Error(webcamCheck.message || 'Webcam is blank or you are not visible on camera.');
+                    }
+                    const screenCheck = await window.TA_PROCTOR.validateScreenReady(sharedScreens[0]);
+                    if (!screenCheck.ok) {
+                        throw new Error(screenCheck.message || 'Shared screen appears blank. Share your monitor again.');
+                    }
                     if (!PROCTORING_DISABLED) {
                         const fsOk = await enterAssessmentFullscreen();
                         if (!fsOk) {
@@ -2717,7 +2765,9 @@
             const startReady = step === 'start'
                 && screenCount === 1
                 && webcamLive
-                && screensLive;
+                && screensLive
+                && mediaQuality.webcam
+                && mediaQuality.screen;
 
             const instructions = (() => {
                 if (step === 'detect') {
@@ -2751,7 +2801,7 @@
                         title: 'Share your webcam',
                         body: [
                             'Your webcam stays visible in a small window during the assessment, like a proctored exam.',
-                            'Allow camera access when prompted — microphone is only needed later in the voice round.',
+                            'Allow camera access when prompted — sit in front of the camera so your face is clearly visible.',
                         ],
                         action: 'Share Webcam',
                         onAction: handleShareWebcam,
@@ -2764,7 +2814,8 @@
                         'Your screen and webcam are connected on a single monitor.',
                         startReady
                             ? 'Click Start Test to enter fullscreen and begin Phase 1. Keep screen share and camera on for the full assessment.'
-                            : 'Enable your webcam and keep screen sharing active before starting.',
+                            : mediaQuality.message
+                              || 'Make sure your face is visible on the webcam and your shared screen is not blank before starting.',
                     ],
                     action: 'Start Test',
                     onAction: handleStartTest,
@@ -2801,6 +2852,12 @@
                                 {error ? (
                                     <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 leading-relaxed">
                                         {error}
+                                    </div>
+                                ) : null}
+
+                                {step === 'start' && mediaQuality.message && !startReady ? (
+                                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 leading-relaxed">
+                                        {mediaQuality.message}
                                     </div>
                                 ) : null}
 

@@ -450,7 +450,8 @@
         this.onAnswer({ number: msg.number, text: msg.text, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
       }
       if (msg.type === 'saving_turn') {
-        this.clearPlayback();
+        // Do not clear playback — next question TTS follows immediately and
+        // clearing here was racing with first audio chunks on Q3+.
         this.processingAnswer = true;
         this.onSavingTurn?.({ number: msg.number, follow_up: !!msg.follow_up });
         this.setStatus(

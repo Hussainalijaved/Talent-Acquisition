@@ -249,8 +249,16 @@
     };
   }
 
-  /** Sample one video frame from a live stream; returns brightness 0–255 or null. */
+  /** Sample one video frame; returns brightness, variance, and person heuristics. */
   function sampleStreamFrame(stream) {
+    return sampleStreamMetrics(stream);
+  }
+
+  function isSkinTone(r, g, b) {
+    return r > 55 && g > 35 && b > 15 && r > g && r > b && (r - g) > 8 && Math.abs(r - b) > 12;
+  }
+
+  function sampleStreamMetrics(stream) {
     return new Promise((resolve) => {
       if (!stream || !isStreamLive(stream)) {
         resolve(null);
@@ -286,12 +294,50 @@
           const ctx = canvas.getContext('2d');
           ctx.drawImage(video, 0, 0, w, h);
           const img = ctx.getImageData(0, 0, w, h);
+          const cx0 = Math.floor(w * 0.18);
+          const cx1 = Math.floor(w * 0.82);
+          const cy0 = Math.floor(h * 0.12);
+          const cy1 = Math.floor(h * 0.88);
           let sum = 0;
-          for (let i = 0; i < img.data.length; i += 4) {
-            sum += 0.299 * img.data[i] + 0.587 * img.data[i + 1] + 0.114 * img.data[i + 2];
+          let sumSq = 0;
+          let total = 0;
+          let centerSum = 0;
+          let centerSumSq = 0;
+          let centerN = 0;
+          let skinPx = 0;
+          for (let y = 0; y < h; y += 1) {
+            for (let x = 0; x < w; x += 1) {
+              const i = (y * w + x) * 4;
+              const r = img.data[i];
+              const g = img.data[i + 1];
+              const b = img.data[i + 2];
+              const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+              sum += lum;
+              sumSq += lum * lum;
+              total += 1;
+              if (x >= cx0 && x < cx1 && y >= cy0 && y < cy1) {
+                centerSum += lum;
+                centerSumSq += lum * lum;
+                centerN += 1;
+                if (isSkinTone(r, g, b)) skinPx += 1;
+              }
+            }
           }
+          const brightness = sum / total;
+          const variance = Math.max(0, sumSq / total - brightness * brightness);
+          const centerMean = centerSum / centerN;
+          const centerVariance = Math.max(0, centerSumSq / centerN - centerMean * centerMean);
+          const skinRatio = centerN > 0 ? skinPx / centerN : 0;
           clearTimeout(timer);
-          finish({ brightness: sum / (img.data.length / 4), width: w, height: h });
+          finish({
+            brightness,
+            variance,
+            centerVariance,
+            skinRatio,
+            width: w,
+            height: h,
+            video,
+          });
         } catch (_) {
           clearTimeout(timer);
           finish(null);
@@ -302,6 +348,131 @@
     });
   }
 
+  async function detectFaceInStream(stream) {
+    if (typeof global.FaceDetector === 'undefined') return null;
+    const metrics = await sampleStreamMetrics(stream);
+    const video = metrics?.video;
+    if (!video) return null;
+    try {
+      const detector = new global.FaceDetector({ fastMode: true, maxDetectedFaces: 2 });
+      const faces = await detector.detect(video);
+      return Array.isArray(faces) && faces.length > 0;
+    } catch (_) {
+      return null;
+    } finally {
+      try { video.srcObject = null; } catch (_) { /* ignore */ }
+    }
+  }
+
+  const BLANK_BRIGHTNESS = 18;
+  const BLANK_VARIANCE = 6;
+  const WEBCAM_MIN_CENTER_VARIANCE = 8;
+  const WEBCAM_MIN_SKIN_RATIO = 0.035;
+  const SCREEN_MIN_BRIGHTNESS = 12;
+  const SCREEN_MIN_VARIANCE = 4;
+
+  function personVisibleHeuristic(metrics, faceDetected) {
+    if (!metrics) return false;
+    if (faceDetected === true) return true;
+    if (metrics.brightness < BLANK_BRIGHTNESS) return false;
+    if (metrics.centerVariance < WEBCAM_MIN_CENTER_VARIANCE && metrics.skinRatio < WEBCAM_MIN_SKIN_RATIO) {
+      return false;
+    }
+    return metrics.skinRatio >= WEBCAM_MIN_SKIN_RATIO || metrics.centerVariance >= WEBCAM_MIN_CENTER_VARIANCE * 2;
+  }
+
+  function frameLooksBlank(metrics, kind) {
+    if (!metrics) return true;
+    const minBright = kind === 'screen' ? SCREEN_MIN_BRIGHTNESS : BLANK_BRIGHTNESS;
+    const minVar = kind === 'screen' ? SCREEN_MIN_VARIANCE : BLANK_VARIANCE;
+    return metrics.brightness < minBright || metrics.variance < minVar;
+  }
+
+  async function validateWebcamReady(stream, opts) {
+    if (!stream || !isStreamLive(stream)) {
+      return {
+        ok: false,
+        code: 'NOT_LIVE',
+        message: 'Your webcam must be on before starting. Enable the camera and try again.',
+      };
+    }
+    const warmupMs = Number(opts?.warmupMs) > 0 ? Number(opts.warmupMs) : 1200;
+    const sampleCount = Number(opts?.samples) > 0 ? Number(opts.samples) : 2;
+    await sleep(warmupMs);
+    let faceDetected = null;
+    try {
+      faceDetected = await detectFaceInStream(stream);
+    } catch (_) {
+      faceDetected = null;
+    }
+    if (faceDetected === true) {
+      return { ok: true, code: 'OK', faceDetected: true };
+    }
+    const samples = [];
+    for (let i = 0; i < sampleCount; i += 1) {
+      const metrics = await sampleStreamMetrics(stream);
+      if (metrics?.video) {
+        try { metrics.video.srcObject = null; } catch (_) { /* ignore */ }
+        delete metrics.video;
+      }
+      samples.push(metrics);
+      if (i + 1 < sampleCount) await sleep(400);
+    }
+    const usable = samples.filter((m) => m && !frameLooksBlank(m, 'webcam'));
+    const personOk = samples.some((m) => personVisibleHeuristic(m, faceDetected));
+    if (usable.length >= Math.ceil(sampleCount / 2) && personOk) {
+      return { ok: true, code: 'OK', faceDetected: false, metrics: usable[0] };
+    }
+    const last = samples[samples.length - 1];
+    if (!last || frameLooksBlank(last, 'webcam')) {
+      return {
+        ok: false,
+        code: 'BLANK',
+        message:
+          'Your webcam shows a black or blank picture. Turn the camera on, remove any lens cover, and make sure you are in a lit area.',
+      };
+    }
+    return {
+      ok: false,
+      code: 'NO_FACE',
+      message:
+        'We cannot see you on camera yet. Sit in front of the webcam so your face is clearly visible, then try again.',
+    };
+  }
+
+  async function validateScreenReady(stream, opts) {
+    if (!stream || !isStreamLive(stream)) {
+      return {
+        ok: false,
+        code: 'NOT_LIVE',
+        message: 'Screen sharing must stay active. Share your entire monitor again.',
+      };
+    }
+    const warmupMs = Number(opts?.warmupMs) > 0 ? Number(opts.warmupMs) : 900;
+    const sampleCount = Number(opts?.samples) > 0 ? Number(opts.samples) : 2;
+    await sleep(warmupMs);
+    const samples = [];
+    for (let i = 0; i < sampleCount; i += 1) {
+      const metrics = await sampleStreamMetrics(stream);
+      if (metrics?.video) {
+        try { metrics.video.srcObject = null; } catch (_) { /* ignore */ }
+        delete metrics.video;
+      }
+      samples.push(metrics);
+      if (i + 1 < sampleCount) await sleep(350);
+    }
+    const usable = samples.filter((m) => m && !frameLooksBlank(m, 'screen'));
+    if (usable.length >= Math.ceil(sampleCount / 2)) {
+      return { ok: true, code: 'OK', metrics: usable[0] };
+    }
+    return {
+      ok: false,
+      code: 'BLANK',
+      message:
+        'Your shared screen looks blank or black. Share your entire primary monitor (not a blank desktop) and try again.',
+    };
+  }
+
   /**
    * Poll a live webcam for blank/black frames (stream still active but no picture).
    * Fires onBlank after consecutive dark/missing frames — distinct from track ended.
@@ -309,15 +480,18 @@
   function watchWebcamBlank(stream, onBlank, opts) {
     if (!stream || typeof onBlank !== 'function') return () => {};
     const intervalMs = Number(opts?.intervalMs) > 0 ? Number(opts.intervalMs) : 10000;
-    const threshold = Number.isFinite(opts?.threshold) ? opts.threshold : 18;
+    const threshold = Number.isFinite(opts?.threshold) ? opts.threshold : BLANK_BRIGHTNESS;
     const strikesNeeded = Number(opts?.strikesNeeded) > 0 ? Number(opts.strikesNeeded) : 2;
     let blankStrikes = 0;
     let stopped = false;
 
     const check = async () => {
       if (stopped || !isStreamLive(stream)) return;
-      const frame = await sampleStreamFrame(stream);
-      if (!frame || frame.brightness < threshold) {
+      const frame = await sampleStreamMetrics(stream);
+      if (frame?.video) {
+        try { frame.video.srcObject = null; } catch (_) { /* ignore */ }
+      }
+      if (!frame || frame.brightness < threshold || frame.variance < BLANK_VARIANCE) {
         blankStrikes += 1;
         if (blankStrikes >= strikesNeeded) {
           onBlank({ brightness: frame?.brightness ?? 0, stream });
@@ -351,6 +525,10 @@
     trackLabel,
     watchStreamEnd,
     sampleStreamFrame,
+    sampleStreamMetrics,
+    validateWebcamReady,
+    validateScreenReady,
+    detectFaceInStream,
     watchWebcamBlank,
   };
 })(window);

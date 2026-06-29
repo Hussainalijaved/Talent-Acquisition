@@ -360,5 +360,15 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.closed = true;
 }
 
+{
+  const { bridge, events } = makeBridge();
+  bridge.warmupPhase = 'intro';
+  bridge.scheduleIntroMicOpen('Intro please', 50);
+  await new Promise((r) => setTimeout(r, 120));
+  if (lastOf(events, 'awaiting_answer', 0).length === 1) ok('intro mic deadline opens answer window');
+  else fail('intro mic deadline opens answer window');
+  bridge.closed = true;
+}
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILURES`}`);
 process.exit(failures === 0 ? 0 : 1);

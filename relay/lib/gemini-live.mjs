@@ -212,6 +212,7 @@ export class GeminiLiveBridge {
     this.warmupDisplayText = '';
     /** Once mic is opened for a warmup phase, never re-speak or clear that window. */
     this.warmupAnswerLatched = null;
+    this.introMicOpenTimer = null;
     // Non-voice modes defer next-question TTS until Gemini acknowledges activityEnd.
     this.pendingUserActivityEnd = false;
     this.activityEndTurnTimer = null;
@@ -257,9 +258,16 @@ export class GeminiLiveBridge {
   }
 
   emitAwaitingAnswer(qNum, questionText, opts = {}) {
+    const isWarmup = !!(opts.warmup || qNum <= 0);
+    if (isWarmup && opts.warmup && this.warmupAnswerLatched === opts.warmup && this.answerPromptOpen) {
+      return;
+    }
+    if (this.introMicOpenTimer) {
+      clearTimeout(this.introMicOpenTimer);
+      this.introMicOpenTimer = null;
+    }
     // Always emit — client may have missed a prior awaiting_answer during audio handoff.
     if (qNum >= 1) this.answerPcmChunks = [];
-    const isWarmup = !!(opts.warmup || qNum <= 0);
     const limits = isWarmup
       ? { seconds: Number(this.context.intro_answer_seconds || 90), tier: 'warmup' }
       : this.syncQuestionTimeLimit(questionText);
@@ -544,6 +552,17 @@ export class GeminiLiveBridge {
       flushFirst: opts.flushFirst !== false,
     });
     this.scheduleWarmupWatchdog(phase);
+  }
+
+  scheduleIntroMicOpen(text, delayMs = 4500) {
+    if (this.introMicOpenTimer) clearTimeout(this.introMicOpenTimer);
+    this.introMicOpenTimer = setTimeout(() => {
+      this.introMicOpenTimer = null;
+      if (this.interviewEnded || this.closed || this.warmupPhase !== 'intro') return;
+      if (this.warmupAnswerLatched === 'intro') return;
+      console.warn('[relay] intro mic deadline — opening answer window without confirmed TTS');
+      this.emitWarmupFallback('intro');
+    }, delayMs);
   }
 
   emitWarmupFallback(phase) {
@@ -1984,10 +2003,12 @@ export class GeminiLiveBridge {
       this.blockModelOutput = false;
       this.flushClientPlayback();
       const introDelayMs = this.voiceOnly ? 1500 : 600;
+      const introText = this.warmupDisplayFor('intro');
       setTimeout(() => {
         if (this.interviewEnded || this.closed || this.warmupPhase !== 'intro') return;
         this.speakWarmupDeterministic('intro');
       }, introDelayMs);
+      this.scheduleIntroMicOpen(introText, introDelayMs + 4500);
       return;
     }
 
@@ -2352,6 +2373,11 @@ export class GeminiLiveBridge {
 
     // ── Warmup phases ────────────────────────────────────────────────────────
     if (this.warmupPhase === 'mic_check' || this.warmupPhase === 'intro') {
+      if (this.warmupAnswerLatched === this.warmupPhase) {
+        this.modelBuf = '';
+        this.modelAudioThisTurn = false;
+        return;
+      }
       if (!spokeThisTurn) {
         this.retryWarmupSpeak(this.warmupPhase);
         return;

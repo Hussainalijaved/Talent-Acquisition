@@ -128,6 +128,8 @@
       this.questionAudioTailMs = 900;
       this.awaitingAnswerAt = 0;
       this.micOpenWatchdogTimer = null;
+      this.warmupMicOpenTimer = null;
+      this.warmupMicOpenGen = 0;
     }
 
     clearPlayback() {
@@ -182,9 +184,14 @@
     cancelMicOpen() {
       // Invalidate any in-flight open-mic loop and clear the safety timer.
       this.micOpenToken += 1;
+      this.warmupMicOpenGen += 1;
       if (this.micOpenTimer) {
         clearTimeout(this.micOpenTimer);
         this.micOpenTimer = null;
+      }
+      if (this.warmupMicOpenTimer) {
+        clearTimeout(this.warmupMicOpenTimer);
+        this.warmupMicOpenTimer = null;
       }
       if (this.micOpenWatchdogTimer) {
         clearTimeout(this.micOpenWatchdogTimer);
@@ -283,6 +290,7 @@
     requestAnswer(payload = {}) {
       if (this.ended || this.interviewEnded) return;
       const number = payload.number ?? 0;
+      const isWarmup = payload.warmup != null || number <= 0;
       const seconds = Number(payload.time_limit_seconds) > 0 ? Number(payload.time_limit_seconds) : 120;
       this.clearQuestionSafetyTimer();
       const duplicate = this.awaitingAnswerPending && this.pendingAnswerQ === number;
@@ -302,6 +310,18 @@
         });
       }
       this.scheduleMicOpenWatchdog();
+      if (isWarmup) {
+        if (this.warmupMicOpenTimer) clearTimeout(this.warmupMicOpenTimer);
+        const gen = ++this.warmupMicOpenGen;
+        const delayMs = 350;
+        this.warmupMicOpenTimer = setTimeout(() => {
+          this.warmupMicOpenTimer = null;
+          if (gen !== this.warmupMicOpenGen) return;
+          if (this.ended || this.interviewEnded || !this.awaitingAnswerPending || this.answering) return;
+          this.beginAnswer({ force: true });
+        }, delayMs);
+        return;
+      }
       void this.openMicAfterPlayback();
     }
 
@@ -379,6 +399,7 @@
 
     // Re-arm mic open if a prior loop was cancelled (e.g. late question_partial).
     ensureMicReady() {
+      if (this.pendingAnswerQ <= 0) return;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
       void this.openMicAfterPlayback();
     }
@@ -437,7 +458,16 @@
     // the question has been fully spoken.
     beginAnswer(opts = {}) {
       const force = !!opts.force;
-      if (this.ended || this.interviewEnded || this.answering) return;
+      if (this.ended || this.interviewEnded) return;
+      if (this.answering) {
+        if (!force) return;
+        this.onMicOpen();
+        this.setStatus('Listening — speak your answer now');
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: 'user_turn_start' }));
+        }
+        return;
+      }
       if (!force) {
         if (this.playing || this.playQueue.length > 0) {
           this.ensureMicReady();
@@ -596,7 +626,7 @@
         // Partials are caption-only — must NOT cancel mic open (warmup works because
         // partials carry warmup=mic_check|intro; real Q1-Q5 partials were killing the mic).
         this.onQuestion({ number: msg.number, text: msg.text, partial: true, warmup: msg.warmup || null });
-        if (this.awaitingAnswerPending && !this.answering) this.ensureMicReady();
+        if (this.awaitingAnswerPending && !this.answering && msg.number >= 1) this.ensureMicReady();
       }
       if (msg.type === 'question') {
         const isWarmup = msg.warmup != null || msg.number <= 0;
@@ -605,7 +635,7 @@
           this.processingAnswer = false;
         }
         this.onQuestion({ number: msg.number, text: msg.text || '', partial: false, follow_up: !!msg.follow_up, warmup: msg.warmup || null });
-        if (this.awaitingAnswerPending && !this.answering) this.ensureMicReady();
+        if (this.awaitingAnswerPending && !this.answering && !isWarmup) this.ensureMicReady();
       }
       if (msg.type === 'answer') {
         this.clearQuestionSafetyTimer();
@@ -893,7 +923,7 @@
       this.playing = false;
       if (gen === this.playbackGeneration && !this.playQueue.length) {
         this.onPlaybackIdle?.();
-        if (this.awaitingAnswerPending && !this.answering) {
+        if (this.awaitingAnswerPending && !this.answering && this.pendingAnswerQ >= 1) {
           this.schedulePlaybackIdleCheck();
           this.ensureMicReady();
         }

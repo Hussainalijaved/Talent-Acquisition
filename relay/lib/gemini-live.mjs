@@ -208,6 +208,12 @@ export class GeminiLiveBridge {
     this.activityEndTurnTimer = null;
     this.deferredSpeakRequest = null;
     this.ttsPromptPendingFor = 0;
+    this.voiceActivityEndPending = false;
+    this.postAnswerTtsDelivery = null;
+    this.postAnswerTtsTimer = null;
+    this.ttsAwaitingTurnComplete = false;
+    this.ttsRetryTimer = null;
+    this.ttsLastPromptSentAt = 0;
     this.closingReprompts = 0;
     this.closingCompleteTimer = null;
     // Speech Q1–Q5 only: realistic "repeat the question" + "continue in English"
@@ -361,9 +367,52 @@ export class GeminiLiveBridge {
     if (this.ttsForQ !== q || this.answerPromptOpen) return;
     const questionText = this.questions[q - 1] || '';
     console.warn(`[relay] client reports Q${q} audio missing — re-speaking`);
+    if (this.postAnswerTtsDelivery?.qNum === q || this.ttsPromptPendingFor === q) {
+      if (this.postAnswerTtsTimer) clearTimeout(this.postAnswerTtsTimer);
+      this.postAnswerTtsDelivery = null;
+      this.ttsPromptPendingFor = 0;
+      this.voiceActivityEndPending = false;
+      this.deliverQuestionTts(q, questionText, { ...(this.ttsSpeakOpts || {}), prefaceReliable: true });
+      return;
+    }
     this.ttsTurnCompleteReceived = false;
     this.clientPlaybackIdleForQ = 0;
     this.retryQuestionSpeak(q, questionText, { flushFirst: true, prefaceReliable: true });
+  }
+
+  cancelTtsRetryTimer() {
+    if (this.ttsRetryTimer) {
+      clearTimeout(this.ttsRetryTimer);
+      this.ttsRetryTimer = null;
+    }
+  }
+
+  markTtsPromptSent() {
+    this.ttsAwaitingTurnComplete = true;
+    this.ttsLastPromptSentAt = Date.now();
+    this.modelAudioThisTurn = false;
+    this.ttsTurnCompleteReceived = false;
+  }
+
+  canSendTtsPromptNow() {
+    if (!this.ttsAwaitingTurnComplete) return true;
+    return Date.now() - (this.ttsLastPromptSentAt || 0) >= 9000;
+  }
+
+  queueRetryQuestionSpeak(qNum, text, opts = {}, delayMs = 0) {
+    if (this.interviewEnded || this.closed || this.ttsForQ !== qNum) return;
+    if (this.answerPromptOpen) return;
+    if (this.ttsRetryTimer) return;
+    const waitMs = Math.max(
+      delayMs,
+      this.ttsAwaitingTurnComplete
+        ? Math.max(0, 9000 - (Date.now() - (this.ttsLastPromptSentAt || 0)))
+        : 0
+    );
+    this.ttsRetryTimer = setTimeout(() => {
+      this.ttsRetryTimer = null;
+      this.retryQuestionSpeak(qNum, text, opts);
+    }, waitMs);
   }
 
   scheduleTtsAnswerWindow(qNum, questionText) {
@@ -631,8 +680,8 @@ export class GeminiLiveBridge {
     this.streamingQuestionText = '';
     this.streamingQuestionNum = 0;
     this.inFollowUpFor = 0;
-    this.blockModelOutput = false;
-    this.allowModelAudio = true;
+    this.blockModelOutput = true;
+    this.allowModelAudio = false;
     this.pendingAudioChunks = [];
     this.answerPcmChunks = [];
     this.ttsOnlyTurn = true;
@@ -653,17 +702,47 @@ export class GeminiLiveBridge {
 
     this.ttsPromptPendingFor = qNum;
     const isPostAnswer = this.answers.length > 0 && qNum === this.answers.length + 1;
-    const promptDelayMs = isPostAnswer && this.voiceOnly ? 800 : 0;
-    if (promptDelayMs > 0) {
-      setTimeout(() => this.deliverQuestionTts(qNum, text, opts), promptDelayMs);
+    const speakOpts = isPostAnswer ? { ...opts, prefaceReliable: true } : opts;
+
+    if (isPostAnswer && this.voiceOnly) {
+      this.schedulePostAnswerTtsDelivery(qNum, text, speakOpts);
     } else {
-      this.deliverQuestionTts(qNum, text, opts);
+      this.blockModelOutput = false;
+      this.allowModelAudio = true;
+      this.deliverQuestionTts(qNum, text, speakOpts);
     }
+  }
+
+  flushPostAnswerTtsDelivery() {
+    if (this.postAnswerTtsTimer) {
+      clearTimeout(this.postAnswerTtsTimer);
+      this.postAnswerTtsTimer = null;
+    }
+    const pending = this.postAnswerTtsDelivery;
+    if (!pending) return;
+    this.postAnswerTtsDelivery = null;
+    const { qNum, text, opts } = pending;
+    if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
+    this.deliverQuestionTts(qNum, text, opts);
+  }
+
+  schedulePostAnswerTtsDelivery(qNum, text, opts) {
+    this.postAnswerTtsDelivery = { qNum, text, opts };
+    if (this.postAnswerTtsTimer) clearTimeout(this.postAnswerTtsTimer);
+    const fallbackMs = this.voiceActivityEndPending ? 2200 : 600;
+    this.postAnswerTtsTimer = setTimeout(() => this.flushPostAnswerTtsDelivery(), fallbackMs);
   }
 
   deliverQuestionTts(qNum, text, opts = {}) {
     if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
     this.ttsPromptPendingFor = 0;
+    this.postAnswerTtsDelivery = null;
+    if (this.postAnswerTtsTimer) {
+      clearTimeout(this.postAnswerTtsTimer);
+      this.postAnswerTtsTimer = null;
+    }
+    this.blockModelOutput = false;
+    this.allowModelAudio = true;
     const flushFirst = this.answers.length > 0 && qNum === this.answers.length + 1;
     this.sendSpokenPrompt(this.buildQuestionSpeechPrompt(qNum, text, opts), { flushFirst });
 
@@ -676,7 +755,7 @@ export class GeminiLiveBridge {
       const minBytes = this.minTtsBytesForQuestion(text, this.ttsSpeakOpts || {});
       if (bytes < minBytes || !this.ttsTurnCompleteReceived) {
         console.warn(`[relay] question ${qNum} TTS safety — re-speaking (bytes=${bytes})`);
-        this.retryQuestionSpeak(qNum, text, { flushFirst: true, prefaceReliable: true });
+        this.queueRetryQuestionSpeak(qNum, text, { flushFirst: true, prefaceReliable: true }, 500);
       } else {
         this.tryOpenTtsAnswerWindow(qNum);
       }
@@ -735,25 +814,40 @@ export class GeminiLiveBridge {
       this.questionSpeakWatchdog = null;
       if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
       if (this.answerPromptOpen) return;
+      if (this.ttsRetryTimer || this.ttsAwaitingTurnComplete) return;
       const bytes = this.ttsAudioBytesThisTurn || 0;
       if (this.ttsTurnCompleteReceived && bytes > 0) return;
       if (!this.ttsTurnCompleteReceived && bytes > 0) return;
       console.warn(`[relay] question ${qNum} had no TTS audio — watchdog retry`);
-      this.retryQuestionSpeak(qNum, text, { flushFirst: true, prefaceReliable: true });
-    }, 6000);
+      this.queueRetryQuestionSpeak(qNum, text, { flushFirst: true, prefaceReliable: true }, 500);
+    }, 7000);
   }
 
   retryQuestionSpeak(qNum, text, opts = {}) {
     if (this.interviewEnded || this.closed || this.ttsForQ !== qNum) return;
     if (this.answerPromptOpen) return;
+    if (!this.canSendTtsPromptNow()) {
+      this.queueRetryQuestionSpeak(qNum, text, opts, 500);
+      return;
+    }
+    this.cancelTtsRetryTimer();
+    if (this.questionSpeakWatchdog) {
+      clearTimeout(this.questionSpeakWatchdog);
+      this.questionSpeakWatchdog = null;
+    }
     const questionText = String(text || this.questions[qNum - 1] || '').trim()
       || fallbackInterviewQuestion(qNum, this.maxTurns);
     const retries = (this.questionSpeakRetries[qNum] || 0) + 1;
     this.questionSpeakRetries[qNum] = retries;
-    const delayMs = Math.min(1400, 450 + retries * 180);
-    setTimeout(() => {
+    const delayMs = Math.min(1600, 600 + retries * 200);
+    this.ttsRetryTimer = setTimeout(() => {
+      this.ttsRetryTimer = null;
       if (this.interviewEnded || this.closed || this.ttsForQ !== qNum) return;
       if (this.answerPromptOpen) return;
+      if (!this.canSendTtsPromptNow()) {
+        this.queueRetryQuestionSpeak(qNum, questionText, opts, 500);
+        return;
+      }
       this.modelBuf = '';
       this.modelAudioThisTurn = false;
       this.ttsAudioBytesThisTurn = 0;
@@ -767,7 +861,11 @@ export class GeminiLiveBridge {
       this.ttsForQ = qNum;
       const speakOpts = {
         ...(this.ttsSpeakOpts || {}),
-        ...(opts.prefaceReliable || retries >= 2 ? { prefaceReliable: true } : {}),
+        ...(opts.prefaceRepeat || retries >= 4
+          ? { prefaceRepeat: true }
+          : opts.prefaceReliable || retries >= 2
+            ? { prefaceReliable: true }
+            : {}),
       };
       this.sendSpokenPrompt(
         this.buildQuestionSpeechPrompt(qNum, questionText, speakOpts),
@@ -1223,6 +1321,17 @@ export class GeminiLiveBridge {
   }
 
   onModelTurnComplete() {
+    if (this.voiceActivityEndPending) {
+      this.voiceActivityEndPending = false;
+      this.modelBuf = '';
+      this.modelAudioThisTurn = false;
+      if (this.postAnswerTtsDelivery) {
+        if (this.postAnswerTtsTimer) clearTimeout(this.postAnswerTtsTimer);
+        this.postAnswerTtsTimer = setTimeout(() => this.flushPostAnswerTtsDelivery(), 300);
+      }
+      return;
+    }
+
     if (this.ttsPromptPendingFor > 0) {
       this.modelBuf = '';
       this.modelAudioThisTurn = false;
@@ -1302,10 +1411,12 @@ export class GeminiLiveBridge {
 
       if (!hadAudio && !this.interviewEnded && !this.closed) {
         console.warn(`[relay] Q${qNum} turnComplete without TTS audio — retrying`);
-        this.retryQuestionSpeak(qNum, questionText, { flushFirst: true });
+        this.ttsAwaitingTurnComplete = false;
+        this.queueRetryQuestionSpeak(qNum, questionText, { flushFirst: true, prefaceReliable: true }, 400);
         return;
       }
 
+      this.ttsAwaitingTurnComplete = false;
       this.modelBuf = '';
       this.ttsTurnCompleteReceived = true;
       if (this.clientPlaybackIdleForQ === qNum) {
@@ -1747,6 +1858,8 @@ export class GeminiLiveBridge {
         if (!this.voiceOnly) {
           this.pendingUserActivityEnd = true;
           this.scheduleActivityEndTurnFallback();
+        } else {
+          this.voiceActivityEndPending = true;
         }
       }
       this.userTurnEndedAt = Date.now();
@@ -2326,7 +2439,11 @@ export class GeminiLiveBridge {
     if (this.geminiWs.readyState !== WebSocket.OPEN) return;
     const clean = String(text || '').trim();
     if (!clean) return;
-    this.modelAudioThisTurn = false;
+    if (this.ttsOnlyTurn && this.ttsForQ >= 1) {
+      this.markTtsPromptSent();
+    } else {
+      this.modelAudioThisTurn = false;
+    }
     this.geminiWs.send(
       JSON.stringify({
         clientContent: {
@@ -2433,8 +2550,12 @@ export class GeminiLiveBridge {
     this.awaitingAnswer = true;
     this.blockModelOutput = true;
     this.userTurnEndedAt = Date.now();
-    this.pendingUserActivityEnd = true;
-    this.scheduleActivityEndTurnFallback();
+    if (this.voiceOnly) {
+      this.voiceActivityEndPending = true;
+    } else {
+      this.pendingUserActivityEnd = true;
+      this.scheduleActivityEndTurnFallback();
+    }
     this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
     this.scheduleFinalizeAnswer(false, 2500);
 

@@ -31,14 +31,15 @@ function loudPcmB64() {
   return buf.toString('base64');
 }
 
-/** Wait for post-answer question TTS prompt delivery (800ms voice-only delay). */
+/** Wait for post-answer question TTS prompt delivery. */
 async function awaitPromptDelivery(bridge) {
-  const deadline = Date.now() + 1200;
-  while (Date.now() < deadline && bridge.ttsPromptPendingFor > 0) {
+  const deadline = Date.now() + 3500;
+  while (Date.now() < deadline) {
+    if (!bridge.postAnswerTtsDelivery && bridge.ttsPromptPendingFor === 0) return;
     await new Promise((r) => setTimeout(r, 50));
   }
-  if (bridge.ttsPromptPendingFor > 0) {
-    await new Promise((r) => setTimeout(r, 850));
+  if (typeof bridge.flushPostAnswerTtsDelivery === 'function') {
+    bridge.flushPostAnswerTtsDelivery();
   }
 }
 

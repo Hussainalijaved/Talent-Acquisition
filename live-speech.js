@@ -123,6 +123,8 @@
       this.playbackIdleSentForQ = null;
       this.playbackIdleTimer = null;
       this.questionAudioMissingSentForQ = null;
+      this.preparingAudioWatchdogTimer = null;
+      this.preparingAudioWatchdogQ = 0;
       this.questionAudioTailMs = 900;
       this.awaitingAnswerAt = 0;
       this.micOpenWatchdogTimer = null;
@@ -225,6 +227,29 @@
         return;
       }
       this.beginAnswer({ force: true });
+    }
+
+    clearPreparingAudioWatchdog() {
+      if (this.preparingAudioWatchdogTimer) {
+        clearTimeout(this.preparingAudioWatchdogTimer);
+        this.preparingAudioWatchdogTimer = null;
+      }
+      this.preparingAudioWatchdogQ = 0;
+    }
+
+    schedulePreparingAudioWatchdog(qNum) {
+      this.clearPreparingAudioWatchdog();
+      if (qNum < 1) return;
+      this.preparingAudioWatchdogQ = qNum;
+      this.preparingAudioWatchdogTimer = setTimeout(() => {
+        this.preparingAudioWatchdogTimer = null;
+        if (this.ended || this.interviewEnded || this.heardQuestionAudioThisTurn) return;
+        if (this.preparingAudioWatchdogQ !== qNum) return;
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: 'question_audio_missing', number: qNum }));
+        }
+        this.schedulePreparingAudioWatchdog(qNum);
+      }, 8000);
     }
 
     clearQuestionSafetyTimer() {
@@ -633,6 +658,7 @@
         if (msg.number >= 1) {
           this.pendingAnswerQ = msg.number;
           this.pendingAnswerSeconds = 120;
+          this.schedulePreparingAudioWatchdog(msg.number);
         }
         this.onNextQuestionReady({ number: msg.number });
         this.setStatus('Preparing the next question…');
@@ -679,6 +705,7 @@
         });
       }
       if (msg.type === 'output_audio' && msg.data) {
+        this.clearPreparingAudioWatchdog();
         // Block interviewer audio only while the candidate is actively recording an
         // answer — never while waiting for the question to be spoken.
         if (this.answering && !this.allowInterviewerDuringAnswer) return;

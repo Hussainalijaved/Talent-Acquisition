@@ -3034,6 +3034,7 @@
             const [canAnswer, setCanAnswer] = React.useState(false);
             const [isAnswering, setIsAnswering] = React.useState(false);
             const [micOpening, setMicOpening] = React.useState(false);
+            const [preparingNext, setPreparingNext] = React.useState(false);
             const [savingAnswer, setSavingAnswer] = React.useState(false);
             const [ending, setEnding] = React.useState(false);
             const [interviewComplete, setInterviewComplete] = React.useState(false);
@@ -3186,12 +3187,18 @@
                             },
                             onLevel: setMicLevel,
                             onOutputAudio: () => {
+                                // Actual interviewer audio is playing — this is the ONLY
+                                // place we assert "the interviewer is speaking" so the UI
+                                // never claims speech during a silent gap.
+                                setPreparingNext(false);
                                 if (!canAnswerRef.current && !isAnsweringRef.current) {
                                     setIsInterviewerSpeaking(true);
                                 }
                             },
                             onPlaybackIdle: () => {
-                                if (awaitingAnswerRef.current || canAnswerRef.current || isAnsweringRef.current) return;
+                                // Playback drained — the interviewer is no longer speaking.
+                                // (Even while awaiting an answer: that's the "mic opening" state.)
+                                if (canAnswerRef.current || isAnsweringRef.current) return;
                                 setIsInterviewerSpeaking(false);
                             },
                             onWarmupPhase: ({ phase }) => {
@@ -3204,7 +3211,9 @@
                                     setCanAnswer(false);
                                     setLiveCaption('');
                                     setSilenceHint('');
-                                    setIsInterviewerSpeaking(true);
+                                    // Audio drives the "speaking" state — show preparing until it plays.
+                                    setIsInterviewerSpeaking(false);
+                                    setPreparingNext(true);
                                 }
                             },
                             onTurn: (payload) => {
@@ -3291,6 +3300,8 @@
                                 awaitingAnswerRef.current = false;
                                 canAnswerRef.current = false;
                                 setMicOpening(false);
+                                setPreparingNext(false);
+                                setIsInterviewerSpeaking(false);
                                 setIsAnswering(false);
                                 setCanAnswer(false);
                                 setSavingAnswer(true);
@@ -3332,6 +3343,7 @@
                                 awaitingAnswerRef.current = true;
                                 canAnswerRef.current = false;
                                 setMicOpening(true);
+                                setPreparingNext(false);
                                 setCanAnswer(false);
                                 setIsAnswering(false);
                                 setSavingAnswer(false);
@@ -3357,6 +3369,8 @@
                                 awaitingAnswerRef.current = false;
                                 canAnswerRef.current = true;
                                 setMicOpening(false);
+                                setPreparingNext(false);
+                                setIsInterviewerSpeaking(false);
                                 setIsAnswering(true);
                                 setCanAnswer(true);
                                 setAnswerTimerActive(true);
@@ -3385,9 +3399,13 @@
                                         `Opened voice question ${number}.`
                                     );
                                 }
-                                setIsInterviewerSpeaking(true);
+                                // Do NOT claim the interviewer is speaking yet — audio has
+                                // not started. Show a "preparing" state; onOutputAudio flips
+                                // to "speaking" the moment real audio plays.
+                                setIsInterviewerSpeaking(false);
+                                setPreparingNext(true);
                                 setLiveQuestionCaption('');
-                                setStatus('The interviewer is speaking…');
+                                setStatus('Preparing the next question…');
                             },
                             onPrematureClosing: () => {
                                 setSavingAnswer(false);
@@ -3600,16 +3618,20 @@
                 let label = 'Getting ready…';
                 let hint = statusHint;
 
-                if (micOpening && !candidateSpeaking) {
-                    orbClass = 'ready';
-                    label = 'Opening microphone';
-                    hint = 'Your mic will open automatically in a moment';
-                } else if (aiSpeaking) {
+                if (aiSpeaking) {
                     orbClass = 'ai-active';
                     label = 'Interviewer is speaking';
                     hint = warmup
                         ? (warmupPhase === 'mic_check' ? 'Mic check in progress — listen first' : 'Introduction prompt — listen first')
                         : (followUpActive ? 'Follow-up question — listen carefully' : 'Listen to the question');
+                } else if (preparingNext && !candidateSpeaking && !micReady && !savingAnswer) {
+                    orbClass = 'idle';
+                    label = 'Preparing the next question';
+                    hint = 'The interviewer will speak in a moment…';
+                } else if (micOpening && !candidateSpeaking) {
+                    orbClass = 'ready';
+                    label = 'Opening microphone';
+                    hint = 'Your mic will open automatically in a moment';
                 } else if (candidateSpeaking) {
                     orbClass = 'candidate-active';
                     label = "You're speaking";

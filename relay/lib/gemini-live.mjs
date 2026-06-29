@@ -30,9 +30,12 @@ const MODEL_FALLBACKS = [
 const SETUP_TIMEOUT_MS = 15000;
 /** Gemini turnComplete often arrives before the last audio chunk — wait this long after the final chunk. */
 const TTS_AUDIO_QUIET_MS = 2000;
-/** Minimum PCM bytes (24 kHz mono int16) expected for a spoken question. */
-const TTS_MIN_BASE_BYTES = 24000 * 2;
-const TTS_BYTES_PER_WORD = 1600;
+/** Minimum PCM bytes (24 kHz mono int16) expected for a spoken question.
+ *  24000 samples/s * 2 bytes = 48000 bytes per second of speech. We require a
+ *  conservative MINIMUM so a clearly truncated ("half") reading is re-spoken,
+ *  while a complete reading (which is always longer) passes on the first try. */
+const TTS_MIN_BASE_BYTES = 24000 * 2; // ~1s floor
+const TTS_BYTES_PER_WORD = 7000;      // ~0.29s/word minimum acceptable
 const DEFAULT_KICKOFF =
   'Begin the interview now. In the SAME turn, greet the candidate in one short sentence and then ask interview question 1. Ask exactly one question, then stop talking and wait. Do not say anything else.';
 
@@ -314,17 +317,14 @@ export class GeminiLiveBridge {
 
     const minBytes = this.estimateMinTtsBytes(questionText, this.ttsSpeakOpts || {});
     const bytes = this.ttsAudioBytesThisTurn || 0;
-    const clientHeard = this.clientPlaybackIdleForQ === qNum;
-    if (
-      bytes > 0 &&
-      bytes < minBytes &&
-      !clientHeard &&
-      (this.questionSpeakRetries[qNum] || 0) < 2
-    ) {
-      console.warn(`[relay] Q${qNum} TTS truncated (${bytes}/${minBytes} bytes) — retry`);
+    // A clearly truncated reading is re-spoken in full (flush the partial first so
+    // the candidate hears one clean, complete question). Bounded so we can never
+    // loop forever on a model that keeps under-producing.
+    if (bytes > 0 && bytes < minBytes && (this.questionSpeakRetries[qNum] || 0) < 2) {
+      console.warn(`[relay] Q${qNum} TTS truncated (${bytes}/${minBytes} bytes) — re-speaking full`);
       this.ttsTurnCompleteReceived = false;
       this.clientPlaybackIdleForQ = 0;
-      this.retryQuestionSpeak(qNum, questionText, { flushFirst: false });
+      this.retryQuestionSpeak(qNum, questionText, { flushFirst: true });
       return;
     }
 
@@ -632,11 +632,19 @@ export class GeminiLiveBridge {
       preface =
         "In ONE short, warm, professional sentence, briefly acknowledge the candidate's previous answer using natural, varied wording (for example: \"Thank you for sharing that.\", \"Great, I appreciate the detail.\", or \"Understood, thank you.\"). Do NOT rate, score, critique, or give feedback on the answer. Then ";
       prefaceDesc = ' brief acknowledgement and the';
+    } else {
+      // No contextual preface (e.g. the very first question). Native-audio Gemini
+      // is far more reliable at producing FULL spoken audio when the turn opens
+      // with a short, natural verbal lead rather than a bare "read this" command.
+      preface =
+        'In ONE short, natural word or phrase, signal that you are moving to the question (for example: "Alright." or "Okay, here we go."). Then ';
+      prefaceDesc = ' brief lead-in and the';
     }
     this.sendSpokenPrompt(
-      `${preface}Read this interview question aloud to the candidate, word for word, in a warm professional tone.` +
+      `You are the interviewer speaking out loud directly to the candidate, who can only HEAR you. ${preface}` +
+        `say this interview question out loud, clearly and completely, word for word, in a warm professional tone.` +
         `${lastQuestionHint}` +
-        `Say ONLY this${prefaceDesc} question and nothing else — no extra preamble, no numbering, no second question, no follow-up:\n"${text}"`,
+        `Speak the ENTIRE question — never stop partway. Say ONLY this${prefaceDesc} question and nothing else — no numbering, no second question, no follow-up:\n"${text}"`,
       { flushFirst: false }
     );
 

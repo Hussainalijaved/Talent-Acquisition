@@ -198,11 +198,25 @@
 
     scheduleMicOpenWatchdog() {
       this.clearMicOpenWatchdog();
-      this.micOpenWatchdogTimer = setTimeout(() => {
-        this.micOpenWatchdogTimer = null;
-        if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
-        this.beginAnswer({ force: true });
-      }, 3500);
+      this.micOpenWatchdogTimer = setTimeout(() => this.runMicOpenWatchdog(), 6000);
+    }
+
+    // Safety net to guarantee the mic eventually opens — but it must NEVER cut the
+    // interviewer's question audio. If audio is still playing (or just finished),
+    // reschedule and wait; only force-open once playback is genuinely idle.
+    runMicOpenWatchdog() {
+      this.micOpenWatchdogTimer = null;
+      if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
+      const sinceLastAudio = Date.now() - (this.lastOutputAudioAt || 0);
+      const audioBusy =
+        this.playing ||
+        this.playQueue.length > 0 ||
+        (this.lastOutputAudioAt && sinceLastAudio < this.questionAudioTailMs);
+      if (audioBusy) {
+        this.micOpenWatchdogTimer = setTimeout(() => this.runMicOpenWatchdog(), 700);
+        return;
+      }
+      this.beginAnswer({ force: true });
     }
 
     clearQuestionSafetyTimer() {
@@ -257,14 +271,25 @@
     async openMicAfterPlayback() {
       const myToken = ++this.micOpenToken;
       if (this.ended || this.interviewEnded) return;
-      const deadline = Date.now() + 12000;
+      const deadline = Date.now() + 30000;
       while (Date.now() < deadline) {
         if (this.ended || this.interviewEnded) return;
         if (myToken !== this.micOpenToken) return;
         if (!this.awaitingAnswerPending || this.answering) return;
-        // Relay already opened the answer window — do not block on a long audio-wait
-        // deadline from next_question_ready (that caused Q2 silent + mic never open).
-        if (this.awaitingAnswerAt && Date.now() - this.awaitingAnswerAt > 6000) break;
+        // Wait briefly for the question's FIRST audio chunk to ARRIVE. Some relay
+        // versions emit awaiting_answer before (or alongside) the spoken audio —
+        // opening the mic now would set answering=true and BLOCK that audio, so the
+        // candidate would hear nothing. Bounded so a truly silent question (no audio
+        // at all) still lets the flow proceed instead of freezing.
+        if (
+          this.pendingAnswerQ >= 1 &&
+          !this.heardQuestionAudioThisTurn &&
+          this.awaitingAnswerAt &&
+          Date.now() - this.awaitingAnswerAt < 4000
+        ) {
+          await new Promise((r) => setTimeout(r, 150));
+          continue;
+        }
         if (this.playing || this.playQueue.length > 0) {
           await new Promise((r) => setTimeout(r, 150));
           continue;

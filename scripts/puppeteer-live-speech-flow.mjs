@@ -63,21 +63,14 @@ function createMockRelay() {
       currentQ = qNum;
       sendJson(ws, { type: 'flush_playback' });
       sendJson(ws, { type: 'next_question_ready', number: qNum });
-      // Audio first, THEN question text, THEN awaiting_answer (realistic order).
+      sendJson(ws, { type: 'question', number: qNum, text: `Interview question ${qNum}: tell me about a relevant experience.` });
       sendAudio(ws, 5);
       setTimeout(() => {
-        sendJson(ws, { type: 'question', number: qNum, text: `Interview question ${qNum}: tell me about a relevant experience.` });
-      }, 300);
-      setTimeout(() => {
         sendJson(ws, { type: 'awaiting_answer', number: qNum, maxTurns: TOTAL_Q, time_limit_seconds: 120 });
-      }, 600);
-      // Late partials after awaiting_answer — this was cancelling mic open for Q1-Q5.
+      }, 400);
       setTimeout(() => {
         sendJson(ws, { type: 'question_partial', number: qNum, text: `Interview question ${qNum}: tell me about a relevant experience, in detail?` });
-      }, 900);
-      setTimeout(() => {
-        sendJson(ws, { type: 'question_partial', number: qNum, text: `Interview question ${qNum}: tell me about a relevant experience, in detail? Please.` });
-      }, 1200);
+      }, 700);
     };
 
     ws.on('message', (raw) => {

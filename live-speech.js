@@ -298,7 +298,10 @@
       this.pendingAnswerQ = number;
       this.pendingAnswerSeconds = seconds;
       this.awaitingAnswerAt = Date.now();
-      this.heardQuestionAudioThisTurn = false;
+      // Audio often finishes before awaiting_answer — do not wipe that signal.
+      if (!(number >= 1 && this.heardQuestionAudioThisTurn && this.lastOutputAudioAt)) {
+        this.heardQuestionAudioThisTurn = false;
+      }
       this.questionAudioMissingSentForQ = null;
       if (!duplicate) {
         this.onAwaitingAnswer({

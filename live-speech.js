@@ -201,7 +201,8 @@
 
     scheduleMicOpenWatchdog() {
       this.clearMicOpenWatchdog();
-      this.micOpenWatchdogTimer = setTimeout(() => this.runMicOpenWatchdog(), 6000);
+      const delayMs = this.pendingAnswerQ <= 0 ? 2500 : 6000;
+      this.micOpenWatchdogTimer = setTimeout(() => this.runMicOpenWatchdog(), delayMs);
     }
 
     // Safety net to guarantee the mic eventually opens — but it must NEVER cut the
@@ -285,6 +286,8 @@
       this.pendingAnswerQ = number;
       this.pendingAnswerSeconds = seconds;
       this.awaitingAnswerAt = Date.now();
+      this.heardQuestionAudioThisTurn = false;
+      this.questionAudioMissingSentForQ = null;
       if (!duplicate) {
         this.onAwaitingAnswer({
           number,
@@ -344,6 +347,11 @@
       }
       if (myToken !== this.micOpenToken) return;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
+      const isWarmupTurn = this.pendingAnswerQ <= 0;
+      if (isWarmupTurn && !this.heardQuestionAudioThisTurn) {
+        this.beginAnswer({ force: true });
+        return;
+      }
       if (this.pendingAnswerQ >= 1 && !this.heardQuestionAudioThisTurn) {
         this.ensureMicReady();
         return;

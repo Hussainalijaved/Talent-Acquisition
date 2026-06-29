@@ -322,5 +322,35 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.closed = true;
 }
 
+{
+  const { bridge, events } = makeBridge();
+  bridge.warmupPhase = 'intro';
+  bridge.warmupTtsOnly = true;
+  bridge.warmupTtsPhase = 'intro';
+  bridge.warmupDisplayText = 'Could you briefly introduce yourself?';
+  bridge.voiceActivityEndPending = true;
+  bridge.modelAudioThisTurn = true;
+  bridge.onModelTurnComplete();
+  if (bridge.modelAudioThisTurn) ok('activityEnd ack preserves warmup TTS audio');
+  else fail('activityEnd ack preserves warmup TTS audio');
+  bridge.onModelTurnComplete();
+  if (lastOf(events, 'awaiting_answer', 0).length >= 1) ok('intro warmup opens answer window after audio');
+  else fail('intro warmup opens answer window after audio');
+  if (bridge.answerPromptOpen) ok('intro answer prompt open on relay');
+  else fail('intro answer prompt open on relay');
+  bridge.closed = true;
+}
+
+{
+  const { bridge, events } = makeBridge();
+  bridge.warmupPhase = 'intro';
+  bridge.emitWarmupFallback('intro');
+  if (lastOf(events, 'awaiting_answer', 0).length === 1) ok('warmup fallback emits awaiting_answer');
+  else fail('warmup fallback emits awaiting_answer');
+  if (!bridge.warmupTtsOnly) ok('warmup fallback clears warmupTtsOnly');
+  else fail('warmup fallback clears warmupTtsOnly');
+  bridge.closed = true;
+}
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILURES`}`);
 process.exit(failures === 0 ? 0 : 1);

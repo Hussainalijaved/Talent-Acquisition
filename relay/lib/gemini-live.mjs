@@ -500,6 +500,8 @@ export class GeminiLiveBridge {
     const wNum = phase === 'mic_check' ? -1 : 0;
     const displayText = this.warmupDisplayFor(phase);
 
+    this.voiceActivityEndPending = false;
+    this.pendingUserActivityEnd = false;
     this.clearAnswerPromptWindow();
     if (this.nextQuestionWatchdog) {
       clearTimeout(this.nextQuestionWatchdog);
@@ -535,7 +537,11 @@ export class GeminiLiveBridge {
     const fallbackText = phase === 'mic_check'
       ? 'Please say a few words so I can confirm your microphone is working.'
       : 'Could you please tell me a bit about yourself — your name, background, and what brings you here?';
+    this.warmupTtsOnly = false;
+    this.warmupTtsPhase = null;
+    this.warmupDisplayText = fallbackText;
     if (phase === 'intro') this.introQuestionAsked = true;
+    this.warmupAudioDelivered[phase === 'mic_check' ? 'mic_check' : 'intro'] = true;
     this.clearNextQuestionWatchdog();
     this.onEvent({ type: 'question', number: wNum, text: fallbackText, warmup: phase });
     this.emitAwaitingAnswer(wNum, fallbackText, { warmup: phase });
@@ -693,6 +699,7 @@ export class GeminiLiveBridge {
       this.pendingUserActivityEnd = false;
       this.deferredSpeakRequest = null;
     }
+    this.voiceActivityEndPending = false;
     if (qNum > this.maxTurns) {
       this.finishInterview();
       return;
@@ -943,6 +950,7 @@ export class GeminiLiveBridge {
     this.nextQuestionWatchdog = setTimeout(() => {
       this.nextQuestionWatchdog = null;
       if (this.interviewEnded || this.closed || this.warmupPhase !== phase) return;
+      if (this.answerPromptOpen && this.answerPromptFor === (phase === 'mic_check' ? -1 : 0)) return;
       if (phase === 'intro' && this.introQuestionAsked && this.answerPromptOpen && this.warmupAudioDelivered.intro) return;
       console.warn(`[relay] warmup watchdog — ${phase} not heard, retrying speak`);
       this.retryWarmupSpeak(phase);
@@ -1335,8 +1343,12 @@ export class GeminiLiveBridge {
   onModelTurnComplete() {
     if (this.voiceActivityEndPending) {
       this.voiceActivityEndPending = false;
-      this.modelBuf = '';
-      this.modelAudioThisTurn = false;
+      // Mic-check submit can still be acking when intro/Q TTS is already in flight —
+      // never wipe audio state for a deterministic speak turn.
+      if (!this.warmupTtsOnly && !this.ttsOnlyTurn) {
+        this.modelBuf = '';
+        this.modelAudioThisTurn = false;
+      }
       return;
     }
 
@@ -1941,6 +1953,8 @@ export class GeminiLiveBridge {
       this.modelAudioThisTurn = false;
       this.introQuestionAsked = false;
       this.warmupAudioDelivered.intro = false;
+      this.voiceActivityEndPending = false;
+      this.pendingUserActivityEnd = false;
       this.allowModelAudio = true;
       this.pendingAudioChunks = [];
       this.blockModelOutput = false;

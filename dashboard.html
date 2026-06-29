@@ -671,9 +671,10 @@
 
             <!-- SETTINGS -->
             <section class="view" id="view-settings">
-                <div class="card card-limit-md">
+                <div class="settings-shell">
+                <div class="card settings-card">
                     <div class="card-head"><div class="card-title">Integration settings<small>n8n webhooks for screening and JD generation</small></div></div>
-                    <div class="form-grid cols-1">
+                    <div class="form-grid cols-1 settings-fields">
                         <div class="form-group">
                             <label for="admWebhook">n8n CV ingest webhook URL</label>
                             <input id="admWebhook" type="url" placeholder="https://randy-gaunt-bradley.ngrok-free.dev/webhook/talent/cv-ingest" />
@@ -690,12 +691,12 @@
                             <div class="form-hint">Review queue → Shortlist &amp; send assessment. Use <strong>Production URL</strong> (<code>/webhook/</code>), not Test URL. Workflow must be <strong>Active</strong>.</div>
                         </div>
                     </div>
-                    <div class="form-actions">
+                    <div class="form-actions settings-form-actions">
                         <button type="button" class="btn-primary" id="saveWebhookBtn" data-requires-perm="save_webhooks">Save webhook</button>
                     </div>
                 </div>
 
-                <div class="card card-limit-lg settings-scoring-card">
+                <div class="card settings-card">
                     <div class="card-head">
                         <div class="card-title">Assessment scoring defaults
                             <small>Pass marks by role level — auto-detected from job title</small>
@@ -731,14 +732,14 @@
                             <p class="form-hint">Senior, Lead, Principal, Architect titles</p>
                         </div>
                     </div>
-                    <div class="form-actions settings-scoring-actions">
+                    <div class="form-actions settings-form-actions">
                         <button type="button" class="btn-primary" id="saveDefaultPassBtn" data-requires-perm="edit_jobs">Save defaults</button>
                         <button type="button" class="btn-secondary" id="applyPassAllJobsBtn" data-requires-perm="edit_jobs">Apply by level to all jobs</button>
                     </div>
-                    <p class="form-hint settings-scoring-note" id="assessmentScoringStatus"></p>
+                    <p class="form-hint settings-status-note" id="assessmentScoringStatus"></p>
                 </div>
 
-                <div class="card card-limit-lg settings-scoring-card">
+                <div class="card settings-card">
                     <div class="card-head">
                         <div class="card-title">Written assessment length
                             <small>One global range — AI picks count per candidate</small>
@@ -758,10 +759,11 @@
                             <input id="admWrittenQMax" type="number" min="1" max="20" step="1" value="10" placeholder="10" />
                         </div>
                     </div>
-                    <div class="form-actions settings-scoring-actions">
+                    <div class="form-actions settings-form-actions">
                         <button type="button" class="btn-primary" id="saveWrittenQuestionsBtn" data-requires-perm="edit_jobs">Save bounds</button>
                     </div>
-                    <p class="form-hint settings-scoring-note" id="writtenQuestionStatus"></p>
+                    <p class="form-hint settings-status-note" id="writtenQuestionStatus"></p>
+                </div>
                 </div>
             </section>
         </div>

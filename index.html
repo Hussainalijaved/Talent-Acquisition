@@ -16,8 +16,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
-    <script src="live-speech.js?v=20260624h"></script>
-    <script src="proctor-media.js?v=20260626"></script>
+    <script src="live-speech.js?v=20260628"></script>
+    <script src="proctor-media.js?v=20260628"></script>
     <script src="proctor-activity.js"></script>
     <script>
         tailwind.config = {
@@ -1388,6 +1388,7 @@
             snipping_tool: 'attempting to open Snipping Tool or screen capture (Win+Shift+S)',
             print_attempt: 'attempting to print or save the page',
             webcam_stopped: 'turning off or blocking the webcam',
+            webcam_no_signal: 'camera showing a blank or black screen',
             camera_not_restored: 'not turning the webcam back on within the time limit',
             screen_share_stopped: 'stopping screen sharing',
         };
@@ -2501,7 +2502,22 @@
             );
         };
 
-        const CameraGraceOverlay = ({ secondsLeft, onEnableCamera, busy }) => (
+        const CAMERA_GRACE_COPY = {
+            stream_lost: {
+                badge: 'Camera required',
+                title: 'Turn your camera back on',
+                body: 'Your webcam was turned off. Enable it again to continue your assessment.',
+            },
+            no_signal: {
+                badge: 'No camera detected',
+                title: 'Enable your camera',
+                body: 'We cannot see you on camera — the picture is blank or black. Turn your webcam on or uncover the lens to continue.',
+            },
+        };
+
+        const CameraGraceOverlay = ({ secondsLeft, onEnableCamera, busy, reason = 'stream_lost' }) => {
+            const copy = CAMERA_GRACE_COPY[reason] || CAMERA_GRACE_COPY.stream_lost;
+            return (
             <div
                 className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-slate-900/90 backdrop-blur-md px-4 portal-lock"
                 role="alertdialog"
@@ -2514,10 +2530,10 @@
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                         </svg>
                     </div>
-                    <span className="badge badge-warning mb-4">Camera required</span>
-                    <h2 className="text-xl font-bold text-slate-900 mb-3 tracking-tight">Turn your camera back on</h2>
+                    <span className="badge badge-warning mb-4">{copy.badge}</span>
+                    <h2 className="text-xl font-bold text-slate-900 mb-3 tracking-tight">{copy.title}</h2>
                     <p className="text-sm text-slate-600 leading-relaxed mb-4">
-                        Your webcam was turned off. Enable it again to continue your assessment.
+                        {copy.body}
                     </p>
                     <p className="text-2xl font-bold text-red-600 tabular-nums mb-6">
                         {secondsLeft != null ? `${secondsLeft}s` : '—'}
@@ -2535,7 +2551,8 @@
                     </button>
                 </div>
             </div>
-        );
+            );
+        };
 
         const ProctoringSetupView = ({ onComplete, onBack, isLoading }) => {
             const [step, setStep] = React.useState('detect');
@@ -3136,10 +3153,21 @@
                                     return;
                                 }
                                 const { turn: t, maxTurns: m } = payload || {};
-                                const capped = Math.min(Number(t) || 0, Number(m) || maxTurns);
+                                const max = Number(m) || maxTurns;
+                                const capped = Math.min(Number(t) || 0, max);
                                 // Never move progress backwards (turn_complete can arrive after next_question_ready).
                                 setTurn((prev) => Math.max(Number(prev) || 0, capped));
                                 if (m) setMaxTurns(m);
+                                if (capped >= max && max >= 1) {
+                                    setInterviewComplete(true);
+                                    setCanAnswer(false);
+                                    setIsAnswering(false);
+                                    setSavingAnswer(false);
+                                    setAnswerTimerActive(false);
+                                    setTimeLeft(null);
+                                    setLiveCaption('');
+                                    setSilenceHint('');
+                                }
                             },
                             onQuestion: ({ number, text, partial, follow_up, warmup }) => {
                                 const clean = cleanText(text, 'model');
@@ -3296,8 +3324,13 @@
                             },
                             onInterviewComplete: (msg) => {
                                 if (msg?.type === 'interview_closing') {
+                                    setInterviewComplete(true);
                                     setIsInterviewerSpeaking(true);
                                     setSavingAnswer(false);
+                                    setCanAnswer(false);
+                                    setIsAnswering(false);
+                                    setAnswerTimerActive(false);
+                                    setTimeLeft(null);
                                     return;
                                 }
                                 setInterviewComplete(true);
@@ -5313,6 +5346,7 @@
             const cameraGraceTimerRef = useRef(null);
             const cameraGraceActiveRef = useRef(false);
             const [cameraGraceSecondsLeft, setCameraGraceSecondsLeft] = useState(null);
+            const [cameraGraceReason, setCameraGraceReason] = useState('stream_lost');
             const [cameraGraceBusy, setCameraGraceBusy] = useState(false);
             const [fullscreenRequired, setFullscreenRequired] = useState(false);
             const [devToolsDetected, setDevToolsDetected] = useState(false);
@@ -5516,6 +5550,7 @@
                 }
                 cameraGraceActiveRef.current = false;
                 setCameraGraceSecondsLeft(null);
+                setCameraGraceReason('stream_lost');
                 setCameraGraceBusy(false);
             }, []);
 
@@ -5632,10 +5667,12 @@
                 );
             }, [terminateTestDueToCheating]);
 
-            const startCameraGrace = useCallback(() => {
+            const startCameraGrace = useCallback((reason = 'stream_lost') => {
                 if (PROCTORING_DISABLED || terminatingRef.current || cameraGraceActiveRef.current) return;
                 cameraGraceActiveRef.current = true;
-                window.TA_PROCTOR_ACTIVITY?.logEvent?.('webcam_lost', null, { suspicious: true });
+                setCameraGraceReason(reason === 'no_signal' ? 'no_signal' : 'stream_lost');
+                const logCategory = reason === 'no_signal' ? 'webcam_no_signal' : 'webcam_lost';
+                window.TA_PROCTOR_ACTIVITY?.logEvent?.(logCategory, null, { suspicious: true });
                 let left = CAMERA_GRACE_SECONDS;
                 setCameraGraceSecondsLeft(left);
                 if (cameraGraceTimerRef.current) clearInterval(cameraGraceTimerRef.current);
@@ -5658,10 +5695,12 @@
                 proctorWatchCleanupRef.current = [];
                 if (PROCTORING_DISABLED || !streams || !window.TA_PROCTOR) return;
 
-                const onWebcamLost = () => {
+                const onWebcamLost = (reason = 'stream_lost') => {
                     if (terminatingRef.current) return;
-                    startCameraGrace();
+                    startCameraGrace(reason);
                 };
+                const onWebcamStreamEnded = () => onWebcamLost('stream_lost');
+                const onWebcamBlank = () => onWebcamLost('no_signal');
                 const onScreenLost = () => {
                     if (terminatingRef.current) return;
                     recordIntegrityViolation('screen_share_stopped');
@@ -5669,8 +5708,17 @@
 
                 if (streams.webcam) {
                     proctorWatchCleanupRef.current.push(
-                        window.TA_PROCTOR.watchStreamEnd(streams.webcam, () => onWebcamLost())
+                        window.TA_PROCTOR.watchStreamEnd(streams.webcam, () => onWebcamStreamEnded())
                     );
+                    if (window.TA_PROCTOR.watchWebcamBlank) {
+                        proctorWatchCleanupRef.current.push(
+                            window.TA_PROCTOR.watchWebcamBlank(streams.webcam, () => onWebcamBlank(), {
+                                intervalMs: 10000,
+                                threshold: 18,
+                                strikesNeeded: 2,
+                            })
+                        );
+                    }
                 }
                 (streams.screens || []).forEach((stream) => {
                     proctorWatchCleanupRef.current.push(
@@ -6925,6 +6973,7 @@
                             secondsLeft={cameraGraceSecondsLeft}
                             onEnableCamera={handleRestoreWebcam}
                             busy={cameraGraceBusy}
+                            reason={cameraGraceReason}
                         />
                     ) : null}
                     {fullscreenRequired && isFullscreenRequiredView(view) && (

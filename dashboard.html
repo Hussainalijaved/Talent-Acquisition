@@ -1719,6 +1719,21 @@
             return Number(h.phase) > techMax;
         }
 
+        function renderSpeechSkillBarRows(rows) {
+            if (!rows || !rows.length) return '';
+            let html = '<div class="speech-skills-grid speech-skills-grid-2">';
+            rows.forEach(([label, val]) => {
+                const n = Math.max(0, Math.min(100, Number(val)));
+                if (!Number.isFinite(n)) return;
+                const cls = n >= 70 ? 'hi' : n >= 50 ? 'mid' : 'lo';
+                html += '<div class="speech-skill-row"><div class="speech-skill-head"><span>' + esc(label) +
+                    '</span><strong class="' + scoreClass(n) + '">' + n + '</strong></div>' +
+                    '<div class="speech-skill-track"><div class="speech-skill-fill ' + cls + '" style="width:' + n + '%"></div></div></div>';
+            });
+            html += '</div>';
+            return html;
+        }
+
         function renderSpeechSkillBars(skills) {
             if (!skills || typeof skills !== 'object') return '';
             const pick = (primary, legacy) => {
@@ -1736,17 +1751,7 @@
                 ['English proficiency', pick('english_proficiency', null)],
                 ['Answer relevance', pick('answer_relevance', 'relevance')],
             ].filter(([, v]) => v != null && Number.isFinite(Number(v)));
-            if (!dims.length) return '';
-            let html = '<div class="speech-skills-grid">';
-            dims.forEach(([label, val]) => {
-                const n = Math.max(0, Math.min(100, Number(val)));
-                const cls = n >= 70 ? 'hi' : n >= 50 ? 'mid' : 'lo';
-                html += '<div class="speech-skill-row"><div class="speech-skill-head"><span>' + esc(label) +
-                    '</span><strong class="' + scoreClass(n) + '">' + n + '</strong></div>' +
-                    '<div class="speech-skill-track"><div class="speech-skill-fill ' + cls + '" style="width:' + n + '%"></div></div></div>';
-            });
-            html += '</div>';
-            return html;
+            return renderSpeechSkillBarRows(dims);
         }
 
         function renderSpeechMetrics(metrics) {
@@ -1836,12 +1841,8 @@
                 .map(([label, key, legacy]) => [label, avgSpeechSkillFromHist(speechHist, key, legacy)])
                 .filter(([, v]) => v != null);
             if (skillRows.length) {
-                html += '<div class="qlabel">Soft skills (overall)</div><div class="speech-skill-grid">';
-                skillRows.forEach(([label, val]) => {
-                    html += '<div class="speech-skill-row"><span class="speech-skill-lbl">' + esc(label) + '</span>' +
-                        scoreBadge(val) + '</div>';
-                });
-                html += '</div>';
+                html += '<div class="speech-skills-panel"><div class="qlabel">Soft skills (overall)</div>' +
+                    renderSpeechSkillBarRows(skillRows) + '</div>';
             }
 
             const feedback = (speechHist || []).map((h) => h.feedback).find((f) => f && String(f).trim() && f !== '—');
@@ -2014,13 +2015,8 @@
                     .map(([label, key, legacy]) => [label, avgSpeechSkillFromHist(speechHist, key, legacy)])
                     .filter(([, v]) => v != null);
                 if (skillRows.length) {
-                    html += '<div class="qlabel">Voice soft skills (overall)</div>';
-                    html += '<div class="speech-skill-grid">';
-                    skillRows.forEach(([label, val]) => {
-                        html += '<div class="speech-skill-row"><span class="speech-skill-lbl">' + esc(label) + '</span>' +
-                            scoreBadge(val) + '</div>';
-                    });
-                    html += '</div>';
+                    html += '<div class="speech-skills-panel"><div class="qlabel">Voice soft skills (overall)</div>' +
+                        renderSpeechSkillBarRows(skillRows) + '</div>';
                 }
 
                 const overallFb = (speechHist || []).map((h) => h.feedback).find((f) => f && String(f).trim() && f !== '—');

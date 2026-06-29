@@ -185,6 +185,7 @@ export class GeminiLiveBridge {
     this.modelAudioThisTurn = false;
     this.interviewClosing = false;
     this.warmupSpeakRetries = { mic_check: 0, intro: 0 };
+    this.questionSpeakRetries = {};
     this.warmupAudioDelivered = { mic_check: false, intro: false };
     this.closingReprompts = 0;
     this.closingCompleteTimer = null;
@@ -473,6 +474,7 @@ export class GeminiLiveBridge {
     this.answerPcmChunks = [];
     this.ttsOnlyTurn = true;
     this.ttsForQ = qNum;
+    this.questionSpeakRetries[qNum] = 0;
 
     this.flushClientPlayback();
     this.onEvent({ type: 'next_question_ready', number: qNum });
@@ -529,22 +531,51 @@ export class GeminiLiveBridge {
       }
     }, 16000);
 
-    // Retry once if Gemini produces no audible output within 6s.
+    this.scheduleQuestionSpeakWatchdog(qNum, text);
+  }
+
+  scheduleQuestionSpeakWatchdog(qNum, text) {
     if (this.questionSpeakWatchdog) clearTimeout(this.questionSpeakWatchdog);
     this.questionSpeakWatchdog = setTimeout(() => {
       this.questionSpeakWatchdog = null;
-      if (this.ttsForQ !== qNum || this.interviewEnded || this.closed || this.answerPromptOpen) return;
+      if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
       if (this.modelAudioThisTurn) return;
-      console.warn(`[relay] question ${qNum} had no TTS audio — retrying speak`);
-      this.modelBuf = '';
-      this.blockModelOutput = false;
-      this.allowModelAudio = true;
-      this.sendSpokenPrompt(
-        `Read this interview question aloud to the candidate, word for word, in a warm professional tone. ` +
-          `Say ONLY this question and nothing else — no preamble, no numbering, no follow-up:\n"${text}"`,
-        { flushFirst: false }
-      );
+      if (this.answerPromptOpen) {
+        console.warn(`[relay] Q${qNum} answer window open without TTS — resetting for retry`);
+        this.clearAnswerPromptWindow();
+        this.ttsOnlyTurn = true;
+      }
+      console.warn(`[relay] question ${qNum} had no TTS audio — watchdog retry`);
+      this.retryQuestionSpeak(qNum, text, { flushFirst: true });
     }, 6000);
+  }
+
+  retryQuestionSpeak(qNum, text, opts = {}) {
+    if (this.interviewEnded || this.closed || this.ttsForQ !== qNum) return;
+    const questionText = String(text || this.questions[qNum - 1] || '').trim()
+      || fallbackInterviewQuestion(qNum, this.maxTurns);
+    const retries = (this.questionSpeakRetries[qNum] || 0) + 1;
+    this.questionSpeakRetries[qNum] = retries;
+    if (retries > 3) {
+      console.warn(`[relay] Q${qNum} TTS retries exhausted`);
+      if (!this.answerPromptOpen && !this.interviewEnded && !this.closed) {
+        this.ttsOnlyTurn = false;
+        this.emitAwaitingAnswer(qNum, questionText);
+      }
+      return;
+    }
+    this.modelBuf = '';
+    this.modelAudioThisTurn = false;
+    this.blockModelOutput = false;
+    this.allowModelAudio = true;
+    this.ttsOnlyTurn = true;
+    this.ttsForQ = qNum;
+    this.sendSpokenPrompt(
+      `Read this interview question aloud to the candidate, word for word, in a warm professional tone. ` +
+        `Say ONLY this question and nothing else — no preamble, no numbering, no follow-up:\n"${questionText}"`,
+      { flushFirst: opts.flushFirst !== false }
+    );
+    this.scheduleQuestionSpeakWatchdog(qNum, questionText);
   }
 
   computeAndEmitTimer(qNum, text) {
@@ -1020,11 +1051,12 @@ export class GeminiLiveBridge {
       return;
     }
 
-    // Deterministic question TTS finished — NOW open the answer window.
+    // Deterministic question TTS finished — open the answer window only after audio.
     if (this.ttsOnlyTurn) {
-      this.ttsOnlyTurn = false;
-      this.modelBuf = '';
-      this.modelAudioThisTurn = false;
+      const qNum = this.ttsForQ;
+      const questionText = this.questions[qNum - 1] || '';
+      const hadAudio = this.modelAudioThisTurn;
+
       if (this.questionAudioSafety) {
         clearTimeout(this.questionAudioSafety);
         this.questionAudioSafety = null;
@@ -1033,9 +1065,18 @@ export class GeminiLiveBridge {
         clearTimeout(this.questionSpeakWatchdog);
         this.questionSpeakWatchdog = null;
       }
-      const qNum = this.ttsForQ;
+
+      if (!hadAudio && !this.interviewEnded && !this.closed) {
+        console.warn(`[relay] Q${qNum} turnComplete without TTS audio — retrying`);
+        this.retryQuestionSpeak(qNum, questionText, { flushFirst: true });
+        return;
+      }
+
+      this.ttsOnlyTurn = false;
+      this.modelBuf = '';
+      this.modelAudioThisTurn = false;
       if (!this.answerPromptOpen && !this.interviewEnded && !this.closed) {
-        this.emitAwaitingAnswer(qNum, this.questions[qNum - 1] || '');
+        this.emitAwaitingAnswer(qNum, questionText);
       }
       return;
     }

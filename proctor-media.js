@@ -249,6 +249,93 @@
     };
   }
 
+  /** Sample one video frame from a live stream; returns brightness 0–255 or null. */
+  function sampleStreamFrame(stream) {
+    return new Promise((resolve) => {
+      if (!stream || !isStreamLive(stream)) {
+        resolve(null);
+        return;
+      }
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      video.srcObject = stream;
+      let settled = false;
+      const finish = (val) => {
+        if (settled) return;
+        settled = true;
+        try { video.srcObject = null; } catch (_) { /* ignore */ }
+        resolve(val);
+      };
+      const timer = setTimeout(() => finish(null), 8000);
+      video.onloadeddata = () => {
+        try {
+          const vw = video.videoWidth || 640;
+          const vh = video.videoHeight || 360;
+          if (vw < 8 || vh < 8) {
+            clearTimeout(timer);
+            finish(null);
+            return;
+          }
+          const w = Math.min(320, vw);
+          const h = Math.max(1, Math.round(vh * (w / vw)));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, w, h);
+          const img = ctx.getImageData(0, 0, w, h);
+          let sum = 0;
+          for (let i = 0; i < img.data.length; i += 4) {
+            sum += 0.299 * img.data[i] + 0.587 * img.data[i + 1] + 0.114 * img.data[i + 2];
+          }
+          clearTimeout(timer);
+          finish({ brightness: sum / (img.data.length / 4), width: w, height: h });
+        } catch (_) {
+          clearTimeout(timer);
+          finish(null);
+        }
+      };
+      const p = video.play();
+      if (p && typeof p.catch === 'function') p.catch(() => finish(null));
+    });
+  }
+
+  /**
+   * Poll a live webcam for blank/black frames (stream still active but no picture).
+   * Fires onBlank after consecutive dark/missing frames — distinct from track ended.
+   */
+  function watchWebcamBlank(stream, onBlank, opts) {
+    if (!stream || typeof onBlank !== 'function') return () => {};
+    const intervalMs = Number(opts?.intervalMs) > 0 ? Number(opts.intervalMs) : 10000;
+    const threshold = Number.isFinite(opts?.threshold) ? opts.threshold : 18;
+    const strikesNeeded = Number(opts?.strikesNeeded) > 0 ? Number(opts.strikesNeeded) : 2;
+    let blankStrikes = 0;
+    let stopped = false;
+
+    const check = async () => {
+      if (stopped || !isStreamLive(stream)) return;
+      const frame = await sampleStreamFrame(stream);
+      if (!frame || frame.brightness < threshold) {
+        blankStrikes += 1;
+        if (blankStrikes >= strikesNeeded) {
+          onBlank({ brightness: frame?.brightness ?? 0, stream });
+          blankStrikes = 0;
+        }
+      } else {
+        blankStrikes = 0;
+      }
+    };
+
+    const id = setInterval(check, intervalMs);
+    setTimeout(check, 6000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }
+
   global.TA_PROCTOR = {
     isSupported,
     detectScreens,
@@ -263,5 +350,7 @@
     isStreamLive,
     trackLabel,
     watchStreamEnd,
+    sampleStreamFrame,
+    watchWebcamBlank,
   };
 })(window);

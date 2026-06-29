@@ -117,6 +117,8 @@
       this.streamingAudio = false;
       this.audioFlushTimer = null;
       this.playbackGeneration = 0;
+      this.heardQuestionAudioThisTurn = false;
+      this.questionAudioWaitDeadline = 0;
     }
 
     clearPlayback() {
@@ -229,6 +231,14 @@
         if (this.ended || this.interviewEnded) return;
         if (myToken !== this.micOpenToken) return;
         if (!this.awaitingAnswerPending || this.answering) return;
+        if (
+          this.pendingAnswerQ >= 1 &&
+          !this.heardQuestionAudioThisTurn &&
+          Date.now() < this.questionAudioWaitDeadline
+        ) {
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
         if (!this.playing && this.playQueue.length === 0) break;
         await new Promise((r) => setTimeout(r, 150));
       }
@@ -496,6 +506,8 @@
         this.clearPlayback();
         this.processingAnswer = false;
         this.awaitingAnswerPending = false;
+        this.heardQuestionAudioThisTurn = false;
+        this.questionAudioWaitDeadline = Date.now() + 18000;
         if (msg.number >= 1) {
           this.pendingAnswerQ = msg.number;
           this.pendingAnswerSeconds = 120;
@@ -548,6 +560,7 @@
         // Block interviewer audio only while the candidate is actively recording an
         // answer — never while waiting for the question to be spoken.
         if (this.answering && !this.allowInterviewerDuringAnswer) return;
+        if (!this.answering) this.heardQuestionAudioThisTurn = true;
         void this.ensureAudioRunning();
         this.onOutputAudio?.();
         if (!this.answering) this.setStatus('Interviewer is speaking…');

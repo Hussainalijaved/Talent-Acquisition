@@ -646,7 +646,22 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .speech-insights { margin: 12px 0 14px; padding: 14px; border-radius: var(--radius-sm); border: 1px solid rgba(99, 102, 241, 0.18); background: rgba(99, 102, 241, 0.04); }
+.speech-skills-panel {
+    margin: 12px 0 16px;
+    padding: 16px 18px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(99, 102, 241, 0.18);
+    background: rgba(99, 102, 241, 0.04);
+}
+.speech-skills-panel .qlabel { margin-bottom: 12px; }
 .speech-skills-grid { display: grid; gap: 10px; margin-bottom: 12px; }
+.speech-skills-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 20px;
+}
+@media (max-width: 720px) {
+    .speech-skills-grid-2 { grid-template-columns: 1fr; }
+}
 .speech-skill-row { display: grid; gap: 6px; }
 .speech-skill-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--text-sm); color: var(--text-soft); }
 .speech-skill-track { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }

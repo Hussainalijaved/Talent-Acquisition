@@ -60,6 +60,15 @@ function pickNum(body, ...keys) {
   return null;
 }
 
+function pickInt(body, ...keys) {
+  for (const k of keys) {
+    const v = body?.[k];
+    const n = Number(v);
+    if (Number.isFinite(n)) return Math.round(n);
+  }
+  return null;
+}
+
 const intake =
   firstJsonFromNodes(
     'CODE - Frontend intake (JD + CV)',
@@ -133,6 +142,16 @@ const config = {
     pickNum(webhook, 'cv_shortlist_threshold') ??
     cfg.config?.cv_shortlist_threshold ??
     62,
+  written_questions_min:
+    intake.written_questions_min ??
+    pickInt(webhook, 'written_questions_min') ??
+    cfg.config?.written_questions_min ??
+    4,
+  written_questions_max:
+    intake.written_questions_max ??
+    pickInt(webhook, 'written_questions_max') ??
+    cfg.config?.written_questions_max ??
+    10,
 };
 
 return [

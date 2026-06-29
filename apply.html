@@ -837,6 +837,7 @@
 
         let currentJob = null;
         let webhookUrl = '';
+        let writtenQuestionBounds = { min: 4, max: 10 };
         let sbClient = null;
         let submitSucceeded = false;
         let submitAbort = null;
@@ -2048,9 +2049,11 @@
 
             sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-            const [jobRes, configRes] = await Promise.all([
+            const [jobRes, configRes, writtenMinRes, writtenMaxRes] = await Promise.all([
                 sbClient.from('jobs').select('*').eq('job_id', jobSlug).eq('status', 'open').maybeSingle(),
                 sbClient.from('app_config').select('value').eq('key', 'cv_ingest_webhook').maybeSingle(),
+                sbClient.from('app_config').select('value').eq('key', 'written_questions_min').maybeSingle(),
+                sbClient.from('app_config').select('value').eq('key', 'written_questions_max').maybeSingle(),
             ]);
 
             if (jobRes.error) {
@@ -2070,6 +2073,15 @@
 
             currentJob = jobRes.data;
             webhookUrl = normalizeWebhookUrl(configRes.data?.value || params.get('webhook') || '');
+            const wMin = Number(writtenMinRes.data?.value);
+            const wMax = Number(writtenMaxRes.data?.value);
+            writtenQuestionBounds = {
+                min: Number.isFinite(wMin) ? Math.min(20, Math.max(1, Math.round(wMin))) : 4,
+                max: Number.isFinite(wMax) ? Math.min(20, Math.max(1, Math.round(wMax))) : 10,
+            };
+            if (writtenQuestionBounds.min > writtenQuestionBounds.max) {
+                writtenQuestionBounds = { min: writtenQuestionBounds.max, max: writtenQuestionBounds.min };
+            }
 
             document.title = 'Apply — ' + currentJob.title + ' | CONVO';
             document.getElementById('jobTitle').textContent = currentJob.title;
@@ -2157,6 +2169,8 @@
             if (currentJob.cv_shortlist_threshold != null) {
                 formData.append('cv_shortlist_threshold', String(currentJob.cv_shortlist_threshold));
             }
+            formData.append('written_questions_min', String(writtenQuestionBounds.min));
+            formData.append('written_questions_max', String(writtenQuestionBounds.max));
             formData.append('cv_file', file, file.name);
             formData.append('apply_source', 'careers_page');
 

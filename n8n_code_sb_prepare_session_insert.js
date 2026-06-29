@@ -138,11 +138,21 @@ const requisition_id =
 // Always null on insert — MAIL+PATCH sets the real Gmail thread on this new row only.
 const gmail_thread_id = null;
 
+const decidedCount = Number(
+  parse.written_question_count ??
+    parse.max_questions ??
+    cfg.written_question_count ??
+    cfg.max_questions ??
+    5
+);
+const writtenCount =
+  Number.isFinite(decidedCount) && decidedCount > 0 ? Math.round(decidedCount) : 5;
+
 const sessionBody = {
   gmail_thread_id,
   candidate_email,
   current_phase: 1,
-  max_phases: cfg.max_questions ?? 5,
+  max_phases: writtenCount,
   status: 'assessment',
   screening: parse.screening || notes,
   score: httpOut.score ?? parse.score ?? null,
@@ -158,7 +168,10 @@ const sessionBody = {
     organization_name: cfg.organization_name,
     groq_model: cfg.groq_model,
     gemini_model: cfg.gemini_model,
-    max_questions: cfg.max_questions,
+    max_questions: writtenCount,
+    written_question_count: writtenCount,
+    written_questions_min: cfg.written_questions_min ?? 4,
+    written_questions_max: cfg.written_questions_max ?? 10,
     interviewer_email: interviewerForSession,
     supabase_url: cfg.supabase_url,
     supabase_key: cfg.supabase_key,

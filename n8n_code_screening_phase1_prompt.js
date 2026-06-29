@@ -179,7 +179,19 @@ function buildScreeningPhase1Rules(jdTitle, jdReq, cvText, targetTier, levelCal)
     '- phase_1_time_limit_seconds: 90-600',
     '- phase_1_complexity_tier: A | B | C | D',
     '- assessment_level: "junior" | "mid" | "senior"',
+    '- written_question_count: integer — how many written phases this candidate should receive (see user message bounds)',
   ].join('\n');
+}
+
+function normalizeWrittenQuestionBounds(rawMin, rawMax) {
+  let min = Number(rawMin);
+  let max = Number(rawMax);
+  if (!Number.isFinite(min)) min = 4;
+  if (!Number.isFinite(max)) max = 10;
+  min = Math.min(20, Math.max(1, Math.round(min)));
+  max = Math.min(20, Math.max(1, Math.round(max)));
+  if (min > max) [min, max] = [max, min];
+  return { min, max };
 }
 
 const cvText = String(row.cv_plaintext || '');
@@ -187,13 +199,18 @@ const levelCal = resolveTargetTier(jdTitle, jdMust, cvText);
 const targetTier = levelCal.targetTier;
 const systemText = buildScreeningPhase1Rules(jdTitle, jdMust, cvText, targetTier, levelCal);
 
-const phases = row.config?.max_questions ?? 5;
+const qBounds = normalizeWrittenQuestionBounds(
+  row.config?.written_questions_min,
+  row.config?.written_questions_max
+);
 const userText = [
   `Job specification title: ${jdTitle}`,
   `Target assessment level: ${targetTier}`,
   `Requirements: ${jdMust}`,
   row.requisition_id ? `Submission ref: ${row.requisition_id}` : '',
-  `Sequential assessment: ${phases} written phases total; you are issuing Phase 1 only.`,
+  `Written assessment length: choose written_question_count between ${qBounds.min} and ${qBounds.max} (inclusive).`,
+  'Guidelines: junior/thin CV or weak fit → closer to minimum; mid solid fit → middle of range; senior/deep CV or strong fit → higher end.',
+  'You are issuing Phase 1 only — later phases are generated in-app using the same count.',
   '',
   'Candidate CV:',
   cvText,

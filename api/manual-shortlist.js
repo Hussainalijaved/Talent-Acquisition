@@ -3,6 +3,13 @@
 // Optional: PORTAL_BASE_URL (default talent-acquisition-six.vercel.app)
 // Optional: MANUAL_SHORTLIST_WEBHOOK_URL — or app_config key manual_shortlist_webhook
 
+import {
+    normalizeWrittenQuestionBounds,
+    resolveWrittenQuestionCount,
+    DEFAULT_WRITTEN_Q_MIN,
+    DEFAULT_WRITTEN_Q_MAX,
+} from '../lib/written-question-count.mjs';
+
 const DEFAULT_PORTAL = 'https://talent-acquisition-six.vercel.app';
 const APPROVE_ROLES = new Set(['super_admin', 'hr_head', 'recruiter']);
 
@@ -146,7 +153,29 @@ function resolveTargetTier(jdTitle, jdReq) {
     return targetTier;
 }
 
-async function generatePhase1Question(groqKey, { jdTitle, jdReq, cvContext, screeningSummary }) {
+async function fetchWrittenQuestionBounds(supabaseUrl, serviceKey) {
+    const [minRes, maxRes] = await Promise.all([
+        sbFetch(
+            supabaseUrl,
+            serviceKey,
+            '/rest/v1/app_config?key=eq.written_questions_min&select=value&limit=1'
+        ),
+        sbFetch(
+            supabaseUrl,
+            serviceKey,
+            '/rest/v1/app_config?key=eq.written_questions_max&select=value&limit=1'
+        ),
+    ]);
+    const minRow = Array.isArray(minRes.data) ? minRes.data[0] : null;
+    const maxRow = Array.isArray(maxRes.data) ? maxRes.data[0] : null;
+    return normalizeWrittenQuestionBounds(
+        minRow?.value ?? DEFAULT_WRITTEN_Q_MIN,
+        maxRow?.value ?? DEFAULT_WRITTEN_Q_MAX
+    );
+}
+
+async function generatePhase1Question(groqKey, { jdTitle, jdReq, cvContext, screeningSummary, bounds }) {
+    const qBounds = normalizeWrittenQuestionBounds(bounds?.min, bounds?.max);
     const targetTier = resolveTargetTier(jdTitle, jdReq);
     const tierNote =
         targetTier === 'senior'
@@ -169,12 +198,14 @@ async function generatePhase1Question(groqKey, { jdTitle, jdReq, cvContext, scre
         '- phase_1_time_limit_seconds: number (90-600)',
         '- phase_1_complexity_tier: A | B | C | D',
         '- assessment_level: "junior" | "mid" | "senior"',
+        `- written_question_count: integer between ${qBounds.min} and ${qBounds.max} (junior/thin CV → lower; senior/deep CV → higher)`,
     ].join('\n');
 
     const userText = [
         `Job title: ${jdTitle}`,
         `Target level: ${targetTier}`,
         `Requirements: ${jdReq}`,
+        `Written assessment length: choose written_question_count between ${qBounds.min} and ${qBounds.max} inclusive.`,
         screeningSummary ? `Screening summary: ${screeningSummary}` : '',
         cvContext ? `Candidate background:\n${cvContext}` : '',
     ]
@@ -214,10 +245,19 @@ async function generatePhase1Question(groqKey, { jdTitle, jdReq, cvContext, scre
 
     const q = String(parsed.phase_1_question || '').trim();
     if (!q) throw new Error('Groq returned empty phase_1_question');
+    const assessmentLevel = parsed.assessment_level || targetTier;
+    const written_question_count = resolveWrittenQuestionCount(
+        parsed,
+        assessmentLevel,
+        qBounds.min,
+        qBounds.max
+    );
     return {
         question: q,
         time_limit_seconds: useAiTimeLimitSeconds(parsed.phase_1_time_limit_seconds),
         complexity_tier: parsed.phase_1_complexity_tier || 'B',
+        assessment_level: assessmentLevel,
+        written_question_count,
     };
 }
 
@@ -318,12 +358,17 @@ export default async function handler(req, res) {
             notes.cv_plaintext || notes.cv_text || screeningSummary || ''
         ).slice(0, 12000);
 
+        const writtenBounds = await fetchWrittenQuestionBounds(supabaseUrl, serviceKey);
+
         const phase1 = await generatePhase1Question(groqKey, {
             jdTitle,
             jdReq,
             cvContext,
             screeningSummary,
+            bounds: writtenBounds,
         });
+
+        const questionCount = phase1.written_question_count;
 
         const nowIso = new Date().toISOString();
         const timeLimit = phase1.time_limit_seconds;
@@ -365,7 +410,7 @@ export default async function handler(req, res) {
             gmail_thread_id: null,
             candidate_email: email,
             current_phase: 1,
-            max_phases: 5,
+            max_phases: questionCount,
             status: 'assessment',
             screening: { ...notes, manual_shortlist: true, approved_by: auth.profile.email },
             score: candidate.score,
@@ -379,7 +424,10 @@ export default async function handler(req, res) {
                 requisition_title: jdTitle,
                 requisition_requirements: jdReq,
                 organization_name: 'CONVO',
-                max_questions: 5,
+                max_questions: questionCount,
+                written_question_count: questionCount,
+                written_questions_min: writtenBounds.min,
+                written_questions_max: writtenBounds.max,
                 speech_phases: 5,
                 speech_enabled: true,
                 pass_score_threshold: passScoreThreshold,
@@ -458,7 +506,7 @@ export default async function handler(req, res) {
                         requisition_id: requisitionId,
                         requisition_title: jdTitle,
                         score: candidate.score,
-                        max_questions: 5,
+                        max_questions: questionCount,
                         organization_name: 'CONVO',
                         portal_base_url: portalBase,
                         assessment_link: assessmentLink,
@@ -481,6 +529,7 @@ export default async function handler(req, res) {
             assessment_link: assessmentLink,
             candidate_email: email,
             requisition_id: requisitionId,
+            max_questions: questionCount,
             email_sent: emailSent,
             email_error: emailError || undefined,
             webhook_configured: !!mailWebhook,

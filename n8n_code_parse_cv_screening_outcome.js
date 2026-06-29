@@ -13,6 +13,43 @@ function cvThresholds(cfg) {
   };
 }
 
+function normalizeWrittenQuestionBounds(rawMin, rawMax) {
+  let min = Number(rawMin);
+  let max = Number(rawMax);
+  if (!Number.isFinite(min)) min = 4;
+  if (!Number.isFinite(max)) max = 10;
+  min = Math.min(20, Math.max(1, Math.round(min)));
+  max = Math.min(20, Math.max(1, Math.round(max)));
+  if (min > max) [min, max] = [max, min];
+  return { min, max };
+}
+
+function questionBoundsFromConfig(cfg) {
+  return normalizeWrittenQuestionBounds(cfg?.written_questions_min, cfg?.written_questions_max);
+}
+
+function clampWrittenQuestionCount(n, min, max) {
+  const bounds = normalizeWrittenQuestionBounds(min, max);
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return bounds.min;
+  return Math.min(bounds.max, Math.max(bounds.min, Math.round(v)));
+}
+
+function tierDefaultQuestionCount(tier, min, max) {
+  const t = String(tier || 'mid').toLowerCase();
+  const map = { junior: 4, intern: 4, mid: 6, senior: 8 };
+  return clampWrittenQuestionCount(map[t] ?? map.mid, min, max);
+}
+
+function resolveWrittenQuestionCount(screening, tier, bounds) {
+  const raw = screening?.written_question_count;
+  if (Number.isFinite(Number(raw)) && Number(raw) > 0) {
+    return clampWrittenQuestionCount(Number(raw), bounds.min, bounds.max);
+  }
+  const level = screening?.assessment_level || tier || 'mid';
+  return tierDefaultQuestionCount(level, bounds.min, bounds.max);
+}
+
 function pickBaseJson() {
   const names = ['CODE - CV plain text', 'CODE - CV plain text1'];
   for (const name of names) {
@@ -79,13 +116,27 @@ else if (decision === 'REJECT' && score > shortlistMin) decision = 'REVIEW';
 
 const phase_1_question = typeof s.phase_1_question === 'string' ? s.phase_1_question.trim() : '';
 const assessment_status = 'IN_PROGRESS';
+const qBounds = questionBoundsFromConfig(base.config || {});
+const assessmentLevel = s.assessment_level || base.assessment_level || 'mid';
+const written_question_count = resolveWrittenQuestionCount(s, assessmentLevel, qBounds);
+const mergedConfig = {
+  ...(base.config || {}),
+  max_questions: written_question_count,
+  written_question_count,
+  written_questions_min: qBounds.min,
+  written_questions_max: qBounds.max,
+};
 
 return [{
   json: {
     ...base,
+    config: mergedConfig,
+    max_questions: written_question_count,
+    written_question_count,
     // IMPORTANT: spread parsed AI JSON `s` — NEVER use `...$` (n8n internal object).
     screening: {
       ...s,
+      written_question_count,
       cv_thresholds: { shortlistMin, autoShortlist, autoReject },
     },
     score,

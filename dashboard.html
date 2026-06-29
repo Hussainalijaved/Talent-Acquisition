@@ -737,6 +737,32 @@
                     </div>
                     <p class="form-hint settings-scoring-note" id="assessmentScoringStatus"></p>
                 </div>
+
+                <div class="card card-limit-lg settings-scoring-card">
+                    <div class="card-head">
+                        <div class="card-title">Written assessment length
+                            <small>One global range — AI picks count per candidate</small>
+                        </div>
+                    </div>
+                    <p class="settings-scoring-intro">
+                        Set the minimum and maximum written questions for every job. At CV screening, AI decides how many questions
+                        each candidate gets within this range based on seniority, CV depth, and role fit — no separate junior/senior fields.
+                    </p>
+                    <div class="settings-written-q-row">
+                        <div class="form-group">
+                            <label for="admWrittenQMin">Minimum questions</label>
+                            <input id="admWrittenQMin" type="number" min="1" max="20" step="1" value="4" placeholder="4" />
+                        </div>
+                        <div class="form-group">
+                            <label for="admWrittenQMax">Maximum questions</label>
+                            <input id="admWrittenQMax" type="number" min="1" max="20" step="1" value="10" placeholder="10" />
+                        </div>
+                    </div>
+                    <div class="form-actions settings-scoring-actions">
+                        <button type="button" class="btn-primary" id="saveWrittenQuestionsBtn" data-requires-perm="edit_jobs">Save bounds</button>
+                    </div>
+                    <p class="form-hint settings-scoring-note" id="writtenQuestionStatus"></p>
+                </div>
             </section>
         </div>
     </div>

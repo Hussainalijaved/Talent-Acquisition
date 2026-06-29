@@ -10,8 +10,12 @@
     const MANUAL_SHORTLIST_WEBHOOK_STORAGE = 'ta_manual_shortlist_webhook';
     const DEFAULT_PASS_CONFIG_KEY = 'default_pass_score_threshold';
     const PASS_THRESHOLDS_CONFIG_KEY = 'default_pass_score_thresholds';
+    const WRITTEN_Q_MIN_KEY = 'written_questions_min';
+    const WRITTEN_Q_MAX_KEY = 'written_questions_max';
     const DEFAULT_PASS_FALLBACK = 60;
     const DEFAULT_PASS_THRESHOLDS = { junior: 55, mid: 60, senior: 70 };
+    const DEFAULT_WRITTEN_Q_MIN = 4;
+    const DEFAULT_WRITTEN_Q_MAX = 10;
     // Update when ngrok restarts (free tier gets a new subdomain each time).
     const N8N_WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
     const DEFAULT_JD_WEBHOOK_LOCAL = 'http://localhost:5678/webhook/talent/jd-generate';
@@ -24,6 +28,8 @@
     let batchExtractGen = 0;
     let globalPassThreshold = DEFAULT_PASS_FALLBACK;
     let globalPassThresholds = { ...DEFAULT_PASS_THRESHOLDS };
+    let globalWrittenQMin = DEFAULT_WRITTEN_Q_MIN;
+    let globalWrittenQMax = DEFAULT_WRITTEN_Q_MAX;
     const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
     const BLOCKED_LOCAL = /^(noreply|no-reply|donotreply|support|info|admin|contact|hr|careers|jobs|hello)$/i;
     const BLOCKED_DOMAIN = /@(example\.com|test\.com|domain\.com|email\.com)$/i;
@@ -724,6 +730,88 @@
         if (el) el.textContent = String(text || '').trim();
     }
 
+    function normalizeWrittenQuestionBounds(rawMin, rawMax) {
+        let min = Number(rawMin);
+        let max = Number(rawMax);
+        if (!Number.isFinite(min)) min = DEFAULT_WRITTEN_Q_MIN;
+        if (!Number.isFinite(max)) max = DEFAULT_WRITTEN_Q_MAX;
+        min = Math.min(20, Math.max(1, Math.round(min)));
+        max = Math.min(20, Math.max(1, Math.round(max)));
+        if (min > max) [min, max] = [max, min];
+        return { min, max };
+    }
+
+    function populateWrittenQuestionInputs(bounds) {
+        const minEl = document.getElementById('admWrittenQMin');
+        const maxEl = document.getElementById('admWrittenQMax');
+        if (minEl) minEl.value = String(bounds.min);
+        if (maxEl) maxEl.value = String(bounds.max);
+    }
+
+    function readWrittenQuestionInputs() {
+        const minEl = document.getElementById('admWrittenQMin');
+        const maxEl = document.getElementById('admWrittenQMax');
+        return normalizeWrittenQuestionBounds(minEl?.value, maxEl?.value);
+    }
+
+    function setWrittenQuestionStatus(text) {
+        const el = document.getElementById('writtenQuestionStatus');
+        if (el) el.textContent = String(text || '').trim();
+    }
+
+    function getWrittenQuestionBounds() {
+        return { min: globalWrittenQMin, max: globalWrittenQMax };
+    }
+
+    async function loadWrittenQuestionConfig() {
+        if (!deps?.sb) {
+            populateWrittenQuestionInputs({ min: globalWrittenQMin, max: globalWrittenQMax });
+            return { min: globalWrittenQMin, max: globalWrittenQMax };
+        }
+        const { data: rows, error } = await deps.sb
+            .from('app_config')
+            .select('key, value')
+            .in('key', [WRITTEN_Q_MIN_KEY, WRITTEN_Q_MAX_KEY]);
+        if (error) console.warn('[admin] loadWrittenQuestionConfig:', error.message);
+        const map = Object.fromEntries((rows || []).map((r) => [r.key, r.value]));
+        const bounds = normalizeWrittenQuestionBounds(map[WRITTEN_Q_MIN_KEY], map[WRITTEN_Q_MAX_KEY]);
+        globalWrittenQMin = bounds.min;
+        globalWrittenQMax = bounds.max;
+        populateWrittenQuestionInputs(bounds);
+        return bounds;
+    }
+
+    async function saveWrittenQuestionConfig() {
+        if (deps.auth && !deps.auth.can('edit_jobs')) {
+            deps.banner('You do not have permission to change written assessment settings.', 'err');
+            return;
+        }
+        const bounds = readWrittenQuestionInputs();
+        globalWrittenQMin = bounds.min;
+        globalWrittenQMax = bounds.max;
+        if (deps.sb) {
+            const now = new Date().toISOString();
+            const { error } = await deps.sb.from('app_config').upsert(
+                [
+                    { key: WRITTEN_Q_MIN_KEY, value: String(bounds.min), updated_at: now },
+                    { key: WRITTEN_Q_MAX_KEY, value: String(bounds.max), updated_at: now },
+                ],
+                { onConflict: 'key' }
+            );
+            if (error) {
+                deps.banner('Could not save written question bounds: ' + error.message, 'err');
+                return;
+            }
+        }
+        if (deps.auth) {
+            await deps.auth.logAudit('save_written_question_bounds', 'app_config', WRITTEN_Q_MIN_KEY, bounds);
+        }
+        setWrittenQuestionStatus(
+            `Saved — AI picks ${bounds.min}–${bounds.max} written questions per candidate (junior/senior inferred from CV + JD).`
+        );
+        deps.banner('Written assessment bounds saved.', 'ok');
+    }
+
     async function loadAssessmentScoringConfig() {
         if (!deps?.sb) {
             populatePassThresholdInputs(globalPassThresholds);
@@ -757,6 +845,11 @@
 
         populatePassThresholdInputs(loaded);
         return globalPassThresholds;
+    }
+
+    async function loadAssessmentSettings() {
+        await loadAssessmentScoringConfig();
+        await loadWrittenQuestionConfig();
     }
 
     async function saveDefaultPassThreshold() {
@@ -1982,7 +2075,7 @@
         }
     }
 
-    async function screenOneCandidate(webhook, { email, title, requirements, interviewer, requisitionId, passScoreThreshold, failScoreThreshold, cvShortlistThreshold, file, cvText }) {
+    async function screenOneCandidate(webhook, { email, title, requirements, interviewer, requisitionId, passScoreThreshold, failScoreThreshold, cvShortlistThreshold, writtenQuestionsMin, writtenQuestionsMax, file, cvText }) {
         const fd = new FormData();
         fd.append('candidate_email', email);
         fd.append('requisition_title', title);
@@ -1993,6 +2086,8 @@
         if (passScoreThreshold != null) fd.append('pass_score_threshold', String(passScoreThreshold));
         if (failScoreThreshold != null) fd.append('fail_score_threshold', String(failScoreThreshold));
         if (cvShortlistThreshold != null) fd.append('cv_shortlist_threshold', String(cvShortlistThreshold));
+        if (writtenQuestionsMin != null) fd.append('written_questions_min', String(writtenQuestionsMin));
+        if (writtenQuestionsMax != null) fd.append('written_questions_max', String(writtenQuestionsMax));
         if (file) fd.append('cv_file', file, file.name);
         else if (cvText) fd.append('cv_text', cvText);
         const res = await fetch(webhook, { method: 'POST', body: fd, headers: { 'ngrok-skip-browser-warning': '1' } });
@@ -2028,6 +2123,7 @@
 
         const scrJobEl = document.getElementById('scrJob');
         const linkedJob = JOBS.find((j) => j.id === scrJobEl?.selectedOptions?.[0]?.dataset?.jobId);
+        const wq = getWrittenQuestionBounds();
         const screenOpts = {
             passScoreThreshold: linkedJob
                 ? parseScoreThreshold(linkedJob.pass_score_threshold, resolveDefaultPassThresholdForTitle(linkedJob.title))
@@ -2035,6 +2131,8 @@
             failScoreThreshold: linkedJob ? parseScoreThreshold(linkedJob.fail_score_threshold, 30) : null,
             cvShortlistThreshold: linkedJob ? parseScoreThreshold(linkedJob.cv_shortlist_threshold, 62) : null,
             requisitionId: linkedJob?.job_id || slugFromTitle(title),
+            writtenQuestionsMin: wq.min,
+            writtenQuestionsMax: wq.max,
         };
 
         const btn = document.getElementById('scrSubmit');
@@ -2733,7 +2831,7 @@
                     requisition_id: data.requisition_id,
                     requisition_title: m.role,
                     score: m.cvScore,
-                    max_questions: 5,
+                    max_questions: data.max_questions || getWrittenQuestionBounds().max,
                     organization_name: 'CONVO',
                     portal_base_url: 'https://talent-acquisition-six.vercel.app',
                     assessment_link: data.assessment_link,
@@ -2983,6 +3081,7 @@
         document.getElementById('saveWebhookBtn')?.addEventListener('click', saveWebhookConfig);
         document.getElementById('saveDefaultPassBtn')?.addEventListener('click', saveDefaultPassThreshold);
         document.getElementById('applyPassAllJobsBtn')?.addEventListener('click', applyPassThresholdToAllJobs);
+        document.getElementById('saveWrittenQuestionsBtn')?.addEventListener('click', saveWrittenQuestionConfig);
         document.getElementById('drawerDeleteBtn')?.addEventListener('click', () => {
             if (deps.activeCandidate) deleteCandidateRecord(deps.activeCandidate);
         });
@@ -3007,7 +3106,7 @@
             loadWebhookConfig();
             loadJdWebhookConfig();
             populateManualShortlistWebhookConfig();
-            loadAssessmentScoringConfig();
+            loadAssessmentSettings();
             loadJobs();
             loadOnsite();
             const wh = new URLSearchParams(location.search).get('webhook');
@@ -3032,7 +3131,7 @@
                 loadWebhookConfig();
                 loadJdWebhookConfig();
                 populateManualShortlistWebhookConfig();
-                loadAssessmentScoringConfig();
+                loadAssessmentSettings();
             }
             if (view === 'users' || view === 'users-invite') {
                 if (!deps.auth?.canManageUsers()) {

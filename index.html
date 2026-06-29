@@ -4519,9 +4519,11 @@
             try { return JSON.parse(raw); } catch (e) { return {}; }
         };
 
-        /** Written (Phase 1) question count — prefer config.max_questions over max_phases. */
+        /** Written (Phase 1) question count — per-candidate AI decision stored on session. */
         const resolveTechMaxQuestions = (data) => {
             const cfg = parseSessionConfig(data?.config);
+            const fromDecided = Number(cfg.written_question_count);
+            if (Number.isFinite(fromDecided) && fromDecided > 0) return fromDecided;
             const fromCfg = Number(cfg.max_questions);
             if (Number.isFinite(fromCfg) && fromCfg > 0) return fromCfg;
             const speechPhases = Number(cfg.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;

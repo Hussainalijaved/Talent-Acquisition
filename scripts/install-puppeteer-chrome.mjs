@@ -11,6 +11,10 @@ import puppeteer from 'puppeteer';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 
+if (process.env.RAILWAY_ENVIRONMENT || process.env.CI === 'true' || process.env.CI === '1') {
+  process.exit(0);
+}
+
 function bundledChromeExists() {
   try {
     const execPath = puppeteer.executablePath();

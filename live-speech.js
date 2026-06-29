@@ -614,7 +614,7 @@
           this.pendingAnswerSeconds = 120;
         }
         this.onNextQuestionReady({ number: msg.number });
-        this.setStatus('The interviewer is speaking…');
+        this.setStatus('Preparing the next question…');
         // Relay emits awaiting_answer after question TTS — do NOT open mic early here.
       }
       if (msg.type === 'turn_saved_status') {

@@ -3159,11 +3159,9 @@
                                         setClosingCaption(clean);
                                         setLiveQuestionCaption('');
                                         setWarmupCaption('');
-                                        setIsInterviewerSpeaking(true);
                                         return;
                                     }
                                     if (partial) {
-                                        setIsInterviewerSpeaking(true);
                                         setAnswerTimerActive(false);
                                         setTimeLeft(null);
                                         if (warmupPhaseRef.current === 'mic_check' || warmupPhaseRef.current === 'intro') {
@@ -3249,7 +3247,6 @@
                                 const isWarmup = warmup != null || number <= 0;
                                 if (partial) {
                                     if (!isWarmup && questionLockedRef.current) return;
-                                    setIsInterviewerSpeaking(true);
                                     if (isWarmup) {
                                         setWarmupCaption(clean || '');
                                     } else {
@@ -3274,7 +3271,6 @@
                                 questionLockedRef.current = true;
                                 addQuestion(number, committed || clean);
                                 setLiveQuestionCaption(committed || clean || '');
-                                setIsInterviewerSpeaking(true);
                                 setSavingAnswer(false);
                                 setLiveCaption('');
                                 setFollowUpActive(!!follow_up);
@@ -3409,7 +3405,8 @@
                             },
                             onPrematureClosing: () => {
                                 setSavingAnswer(false);
-                                setIsInterviewerSpeaking(true);
+                                setPreparingNext(true);
+                                setIsInterviewerSpeaking(false);
                                 setStatus('Preparing the next step — please wait…');
                             },
                             onTurnScored: ({ number, score, feedback, soft_skills }) => {

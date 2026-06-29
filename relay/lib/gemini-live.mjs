@@ -315,19 +315,8 @@ export class GeminiLiveBridge {
       return;
     }
 
-    const minBytes = this.estimateMinTtsBytes(questionText, this.ttsSpeakOpts || {});
-    const bytes = this.ttsAudioBytesThisTurn || 0;
-    // A clearly truncated reading is re-spoken in full (flush the partial first so
-    // the candidate hears one clean, complete question). Bounded so we can never
-    // loop forever on a model that keeps under-producing.
-    if (bytes > 0 && bytes < minBytes && (this.questionSpeakRetries[qNum] || 0) < 2) {
-      console.warn(`[relay] Q${qNum} TTS truncated (${bytes}/${minBytes} bytes) — re-speaking full`);
-      this.ttsTurnCompleteReceived = false;
-      this.clientPlaybackIdleForQ = 0;
-      this.retryQuestionSpeak(qNum, questionText, { flushFirst: true });
-      return;
-    }
-
+    // Accept whatever audio Gemini produced — never re-speak a "truncated" clip here.
+    // Re-speaking after partial audio is what caused half-then-full double questions.
     this.openTtsAnswerWindow(qNum, questionText);
   }
 
@@ -362,7 +351,10 @@ export class GeminiLiveBridge {
     if (!this.deferredSpeakRequest) return;
     const { qNum, opts } = this.deferredSpeakRequest;
     this.deferredSpeakRequest = null;
-    this.speakQuestion(qNum, opts);
+    setTimeout(() => {
+      if (this.interviewEnded || this.closed) return;
+      this.speakQuestion(qNum, opts);
+    }, 450);
   }
 
   sendSpokenPrompt(text, { flushFirst = true } = {}) {
@@ -651,12 +643,13 @@ export class GeminiLiveBridge {
         "In ONE short, warm, professional sentence, briefly acknowledge the candidate's previous answer using natural, varied wording (for example: \"Thank you for sharing that.\", \"Great, I appreciate the detail.\", or \"Understood, thank you.\"). Do NOT rate, score, critique, or give feedback on the answer. Then ";
       prefaceDesc = ' brief acknowledgement and the';
     } else {
-      // No contextual preface (e.g. the very first question). Native-audio Gemini
-      // is far more reliable at producing FULL spoken audio when the turn opens
-      // with a short, natural verbal lead rather than a bare "read this" command.
-      preface =
-        'In ONE short, natural word or phrase, signal that you are moving to the question (for example: "Alright." or "Okay, here we go."). Then ';
-      prefaceDesc = ' brief lead-in and the';
+      return (
+        `You are the interviewer speaking out loud directly to the candidate, who can only HEAR you.` +
+        `${lastQuestionHint}` +
+        `Read this interview question clearly and completely, word for word, in a warm professional tone.` +
+        ` Speak the ENTIRE question in one go — never stop partway, never repeat it, and do not add anything before or after.` +
+        ` Say ONLY this question — no numbering, no preamble, no follow-up:\n"${text}"`
+      );
     }
     return (
       `You are the interviewer speaking out loud directly to the candidate, who can only HEAR you. ${preface}` +
@@ -672,8 +665,9 @@ export class GeminiLiveBridge {
       this.questionSpeakWatchdog = null;
       if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
       if (this.answerPromptOpen) return;
-      const minBytes = this.estimateMinTtsBytes(text, this.ttsSpeakOpts || {});
-      if ((this.ttsAudioBytesThisTurn || 0) >= minBytes && this.ttsTurnCompleteReceived) return;
+      const bytes = this.ttsAudioBytesThisTurn || 0;
+      if (this.ttsTurnCompleteReceived && bytes > 0) return;
+      if (!this.ttsTurnCompleteReceived && bytes > 0) return;
       console.warn(`[relay] question ${qNum} had no TTS audio — watchdog retry`);
       this.retryQuestionSpeak(qNum, text, { flushFirst: true });
     }, 6000);
@@ -1177,7 +1171,10 @@ export class GeminiLiveBridge {
       if (this.deferredSpeakRequest) {
         const { qNum, opts } = this.deferredSpeakRequest;
         this.deferredSpeakRequest = null;
-        queueMicrotask(() => this.speakQuestion(qNum, opts));
+        setTimeout(() => {
+          if (this.interviewEnded || this.closed) return;
+          this.speakQuestion(qNum, opts);
+        }, 450);
       }
       return;
     }
@@ -1881,8 +1878,7 @@ export class GeminiLiveBridge {
       this.finishInterview();
       return;
     }
-    // Preface the next question with a brief, warm acknowledgement of the answer.
-    this.speakQuestion(aNum + 1, { prefaceAppreciation: this.appreciationEnabled });
+    this.speakQuestion(aNum + 1);
   }
 
   askFollowUp(qNum, questionText, answerText) {

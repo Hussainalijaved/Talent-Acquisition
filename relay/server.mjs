@@ -288,6 +288,12 @@ wss.on('connection', (clientWs) => {
         return;
       }
 
+      if (msg.type === 'question_audio_missing') {
+        if (!bridge) throw new Error('session not started');
+        bridge.handleQuestionAudioMissing(Number(msg.number) || 0);
+        return;
+      }
+
       if (msg.type === 'session.end') {
         if (finishing) return;
         finishing = true;

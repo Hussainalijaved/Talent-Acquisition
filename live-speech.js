@@ -122,6 +122,7 @@
       this.lastOutputAudioAt = 0;
       this.playbackIdleSentForQ = null;
       this.playbackIdleTimer = null;
+      this.questionAudioMissingSentForQ = null;
       this.questionAudioTailMs = 900;
       this.awaitingAnswerAt = 0;
       this.micOpenWatchdogTimer = null;
@@ -207,6 +208,13 @@
     runMicOpenWatchdog() {
       this.micOpenWatchdogTimer = null;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
+      if (this.pendingAnswerQ >= 1 && !this.heardQuestionAudioThisTurn) {
+        const waited = Date.now() - (this.awaitingAnswerAt || Date.now());
+        if (waited < 45000) {
+          this.micOpenWatchdogTimer = setTimeout(() => this.runMicOpenWatchdog(), 2000);
+          return;
+        }
+      }
       const sinceLastAudio = Date.now() - (this.lastOutputAudioAt || 0);
       const audioBusy =
         this.playing ||
@@ -285,8 +293,16 @@
           this.pendingAnswerQ >= 1 &&
           !this.heardQuestionAudioThisTurn &&
           this.awaitingAnswerAt &&
-          Date.now() - this.awaitingAnswerAt < 12000
+          Date.now() - this.awaitingAnswerAt < 45000
         ) {
+          if (
+            !this.questionAudioMissingSentForQ &&
+            Date.now() - this.awaitingAnswerAt > 9000 &&
+            this.ws?.readyState === WebSocket.OPEN
+          ) {
+            this.questionAudioMissingSentForQ = this.pendingAnswerQ;
+            this.ws.send(JSON.stringify({ type: 'question_audio_missing', number: this.pendingAnswerQ }));
+          }
           await new Promise((r) => setTimeout(r, 150));
           continue;
         }
@@ -303,6 +319,10 @@
       }
       if (myToken !== this.micOpenToken) return;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
+      if (this.pendingAnswerQ >= 1 && !this.heardQuestionAudioThisTurn) {
+        this.ensureMicReady();
+        return;
+      }
       this.maybeSendPlaybackIdle();
       await new Promise((r) => setTimeout(r, 150));
       if (myToken !== this.micOpenToken) return;
@@ -608,6 +628,7 @@
         this.heardQuestionAudioThisTurn = false;
         this.lastOutputAudioAt = 0;
         this.playbackIdleSentForQ = null;
+        this.questionAudioMissingSentForQ = null;
         this.questionAudioWaitDeadline = Date.now() + 18000;
         if (msg.number >= 1) {
           this.pendingAnswerQ = msg.number;

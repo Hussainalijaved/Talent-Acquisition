@@ -207,6 +207,7 @@ export class GeminiLiveBridge {
     this.pendingUserActivityEnd = false;
     this.activityEndTurnTimer = null;
     this.deferredSpeakRequest = null;
+    this.ttsPromptPendingFor = 0;
     this.closingReprompts = 0;
     this.closingCompleteTimer = null;
     // Speech Q1–Q5 only: realistic "repeat the question" + "continue in English"
@@ -291,8 +292,27 @@ export class GeminiLiveBridge {
     return Math.max(TTS_MIN_BASE_BYTES, Math.floor(totalWords * TTS_BYTES_PER_WORD));
   }
 
+  minTtsBytesForQuestion(questionText, opts = {}) {
+    const estimated = this.estimateMinTtsBytes(questionText, opts);
+    return Math.max(1500, Math.min(Math.floor(estimated * 0.25), 12000));
+  }
+
   openTtsAnswerWindow(qNum, questionText) {
     if (this.answerPromptOpen || this.interviewEnded || this.closed) return;
+    const bytes = this.ttsAudioBytesThisTurn || 0;
+    const minBytes = this.minTtsBytesForQuestion(questionText, this.ttsSpeakOpts || {});
+    if (bytes < minBytes) {
+      console.warn(
+        `[relay] blocked mic open for Q${qNum} — insufficient TTS (${bytes}/${minBytes} bytes)`
+      );
+      this.ttsTurnCompleteReceived = false;
+      this.clientPlaybackIdleForQ = 0;
+      this.retryQuestionSpeak(qNum, questionText, {
+        flushFirst: true,
+        prefaceReliable: true,
+      });
+      return;
+    }
     this.cancelTtsAnswerWindow();
     this.ttsOnlyTurn = false;
     this.ttsTurnCompleteReceived = false;
@@ -318,19 +338,32 @@ export class GeminiLiveBridge {
     // Accept whatever audio Gemini produced — never re-speak a "truncated" clip here.
     // Re-speaking after partial audio is what caused half-then-full double questions.
     const bytes = this.ttsAudioBytesThisTurn || 0;
-    const estimated = this.estimateMinTtsBytes(questionText, this.ttsSpeakOpts || {});
-    const minBytes = Math.max(1500, Math.min(Math.floor(estimated * 0.25), 12000));
-    if (bytes < minBytes && (this.questionSpeakRetries[qNum] || 0) < 3) {
+    const minBytes = this.minTtsBytesForQuestion(questionText, this.ttsSpeakOpts || {});
+    if (bytes < minBytes) {
       console.warn(
         `[relay] Q${qNum} insufficient TTS before mic open (${bytes}/${minBytes} bytes) — re-speaking`
       );
       this.ttsTurnCompleteReceived = false;
       this.clientPlaybackIdleForQ = 0;
-      this.retryQuestionSpeak(qNum, questionText, { flushFirst: true });
+      this.retryQuestionSpeak(qNum, questionText, {
+        flushFirst: true,
+        prefaceReliable: (this.questionSpeakRetries[qNum] || 0) >= 1,
+      });
       return;
     }
 
     this.openTtsAnswerWindow(qNum, questionText);
+  }
+
+  handleQuestionAudioMissing(qNum) {
+    const q = Number(qNum) || 0;
+    if (q < 1 || this.interviewEnded || this.closed) return;
+    if (this.ttsForQ !== q || this.answerPromptOpen) return;
+    const questionText = this.questions[q - 1] || '';
+    console.warn(`[relay] client reports Q${q} audio missing — re-speaking`);
+    this.ttsTurnCompleteReceived = false;
+    this.clientPlaybackIdleForQ = 0;
+    this.retryQuestionSpeak(q, questionText, { flushFirst: true, prefaceReliable: true });
   }
 
   scheduleTtsAnswerWindow(qNum, questionText) {
@@ -618,20 +651,36 @@ export class GeminiLiveBridge {
     this.onEvent({ type: 'question', number: qNum, text });
     this.computeAndEmitTimer(qNum, text);
 
-    this.sendSpokenPrompt(this.buildQuestionSpeechPrompt(qNum, text, opts), { flushFirst: false });
+    this.ttsPromptPendingFor = qNum;
+    const isPostAnswer = this.answers.length > 0 && qNum === this.answers.length + 1;
+    const promptDelayMs = isPostAnswer && this.voiceOnly ? 800 : 0;
+    if (promptDelayMs > 0) {
+      setTimeout(() => this.deliverQuestionTts(qNum, text, opts), promptDelayMs);
+    } else {
+      this.deliverQuestionTts(qNum, text, opts);
+    }
+  }
 
-    // CRITICAL: open the mic ONLY after Gemini finishes speaking the question.
-    // Emitting awaiting_answer before TTS completes caused the client mic to open
-    // while answering=true, which blocked output_audio — candidate heard nothing.
+  deliverQuestionTts(qNum, text, opts = {}) {
+    if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
+    this.ttsPromptPendingFor = 0;
+    const flushFirst = this.answers.length > 0 && qNum === this.answers.length + 1;
+    this.sendSpokenPrompt(this.buildQuestionSpeechPrompt(qNum, text, opts), { flushFirst });
+
     if (this.questionAudioSafety) clearTimeout(this.questionAudioSafety);
     this.questionAudioSafety = setTimeout(() => {
       this.questionAudioSafety = null;
       if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
-      if (!this.answerPromptOpen) {
-        console.warn(`[relay] question ${qNum} TTS safety — opening answer window without turnComplete`);
-        this.openTtsAnswerWindow(qNum, text);
+      if (this.answerPromptOpen) return;
+      const bytes = this.ttsAudioBytesThisTurn || 0;
+      const minBytes = this.minTtsBytesForQuestion(text, this.ttsSpeakOpts || {});
+      if (bytes < minBytes || !this.ttsTurnCompleteReceived) {
+        console.warn(`[relay] question ${qNum} TTS safety — re-speaking (bytes=${bytes})`);
+        this.retryQuestionSpeak(qNum, text, { flushFirst: true, prefaceReliable: true });
+      } else {
+        this.tryOpenTtsAnswerWindow(qNum);
       }
-    }, 22000);
+    }, 25000);
 
     this.scheduleQuestionSpeakWatchdog(qNum, text);
   }
@@ -663,6 +712,10 @@ export class GeminiLiveBridge {
       preface =
         "In ONE short, warm, professional sentence, briefly acknowledge the candidate's previous answer using natural, varied wording (for example: \"Thank you for sharing that.\", \"Great, I appreciate the detail.\", or \"Understood, thank you.\"). Do NOT rate, score, critique, or give feedback on the answer. Then ";
       prefaceDesc = ' brief acknowledgement and the';
+    } else if (opts.prefaceReliable) {
+      preface =
+        'In ONE short, warm sentence, tell the candidate you are going to ask the interview question now (for example: "Let me ask this question clearly."). Then ';
+      prefaceDesc = ' brief lead-in and the';
     } else {
       preface =
         'In ONE short, natural phrase, signal that you are about to ask the question (for example: "Alright." or "Here is your next question."). Then ';
@@ -686,7 +739,7 @@ export class GeminiLiveBridge {
       if (this.ttsTurnCompleteReceived && bytes > 0) return;
       if (!this.ttsTurnCompleteReceived && bytes > 0) return;
       console.warn(`[relay] question ${qNum} had no TTS audio — watchdog retry`);
-      this.retryQuestionSpeak(qNum, text, { flushFirst: true });
+      this.retryQuestionSpeak(qNum, text, { flushFirst: true, prefaceReliable: true });
     }, 6000);
   }
 
@@ -697,16 +750,7 @@ export class GeminiLiveBridge {
       || fallbackInterviewQuestion(qNum, this.maxTurns);
     const retries = (this.questionSpeakRetries[qNum] || 0) + 1;
     this.questionSpeakRetries[qNum] = retries;
-    if (retries > 4) {
-      // Exhausted: open the window anyway. The question text is already on screen
-      // (emitted by speakQuestion), so the candidate can still read and answer it.
-      console.warn(`[relay] Q${qNum} TTS retries exhausted — opening window with on-screen question`);
-      if (!this.answerPromptOpen && !this.interviewEnded && !this.closed) {
-        this.openTtsAnswerWindow(qNum, questionText);
-      }
-      return;
-    }
-    const delayMs = Math.min(800, 200 + retries * 150);
+    const delayMs = Math.min(1400, 450 + retries * 180);
     setTimeout(() => {
       if (this.interviewEnded || this.closed || this.ttsForQ !== qNum) return;
       if (this.answerPromptOpen) return;
@@ -721,10 +765,12 @@ export class GeminiLiveBridge {
       this.pendingAudioChunks = [];
       this.ttsOnlyTurn = true;
       this.ttsForQ = qNum;
-      // Use the SAME strong, prefaced prompt as the first speak / repeat path —
-      // a bare "read this" prompt is what the native model tends to ignore on Q3+.
+      const speakOpts = {
+        ...(this.ttsSpeakOpts || {}),
+        ...(opts.prefaceReliable || retries >= 2 ? { prefaceReliable: true } : {}),
+      };
       this.sendSpokenPrompt(
-        this.buildQuestionSpeechPrompt(qNum, questionText, this.ttsSpeakOpts || {}),
+        this.buildQuestionSpeechPrompt(qNum, questionText, speakOpts),
         { flushFirst: opts.flushFirst !== false }
       );
       this.scheduleQuestionSpeakWatchdog(qNum, questionText);
@@ -1177,6 +1223,12 @@ export class GeminiLiveBridge {
   }
 
   onModelTurnComplete() {
+    if (this.ttsPromptPendingFor > 0) {
+      this.modelBuf = '';
+      this.modelAudioThisTurn = false;
+      return;
+    }
+
     if (this.pendingUserActivityEnd) {
       this.pendingUserActivityEnd = false;
       if (this.activityEndTurnTimer) {

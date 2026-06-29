@@ -31,8 +31,20 @@ function loudPcmB64() {
   return buf.toString('base64');
 }
 
+/** Wait for post-answer question TTS prompt delivery (800ms voice-only delay). */
+async function awaitPromptDelivery(bridge) {
+  const deadline = Date.now() + 1200;
+  while (Date.now() < deadline && bridge.ttsPromptPendingFor > 0) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  if (bridge.ttsPromptPendingFor > 0) {
+    await new Promise((r) => setTimeout(r, 850));
+  }
+}
+
 /** Mock Gemini returning spoken audio for a deterministic question TTS turn. */
 async function completeQuestionTts(bridge) {
+  await awaitPromptDelivery(bridge);
   const qNum = bridge.ttsForQ || bridge.currentQ || 1;
   const text = bridge.questions[qNum - 1] || 'Tell me about your experience with customer support.';
   bridge.modelAudioThisTurn = true;
@@ -71,7 +83,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
     bridge.sendAudio(loudPcmB64());
     bridge.endUserTurn();
     completeActivityEnd(bridge);
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 900));
     if (lastOf(events, 'answer', q).length >= 1) ok(`Q${q} answer recorded`); else fail(`Q${q} answer recorded`);
     if (q < 5 && bridge.currentQ === q + 1) ok(`Q${q} -> Q${q + 1} advanced`); else if (q < 5) fail(`Q${q} -> Q${q + 1} advanced`, `currentQ=${bridge.currentQ}`);
   }
@@ -179,10 +191,14 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.warmupPhase = null;
   let timerFn = null;
   const realSetTimeout = global.setTimeout;
-  global.setTimeout = (fn, ms) => { if (ms === 22000) { timerFn = fn; return 0; } return realSetTimeout(fn, ms); };
+  global.setTimeout = (fn, ms) => { if (ms === 25000) { timerFn = fn; return 0; } return realSetTimeout(fn, ms); };
   bridge.speakQuestion(1);
   global.setTimeout = realSetTimeout;
   assert.ok(timerFn, 'TTS safety timer scheduled');
+  const text = bridge.questions[0] || '';
+  bridge.ttsAudioBytesThisTurn = bridge.estimateMinTtsBytes(text, bridge.ttsSpeakOpts || {});
+  bridge.ttsTurnCompleteReceived = true;
+  bridge.lastModelAudioSentAt = Date.now() - 3000;
   timerFn();
   if (lastOf(events, 'awaiting_answer', 1).length === 1) ok('TTS safety opens answer window without turnComplete');
   else fail('TTS safety opens answer window without turnComplete');
@@ -199,7 +215,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
     bridge.sendAudio(loudPcmB64());
     bridge.endUserTurn();
     completeActivityEnd(bridge);
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 900));
   }
   bridge.speakQuestion(5);
   await completeQuestionTts(bridge);
@@ -258,7 +274,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.clientPlaybackIdleForQ = 2;
   bridge.lastModelAudioSentAt = Date.now() - 3000;
   bridge.tryOpenTtsAnswerWindow(2);
-  await new Promise((r) => setTimeout(r, 100));
+  await new Promise((r) => setTimeout(r, 200));
   if ((bridge.questionSpeakRetries[2] || 0) >= 1) ok('insufficient TTS re-speaks before mic open');
   else fail('insufficient TTS re-speaks before mic open', `retries=${bridge.questionSpeakRetries[2]}`);
   if (lastOf(events, 'awaiting_answer', 2).length === 0) ok('insufficient TTS does not open mic early');

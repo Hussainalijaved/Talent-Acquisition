@@ -317,6 +317,19 @@ export class GeminiLiveBridge {
 
     // Accept whatever audio Gemini produced — never re-speak a "truncated" clip here.
     // Re-speaking after partial audio is what caused half-then-full double questions.
+    const bytes = this.ttsAudioBytesThisTurn || 0;
+    const estimated = this.estimateMinTtsBytes(questionText, this.ttsSpeakOpts || {});
+    const minBytes = Math.max(1500, Math.min(Math.floor(estimated * 0.25), 12000));
+    if (bytes < minBytes && (this.questionSpeakRetries[qNum] || 0) < 3) {
+      console.warn(
+        `[relay] Q${qNum} insufficient TTS before mic open (${bytes}/${minBytes} bytes) — re-speaking`
+      );
+      this.ttsTurnCompleteReceived = false;
+      this.clientPlaybackIdleForQ = 0;
+      this.retryQuestionSpeak(qNum, questionText, { flushFirst: true });
+      return;
+    }
+
     this.openTtsAnswerWindow(qNum, questionText);
   }
 
@@ -541,10 +554,18 @@ export class GeminiLiveBridge {
   // Progression never waits on Gemini to "decide" to ask the next question.
   speakQuestion(qNum, opts = {}) {
     if (this.interviewEnded || this.interviewClosing || this.closed) return;
-    if (this.pendingUserActivityEnd) {
+    if (this.pendingUserActivityEnd && !this.voiceOnly) {
       this.deferredSpeakRequest = { qNum, opts };
       console.log(`[relay] deferring Q${qNum} TTS until activityEnd turnComplete`);
       return;
+    }
+    if (this.pendingUserActivityEnd && this.voiceOnly) {
+      if (this.activityEndTurnTimer) {
+        clearTimeout(this.activityEndTurnTimer);
+        this.activityEndTurnTimer = null;
+      }
+      this.pendingUserActivityEnd = false;
+      this.deferredSpeakRequest = null;
     }
     if (qNum > this.maxTurns) {
       this.finishInterview();
@@ -643,13 +664,9 @@ export class GeminiLiveBridge {
         "In ONE short, warm, professional sentence, briefly acknowledge the candidate's previous answer using natural, varied wording (for example: \"Thank you for sharing that.\", \"Great, I appreciate the detail.\", or \"Understood, thank you.\"). Do NOT rate, score, critique, or give feedback on the answer. Then ";
       prefaceDesc = ' brief acknowledgement and the';
     } else {
-      return (
-        `You are the interviewer speaking out loud directly to the candidate, who can only HEAR you.` +
-        `${lastQuestionHint}` +
-        `Read this interview question clearly and completely, word for word, in a warm professional tone.` +
-        ` Speak the ENTIRE question in one go — never stop partway, never repeat it, and do not add anything before or after.` +
-        ` Say ONLY this question — no numbering, no preamble, no follow-up:\n"${text}"`
-      );
+      preface =
+        'In ONE short, natural phrase, signal that you are about to ask the question (for example: "Alright." or "Here is your next question."). Then ';
+      prefaceDesc = ' brief lead-in and the';
     }
     return (
       `You are the interviewer speaking out loud directly to the candidate, who can only HEAR you. ${preface}` +
@@ -1540,6 +1557,7 @@ export class GeminiLiveBridge {
   }
 
   tryHandleNonEnglishResponse(activeQ) {
+    if (this.voiceOnly) return false;
     if (activeQ < 1 || activeQ > this.maxTurns) return false;
     if (this.warmupPhase) return false;
     if ((this.nonEnglishNudgeCount[activeQ] || 0) >= this.maxNonEnglishNudges) return false;
@@ -1670,12 +1688,14 @@ export class GeminiLiveBridge {
       this.userTurnActive = false;
       if (this.geminiWs?.readyState === WebSocket.OPEN) {
         this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
-        // Establish the clean barrier: the model owes us a turnComplete for this
-        // activityEnd. The next speakQuestion will DEFER behind it so the question
-        // audio never mixes with the model's reaction to the answer (the cause of
-        // "half question then the real question").
-        this.pendingUserActivityEnd = true;
-        this.scheduleActivityEndTurnFallback();
+        // Voice-only: never block the next question TTS on activityEnd turnComplete —
+        // Gemini often drops or ignores the spoken prompt while that barrier is pending
+        // (repeat works because it never defers). Non-voice modes still wait so model
+        // reaction audio cannot mix with the next question.
+        if (!this.voiceOnly) {
+          this.pendingUserActivityEnd = true;
+          this.scheduleActivityEndTurnFallback();
+        }
       }
       this.userTurnEndedAt = Date.now();
       // Voice-only: PCM is already buffered — never wait on Gemini STT flush.

@@ -285,7 +285,7 @@
           this.pendingAnswerQ >= 1 &&
           !this.heardQuestionAudioThisTurn &&
           this.awaitingAnswerAt &&
-          Date.now() - this.awaitingAnswerAt < 4000
+          Date.now() - this.awaitingAnswerAt < 12000
         ) {
           await new Promise((r) => setTimeout(r, 150));
           continue;

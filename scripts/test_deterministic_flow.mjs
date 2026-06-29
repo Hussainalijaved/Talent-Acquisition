@@ -221,6 +221,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
 
 {
   const { bridge } = makeBridge();
+  bridge.voiceOnly = false;
   bridge.warmupPhase = null;
   bridge.pendingUserActivityEnd = true;
   bridge.speakQuestion(4, { prefaceAppreciation: true });
@@ -234,6 +235,17 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
 }
 
 {
+  const { bridge } = makeBridge();
+  bridge.voiceOnly = true;
+  bridge.warmupPhase = null;
+  bridge.pendingUserActivityEnd = true;
+  bridge.speakQuestion(3);
+  if (bridge.currentQ === 3 && !bridge.deferredSpeakRequest) ok('voice-only does not defer next question TTS');
+  else fail('voice-only does not defer next question TTS', `currentQ=${bridge.currentQ}`);
+  bridge.closed = true;
+}
+
+{
   const { bridge, events, sent } = makeBridge();
   bridge.warmupPhase = null;
   bridge.speakQuestion(2);
@@ -243,17 +255,21 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.ttsAudioBytesThisTurn = 400;
   bridge.onModelTurnComplete();
   await new Promise((r) => setTimeout(r, 100));
-  if ((bridge.questionSpeakRetries[2] || 0) === 0) ok('truncated TTS does not retry (avoids double speak)');
-  else fail('truncated TTS does not retry (avoids double speak)', `retries=${bridge.questionSpeakRetries[2]}`);
-  if (lastOf(events, 'awaiting_answer', 2).length === 0) ok('partial TTS waits for audio quiet before mic');
-  else fail('partial TTS waits for audio quiet before mic');
   bridge.clientPlaybackIdleForQ = 2;
   bridge.lastModelAudioSentAt = Date.now() - 3000;
   bridge.tryOpenTtsAnswerWindow(2);
-  if (lastOf(events, 'awaiting_answer', 2).length >= 1) ok('partial TTS opens answer window after quiet');
-  else fail('partial TTS opens answer window after quiet');
-  if (sent.length === 1) ok('partial TTS does not re-prompt Gemini');
-  else fail('partial TTS does not re-prompt Gemini', `sent=${sent.length}`);
+  await new Promise((r) => setTimeout(r, 100));
+  if ((bridge.questionSpeakRetries[2] || 0) >= 1) ok('insufficient TTS re-speaks before mic open');
+  else fail('insufficient TTS re-speaks before mic open', `retries=${bridge.questionSpeakRetries[2]}`);
+  if (lastOf(events, 'awaiting_answer', 2).length === 0) ok('insufficient TTS does not open mic early');
+  else fail('insufficient TTS does not open mic early');
+  bridge.ttsAudioBytesThisTurn = 50000;
+  bridge.ttsTurnCompleteReceived = true;
+  bridge.tryOpenTtsAnswerWindow(2);
+  if (lastOf(events, 'awaiting_answer', 2).length >= 1) ok('full TTS opens answer window');
+  else fail('full TTS opens answer window');
+  if (sent.length >= 1) ok('insufficient TTS eventually re-prompts Gemini');
+  else fail('insufficient TTS eventually re-prompts Gemini');
   bridge.closed = true;
 }
 

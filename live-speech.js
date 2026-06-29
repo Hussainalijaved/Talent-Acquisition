@@ -119,6 +119,10 @@
       this.playbackGeneration = 0;
       this.heardQuestionAudioThisTurn = false;
       this.questionAudioWaitDeadline = 0;
+      this.lastOutputAudioAt = 0;
+      this.playbackIdleSentForQ = null;
+      this.playbackIdleTimer = null;
+      this.questionAudioTailMs = 1800;
     }
 
     clearPlayback() {
@@ -239,12 +243,21 @@
           await new Promise((r) => setTimeout(r, 200));
           continue;
         }
-        if (!this.playing && this.playQueue.length === 0) break;
-        await new Promise((r) => setTimeout(r, 150));
+        if (this.playing || this.playQueue.length > 0) {
+          await new Promise((r) => setTimeout(r, 150));
+          continue;
+        }
+        const sinceLastAudio = Date.now() - (this.lastOutputAudioAt || 0);
+        if (this.lastOutputAudioAt && sinceLastAudio < this.questionAudioTailMs) {
+          await new Promise((r) => setTimeout(r, Math.min(150, this.questionAudioTailMs - sinceLastAudio)));
+          continue;
+        }
+        break;
       }
       if (myToken !== this.micOpenToken) return;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
-      await new Promise((r) => setTimeout(r, 250));
+      this.maybeSendPlaybackIdle();
+      await new Promise((r) => setTimeout(r, 200));
       if (myToken !== this.micOpenToken) return;
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
       this.beginAnswer();
@@ -254,6 +267,32 @@
     ensureMicReady() {
       if (this.ended || this.interviewEnded || this.answering || !this.awaitingAnswerPending) return;
       void this.openMicAfterPlayback();
+    }
+
+    schedulePlaybackIdleCheck() {
+      if (this.playbackIdleTimer) clearTimeout(this.playbackIdleTimer);
+      this.playbackIdleTimer = setTimeout(() => {
+        this.playbackIdleTimer = null;
+        this.maybeSendPlaybackIdle();
+      }, this.questionAudioTailMs);
+    }
+
+    maybeSendPlaybackIdle() {
+      if (this.ended || this.interviewEnded) return;
+      if (!this.awaitingAnswerPending || this.answering) return;
+      if (this.playing || this.playQueue.length > 0) return;
+      const sinceLast = Date.now() - (this.lastOutputAudioAt || 0);
+      if (this.lastOutputAudioAt && sinceLast < this.questionAudioTailMs) {
+        this.schedulePlaybackIdleCheck();
+        return;
+      }
+      const q = this.pendingAnswerQ;
+      if (q == null || q < 1) return;
+      if (this.playbackIdleSentForQ === q) return;
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.playbackIdleSentForQ = q;
+        this.ws.send(JSON.stringify({ type: 'playback_idle', number: q }));
+      }
     }
 
     closeMicForInterviewer() {
@@ -286,7 +325,15 @@
       if (this.ended || this.interviewEnded || this.answering) return;
       this.cancelMicOpen();
       this.clearQuestionSafetyTimer();
-      if (this.playing || this.playQueue.length > 0) this.clearPlayback();
+      if (this.playing || this.playQueue.length > 0) {
+        this.ensureMicReady();
+        return;
+      }
+      const sinceLastAudio = Date.now() - (this.lastOutputAudioAt || 0);
+      if (this.lastOutputAudioAt && sinceLastAudio < this.questionAudioTailMs) {
+        this.ensureMicReady();
+        return;
+      }
       this.awaitingAnswerPending = false;
       this.answering = true;
       this.allowInterviewerDuringAnswer = false;
@@ -508,6 +555,8 @@
         this.processingAnswer = false;
         this.awaitingAnswerPending = false;
         this.heardQuestionAudioThisTurn = false;
+        this.lastOutputAudioAt = 0;
+        this.playbackIdleSentForQ = null;
         this.questionAudioWaitDeadline = Date.now() + 18000;
         if (msg.number >= 1) {
           this.pendingAnswerQ = msg.number;
@@ -562,6 +611,8 @@
         // answer — never while waiting for the question to be spoken.
         if (this.answering && !this.allowInterviewerDuringAnswer) return;
         if (!this.answering) this.heardQuestionAudioThisTurn = true;
+        this.lastOutputAudioAt = Date.now();
+        this.playbackIdleSentForQ = null;
         void this.ensureAudioRunning();
         this.onOutputAudio?.();
         if (!this.answering) this.setStatus('Interviewer is speaking…');
@@ -721,7 +772,10 @@
       this.playing = false;
       if (gen === this.playbackGeneration && !this.playQueue.length) {
         this.onPlaybackIdle?.();
-        if (this.awaitingAnswerPending && !this.answering) this.ensureMicReady();
+        if (this.awaitingAnswerPending && !this.answering) {
+          this.schedulePlaybackIdleCheck();
+          this.ensureMicReady();
+        }
       }
     }
 

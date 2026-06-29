@@ -26,20 +26,60 @@ function cleanEmail(raw) {
   return first.split(/\s+regards/i)[0].trim();
 }
 
-// Optional session columns from supabase_live_speech_meta.sql — only PATCH keys that
-// have values so missing columns (before migration) never break the save.
-function buildLiveSpeechPatchMeta(norm) {
+// Live speech extras — optional columns only; tab shifts live in proctor_report JSON.
+function parseProctorReportRaw(raw) {
+  if (raw == null) return {};
+  if (typeof raw === 'object') return { ...raw };
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function mergeTabCountIntoProctorReport(session, tabCount) {
+  if (!session || !Object.prototype.hasOwnProperty.call(session, 'proctor_report')) return {};
+  const n = Number(tabCount);
+  if (!Number.isFinite(n) || n < 0) return {};
+
+  const existing = parseProctorReportRaw(session.proctor_report);
+  const entries = Array.isArray(existing.entries) ? existing.entries.slice() : [];
+  const fromEntries = entries.filter((e) => e && e.category === 'tab_switch').length;
+  const total = Math.max(fromEntries, Math.round(n));
+
+  if (total === fromEntries && Number(existing.tab_switches) === total) return {};
+
+  return {
+    proctor_report: {
+      ...existing,
+      entries,
+      tab_switches: total,
+    },
+  };
+}
+
+function buildLiveSpeechPatchMeta(norm, session) {
   const meta = {};
+  const row = session && typeof session === 'object' ? session : {};
+  const hasCol = (col) => Object.prototype.hasOwnProperty.call(row, col);
+
   const audioUrl = String(norm?.session_audio_url || '').trim();
-  if (audioUrl) meta.live_speech_audio_url = audioUrl;
+  if (audioUrl && hasCol('live_speech_audio_url')) meta.live_speech_audio_url = audioUrl;
+
   const duration = Number(norm?.duration_seconds);
-  if (Number.isFinite(duration) && duration > 0) {
-    meta.live_speech_duration_seconds = Math.round(duration);
+  const durationSec =
+    Number.isFinite(duration) && duration > 0 ? Math.round(duration) : null;
+  if (durationSec != null && hasCol('live_speech_duration_seconds')) {
+    meta.live_speech_duration_seconds = durationSec;
   }
-  const tabSwitches = Number(norm?.tab_switches);
-  if (Number.isFinite(tabSwitches) && tabSwitches >= 0) {
-    meta.tab_switches = tabSwitches;
+
+  const tabMeta = mergeTabCountIntoProctorReport(session, norm?.tab_switches);
+  if (tabMeta.proctor_report) {
+    meta.proctor_report = tabMeta.proctor_report;
+    if (durationSec != null) meta.proctor_report.live_speech_duration_seconds = durationSec;
   }
+
   return meta;
 }
 
@@ -345,9 +385,8 @@ const body = {
   speech_score: speechAvg,
   score: combinedScore,
   result: finalResult,
-  ...buildLiveSpeechPatchMeta(norm),
+  ...buildLiveSpeechPatchMeta(norm, session),
 };
-
 const lastTurn = turns[turns.length - 1] || {};
 const phaseScore = Math.round(Number(lastTurn.score ?? speechAvg));
 

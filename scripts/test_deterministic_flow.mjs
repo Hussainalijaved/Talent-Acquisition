@@ -32,9 +32,17 @@ function loudPcmB64() {
 }
 
 /** Mock Gemini returning spoken audio for a deterministic question TTS turn. */
-function completeQuestionTts(bridge) {
+async function completeQuestionTts(bridge) {
+  const qNum = bridge.ttsForQ || bridge.currentQ || 1;
+  const text = bridge.questions[qNum - 1] || 'Tell me about your experience with customer support.';
   bridge.modelAudioThisTurn = true;
+  bridge.lastModelAudioSentAt = Date.now() - 2500;
+  bridge.ttsAudioBytesThisTurn = bridge.estimateMinTtsBytes(text, bridge.ttsSpeakOpts || {});
   bridge.onModelTurnComplete();
+  const deadline = Date.now() + 2000;
+  while (Date.now() < deadline && !bridge.answerPromptOpen) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
 }
 
 /** Mock Gemini acknowledging activityEnd after the candidate submits. */
@@ -58,7 +66,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   if (bridge.answerPromptOpen === false) ok('Q1 answer window closed during TTS'); else fail('Q1 answer window closed during TTS');
 
   for (let q = 1; q <= 5; q += 1) {
-    completeQuestionTts(bridge);
+    await completeQuestionTts(bridge);
     bridge.startUserTurn();
     bridge.sendAudio(loudPcmB64());
     bridge.endUserTurn();
@@ -76,7 +84,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   const { bridge, events } = makeBridge();
   bridge.warmupPhase = null;
   bridge.speakQuestion(1);
-  completeQuestionTts(bridge);
+  await completeQuestionTts(bridge);
   bridge.startUserTurn();
   bridge.userBuf = 'Can you repeat the question please';
   bridge.sendAudio(loudPcmB64());
@@ -112,7 +120,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.warmupPhase = null;
   bridge.answers = ['[Voice response recorded]'];
   bridge.speakQuestion(2);
-  completeQuestionTts(bridge);
+  await completeQuestionTts(bridge);
   bridge.startUserTurn();
   bridge.userBuf = 'Can you repeat the question please';
   bridge.sendAudio(loudPcmB64());
@@ -121,7 +129,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   await new Promise((r) => setTimeout(r, 700));
   if (bridge.questionRepeatUsed[2]) ok('first repeat marks questionRepeatUsed');
   else fail('first repeat marks questionRepeatUsed');
-  completeQuestionTts(bridge);
+  await completeQuestionTts(bridge);
   bridge.startUserTurn();
   bridge.userBuf = 'Can you repeat the question please';
   bridge.sendAudio(loudPcmB64());
@@ -139,7 +147,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   const { bridge } = makeBridge();
   bridge.warmupPhase = null;
   bridge.speakQuestion(2);
-  completeQuestionTts(bridge);
+  await completeQuestionTts(bridge);
   // Simulate missed user_turn_start — audio alone should still buffer + detect voice.
   bridge.sendAudio(loudPcmB64());
   if (bridge.answerPcmChunks.length > 0) ok('PCM buffered without user_turn_start'); else fail('PCM buffered without user_turn_start');
@@ -154,7 +162,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.warmupPhase = null;
   bridge.answers = ['[Voice response recorded]', '[Voice response recorded]'];
   bridge.speakQuestion(3);
-  completeQuestionTts(bridge);
+  await completeQuestionTts(bridge);
   bridge.startUserTurn();
   bridge.sendAudio(loudPcmB64());
   bridge.endUserTurn();
@@ -171,7 +179,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.warmupPhase = null;
   let timerFn = null;
   const realSetTimeout = global.setTimeout;
-  global.setTimeout = (fn, ms) => { if (ms === 16000) { timerFn = fn; return 0; } return realSetTimeout(fn, ms); };
+  global.setTimeout = (fn, ms) => { if (ms === 22000) { timerFn = fn; return 0; } return realSetTimeout(fn, ms); };
   bridge.speakQuestion(1);
   global.setTimeout = realSetTimeout;
   assert.ok(timerFn, 'TTS safety timer scheduled');
@@ -186,7 +194,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.warmupPhase = null;
   for (let q = 1; q <= 4; q += 1) {
     bridge.speakQuestion(q);
-    completeQuestionTts(bridge);
+    await completeQuestionTts(bridge);
     bridge.startUserTurn();
     bridge.sendAudio(loudPcmB64());
     bridge.endUserTurn();
@@ -194,7 +202,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
     await new Promise((r) => setTimeout(r, 500));
   }
   bridge.speakQuestion(5);
-  completeQuestionTts(bridge);
+  await completeQuestionTts(bridge);
   bridge.endUserTurn();
   await new Promise((r) => setTimeout(r, 300));
   if (lastOf(events, 'interview_closing').length === 0) ok('Q5 stays open after stale user_turn_end');
@@ -222,6 +230,28 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   await new Promise((r) => setTimeout(r, 0));
   if (bridge.currentQ === 4 && !bridge.deferredSpeakRequest) ok('deferred Q4 speak runs after activityEnd turnComplete');
   else fail('deferred Q4 speak runs after activityEnd turnComplete', `currentQ=${bridge.currentQ}`);
+  bridge.closed = true;
+}
+
+{
+  const { bridge, events, sent } = makeBridge();
+  bridge.warmupPhase = null;
+  bridge.speakQuestion(2);
+  const qText = bridge.questions[1];
+  bridge.modelAudioThisTurn = true;
+  bridge.lastModelAudioSentAt = Date.now() - 2500;
+  bridge.ttsAudioBytesThisTurn = 400;
+  bridge.onModelTurnComplete();
+  await new Promise((r) => setTimeout(r, 100));
+  if ((bridge.questionSpeakRetries[2] || 0) >= 1) ok('truncated TTS triggers retry');
+  else fail('truncated TTS triggers retry', `retries=${bridge.questionSpeakRetries[2]}`);
+  if (lastOf(events, 'awaiting_answer', 2).length === 0) ok('truncated TTS does not open mic early');
+  else fail('truncated TTS does not open mic early');
+  await completeQuestionTts(bridge);
+  if (lastOf(events, 'awaiting_answer', 2).length >= 1) ok('full TTS opens answer window');
+  else fail('full TTS opens answer window');
+  if (sent.length >= 1) ok('truncated TTS re-prompt sent to Gemini');
+  else fail('truncated TTS re-prompt sent to Gemini');
   bridge.closed = true;
 }
 

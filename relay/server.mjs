@@ -282,6 +282,12 @@ wss.on('connection', (clientWs) => {
         return;
       }
 
+      if (msg.type === 'playback_idle') {
+        if (!bridge) throw new Error('session not started');
+        bridge.handleClientPlaybackIdle(Number(msg.number) || 0);
+        return;
+      }
+
       if (msg.type === 'session.end') {
         if (finishing) return;
         finishing = true;

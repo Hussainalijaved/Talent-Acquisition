@@ -1,6 +1,38 @@
 // n8n: CODE - Parse Technical Result (phases 1–5, speech handoff)
 // Paste into: CODE - Parse Technical Result (after Basic LLM Chain — technical branch)
 
+function parseProctorReportRaw(raw) {
+  if (raw == null) return {};
+  if (typeof raw === 'object') return { ...raw };
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function mergeTabCountIntoProctorReport(session, tabCount) {
+  if (!session || !Object.prototype.hasOwnProperty.call(session, 'proctor_report')) return {};
+  const n = Number(tabCount);
+  if (!Number.isFinite(n) || n < 0) return {};
+
+  const existing = parseProctorReportRaw(session.proctor_report);
+  const entries = Array.isArray(existing.entries) ? existing.entries.slice() : [];
+  const fromEntries = entries.filter((e) => e && e.category === 'tab_switch').length;
+  const total = Math.max(fromEntries, Math.round(n));
+
+  if (total === fromEntries && Number(existing.tab_switches) === total) return {};
+
+  return {
+    proctor_report: {
+      ...existing,
+      entries,
+      tab_switches: total,
+    },
+  };
+}
+
 function timerBounds(config) {
   const min = Number(config?.timer_min_seconds);
   const max = Number(config?.timer_max_seconds);
@@ -935,10 +967,7 @@ if (isActualFinalPhase && !integrityTerminated) {
 }
 
 const body = { interview_history: history, updated_at: iso };
-const tabSwitches = Number(current.tab_switches);
-if (Number.isFinite(tabSwitches) && tabSwitches >= 0) {
-  body.tab_switches = tabSwitches;
-}
+Object.assign(body, mergeTabCountIntoProctorReport(session, current.tab_switches));
 if (startSpeech) {
   body.assessment_stage = 'speech';
   body.technical_score = technicalScore;

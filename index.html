@@ -2506,12 +2506,12 @@
             stream_lost: {
                 badge: 'Camera required',
                 title: 'Turn your camera back on',
-                body: 'Your webcam was turned off. Enable it again to continue your assessment.',
+                body: 'Your webcam was turned off. The assessment is paused — enable your camera to continue.',
             },
             no_signal: {
-                badge: 'No camera detected',
+                badge: 'Camera required',
                 title: 'Enable your camera',
-                body: 'We cannot see you on camera — the picture is blank or black. Turn your webcam on or uncover the lens to continue.',
+                body: 'Your camera shows a black or blank screen. The assessment is paused until your webcam is on and we can see you clearly.',
             },
         };
 
@@ -2535,12 +2535,19 @@
                     <p className="text-sm text-slate-600 leading-relaxed mb-4">
                         {copy.body}
                     </p>
-                    <p className="text-2xl font-bold text-red-600 tabular-nums mb-6">
-                        {secondsLeft != null ? `${secondsLeft}s` : '—'}
+                    <p className="text-sm font-semibold text-amber-700 mb-4">
+                        The test cannot continue until your camera is working.
                     </p>
-                    <p className="text-xs text-slate-500 mb-6">
-                        If the camera is not restored in time, your assessment will be terminated.
-                    </p>
+                    {secondsLeft != null ? (
+                        <>
+                            <p className="text-2xl font-bold text-red-600 tabular-nums mb-2">
+                                {secondsLeft}s
+                            </p>
+                            <p className="text-xs text-slate-500 mb-6">
+                                If the camera is not restored in time, your assessment will be terminated.
+                            </p>
+                        </>
+                    ) : null}
                     <button
                         type="button"
                         onClick={onEnableCamera}
@@ -3013,6 +3020,7 @@
             isLoading,
             onFinished,
             onError,
+            cameraBlocked = false,
         }) => {
             const sessionRef = React.useRef(null);
             const finishedRef = React.useRef(false);
@@ -3439,7 +3447,7 @@
             }, [cards, isAnswering, savingAnswer]);
 
             React.useEffect(() => {
-                if (!answerTimerActive || savingAnswer) {
+                if (!answerTimerActive || savingAnswer || cameraBlocked) {
                     if (timerRef.current) {
                         clearInterval(timerRef.current);
                         timerRef.current = null;
@@ -3473,7 +3481,7 @@
                     if (timerRef.current) clearInterval(timerRef.current);
                     timerRef.current = null;
                 };
-            }, [answerTimerActive, questionTimeLimit, savingAnswer, ending, interviewComplete]);
+            }, [answerTimerActive, questionTimeLimit, savingAnswer, ending, interviewComplete, cameraBlocked]);
 
             // Safety: never leave the UI stuck on "Saving…" if the next question is delayed.
             React.useEffect(() => {
@@ -3490,7 +3498,7 @@
             }, [savingAnswer]);
 
             const handleAnswerToggle = () => {
-                if (interviewComplete || ending || isLoading || savingAnswer) return;
+                if (interviewComplete || ending || isLoading || savingAnswer || cameraBlocked) return;
                 if (isAnswering) {
                     sessionRef.current?.submitAnswer?.();
                     setIsAnswering(false);
@@ -5404,6 +5412,7 @@
             const proctorWatchCleanupRef = useRef([]);
             const cameraGraceTimerRef = useRef(null);
             const cameraGraceActiveRef = useRef(false);
+            const deadlinePausedRemainingRef = useRef(null);
             const [cameraGraceSecondsLeft, setCameraGraceSecondsLeft] = useState(null);
             const [cameraGraceReason, setCameraGraceReason] = useState('stream_lost');
             const [cameraGraceBusy, setCameraGraceBusy] = useState(false);
@@ -5611,6 +5620,34 @@
                 setCameraGraceSecondsLeft(null);
                 setCameraGraceReason('stream_lost');
                 setCameraGraceBusy(false);
+                const remaining = deadlinePausedRemainingRef.current;
+                if (remaining != null && Number.isFinite(remaining)) {
+                    const newDeadline = new Date(Date.now() + remaining * 1000).toISOString();
+                    deadlineAtRef.current = newDeadline;
+                    sessionStorage.setItem('deadline_at', newDeadline);
+                    sessionStorage.setItem('time_left', String(remaining));
+                    setTimeLeft(remaining);
+                    deadlinePausedRemainingRef.current = null;
+                }
+            }, []);
+
+            const pauseAssessmentTimerForCamera = useCallback(() => {
+                const deadline = deadlineAtRef.current || sessionStorage.getItem('deadline_at');
+                if (deadline) {
+                    const remaining = Math.max(0, Math.floor((new Date(deadline).getTime() - Date.now()) / 1000));
+                    deadlinePausedRemainingRef.current = remaining;
+                    deadlineAtRef.current = null;
+                    sessionStorage.removeItem('deadline_at');
+                    setTimeLeft(remaining);
+                    sessionStorage.setItem('time_left', String(remaining));
+                    return;
+                }
+                const stored = sessionStorage.getItem('time_left');
+                const parsed = stored != null ? parseInt(stored, 10) : NaN;
+                if (Number.isFinite(parsed)) {
+                    deadlinePausedRemainingRef.current = Math.max(0, parsed);
+                    setTimeLeft(deadlinePausedRemainingRef.current);
+                }
             }, []);
 
             const stopProctorMedia = useCallback(() => {
@@ -5729,6 +5766,7 @@
             const startCameraGrace = useCallback((reason = 'stream_lost') => {
                 if (PROCTORING_DISABLED || terminatingRef.current || cameraGraceActiveRef.current) return;
                 cameraGraceActiveRef.current = true;
+                pauseAssessmentTimerForCamera();
                 setCameraGraceReason(reason === 'no_signal' ? 'no_signal' : 'stream_lost');
                 const logCategory = reason === 'no_signal' ? 'webcam_no_signal' : 'webcam_lost';
                 window.TA_PROCTOR_ACTIVITY?.logEvent?.(logCategory, null, { suspicious: true });
@@ -5745,7 +5783,7 @@
                     }
                     setCameraGraceSecondsLeft(left);
                 }, 1000);
-            }, [clearCameraGrace, terminateTestDueToCheating]);
+            }, [clearCameraGrace, pauseAssessmentTimerForCamera, terminateTestDueToCheating]);
 
             const setupProctorWatchers = useCallback((streams) => {
                 (proctorWatchCleanupRef.current || []).forEach((fn) => {
@@ -5772,12 +5810,32 @@
                     if (window.TA_PROCTOR.watchWebcamBlank) {
                         proctorWatchCleanupRef.current.push(
                             window.TA_PROCTOR.watchWebcamBlank(streams.webcam, () => onWebcamBlank(), {
-                                intervalMs: 10000,
+                                intervalMs: 3500,
+                                firstCheckMs: 2000,
                                 threshold: 18,
-                                strikesNeeded: 2,
+                                strikesNeeded: 1,
                             })
                         );
                     }
+                    let healthBusy = false;
+                    const healthId = setInterval(async () => {
+                        if (terminatingRef.current || cameraGraceActiveRef.current || healthBusy) return;
+                        const wc = proctorStreamsRef.current?.webcam;
+                        if (!wc || !window.TA_PROCTOR.isStreamLive(wc)) {
+                            onWebcamLost('stream_lost');
+                            return;
+                        }
+                        if (!window.TA_PROCTOR.validateWebcamReady) return;
+                        healthBusy = true;
+                        try {
+                            const check = await window.TA_PROCTOR.validateWebcamReady(wc, { warmupMs: 250, samples: 1 });
+                            if (!check.ok && (check.code === 'BLANK' || check.code === 'NOT_LIVE')) {
+                                onWebcamBlank();
+                            }
+                        } catch (_) { /* ignore */ }
+                        finally { healthBusy = false; }
+                    }, 7000);
+                    proctorWatchCleanupRef.current.push(() => clearInterval(healthId));
                 }
                 (streams.screens || []).forEach((stream) => {
                     proctorWatchCleanupRef.current.push(
@@ -5791,6 +5849,11 @@
                 setCameraGraceBusy(true);
                 try {
                     const stream = await window.TA_PROCTOR.requestWebcam();
+                    const webcamCheck = await window.TA_PROCTOR.validateWebcamReady(stream, { warmupMs: 600, samples: 2 });
+                    if (!webcamCheck.ok) {
+                        window.TA_PROCTOR.stopStream(stream);
+                        throw new Error(webcamCheck.message || 'Webcam is still blank or not visible.');
+                    }
                     const prev = proctorStreamsRef.current || { screens: [] };
                     const next = { ...prev, webcam: stream };
                     proctorStreamsRef.current = next;
@@ -6473,7 +6536,7 @@
             };
 
             const handleAssessmentSubmit = async (isTimeout = false) => {
-                if (isLoading) return;
+                if (isLoading || cameraGraceActiveRef.current) return;
                 const finalAnswer = answer.trim() || (isTimeout ? "[Timeout - No response provided]" : "");
                 if (!finalAnswer) return;
 
@@ -6713,7 +6776,7 @@
             };
 
             const handleSpeechSubmit = async ({ transcript, blob, durationSeconds, delivery }) => {
-                if (isLoading) return { audioSaved: false, audioError: 'busy' };
+                if (isLoading || cameraGraceActiveRef.current) return { audioSaved: false, audioError: 'camera_required' };
                 setIsLoading(true);
                 let audioSaved = false;
                 let audioError = '';
@@ -6797,6 +6860,13 @@
                 if (view !== 'assessment' || isLoading) return;
 
                 const tick = () => {
+                    if (cameraGraceActiveRef.current) {
+                        if (deadlinePausedRemainingRef.current != null) {
+                            setTimeLeft(deadlinePausedRemainingRef.current);
+                            sessionStorage.setItem('time_left', String(deadlinePausedRemainingRef.current));
+                        }
+                        return;
+                    }
                     const deadline = deadlineAtRef.current || sessionStorage.getItem('deadline_at');
                     let remaining;
                     if (deadline) {
@@ -6816,7 +6886,7 @@
             }, [view, isLoading]);
 
             useEffect(() => {
-                if (view === 'assessment' && timeLeft === 0 && !isLoading && deadlineAtRef.current) {
+                if (view === 'assessment' && timeLeft === 0 && !isLoading && deadlineAtRef.current && !cameraGraceActiveRef.current) {
                     if (assessmentMode === 'speech') {
                         handleSpeechSubmit({
                             transcript: '[Timeout - No response provided]',
@@ -6949,6 +7019,7 @@
                                 candidateEmail={candidateEmail}
                                 integrityViolationCount={integrityViolationCount}
                                 isLoading={isLoading}
+                                cameraBlocked={cameraGraceSecondsLeft != null}
                                 onFinished={handleLiveSpeechFinished}
                                 onError={(msg) => alert(msg || 'Live speech error')}
                             />

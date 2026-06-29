@@ -503,7 +503,7 @@
     };
 
     const id = setInterval(check, intervalMs);
-    setTimeout(check, 6000);
+    setTimeout(check, Number(opts?.firstCheckMs) > 0 ? Number(opts.firstCheckMs) : 2500);
     return () => {
       stopped = true;
       clearInterval(id);

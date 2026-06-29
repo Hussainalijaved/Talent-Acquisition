@@ -43,7 +43,7 @@ export async function loadSession(sbUrl, sbKey, sessionId) {
 export function normalizeReport(raw) {
     const base = parseJsonSafe(raw, {});
     const entries = Array.isArray(base.entries) ? base.entries.slice() : [];
-    return {
+    const out = {
         entries,
         summary: typeof base.summary === 'string' ? base.summary : '',
         highlights: Array.isArray(base.highlights) ? base.highlights.slice() : [],
@@ -51,6 +51,9 @@ export function normalizeReport(raw) {
         finalized_at: base.finalized_at || null,
         suspicious_count: Number(base.suspicious_count) || 0,
     };
+    const tabTotal = Number(base.tab_switches);
+    if (Number.isFinite(tabTotal) && tabTotal >= 0) out.tab_switches = tabTotal;
+    return out;
 }
 
 export function stripSnapshotBase64(b64) {
@@ -91,6 +94,9 @@ export function appendEntry(report, entry) {
     next.entries.push(entry);
     if (entry.suspicious) {
         next.suspicious_count = (Number(next.suspicious_count) || 0) + 1;
+    }
+    if (entry.category === 'tab_switch') {
+        next.tab_switches = next.entries.filter((e) => e && e.category === 'tab_switch').length;
     }
     return next;
 }

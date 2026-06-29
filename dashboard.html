@@ -1161,22 +1161,16 @@
             const coreSelect =
                 'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, requisition_id, scheduling_status, screening, updated_at';
             const withProctor = coreSelect + ', proctor_report';
-            const withProctorAndTabs = withProctor + ', tab_switches';
             const minimalSelect =
                 'id, candidate_email, status, current_phase, max_phases, result, score, config, interview_history, gmail_thread_id, updated_at';
 
             let res = await sb.from('assessment_sessions')
-                .select(withProctorAndTabs)
+                .select(withProctor)
                 .order('updated_at', { ascending: false })
                 .limit(1000);
             if (res.error) {
                 const msg = String(res.error.message || '');
-                if (/tab_switches|column.*does not exist/i.test(msg)) {
-                    res = await sb.from('assessment_sessions')
-                        .select(withProctor)
-                        .order('updated_at', { ascending: false })
-                        .limit(1000);
-                } else if (/proctor_report|screening|scheduling_status|requisition_id/i.test(msg)) {
+                if (/proctor_report|screening|scheduling_status|requisition_id/i.test(msg)) {
                     res = await sb.from('assessment_sessions')
                         .select(coreSelect)
                         .order('updated_at', { ascending: false })
@@ -2130,11 +2124,11 @@
             return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
         }
 
-        function countProctorTabShifts(report, sess) {
-            const fromDb = Number(sess && sess.tab_switches);
+        function countProctorTabShifts(report) {
             const entries = ((report && report.entries) || []).filter((e) => e && e.category === 'tab_switch');
             if (entries.length > 0) return entries.length;
-            if (Number.isFinite(fromDb) && fromDb >= 0) return fromDb;
+            const fromReport = Number(report && report.tab_switches);
+            if (Number.isFinite(fromReport) && fromReport >= 0) return fromReport;
             return 0;
         }
 
@@ -2315,7 +2309,7 @@
 
         function renderProctorReport(sess) {
             const report = parseProctorReportRaw(sess);
-            const tabShiftCount = countProctorTabShifts(report, sess);
+            const tabShiftCount = countProctorTabShifts(report);
             if (!report || (!report.summary && !(report.entries || []).length)) {
                 if (!tabShiftCount) return '';
                 return '<div class="section proctor-report-section"><div class="section-h">' +

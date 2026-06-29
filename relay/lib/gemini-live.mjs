@@ -28,6 +28,11 @@ const MODEL_FALLBACKS = [
   'gemini-2.0-flash-live-001',
 ];
 const SETUP_TIMEOUT_MS = 15000;
+/** Gemini turnComplete often arrives before the last audio chunk — wait this long after the final chunk. */
+const TTS_AUDIO_QUIET_MS = 2000;
+/** Minimum PCM bytes (24 kHz mono int16) expected for a spoken question. */
+const TTS_MIN_BASE_BYTES = 24000 * 2 * 2;
+const TTS_BYTES_PER_WORD = 2400;
 const DEFAULT_KICKOFF =
   'Begin the interview now. In the SAME turn, greet the candidate in one short sentence and then ask interview question 1. Ask exactly one question, then stop talking and wait. Do not say anything else.';
 
@@ -89,6 +94,12 @@ export class GeminiLiveBridge {
     this.currentQ = 0;
     this.ttsOnlyTurn = false;   // current model turn is just speaking a question
     this.ttsForQ = 0;
+    this.ttsSpeakOpts = {};
+    this.ttsAudioBytesThisTurn = 0;
+    this.ttsTurnCompleteReceived = false;
+    this.lastModelAudioSentAt = 0;
+    this.clientPlaybackIdleForQ = 0;
+    this.ttsAnswerWindowTimer = null;
     this.questionAudioSafety = null;
     this.questionSpeakWatchdog = null;
 
@@ -257,6 +268,77 @@ export class GeminiLiveBridge {
 
   flushClientPlayback() {
     this.onEvent({ type: 'flush_playback' });
+  }
+
+  cancelTtsAnswerWindow() {
+    if (this.ttsAnswerWindowTimer) {
+      clearTimeout(this.ttsAnswerWindowTimer);
+      this.ttsAnswerWindowTimer = null;
+    }
+  }
+
+  estimateMinTtsBytes(questionText, opts = {}) {
+    const words = String(questionText || '').split(/\s+/).filter(Boolean).length;
+    let prefaceWords = 0;
+    if (opts.prefaceEnglishNudge) prefaceWords = 18;
+    else if (opts.prefaceRepeat) prefaceWords = 12;
+    else if (opts.prefaceIrrelevant) prefaceWords = 15;
+    else if (opts.prefaceAppreciation) prefaceWords = 10;
+    const totalWords = words + prefaceWords + 8;
+    return Math.max(TTS_MIN_BASE_BYTES, Math.floor(totalWords * TTS_BYTES_PER_WORD));
+  }
+
+  openTtsAnswerWindow(qNum, questionText) {
+    if (this.answerPromptOpen || this.interviewEnded || this.closed) return;
+    this.cancelTtsAnswerWindow();
+    this.ttsOnlyTurn = false;
+    this.ttsTurnCompleteReceived = false;
+    this.clientPlaybackIdleForQ = 0;
+    this.modelBuf = '';
+    this.modelAudioThisTurn = false;
+    this.emitAwaitingAnswer(qNum, questionText);
+  }
+
+  tryOpenTtsAnswerWindow(qNum) {
+    const questionText = this.questions[qNum - 1] || '';
+    if (this.answerPromptOpen || this.interviewEnded || this.closed) return;
+    if (this.ttsForQ !== qNum || !this.ttsTurnCompleteReceived) return;
+
+    const sinceAudio = Date.now() - (this.lastModelAudioSentAt || 0);
+    const clientReady = this.clientPlaybackIdleForQ === qNum;
+    const quietTarget = clientReady ? 800 : TTS_AUDIO_QUIET_MS;
+    if (sinceAudio < quietTarget) {
+      this.scheduleTtsAnswerWindow(qNum, questionText);
+      return;
+    }
+
+    const minBytes = this.estimateMinTtsBytes(questionText, this.ttsSpeakOpts || {});
+    const bytes = this.ttsAudioBytesThisTurn || 0;
+    if (bytes > 0 && bytes < minBytes && (this.questionSpeakRetries[qNum] || 0) < 3) {
+      console.warn(`[relay] Q${qNum} TTS truncated (${bytes}/${minBytes} bytes) — retry`);
+      this.ttsTurnCompleteReceived = false;
+      this.clientPlaybackIdleForQ = 0;
+      this.retryQuestionSpeak(qNum, questionText, { flushFirst: false });
+      return;
+    }
+
+    this.openTtsAnswerWindow(qNum, questionText);
+  }
+
+  scheduleTtsAnswerWindow(qNum, questionText) {
+    this.cancelTtsAnswerWindow();
+    const sinceAudio = Date.now() - (this.lastModelAudioSentAt || 0);
+    const clientReady = this.clientPlaybackIdleForQ === qNum;
+    const quietTarget = clientReady ? 800 : TTS_AUDIO_QUIET_MS;
+    const delay = Math.max(50, quietTarget - sinceAudio);
+    this.ttsAnswerWindowTimer = setTimeout(() => this.tryOpenTtsAnswerWindow(qNum), delay);
+  }
+
+  handleClientPlaybackIdle(qNum) {
+    if (this.interviewEnded || this.closed || qNum < 1) return;
+    if (this.ttsForQ !== qNum) return;
+    this.clientPlaybackIdleForQ = qNum;
+    if (this.ttsTurnCompleteReceived) this.tryOpenTtsAnswerWindow(qNum);
   }
 
   scheduleActivityEndTurnFallback() {
@@ -503,6 +585,12 @@ export class GeminiLiveBridge {
     this.answerPcmChunks = [];
     this.ttsOnlyTurn = true;
     this.ttsForQ = qNum;
+    this.ttsSpeakOpts = opts;
+    this.ttsAudioBytesThisTurn = 0;
+    this.ttsTurnCompleteReceived = false;
+    this.lastModelAudioSentAt = 0;
+    this.clientPlaybackIdleForQ = 0;
+    this.cancelTtsAnswerWindow();
     this.questionSpeakRetries[qNum] = 0;
 
     this.flushClientPlayback();
@@ -553,12 +641,11 @@ export class GeminiLiveBridge {
     this.questionAudioSafety = setTimeout(() => {
       this.questionAudioSafety = null;
       if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
-      this.ttsOnlyTurn = false;
       if (!this.answerPromptOpen) {
         console.warn(`[relay] question ${qNum} TTS safety — opening answer window without turnComplete`);
-        this.emitAwaitingAnswer(qNum, text);
+        this.openTtsAnswerWindow(qNum, text);
       }
-    }, 16000);
+    }, 22000);
 
     this.scheduleQuestionSpeakWatchdog(qNum, text);
   }
@@ -568,7 +655,9 @@ export class GeminiLiveBridge {
     this.questionSpeakWatchdog = setTimeout(() => {
       this.questionSpeakWatchdog = null;
       if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
-      if (this.modelAudioThisTurn) return;
+      const minBytes = this.estimateMinTtsBytes(text, this.ttsSpeakOpts || {});
+      if ((this.ttsAudioBytesThisTurn || 0) >= minBytes && this.ttsTurnCompleteReceived) return;
+      if (this.answerPromptOpen && (this.ttsAudioBytesThisTurn || 0) >= minBytes) return;
       if (this.answerPromptOpen) {
         console.warn(`[relay] Q${qNum} answer window open without TTS — resetting for retry`);
         this.clearAnswerPromptWindow();
@@ -588,8 +677,7 @@ export class GeminiLiveBridge {
     if (retries > 3) {
       console.warn(`[relay] Q${qNum} TTS retries exhausted`);
       if (!this.answerPromptOpen && !this.interviewEnded && !this.closed) {
-        this.ttsOnlyTurn = false;
-        this.emitAwaitingAnswer(qNum, questionText);
+        this.openTtsAnswerWindow(qNum, questionText);
       }
       return;
     }
@@ -933,6 +1021,16 @@ export class GeminiLiveBridge {
       const inline = part.inlineData || part.inline_data;
       if (inline?.data && !this.blockModelOutput) {
         this.modelAudioThisTurn = true;
+        if (this.ttsOnlyTurn && this.ttsForQ >= 1) {
+          try {
+            this.ttsAudioBytesThisTurn += Buffer.from(inline.data, 'base64').length;
+          } catch (_) {}
+          this.lastModelAudioSentAt = Date.now();
+          if (this.ttsTurnCompleteReceived) {
+            this.clientPlaybackIdleForQ = 0;
+            this.scheduleTtsAnswerWindow(this.ttsForQ, this.questions[this.ttsForQ - 1] || '');
+          }
+        }
         if (this.warmupPhase === 'mic_check') this.warmupAudioDelivered.mic_check = true;
         if (this.warmupPhase === 'intro') this.warmupAudioDelivered.intro = true;
         const chunk = {
@@ -1121,11 +1219,12 @@ export class GeminiLiveBridge {
         return;
       }
 
-      this.ttsOnlyTurn = false;
       this.modelBuf = '';
-      this.modelAudioThisTurn = false;
-      if (!this.answerPromptOpen && !this.interviewEnded && !this.closed) {
-        this.emitAwaitingAnswer(qNum, questionText);
+      this.ttsTurnCompleteReceived = true;
+      if (this.clientPlaybackIdleForQ === qNum) {
+        this.tryOpenTtsAnswerWindow(qNum);
+      } else {
+        this.scheduleTtsAnswerWindow(qNum, questionText);
       }
       return;
     }

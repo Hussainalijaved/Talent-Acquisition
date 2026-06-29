@@ -1264,9 +1264,45 @@ tbody tr:last-child td { border-bottom: none; }
 .grid-2-equal { grid-template-columns: 1fr 1fr; }
 .card-limit-lg { max-width: 920px; width: 100%; }
 .card-limit-md { max-width: 640px; width: 100%; }
+.card-limit-lg { max-width: 820px; width: 100%; }
 .settings-scoring-card { margin-top: 1.25rem; }
+.settings-scoring-intro {
+    margin: 0 0 1rem;
+    font-size: var(--text-sm);
+    color: var(--text-soft);
+    line-height: 1.55;
+}
+.settings-scoring-tiers {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 1rem;
+}
+.settings-tier-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 14px 12px;
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+}
+.settings-tier-card .form-group { margin-bottom: 0.35rem; }
+.settings-tier-badge {
+    display: inline-block;
+    margin-bottom: 10px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.settings-tier-junior .settings-tier-badge { background: #dbeafe; color: #1d4ed8; }
+.settings-tier-mid .settings-tier-badge { background: #e0e7ff; color: #4338ca; }
+.settings-tier-senior .settings-tier-badge { background: #fce7f3; color: #be185d; }
 .settings-scoring-actions { flex-wrap: wrap; gap: 0.5rem; }
 .settings-scoring-note { margin: 0.75rem 0 0; min-height: 1.25rem; }
+@media (max-width: 720px) {
+    .settings-scoring-tiers { grid-template-columns: 1fr; }
+}
 
 /* Centered single-purpose pages (invite user, settings) */
 .view-centered {

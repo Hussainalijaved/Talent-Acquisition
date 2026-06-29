@@ -382,7 +382,7 @@
                                             <div class="form-group">
                                                 <label for="jobPassThresholdIn">Pass threshold (%)</label>
                                                 <input id="jobPassThresholdIn" type="number" min="0" max="100" step="1" value="60" placeholder="60" />
-                                                <div class="form-hint">Default 60 — combined technical + voice score must meet this to PASS. Change per job, or update all jobs from Settings.</div>
+                                                <div class="form-hint" id="jobPassThresholdHint">Pre-filled from Settings by job title level. You can override per job.</div>
                                             </div>
                                         </div>
                                     </section>
@@ -695,26 +695,45 @@
                     </div>
                 </div>
 
-                <div class="card card-limit-md settings-scoring-card">
+                <div class="card card-limit-lg settings-scoring-card">
                     <div class="card-head">
                         <div class="card-title">Assessment scoring defaults
-                            <small>Global pass threshold — per-job override stays on Create / Edit job</small>
+                            <small>Pass marks by role level — auto-detected from job title</small>
                         </div>
                     </div>
-                    <div class="form-grid cols-1">
-                        <div class="form-group">
-                            <label for="admDefaultPassThreshold">Default pass threshold (%)</label>
-                            <input id="admDefaultPassThreshold" type="number" min="0" max="100" step="1" value="60" placeholder="60" />
-                            <div class="form-hint">
-                                Combined technical + voice score must meet this to PASS.
-                                Used as the default on <strong>Create job</strong> and when you apply to all jobs below.
-                                Individual jobs can still be edited one-by-one.
+                    <p class="settings-scoring-intro">
+                        Combined score = <strong>70% technical + 30% voice</strong>. Candidate must meet the pass threshold to receive PASS.
+                        Per-job override remains on <strong>Create / Edit job</strong>.
+                    </p>
+                    <div class="settings-scoring-tiers">
+                        <div class="settings-tier-card settings-tier-junior">
+                            <span class="settings-tier-badge">Junior / Entry</span>
+                            <div class="form-group">
+                                <label for="admPassJunior">Pass threshold (%)</label>
+                                <input id="admPassJunior" type="number" min="0" max="100" step="1" value="55" placeholder="55" />
                             </div>
+                            <p class="form-hint">Intern, Junior, Graduate, Entry-level titles</p>
+                        </div>
+                        <div class="settings-tier-card settings-tier-mid">
+                            <span class="settings-tier-badge">Mid-level</span>
+                            <div class="form-group">
+                                <label for="admPassMid">Pass threshold (%)</label>
+                                <input id="admPassMid" type="number" min="0" max="100" step="1" value="60" placeholder="60" />
+                            </div>
+                            <p class="form-hint">Default for most roles (e.g. Developer, Engineer)</p>
+                        </div>
+                        <div class="settings-tier-card settings-tier-senior">
+                            <span class="settings-tier-badge">Senior / Lead</span>
+                            <div class="form-group">
+                                <label for="admPassSenior">Pass threshold (%)</label>
+                                <input id="admPassSenior" type="number" min="0" max="100" step="1" value="70" placeholder="70" />
+                            </div>
+                            <p class="form-hint">Senior, Lead, Principal, Architect titles</p>
                         </div>
                     </div>
                     <div class="form-actions settings-scoring-actions">
-                        <button type="button" class="btn-primary" id="saveDefaultPassBtn" data-requires-perm="edit_jobs">Save default</button>
-                        <button type="button" class="btn-secondary" id="applyPassAllJobsBtn" data-requires-perm="edit_jobs">Apply to all jobs</button>
+                        <button type="button" class="btn-primary" id="saveDefaultPassBtn" data-requires-perm="edit_jobs">Save defaults</button>
+                        <button type="button" class="btn-secondary" id="applyPassAllJobsBtn" data-requires-perm="edit_jobs">Apply by level to all jobs</button>
                     </div>
                     <p class="form-hint settings-scoring-note" id="assessmentScoringStatus"></p>
                 </div>

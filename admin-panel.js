@@ -9,7 +9,9 @@
     const JD_WEBHOOK_STORAGE = 'ta_jd_generate_webhook';
     const MANUAL_SHORTLIST_WEBHOOK_STORAGE = 'ta_manual_shortlist_webhook';
     const DEFAULT_PASS_CONFIG_KEY = 'default_pass_score_threshold';
+    const PASS_THRESHOLDS_CONFIG_KEY = 'default_pass_score_thresholds';
     const DEFAULT_PASS_FALLBACK = 60;
+    const DEFAULT_PASS_THRESHOLDS = { junior: 55, mid: 60, senior: 70 };
     // Update when ngrok restarts (free tier gets a new subdomain each time).
     const N8N_WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
     const DEFAULT_JD_WEBHOOK_LOCAL = 'http://localhost:5678/webhook/talent/jd-generate';
@@ -21,6 +23,7 @@
     let screenMode = 'single';
     let batchExtractGen = 0;
     let globalPassThreshold = DEFAULT_PASS_FALLBACK;
+    let globalPassThresholds = { ...DEFAULT_PASS_THRESHOLDS };
     const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
     const BLOCKED_LOCAL = /^(noreply|no-reply|donotreply|support|info|admin|contact|hr|careers|jobs|hello)$/i;
     const BLOCKED_DOMAIN = /@(example\.com|test\.com|domain\.com|email\.com)$/i;
@@ -641,13 +644,79 @@
         deps.banner('Webhook URLs saved.', 'ok');
     }
 
+    function seniorityPassKey(seniority) {
+        const s = String(seniority || '').toLowerCase();
+        if (s === 'intern' || s === 'junior') return 'junior';
+        if (s === 'senior') return 'senior';
+        return 'mid';
+    }
+
+    function resolveDefaultPassThresholdForTitle(title) {
+        const key = seniorityPassKey(detectSeniority(title));
+        return globalPassThresholds[key] ?? DEFAULT_PASS_THRESHOLDS[key] ?? DEFAULT_PASS_FALLBACK;
+    }
+
     function resolveDefaultPassThreshold() {
-        return globalPassThreshold;
+        return globalPassThresholds.mid ?? DEFAULT_PASS_FALLBACK;
+    }
+
+    function normalizePassThresholds(raw) {
+        const src = raw && typeof raw === 'object' ? raw : {};
+        return {
+            junior: parseScoreThreshold(src.junior ?? src.intern, DEFAULT_PASS_THRESHOLDS.junior),
+            mid: parseScoreThreshold(src.mid, DEFAULT_PASS_THRESHOLDS.mid),
+            senior: parseScoreThreshold(src.senior, DEFAULT_PASS_THRESHOLDS.senior),
+        };
+    }
+
+    function readPassThresholdInputs() {
+        return normalizePassThresholds({
+            junior: document.getElementById('admPassJunior')?.value,
+            mid: document.getElementById('admPassMid')?.value,
+            senior: document.getElementById('admPassSenior')?.value,
+        });
+    }
+
+    function populatePassThresholdInputs(thresholds) {
+        const t = normalizePassThresholds(thresholds);
+        globalPassThresholds = t;
+        globalPassThreshold = t.mid;
+        const map = [
+            ['admPassJunior', t.junior],
+            ['admPassMid', t.mid],
+            ['admPassSenior', t.senior],
+        ];
+        map.forEach(([id, val]) => {
+            const el = document.getElementById(id);
+            if (el) el.value = String(val);
+        });
     }
 
     function prefillNewJobPassThreshold() {
+        const editId = document.getElementById('jobEditId')?.value;
+        if (editId) return;
+        const title = document.getElementById('jobTitleIn')?.value || '';
+        const threshold = resolveDefaultPassThresholdForTitle(title);
         const el = document.getElementById('jobPassThresholdIn');
-        if (el) el.value = String(globalPassThreshold);
+        if (el) el.value = String(threshold);
+        updateJobPassThresholdHint(title);
+    }
+
+    function updateJobPassThresholdHint(title) {
+        const hint = document.getElementById('jobPassThresholdHint');
+        if (!hint) return;
+        const editId = document.getElementById('jobEditId')?.value;
+        if (editId) {
+            hint.textContent = 'Per-job override — change here or update level defaults in Settings.';
+            return;
+        }
+        const level = detectSeniority(title);
+        const key = seniorityPassKey(level);
+        const suggested = globalPassThresholds[key] ?? DEFAULT_PASS_THRESHOLDS[key];
+        const label = key === 'junior' ? 'Junior / Entry' : key === 'senior' ? 'Senior / Lead' : 'Mid-level';
+        hint.textContent = title.trim()
+            ? `Suggested for “${label}” (${level}): ${suggested}% — from Settings. You can override.`
+            : `Pre-filled from Settings by job title (Junior ${globalPassThresholds.junior}%, Mid ${globalPassThresholds.mid}%, Senior ${globalPassThresholds.senior}%).`;
     }
 
     function setAssessmentScoringStatus(text) {
@@ -657,20 +726,37 @@
 
     async function loadAssessmentScoringConfig() {
         if (!deps?.sb) {
-            const inp = document.getElementById('admDefaultPassThreshold');
-            if (inp) inp.value = String(globalPassThreshold);
-            return globalPassThreshold;
+            populatePassThresholdInputs(globalPassThresholds);
+            return globalPassThresholds;
         }
-        const { data, error } = await deps.sb
+
+        let loaded = null;
+        const { data: tierRow, error: tierErr } = await deps.sb
             .from('app_config')
             .select('value')
-            .eq('key', DEFAULT_PASS_CONFIG_KEY)
+            .eq('key', PASS_THRESHOLDS_CONFIG_KEY)
             .maybeSingle();
-        if (error) console.warn('[admin] loadAssessmentScoringConfig:', error.message);
-        globalPassThreshold = parseScoreThreshold(data?.value, DEFAULT_PASS_FALLBACK);
-        const inp = document.getElementById('admDefaultPassThreshold');
-        if (inp) inp.value = String(globalPassThreshold);
-        return globalPassThreshold;
+        if (tierErr) console.warn('[admin] loadAssessmentScoringConfig tiers:', tierErr.message);
+        if (tierRow?.value) {
+            try {
+                loaded = normalizePassThresholds(JSON.parse(tierRow.value));
+            } catch (_) {
+                loaded = null;
+            }
+        }
+
+        if (!loaded) {
+            const { data: legacyRow } = await deps.sb
+                .from('app_config')
+                .select('value')
+                .eq('key', DEFAULT_PASS_CONFIG_KEY)
+                .maybeSingle();
+            const single = parseScoreThreshold(legacyRow?.value, DEFAULT_PASS_FALLBACK);
+            loaded = { junior: single, mid: single, senior: single };
+        }
+
+        populatePassThresholdInputs(loaded);
+        return globalPassThresholds;
     }
 
     async function saveDefaultPassThreshold() {
@@ -678,33 +764,36 @@
             deps.banner('You do not have permission to change scoring defaults.', 'err');
             return;
         }
-        const threshold = parseScoreThreshold(
-            document.getElementById('admDefaultPassThreshold')?.value,
-            DEFAULT_PASS_FALLBACK
-        );
-        globalPassThreshold = threshold;
+        const thresholds = readPassThresholdInputs();
+        if (thresholds.senior < thresholds.mid || thresholds.mid < thresholds.junior) {
+            deps.banner('Senior threshold should be ≥ Mid ≥ Junior.', 'err');
+            return;
+        }
+        globalPassThresholds = thresholds;
+        globalPassThreshold = thresholds.mid;
         if (deps.sb) {
+            const payload = JSON.stringify(thresholds);
+            const now = new Date().toISOString();
             const { error } = await deps.sb.from('app_config').upsert(
-                {
-                    key: DEFAULT_PASS_CONFIG_KEY,
-                    value: String(threshold),
-                    updated_at: new Date().toISOString(),
-                },
+                [
+                    { key: PASS_THRESHOLDS_CONFIG_KEY, value: payload, updated_at: now },
+                    { key: DEFAULT_PASS_CONFIG_KEY, value: String(thresholds.mid), updated_at: now },
+                ],
                 { onConflict: 'key' }
             );
             if (error) {
-                deps.banner('Could not save default: ' + error.message, 'err');
+                deps.banner('Could not save defaults: ' + error.message, 'err');
                 return;
             }
         }
         if (deps.auth) {
-            await deps.auth.logAudit('save_scoring_default', 'app_config', DEFAULT_PASS_CONFIG_KEY, {
-                pass_score_threshold: threshold,
-            });
+            await deps.auth.logAudit('save_scoring_default', 'app_config', PASS_THRESHOLDS_CONFIG_KEY, thresholds);
         }
-        setAssessmentScoringStatus(`Default saved at ${threshold}%. New jobs will pre-fill with this value.`);
+        setAssessmentScoringStatus(
+            `Saved — Junior ${thresholds.junior}%, Mid ${thresholds.mid}%, Senior ${thresholds.senior}%. New jobs pre-fill by title.`
+        );
         prefillNewJobPassThreshold();
-        deps.banner('Default pass threshold saved (' + threshold + '%).', 'ok');
+        deps.banner('Pass thresholds saved.', 'ok');
     }
 
     async function applyPassThresholdToAllJobs() {
@@ -712,57 +801,65 @@
             deps.banner('You do not have permission to update jobs.', 'err');
             return;
         }
-        const threshold = parseScoreThreshold(
-            document.getElementById('admDefaultPassThreshold')?.value,
-            DEFAULT_PASS_FALLBACK
-        );
+        const thresholds = readPassThresholdInputs();
+        if (thresholds.senior < thresholds.mid || thresholds.mid < thresholds.junior) {
+            deps.banner('Senior threshold should be ≥ Mid ≥ Junior.', 'err');
+            return;
+        }
         const jobCount = JOBS.length;
         const msg =
-            `Set pass threshold to ${threshold}% on all ${jobCount} job(s) (draft, open, and closed)?\n\n` +
-            'Candidates already mid-assessment keep the threshold from when their session started.';
+            `Apply level-based pass thresholds to all ${jobCount} job(s)?\n\n` +
+            `• Junior / Entry titles → ${thresholds.junior}%\n` +
+            `• Mid-level titles → ${thresholds.mid}%\n` +
+            `• Senior / Lead titles → ${thresholds.senior}%\n\n` +
+            'In-progress assessments keep the threshold from when they started.';
         if (!confirm(msg)) return;
 
-        globalPassThreshold = threshold;
+        globalPassThresholds = thresholds;
+        globalPassThreshold = thresholds.mid;
         if (deps.sb) {
+            const now = new Date().toISOString();
             const { error: cfgErr } = await deps.sb.from('app_config').upsert(
-                {
-                    key: DEFAULT_PASS_CONFIG_KEY,
-                    value: String(threshold),
-                    updated_at: new Date().toISOString(),
-                },
+                [
+                    { key: PASS_THRESHOLDS_CONFIG_KEY, value: JSON.stringify(thresholds), updated_at: now },
+                    { key: DEFAULT_PASS_CONFIG_KEY, value: String(thresholds.mid), updated_at: now },
+                ],
                 { onConflict: 'key' }
             );
             if (cfgErr) {
-                deps.banner('Could not save default: ' + cfgErr.message, 'err');
+                deps.banner('Could not save defaults: ' + cfgErr.message, 'err');
                 return;
             }
 
-            const ids = JOBS.map((j) => j.id).filter(Boolean);
-            if (ids.length) {
-                const { error: jobsErr } = await deps.sb
+            const counts = { junior: 0, mid: 0, senior: 0 };
+            for (const job of JOBS) {
+                const key = seniorityPassKey(detectSeniority(job.title));
+                const pass = thresholds[key];
+                counts[key] += 1;
+                const { error: jobErr } = await deps.sb
                     .from('jobs')
-                    .update({
-                        pass_score_threshold: threshold,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .in('id', ids);
-                if (jobsErr) {
-                    deps.banner('Bulk job update failed: ' + jobsErr.message, 'err');
+                    .update({ pass_score_threshold: pass, updated_at: now })
+                    .eq('id', job.id);
+                if (jobErr) {
+                    deps.banner('Update failed for “' + (job.title || job.id) + '”: ' + jobErr.message, 'err');
                     return;
                 }
             }
+            setAssessmentScoringStatus(
+                `Applied to ${jobCount} job(s): ${counts.junior} junior (${thresholds.junior}%), ` +
+                `${counts.mid} mid (${thresholds.mid}%), ${counts.senior} senior (${thresholds.senior}%).`
+            );
         }
 
         await loadJobs();
         prefillNewJobPassThreshold();
         if (deps.auth) {
             await deps.auth.logAudit('apply_pass_threshold_all_jobs', 'jobs', 'all', {
-                pass_score_threshold: threshold,
+                ...thresholds,
                 job_count: jobCount,
             });
         }
-        setAssessmentScoringStatus(`Applied ${threshold}% to ${jobCount} job(s). In-progress assessments are unchanged.`);
-        deps.banner(`Pass threshold ${threshold}% applied to all jobs.`, 'ok');
+        deps.banner('Pass thresholds applied by job level.', 'ok');
     }
 
     async function loadJobs() {
@@ -883,10 +980,11 @@
         document.getElementById('jobStackIn').value = j.tech_stack || '';
         document.getElementById('jobSalaryIn').value = j.salary_range || '';
         document.getElementById('jobJdIn').value = j.jd_text || '';
-        document.getElementById('jobPassThresholdIn').value = String(parseScoreThreshold(j.pass_score_threshold, resolveDefaultPassThreshold()));
+        document.getElementById('jobPassThresholdIn').value = String(parseScoreThreshold(j.pass_score_threshold, resolveDefaultPassThresholdForTitle(j.title)));
         document.getElementById('jobCvShortlistIn').value = String(parseScoreThreshold(j.cv_shortlist_threshold, 62));
         setSelectValue('jobDisplayStyleIn', window.TAJobStyles?.normalize(j.display_style) || 'hiring-top', 'hiring-top');
         updateJobDisplayStyleHint();
+        updateJobPassThresholdHint(j.title || '');
         clearJobFieldErrors();
         resetJobTemplateUi();
         deps.setView('jobs-create');
@@ -935,7 +1033,7 @@
         ) || 'hiring-top';
         const pass_score_threshold = parseScoreThreshold(
             document.getElementById('jobPassThresholdIn')?.value,
-            resolveDefaultPassThreshold()
+            resolveDefaultPassThresholdForTitle(title)
         );
         const cv_shortlist_threshold = parseScoreThreshold(
             document.getElementById('jobCvShortlistIn')?.value,
@@ -1932,7 +2030,7 @@
         const linkedJob = JOBS.find((j) => j.id === scrJobEl?.selectedOptions?.[0]?.dataset?.jobId);
         const screenOpts = {
             passScoreThreshold: linkedJob
-                ? parseScoreThreshold(linkedJob.pass_score_threshold, resolveDefaultPassThreshold())
+                ? parseScoreThreshold(linkedJob.pass_score_threshold, resolveDefaultPassThresholdForTitle(linkedJob.title))
                 : resolveDefaultPassThreshold(),
             failScoreThreshold: linkedJob ? parseScoreThreshold(linkedJob.fail_score_threshold, 30) : null,
             cvShortlistThreshold: linkedJob ? parseScoreThreshold(linkedJob.cv_shortlist_threshold, 62) : null,
@@ -2846,6 +2944,7 @@
             document.getElementById('jobCvShortlistIn').value = '62';
             setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
+            updateJobPassThresholdHint('');
             clearJobFieldErrors();
             resetJobTemplateUi();
         });
@@ -2860,12 +2959,16 @@
             document.getElementById('jobCvShortlistIn').value = '62';
             setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
+            updateJobPassThresholdHint('');
+            setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
+            updateJobDisplayStyleHint();
             clearJobFieldErrors();
             resetJobTemplateUi();
         });
         bindJobTemplateUpload();
         bindJobFieldValidation();
         bindJobCreatePanelSync();
+        document.getElementById('jobTitleIn')?.addEventListener('input', () => prefillNewJobPassThreshold());
         bindSocialPostEvents();
         populateJobDisplayStyleSelect();
         document.getElementById('jobDisplayStyleIn')?.addEventListener('change', updateJobDisplayStyleHint);

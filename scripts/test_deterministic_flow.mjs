@@ -189,6 +189,7 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   const realSetTimeout = global.setTimeout;
   global.setTimeout = (fn, ms) => { if (ms === 25000) { timerFn = fn; return 0; } return realSetTimeout(fn, ms); };
   bridge.speakQuestion(1);
+  await new Promise((r) => setTimeout(r, 500));
   global.setTimeout = realSetTimeout;
   assert.ok(timerFn, 'TTS safety timer scheduled');
   const text = bridge.questions[0] || '';

@@ -30,6 +30,8 @@ const MODEL_FALLBACKS = [
 const SETUP_TIMEOUT_MS = 15000;
 /** Gemini turnComplete often arrives before the last audio chunk — wait this long after the final chunk. */
 const TTS_AUDIO_QUIET_MS = 2000;
+/** Brief pause before Q1–Q5 TTS prompt so playback clears and the full question is spoken from the start. */
+const QUESTION_TTS_LEAD_IN_MS = 450;
 /** Minimum PCM bytes (24 kHz mono int16) expected for a spoken question.
  *  24000 samples/s * 2 bytes = 48000 bytes per second of speech. We require a
  *  conservative MINIMUM so a clearly truncated ("half") reading is re-spoken,
@@ -786,8 +788,21 @@ export class GeminiLiveBridge {
     this.blockModelOutput = false;
     this.allowModelAudio = true;
     const flushFirst = this.answers.length > 0 && qNum === this.answers.length + 1;
-    this.sendSpokenPrompt(this.buildQuestionSpeechPrompt(qNum, text, opts), { flushFirst });
+    const prompt = this.buildQuestionSpeechPrompt(qNum, text, opts);
+    const firePrompt = () => {
+      if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
+      this.sendSpokenPrompt(prompt, { flushFirst });
+      this.scheduleQuestionAudioSafety(qNum, text);
+      this.scheduleQuestionSpeakWatchdog(qNum, text);
+    };
+    if (qNum >= 1 && QUESTION_TTS_LEAD_IN_MS > 0) {
+      setTimeout(firePrompt, QUESTION_TTS_LEAD_IN_MS);
+    } else {
+      firePrompt();
+    }
+  }
 
+  scheduleQuestionAudioSafety(qNum, text) {
     if (this.questionAudioSafety) clearTimeout(this.questionAudioSafety);
     this.questionAudioSafety = setTimeout(() => {
       this.questionAudioSafety = null;
@@ -806,8 +821,6 @@ export class GeminiLiveBridge {
         this.tryOpenTtsAnswerWindow(qNum);
       }
     }, 25000);
-
-    this.scheduleQuestionSpeakWatchdog(qNum, text);
   }
 
   // Single source of truth for the spoken-question prompt. Both the first speak
@@ -824,6 +837,7 @@ export class GeminiLiveBridge {
         'Read the following interview question out loud, clearly and completely, word for word, in warm professional English. ' +
         `${lastQuestionHint}` +
         'Do NOT add any greeting, lead-in, preamble, or filler before the question. ' +
+        'Read from the very first word through the last word — never begin mid-question. ' +
         'Say ONLY this question and nothing else:\n' +
         `"${text}"`
       );

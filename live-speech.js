@@ -130,12 +130,24 @@
       this.micOpenWatchdogTimer = null;
       this.warmupMicOpenTimer = null;
       this.warmupMicOpenGen = 0;
+      this.questionPlaybackLeadInMs = 400;
+      this.questionPlaybackLeadInTimer = null;
+      this.questionPlaybackLeadInActive = false;
+    }
+
+    clearQuestionPlaybackLeadIn() {
+      if (this.questionPlaybackLeadInTimer) {
+        clearTimeout(this.questionPlaybackLeadInTimer);
+        this.questionPlaybackLeadInTimer = null;
+      }
+      this.questionPlaybackLeadInActive = false;
     }
 
     clearPlayback() {
       this.playbackGeneration += 1;
       this.playQueue = [];
       this.playing = false;
+      this.clearQuestionPlaybackLeadIn();
       if (this.audioCtx) this.nextPlayTime = this.audioCtx.currentTime;
     }
 
@@ -713,6 +725,8 @@
         if (msg.number >= 1) {
           this.pendingAnswerQ = msg.number;
           this.pendingAnswerSeconds = 120;
+          this.clearQuestionPlaybackLeadIn();
+          this.questionPlaybackLeadInActive = true;
           this.schedulePreparingAudioWatchdog(msg.number);
         }
         this.onNextQuestionReady({ number: msg.number });
@@ -890,6 +904,16 @@
       const rateMatch = /rate=(\d+)/i.exec(mimeType || '');
       const rate = rateMatch ? Number(rateMatch[1]) : OUTPUT_RATE;
       this.playQueue.push({ b64, rate });
+      if (this.questionPlaybackLeadInActive && !this.answering) {
+        if (!this.questionPlaybackLeadInTimer) {
+          this.questionPlaybackLeadInTimer = setTimeout(() => {
+            this.questionPlaybackLeadInTimer = null;
+            this.questionPlaybackLeadInActive = false;
+            void this.drainPlayback();
+          }, this.questionPlaybackLeadInMs);
+        }
+        return;
+      }
       void this.drainPlayback();
     }
 

@@ -255,5 +255,42 @@ const fail = (l, d = '') => { failures += 1; console.log(`  FAIL - ${l}${d ? ` :
   bridge.closed = true;
 }
 
+{
+  // Candidate explicitly asks to skip → relay records a no-answer and advances.
+  const { bridge, events } = makeBridge();
+  bridge.warmupPhase = null;
+  bridge.speakQuestion(1);
+  await completeQuestionTts(bridge);
+  bridge.startUserTurn();
+  bridge.userBuf = "I don't know this one, let's move on to the next question";
+  bridge.sendAudio(loudPcmB64());
+  bridge.endUserTurn();
+  completeActivityEnd(bridge);
+  await new Promise((r) => setTimeout(r, 700));
+  if (bridge.answers.length === 1) ok('skip records a no-answer turn'); else fail('skip records a no-answer turn', `len=${bridge.answers.length}`);
+  if (bridge.skippedTurns && bridge.skippedTurns[1]) ok('skip flags the turn as skipped'); else fail('skip flags the turn as skipped');
+  if (bridge.currentQ === 2) ok('skip advances to next question'); else fail('skip advances to next question', `currentQ=${bridge.currentQ}`);
+  if (events.some((e) => e.type === 'answer' && e.number === 1 && e.skipped)) ok('skip emits a skipped answer event');
+  else fail('skip emits a skipped answer event');
+  bridge.closed = true;
+}
+
+{
+  // A real "I don't know because…" answer must NOT be treated as a skip.
+  const { bridge } = makeBridge();
+  bridge.warmupPhase = null;
+  bridge.speakQuestion(1);
+  await completeQuestionTts(bridge);
+  bridge.startUserTurn();
+  bridge.userBuf = "I don't know the exact figure but I would estimate it around twenty percent based on my experience";
+  bridge.sendAudio(loudPcmB64());
+  bridge.endUserTurn();
+  completeActivityEnd(bridge);
+  await new Promise((r) => setTimeout(r, 700));
+  if (!(bridge.skippedTurns && bridge.skippedTurns[1])) ok('genuine uncertain answer is not skipped');
+  else fail('genuine uncertain answer is not skipped');
+  bridge.closed = true;
+}
+
 console.log(`\n${failures === 0 ? 'ALL PASS' : `${failures} FAILURES`}`);
 process.exit(failures === 0 ? 0 : 1);

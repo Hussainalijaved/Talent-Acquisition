@@ -16,7 +16,7 @@ import {
   deriveTimeLimitSeconds,
   fallbackTimeLimit,
 } from './time-limit.mjs';
-import { isRepeatRequest, mightBeRepeatRequest } from './repeat-request.mjs';
+import { isRepeatRequest, isSkipRequest, mightBeRepeatRequest } from './repeat-request.mjs';
 
 const GEMINI_WS_BASE =
   'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
@@ -605,15 +605,33 @@ export class GeminiLiveBridge {
     this.onEvent({ type: 'question', number: qNum, text });
     this.computeAndEmitTimer(qNum, text);
 
+    this.sendSpokenPrompt(this.buildQuestionSpeechPrompt(qNum, text, opts), { flushFirst: false });
+
+    // CRITICAL: open the mic ONLY after Gemini finishes speaking the question.
+    // Emitting awaiting_answer before TTS completes caused the client mic to open
+    // while answering=true, which blocked output_audio — candidate heard nothing.
+    if (this.questionAudioSafety) clearTimeout(this.questionAudioSafety);
+    this.questionAudioSafety = setTimeout(() => {
+      this.questionAudioSafety = null;
+      if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
+      if (!this.answerPromptOpen) {
+        console.warn(`[relay] question ${qNum} TTS safety — opening answer window without turnComplete`);
+        this.openTtsAnswerWindow(qNum, text);
+      }
+    }, 22000);
+
+    this.scheduleQuestionSpeakWatchdog(qNum, text);
+  }
+
+  // Single source of truth for the spoken-question prompt. Both the first speak
+  // and every retry/repeat use THIS, so a retry is exactly as reliable as the
+  // "repeat" path (which the candidate confirmed always works).
+  buildQuestionSpeechPrompt(qNum, text, opts = {}) {
     const lastQuestionHint =
       qNum === this.maxTurns
         ? ' This is the LAST interview question — do NOT thank the candidate, do NOT say goodbye, and do NOT say the interview is complete. '
         : ' ';
-    // ONE short spoken preface before the question is re-read, depending on context:
-    //  - English nudge  → candidate answered in another language
-    //  - Repeat         → candidate asked to hear the question again
-    //  - Off-topic      → candidate's answer was unrelated; redirect them
-    //  - Appreciation   → warm acknowledgement of the previous answer (next question)
+    // ONE short spoken preface before the question is read, depending on context.
     let preface = '';
     let prefaceDesc = '';
     if (opts.prefaceEnglishNudge) {
@@ -640,28 +658,12 @@ export class GeminiLiveBridge {
         'In ONE short, natural word or phrase, signal that you are moving to the question (for example: "Alright." or "Okay, here we go."). Then ';
       prefaceDesc = ' brief lead-in and the';
     }
-    this.sendSpokenPrompt(
+    return (
       `You are the interviewer speaking out loud directly to the candidate, who can only HEAR you. ${preface}` +
-        `say this interview question out loud, clearly and completely, word for word, in a warm professional tone.` +
-        `${lastQuestionHint}` +
-        `Speak the ENTIRE question — never stop partway. Say ONLY this${prefaceDesc} question and nothing else — no numbering, no second question, no follow-up:\n"${text}"`,
-      { flushFirst: false }
+      `say this interview question out loud, clearly and completely, word for word, in a warm professional tone.` +
+      `${lastQuestionHint}` +
+      `Speak the ENTIRE question — never stop partway. Say ONLY this${prefaceDesc} question and nothing else — no numbering, no second question, no follow-up:\n"${text}"`
     );
-
-    // CRITICAL: open the mic ONLY after Gemini finishes speaking the question.
-    // Emitting awaiting_answer before TTS completes caused the client mic to open
-    // while answering=true, which blocked output_audio — candidate heard nothing.
-    if (this.questionAudioSafety) clearTimeout(this.questionAudioSafety);
-    this.questionAudioSafety = setTimeout(() => {
-      this.questionAudioSafety = null;
-      if (this.ttsForQ !== qNum || this.interviewEnded || this.closed) return;
-      if (!this.answerPromptOpen) {
-        console.warn(`[relay] question ${qNum} TTS safety — opening answer window without turnComplete`);
-        this.openTtsAnswerWindow(qNum, text);
-      }
-    }, 22000);
-
-    this.scheduleQuestionSpeakWatchdog(qNum, text);
   }
 
   scheduleQuestionSpeakWatchdog(qNum, text) {
@@ -684,8 +686,10 @@ export class GeminiLiveBridge {
       || fallbackInterviewQuestion(qNum, this.maxTurns);
     const retries = (this.questionSpeakRetries[qNum] || 0) + 1;
     this.questionSpeakRetries[qNum] = retries;
-    if (retries > 3) {
-      console.warn(`[relay] Q${qNum} TTS retries exhausted`);
+    if (retries > 4) {
+      // Exhausted: open the window anyway. The question text is already on screen
+      // (emitted by speakQuestion), so the candidate can still read and answer it.
+      console.warn(`[relay] Q${qNum} TTS retries exhausted — opening window with on-screen question`);
       if (!this.answerPromptOpen && !this.interviewEnded && !this.closed) {
         this.openTtsAnswerWindow(qNum, questionText);
       }
@@ -694,15 +698,22 @@ export class GeminiLiveBridge {
     const delayMs = Math.min(800, 200 + retries * 150);
     setTimeout(() => {
       if (this.interviewEnded || this.closed || this.ttsForQ !== qNum) return;
+      if (this.answerPromptOpen) return;
       this.modelBuf = '';
       this.modelAudioThisTurn = false;
+      this.ttsAudioBytesThisTurn = 0;
+      this.ttsTurnCompleteReceived = false;
+      this.clientPlaybackIdleForQ = 0;
+      this.lastModelAudioSentAt = 0;
       this.blockModelOutput = false;
       this.allowModelAudio = true;
+      this.pendingAudioChunks = [];
       this.ttsOnlyTurn = true;
       this.ttsForQ = qNum;
+      // Use the SAME strong, prefaced prompt as the first speak / repeat path —
+      // a bare "read this" prompt is what the native model tends to ignore on Q3+.
       this.sendSpokenPrompt(
-        `Read this interview question aloud to the candidate, word for word, in a warm professional tone. ` +
-          `Say ONLY this question and nothing else — no preamble, no numbering, no follow-up:\n"${questionText}"`,
+        this.buildQuestionSpeechPrompt(qNum, questionText, this.ttsSpeakOpts || {}),
         { flushFirst: opts.flushFirst !== false }
       );
       this.scheduleQuestionSpeakWatchdog(qNum, questionText);
@@ -1445,6 +1456,76 @@ export class GeminiLiveBridge {
     return true;
   }
 
+  // Candidate explicitly asked to move on ("I don't know this — next question").
+  // Record a no-answer for this question (scored as a non-attempt) and advance,
+  // exactly like a normal answer so the 5-question flow and scoring stay intact.
+  handleSkipRequest(qNum) {
+    console.log(`[relay] Q${qNum} skipped by candidate — advancing to next question`);
+    this.stopSilenceMonitor();
+    this.awaitingAnswer = false;
+    this.blockModelOutput = true;
+    if (this.answerTimer) { clearTimeout(this.answerTimer); this.answerTimer = null; }
+    if (this.pendingFinalize) { clearTimeout(this.pendingFinalize); this.pendingFinalize = null; }
+
+    this.userBuf = '';
+    this.lateUserBuf = '';
+    this.voiceDetectedThisTurn = false;
+    this.answerPcmChunks = [];
+
+    const skipText = '[No answer — candidate chose to skip this question]';
+    const qLimits = this.questionTimeLimits[qNum]
+      || fallbackTimeLimit(this.questions[qNum - 1] || '', this.context);
+
+    let aNum;
+    if (this.inFollowUpFor && this.inFollowUpFor === this.answers.length) {
+      aNum = this.inFollowUpFor;
+      this.answers[aNum - 1] = `${this.answers[aNum - 1]}\n\n[Follow-up] ${skipText}`.trim();
+      this.inFollowUpFor = 0;
+    } else {
+      this.answers.push(skipText);
+      aNum = this.answers.length;
+    }
+    this.skippedTurns = this.skippedTurns || {};
+    this.skippedTurns[aNum] = true;
+
+    const turnPair = {
+      phase: this.maxQuestions + aNum,
+      voice_question_number: aNum,
+      question_text: this.questions[aNum - 1] || '',
+      answer_text: skipText,
+      answer_pcm_chunks: [],
+      answer_pcm_sample_rate: this._answerPcmSampleRate,
+      sent_at: new Date(this.startedAt + (aNum - 1) * 60000).toISOString(),
+      received_at: new Date().toISOString(),
+      time_limit_seconds: qLimits.seconds,
+      complexity_tier: qLimits.tier,
+      is_follow_up: false,
+      skipped: true,
+      stt_source: this.voiceOnly ? 'voice_pcm' : 'gemini_live',
+    };
+    this.answerPcmChunksByTurn[aNum] = [];
+
+    if (!this.voiceOnly) {
+      this.onEvent({ type: 'transcript', speaker: 'user', text: skipText, partial: false });
+    }
+    this.onEvent({ type: 'answer', number: aNum, text: skipText, skipped: true });
+    this.onEvent({ type: 'turn_complete', turn: aNum, maxTurns: this.maxTurns, answersGiven: aNum });
+    this.onEvent({ type: 'saving_turn', number: aNum });
+    void Promise.resolve(this.onTurnSaved(turnPair)).catch((err) => {
+      console.warn('[relay] skip turn save failed:', err.message);
+    });
+
+    this.proceedAfterAnswer(aNum);
+  }
+
+  tryHandleSkipRequest(activeQ) {
+    if (activeQ < 1 || activeQ > this.maxTurns) return false;
+    if (this.warmupPhase) return false;
+    if (!isSkipRequest(this.getInternalUserTranscript())) return false;
+    this.handleSkipRequest(activeQ);
+    return true;
+  }
+
   // Candidate answered (or partly answered) in a non-English language. Keep them
   // on the SAME question: politely ask them to continue in English and re-read the
   // question. Never record this as their answer and never advance the phase.
@@ -1592,6 +1673,12 @@ export class GeminiLiveBridge {
       this.userTurnActive = false;
       if (this.geminiWs?.readyState === WebSocket.OPEN) {
         this.geminiWs.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
+        // Establish the clean barrier: the model owes us a turnComplete for this
+        // activityEnd. The next speakQuestion will DEFER behind it so the question
+        // audio never mixes with the model's reaction to the answer (the cause of
+        // "half question then the real question").
+        this.pendingUserActivityEnd = true;
+        this.scheduleActivityEndTurnFallback();
       }
       this.userTurnEndedAt = Date.now();
       // Voice-only: PCM is already buffered — never wait on Gemini STT flush.
@@ -1669,6 +1756,8 @@ export class GeminiLiveBridge {
     }
 
     if (this.tryHandleRepeatRequest(activeQ)) return;
+    // Candidate explicitly asked to skip → record a no-answer and advance.
+    if (this.tryHandleSkipRequest(activeQ)) return;
     if (this.tryHandleNonEnglishResponse(activeQ)) return;
 
     // Capture the internal STT BEFORE buffers are cleared — used for the off-topic

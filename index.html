@@ -5814,6 +5814,11 @@
                     setTabSwitchCount(next);
                 }
                 if (viewRef.current === 'assessment') {
+                    // Tab switch / window blur: only count, never terminate.
+                    if (isLeaveEvent) {
+                        window.TA_PROCTOR_ACTIVITY?.logViolation?.(reason);
+                        return;
+                    }
                     recordIntegrityViolation(reason);
                     return;
                 }

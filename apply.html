@@ -1136,8 +1136,39 @@
             if (photoUploadBtn) photoUploadBtn.textContent = 'Change photo';
         }
 
+        async function readFileAsDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result || ''));
+                reader.onerror = () => reject(new Error('Could not read photo file'));
+                reader.readAsDataURL(file);
+            });
+        }
+
         async function uploadCandidatePhoto(file, email) {
-            if (!sbClient || !file) return '';
+            if (!file) return '';
+
+            const dataUrl = await readFileAsDataUrl(file);
+
+            try {
+                const res = await fetch('/api/upload-candidate-photo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email,
+                        file_name: file.name,
+                        content_type: file.type || 'image/jpeg',
+                        image_base64: dataUrl,
+                    }),
+                });
+                const payload = await res.json().catch(() => ({}));
+                if (res.ok && payload.url) return payload.url;
+                console.warn('Photo API upload failed', res.status, payload);
+            } catch (apiErr) {
+                console.warn('Photo API upload error', apiErr);
+            }
+
+            if (!sbClient) throw new Error('Photo upload unavailable');
             const extRaw = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
             const ext = extRaw || 'jpg';
             const safeKey = String(email || 'candidate').replace(/[^a-z0-9]/gi, '_').slice(0, 64) || 'candidate';
@@ -2316,7 +2347,6 @@
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
             btn.textContent = 'Submitting…';
-            showSubmittingView(email, cvLabel);
 
             let profilePhotoUrl = '';
             if (pendingPhotoFile) {
@@ -2325,11 +2355,16 @@
                 } catch (photoErr) {
                     btn.disabled = false;
                     btn.textContent = 'Submit application';
-                    showStatus('Could not upload profile photo. Try a smaller image or submit without photo.', 'err');
                     console.warn('Photo upload failed', photoErr);
+                    showStatus(
+                        'Profile photo could not be saved. Remove the photo and submit again, or try a smaller JPG/PNG under 2 MB.',
+                        'err'
+                    );
                     return;
                 }
             }
+
+            showSubmittingView(email, cvLabel);
 
             const formData = new FormData();
             formData.append('candidate_email', email);

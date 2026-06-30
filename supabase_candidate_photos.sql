@@ -7,12 +7,12 @@ ON CONFLICT (id) DO UPDATE SET public = true;
 
 DROP POLICY IF EXISTS "Anon upload candidate photos" ON storage.objects;
 CREATE POLICY "Anon upload candidate photos"
-ON storage.objects FOR INSERT TO anon
+ON storage.objects FOR INSERT TO anon, authenticated
 WITH CHECK (bucket_id = 'candidate-photos');
 
 DROP POLICY IF EXISTS "Anon update candidate photos" ON storage.objects;
 CREATE POLICY "Anon update candidate photos"
-ON storage.objects FOR UPDATE TO anon
+ON storage.objects FOR UPDATE TO anon, authenticated
 USING (bucket_id = 'candidate-photos')
 WITH CHECK (bucket_id = 'candidate-photos');
 

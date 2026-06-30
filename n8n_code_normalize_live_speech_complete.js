@@ -37,6 +37,10 @@ return [
       final_feedback: String(body.final_feedback || body.feedback || '').trim(),
       live_session_summary: String(body.live_session_summary || '').trim(),
       tab_switches: Number(body.tab_switches ?? body.tabSwitches ?? 0),
+      result: String(body.result || '').trim().toUpperCase() || null,
+      score: body.score != null ? Number(body.score) : null,
+      technical_score: body.technical_score != null ? Number(body.technical_score) : null,
+      speech_score: body.speech_score != null ? Number(body.speech_score) : null,
       config: {
         supabase_url: String(cfg.supabase_url || '').trim(),
         supabase_key: String(cfg.supabase_key || '').trim(),

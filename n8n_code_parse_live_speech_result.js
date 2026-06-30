@@ -158,6 +158,11 @@ function resolveLiveSpeechNorm() {
       body.live_session_summary || normalized?.live_session_summary || ''
     ).trim(),
     tab_switches: Number(body.tab_switches ?? body.tabSwitches ?? normalized?.tab_switches ?? 0),
+    result: String(body.result || normalized?.result || '').trim().toUpperCase() || null,
+    score: body.score != null ? Number(body.score) : normalized?.score ?? null,
+    technical_score:
+      body.technical_score != null ? Number(body.technical_score) : normalized?.technical_score ?? null,
+    speech_score: body.speech_score != null ? Number(body.speech_score) : normalized?.speech_score ?? null,
     config: cfg,
   };
 }
@@ -250,13 +255,14 @@ const session = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;
 if (!session?.id) throw new Error('Session not found for live speech complete');
 
 const sessionCfg = parseJson(session.config, {});
-const sessCfg = { ...sessionCfg, ...cfg };
+// Session config (intake snapshot) wins over n8n CFG defaults — pass threshold lives here.
+const sessCfg = { ...cfg, ...sessionCfg };
 // JD intake stores interviewer on session.config — do not let blank n8n CFG wipe it.
 const sessionInterviewer = String(sessionCfg.interviewer_email || '').trim();
 if (sessionInterviewer) sessCfg.interviewer_email = sessionInterviewer;
 const maxQ = Number(sessCfg.max_questions || cfg.max_questions || 5);
 const speechPhases = Number(cfg.speech_phases || sessCfg.speech_phases || 5);
-const passThreshold = Number(cfg.pass_score_threshold ?? 60);
+const passThreshold = Number(sessCfg.pass_score_threshold ?? cfg.pass_score_threshold ?? 60);
 const techWeight = Number(cfg.technical_weight ?? 0.7);
 const speechWeight = Number(cfg.speech_weight ?? 0.3);
 const iso = new Date().toISOString();
@@ -365,12 +371,20 @@ if (speechAvg == null) {
 }
 
 const combinedScore = Math.round(techAvg * techWeight + speechAvg * speechWeight);
-const finalResult = combinedScore >= passThreshold ? 'PASS' : 'FAIL';
+const upstreamResult = String(norm.result || session.result || '').trim().toUpperCase();
+const upstreamScore = Number(norm.score ?? session.score);
+const finalScore = Number.isFinite(upstreamScore) ? Math.round(upstreamScore) : combinedScore;
+const finalResult =
+  upstreamResult === 'PASS' || upstreamResult === 'FAIL'
+    ? upstreamResult
+    : finalScore >= passThreshold
+      ? 'PASS'
+      : 'FAIL';
 const lastPhase = maxQ + speechPhases;
 
 const finalFeedback = [
   norm.final_feedback || norm.live_session_summary || '',
-  `Technical: ${techAvg}/100 | Live communication: ${speechAvg}/100 | Combined: ${combinedScore}/100 (pass ${passThreshold}).`,
+  `Technical: ${techAvg}/100 | Live communication: ${speechAvg}/100 | Combined: ${finalScore}/100 (pass ${passThreshold}).`,
 ]
   .filter(Boolean)
   .join(' ');
@@ -383,7 +397,7 @@ const body = {
   status: 'completed',
   technical_score: techAvg,
   speech_score: speechAvg,
-  score: combinedScore,
+  score: finalScore,
   result: finalResult,
   ...buildLiveSpeechPatchMeta(norm, session),
 };
@@ -442,7 +456,7 @@ return (async () => {
   return [
     {
       json: {
-        score: combinedScore,
+        score: finalScore,
         phase_score: phaseScore,
         soft_skills: overallSoftSkills,
         feedback: finalFeedback,
@@ -454,7 +468,7 @@ return (async () => {
         assessment_mode: 'live_speech',
         speech_phases: speechPhases,
         result: finalResult,
-        average_score: combinedScore,
+        average_score: finalScore,
         candidate_email: norm.candidate_email || session.candidate_email,
         session_id: session.id,
         requisition_id: session.requisition_id || sessionCfg.requisition_id || null,

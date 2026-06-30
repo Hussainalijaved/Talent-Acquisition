@@ -8,6 +8,17 @@ const MAX_BYTES = 2 * 1024 * 1024;
 const BUCKET = 'candidate-photos';
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+function normalizeContentType(rawType, fileName, dataUrlMime) {
+    let t = String(rawType || dataUrlMime || '').toLowerCase().trim();
+    if (t === 'image/jpg' || t === 'image/pjpeg') t = 'image/jpeg';
+    if (ALLOWED_TYPES.has(t)) return t;
+    const ext = String(fileName || '').split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+    if (ext === 'png') return 'image/png';
+    if (ext === 'webp') return 'image/webp';
+    return t || 'image/jpeg';
+}
+
 function cors(res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -46,13 +57,15 @@ async function ensureBucket(sbUrl, sbKey) {
         },
         body: JSON.stringify({ id: BUCKET, name: BUCKET, public: true }),
     });
-    if (res.ok || res.status === 409) return;
+    if (res.ok) return;
     const text = await res.text();
+    if (res.status === 409 || /already exists|Duplicate/i.test(text)) return;
     throw new Error(`bucket_create_failed (${res.status}): ${text.slice(0, 160)}`);
 }
 
 async function uploadPhoto(sbUrl, sbKey, path, bin, contentType) {
-    const res = await fetch(`${sbUrl}/storage/v1/object/${BUCKET}/${path}`, {
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+    const res = await fetch(`${sbUrl}/storage/v1/object/${BUCKET}/${encodedPath}`, {
         method: 'POST',
         headers: {
             apikey: sbKey,
@@ -99,9 +112,9 @@ export default async function handler(req, res) {
             return;
         }
 
-        const contentType = String(body.content_type || mime || 'image/jpeg').toLowerCase();
+        const contentType = normalizeContentType(body.content_type, body.file_name, mime);
         if (!ALLOWED_TYPES.has(contentType)) {
-            res.status(400).json({ ok: false, error: 'invalid_image_type' });
+            res.status(400).json({ ok: false, error: 'invalid_image_type', detail: contentType });
             return;
         }
 

@@ -1145,10 +1145,22 @@
             });
         }
 
+        function normalizePhotoMime(type, fileName) {
+            let t = String(type || '').toLowerCase().trim();
+            if (t === 'image/jpg' || t === 'image/pjpeg') t = 'image/jpeg';
+            if (t === 'image/jpeg' || t === 'image/png' || t === 'image/webp') return t;
+            const ext = String(fileName || '').split('.').pop()?.toLowerCase();
+            if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+            if (ext === 'png') return 'image/png';
+            if (ext === 'webp') return 'image/webp';
+            return 'image/jpeg';
+        }
+
         async function uploadCandidatePhoto(file, email) {
             if (!file) return '';
 
             const dataUrl = await readFileAsDataUrl(file);
+            const contentType = normalizePhotoMime(file.type, file.name);
 
             try {
                 const res = await fetch('/api/upload-candidate-photo', {
@@ -1157,15 +1169,16 @@
                     body: JSON.stringify({
                         email,
                         file_name: file.name,
-                        content_type: file.type || 'image/jpeg',
+                        content_type: contentType,
                         image_base64: dataUrl,
                     }),
                 });
                 const payload = await res.json().catch(() => ({}));
                 if (res.ok && payload.url) return payload.url;
-                console.warn('Photo API upload failed', res.status, payload);
+                const apiDetail = payload.detail || payload.error || res.status;
+                throw new Error(String(apiDetail));
             } catch (apiErr) {
-                console.warn('Photo API upload error', apiErr);
+                console.warn('Photo API upload failed', apiErr);
             }
 
             if (!sbClient) throw new Error('Photo upload unavailable');
@@ -1176,7 +1189,7 @@
             const { error } = await sbClient.storage.from('candidate-photos').upload(path, file, {
                 cacheControl: '3600',
                 upsert: true,
-                contentType: file.type || 'image/jpeg',
+                contentType,
             });
             if (error) throw error;
             const { data } = sbClient.storage.from('candidate-photos').getPublicUrl(path);

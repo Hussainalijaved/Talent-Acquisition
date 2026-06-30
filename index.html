@@ -1579,6 +1579,13 @@
             console.warn('[Assessment] Proctoring DISABLED (testing mode). Set FORCE_DISABLE_PROCTORING=false for production.');
         }
 
+        // TEMP: do not pause or terminate the test when webcam is off / black screen.
+        // Set back to false before enabling production webcam enforcement.
+        const DISABLE_WEBCAM_TERMINATION = true;
+        if (DISABLE_WEBCAM_TERMINATION && !PROCTORING_DISABLED) {
+            console.warn('[Assessment] Webcam termination DISABLED (black screen / camera lost will not fail the test).');
+        }
+
         const FullscreenRequiredOverlay = ({ onRestore, onRestoreStart, onSecurityKeyDown }) => (
             <div
                 className="fixed inset-0 z-[2147483646] flex items-center justify-center bg-white/95 backdrop-blur-2xl px-4 portal-lock animate-fade-up"
@@ -5800,7 +5807,7 @@
             }, [terminateTestDueToCheating]);
 
             const startCameraGrace = useCallback((reason = 'stream_lost') => {
-                if (PROCTORING_DISABLED || terminatingRef.current || cameraGraceActiveRef.current) return;
+                if (PROCTORING_DISABLED || DISABLE_WEBCAM_TERMINATION || terminatingRef.current || cameraGraceActiveRef.current) return;
                 cameraGraceActiveRef.current = true;
                 pauseAssessmentTimerForCamera();
                 setCameraGraceReason(reason === 'no_signal' ? 'no_signal' : 'stream_lost');
@@ -5839,7 +5846,7 @@
                     recordIntegrityViolation('screen_share_stopped');
                 };
 
-                if (streams.webcam) {
+                if (streams.webcam && !DISABLE_WEBCAM_TERMINATION) {
                     proctorWatchCleanupRef.current.push(
                         window.TA_PROCTOR.watchStreamEnd(streams.webcam, () => onWebcamStreamEnded())
                     );

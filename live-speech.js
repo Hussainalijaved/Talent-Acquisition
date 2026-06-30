@@ -637,6 +637,7 @@
         return;
       }
       if (msg.type === 'question_partial' && msg.text) {
+        if (msg.warmup == null && this.interviewEnded) return;
         if (msg.warmup == null && window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
         // Partials are caption-only — must NOT cancel mic open (warmup works because
         // partials carry warmup=mic_check|intro; real Q1-Q5 partials were killing the mic).
@@ -645,6 +646,7 @@
       }
       if (msg.type === 'question') {
         const isWarmup = msg.warmup != null || msg.number <= 0;
+        if (!isWarmup && this.interviewEnded) return;
         if (!isWarmup && msg.text && window.TA_LIVE?.looksLikeClosingMessage?.(msg.text)) return;
         if (!isWarmup && !this.awaitingAnswerPending && !this.answering) {
           this.processingAnswer = false;
@@ -750,6 +752,7 @@
         }
       }
       if (msg.type === 'awaiting_answer') {
+        if (this.interviewEnded && (msg.warmup == null)) return;
         this.processingAnswer = false;
         // Unified path for warmup AND real questions.
         this.requestAnswer({

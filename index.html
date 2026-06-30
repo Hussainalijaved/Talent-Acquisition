@@ -16,7 +16,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="final-score.js"></script>
     <script src="speech-assessment.js"></script>
-    <script src="live-speech.js?v=20260628"></script>
+    <script src="live-speech.js?v=20260630"></script>
     <script src="proctor-media.js?v=20260629"></script>
     <script src="proctor-activity.js"></script>
     <script>
@@ -3063,6 +3063,7 @@
             const questionTimeLimitRef = React.useRef(defaultAnswerSeconds);
             const isAnsweringRef = React.useRef(false);
             const canAnswerRef = React.useRef(false);
+            const interviewCompleteRef = React.useRef(false);
 
             React.useEffect(() => { questionTimeLimitRef.current = questionTimeLimit; }, [questionTimeLimit]);
             React.useEffect(() => { liveQuestionCaptionRef.current = liveQuestionCaption; }, [liveQuestionCaption]);
@@ -3085,6 +3086,7 @@
             React.useEffect(() => { tabSwitchesRef.current = tabSwitches; }, [tabSwitches]);
             React.useEffect(() => { isAnsweringRef.current = isAnswering; }, [isAnswering]);
             React.useEffect(() => { canAnswerRef.current = canAnswer; }, [canAnswer]);
+            React.useEffect(() => { interviewCompleteRef.current = interviewComplete; }, [interviewComplete]);
 
             React.useEffect(() => {
                 if (!isAnswering || !liveTranscriptRef.current) return;
@@ -3234,6 +3236,7 @@
                                 setTurn((prev) => Math.max(Number(prev) || 0, capped));
                                 if (m) setMaxTurns(m);
                                 if (capped >= max && max >= 1) {
+                                    interviewCompleteRef.current = true;
                                     setInterviewComplete(true);
                                     setCanAnswer(false);
                                     setIsAnswering(false);
@@ -3247,6 +3250,7 @@
                             onQuestion: ({ number, text, partial, follow_up, warmup }) => {
                                 const clean = cleanText(text, 'model');
                                 const isWarmup = warmup != null || number <= 0;
+                                if (!isWarmup && interviewCompleteRef.current) return;
                                 if (partial) {
                                     if (!isWarmup && questionLockedRef.current) return;
                                     if (isWarmup) {
@@ -3333,6 +3337,7 @@
                                 setSilenceHint('');
                             },
                             onAwaitingAnswer: ({ time_limit_seconds, warmup }) => {
+                                if (warmup == null && interviewCompleteRef.current) return;
                                 const limit = Number(time_limit_seconds);
                                 const nextLimit = Number.isFinite(limit) && limit > 0
                                     ? limit
@@ -3364,6 +3369,7 @@
                                 });
                             },
                             onMicOpen: () => {
+                                if (interviewCompleteRef.current) return;
                                 awaitingAnswerRef.current = false;
                                 canAnswerRef.current = true;
                                 setMicOpening(false);
@@ -3376,6 +3382,7 @@
                                 setSilenceHint('');
                             },
                             onNextQuestionReady: ({ number }) => {
+                                if (interviewCompleteRef.current) return;
                                 awaitingAnswerRef.current = false;
                                 canAnswerRef.current = false;
                                 setMicOpening(false);
@@ -3416,6 +3423,7 @@
                             },
                             onInterviewComplete: (msg) => {
                                 if (msg?.type === 'interview_closing') {
+                                    interviewCompleteRef.current = true;
                                     setInterviewComplete(true);
                                     setIsInterviewerSpeaking(true);
                                     setSavingAnswer(false);
@@ -3425,6 +3433,7 @@
                                     setTimeLeft(null);
                                     return;
                                 }
+                                interviewCompleteRef.current = true;
                                 setInterviewComplete(true);
                                 setCanAnswer(false);
                                 setIsAnswering(false);

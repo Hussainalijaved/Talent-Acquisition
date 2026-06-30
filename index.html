@@ -1583,7 +1583,7 @@
         // Set back to false before enabling production webcam enforcement.
         const DISABLE_WEBCAM_TERMINATION = true;
         if (DISABLE_WEBCAM_TERMINATION && !PROCTORING_DISABLED) {
-            console.warn('[Assessment] Webcam termination DISABLED (black screen / camera lost will not fail the test).');
+            console.warn('[Assessment] Webcam optional — setup can skip camera; black screen / camera lost will not fail the test.');
         }
 
         const FullscreenRequiredOverlay = ({ onRestore, onRestoreStart, onSecurityKeyDown }) => (
@@ -2616,7 +2616,11 @@
                     const wc = webcamStreamRef.current;
                     const sc = screenStreamsRef.current?.[0];
                     const [webcamResult, screenResult] = await Promise.all([
-                        wc ? window.TA_PROCTOR.validateWebcamReady(wc, { warmupMs: 400, samples: 1 }) : { ok: false, message: 'Enable your webcam.' },
+                        !wc && DISABLE_WEBCAM_TERMINATION
+                            ? Promise.resolve({ ok: true })
+                            : wc
+                              ? window.TA_PROCTOR.validateWebcamReady(wc, { warmupMs: 400, samples: 1 })
+                              : Promise.resolve({ ok: false, message: 'Enable your webcam.' }),
                         sc ? window.TA_PROCTOR.validateScreenReady(sc, { warmupMs: 400, samples: 1 }) : { ok: false, message: 'Share your screen.' },
                     ]);
                     if (cancelled) return;
@@ -2728,6 +2732,17 @@
                 }
             };
 
+            const handleSkipWebcam = () => {
+                if (!DISABLE_WEBCAM_TERMINATION) return;
+                setError('');
+                setMediaQuality({
+                    webcam: true,
+                    screen: screenStreamsRef.current.length > 0,
+                    message: '',
+                });
+                setStep('start');
+            };
+
             const handleStartTest = async () => {
                 setError('');
                 setBusy(true);
@@ -2739,15 +2754,19 @@
                     if (!window.TA_PROCTOR.isSingleDisplay(displayCheck)) {
                         throw new Error(window.TA_PROCTOR.multiDisplayBlockMessage(displayCheck));
                     }
-                    if (!webcamStreamRef.current || !window.TA_PROCTOR.isStreamLive(webcamStreamRef.current)) {
-                        throw new Error('Your webcam must be on before starting. Enable the camera and try again.');
+                    if (!DISABLE_WEBCAM_TERMINATION) {
+                        if (!webcamStreamRef.current || !window.TA_PROCTOR.isStreamLive(webcamStreamRef.current)) {
+                            throw new Error('Your webcam must be on before starting. Enable the camera and try again.');
+                        }
                     }
                     if (!sharedScreens.length || !sharedScreens.every((s) => window.TA_PROCTOR.isStreamLive(s))) {
                         throw new Error('Screen sharing must stay active. Share your monitor again from the previous step.');
                     }
-                    const webcamCheck = await window.TA_PROCTOR.validateWebcamReady(webcamStreamRef.current);
-                    if (!webcamCheck.ok) {
-                        throw new Error(webcamCheck.message || 'Webcam is blank or you are not visible on camera.');
+                    if (!DISABLE_WEBCAM_TERMINATION && webcamStreamRef.current) {
+                        const webcamCheck = await window.TA_PROCTOR.validateWebcamReady(webcamStreamRef.current);
+                        if (!webcamCheck.ok) {
+                            throw new Error(webcamCheck.message || 'Webcam is blank or you are not visible on camera.');
+                        }
                     }
                     const screenCheck = await window.TA_PROCTOR.validateScreenReady(sharedScreens[0]);
                     if (!screenCheck.ok) {
@@ -2761,7 +2780,7 @@
                     }
                     transferredRef.current = true;
                     onComplete({
-                        webcam: webcamStreamRef.current,
+                        webcam: webcamStreamRef.current || null,
                         screens: [...screenStreamsRef.current],
                         screenCount: 1,
                     });
@@ -2775,12 +2794,14 @@
             const shareIndex = sharedScreens.length;
             const shareDone = sharedScreens.length;
             const webcamLive = !!(webcamStream && window.TA_PROCTOR?.isStreamLive?.(webcamStream));
+            const webcamSkipped = DISABLE_WEBCAM_TERMINATION && step === 'start' && !webcamLive;
             const screensLive = sharedScreens.length > 0 && sharedScreens.every((s) => window.TA_PROCTOR?.isStreamLive?.(s));
+            const webcamReady = DISABLE_WEBCAM_TERMINATION ? (webcamLive || webcamSkipped) : webcamLive;
             const startReady = step === 'start'
                 && screenCount === 1
-                && webcamLive
+                && webcamReady
                 && screensLive
-                && mediaQuality.webcam
+                && (DISABLE_WEBCAM_TERMINATION || mediaQuality.webcam)
                 && mediaQuality.screen;
 
             const instructions = (() => {
@@ -2814,8 +2835,12 @@
                     return {
                         title: 'Share your webcam',
                         body: [
-                            'Your webcam stays visible in a small window during the assessment, like a proctored exam.',
-                            'Allow camera access when prompted — sit in front of the camera so your face is clearly visible.',
+                            DISABLE_WEBCAM_TERMINATION
+                                ? 'Webcam is optional for now — you can continue without a camera if yours is unavailable.'
+                                : 'Your webcam stays visible in a small window during the assessment, like a proctored exam.',
+                            DISABLE_WEBCAM_TERMINATION
+                                ? 'Try Share Webcam if you have a camera, or click Continue without webcam to proceed with screen share only.'
+                                : 'Allow camera access when prompted — sit in front of the camera so your face is clearly visible.',
                         ],
                         action: 'Share Webcam',
                         onAction: handleShareWebcam,
@@ -2825,11 +2850,15 @@
                 return {
                     title: 'Ready to begin',
                     body: [
-                        'Your screen and webcam are connected on a single monitor.',
+                        DISABLE_WEBCAM_TERMINATION && !webcamLive
+                            ? 'Your screen is connected on a single monitor. Webcam is skipped for this session.'
+                            : 'Your screen and webcam are connected on a single monitor.',
                         startReady
-                            ? 'Click Start Test to enter fullscreen and begin Phase 1. Keep screen share and camera on for the full assessment.'
+                            ? 'Click Start Test to enter fullscreen and begin Phase 1. Keep screen share active for the full assessment.'
                             : mediaQuality.message
-                              || 'Make sure your face is visible on the webcam and your shared screen is not blank before starting.',
+                              || (DISABLE_WEBCAM_TERMINATION
+                                ? 'Make sure your shared screen is not blank before starting.'
+                                : 'Make sure your face is visible on the webcam and your shared screen is not blank before starting.'),
                     ],
                     action: 'Start Test',
                     onAction: handleStartTest,
@@ -2854,7 +2883,7 @@
                                 detectDone={screenCount === 1}
                                 shareDone={shareDone}
                                 shareTotal={1}
-                                webcamDone={webcamLive}
+                                webcamDone={webcamLive || webcamSkipped}
                                 startReady={startReady}
                             />
                             <div className="p-5 sm:p-8 flex flex-col min-h-[360px]">
@@ -2926,6 +2955,16 @@
                                             </>
                                         )}
                                     </button>
+                                    {DISABLE_WEBCAM_TERMINATION && step === 'webcam' ? (
+                                        <button
+                                            type="button"
+                                            onClick={handleSkipWebcam}
+                                            disabled={busy || isLoading}
+                                            className="btn-secondary px-6 py-3 rounded-xl text-sm font-semibold disabled:opacity-40"
+                                        >
+                                            Continue without webcam
+                                        </button>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>

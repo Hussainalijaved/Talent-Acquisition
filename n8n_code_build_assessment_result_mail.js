@@ -239,22 +239,27 @@ if (!candidateEmail) {
   );
 }
 
-return [
-  {
-    json: {
-      ...parse,
-      session_id: sessionId,
-      mail_mode: mailMode,
-      mail_to: candidateEmail,
-      gmail_thread_id: useThreadReply ? gmail.threadId : undefined,
-      gmail_message_id: useThreadReply ? gmail.msgId : undefined,
-      mail_subject: mailSubject,
-      mail_body_html: mailBodyHtml,
-      mail_stage: 'fail',
-      candidate_email: candidateEmail,
-      config: cfg,
-      gmail_lookup_used_send_fallback: mailMode === 'send',
-    },
-  },
-];
+const payload = {
+  ...parse,
+  session_id: sessionId,
+  mail_mode: mailMode,
+  use_thread_reply: useThreadReply,
+  mail_to: candidateEmail,
+  mail_subject: mailSubject,
+  mail_body_html: mailBodyHtml,
+  mail_stage: 'fail',
+  candidate_email: candidateEmail,
+  config: cfg,
+  gmail_lookup_used_send_fallback: !useThreadReply,
+};
+
+if (useThreadReply) {
+  payload.gmail_thread_id = gmail.threadId;
+  payload.gmail_message_id = gmail.msgId;
+} else {
+  delete payload.gmail_thread_id;
+  delete payload.gmail_message_id;
+}
+
+return [{ json: payload }];
 })();

@@ -1,6 +1,7 @@
 // n8n: CODE - Build assessment result mail (PASS/FAIL)
 // Place AFTER: IF - Result PASS? (false / FAIL branch)
-// Place BEFORE: IF - Result mail thread reply? → MAIL Reply OR MAIL Send
+// IF node: true only when BOTH gmail_thread_id AND gmail_message_id are not empty.
+//   {{ $json.gmail_thread_id }} not empty  AND  {{ $json.gmail_message_id }} not empty
 //
 // Thread reply (preferred):
 //   Resource: thread | Operation: reply
@@ -56,16 +57,28 @@ function mergeGmailMeta(...sources) {
   let subject = '';
   for (const src of sources) {
     if (!src || typeof src !== 'object') continue;
-    if (!threadId) threadId = String(src.gmail_thread_id || '').trim();
-    if (!msgId) msgId = String(src.gmail_message_id || '').trim();
+    if (!threadId) threadId = cleanGmailId(src.gmail_thread_id);
+    if (!msgId) msgId = cleanGmailId(src.gmail_message_id);
     if (!subject) subject = String(src.mail_subject || '').trim();
   }
   return { threadId, msgId, subject };
 }
 
-function isValidThread(id) {
-  const t = String(id || '').trim();
-  return t.length > 0 && !/^pending$/i.test(t) && !t.startsWith('draft-');
+function cleanGmailId(raw) {
+  const t = String(raw ?? '').trim();
+  if (!t || /^null$/i.test(t) || /^undefined$/i.test(t)) return '';
+  return t;
+}
+
+function isValidGmailId(id) {
+  const t = cleanGmailId(id);
+  if (!t || /^pending$/i.test(t) || t.startsWith('draft-')) return false;
+  // Gmail thread/message ids are long alphanumeric strings
+  return /^[0-9a-zA-Z]{10,}$/.test(t);
+}
+
+function canThreadReply(threadId, msgId) {
+  return isValidGmailId(threadId) && isValidGmailId(msgId);
 }
 
 async function fetchSessionGmailMeta(sessionId, cfg) {
@@ -122,8 +135,9 @@ async function lookupSiblingSessionThread(sessionId, email, requisitionId, cfg) 
       if (!Array.isArray(rows)) continue;
       for (const row of rows) {
         if (String(row.id || '') === String(sessionId || '')) continue;
-        const threadId = String(row.gmail_thread_id || '').trim();
-        if (isValidThread(threadId)) return row;
+        const threadId = cleanGmailId(row.gmail_thread_id);
+        const msgId = cleanGmailId(row.gmail_message_id);
+        if (canThreadReply(threadId, msgId)) return row;
       }
     } catch (_) {
       /* next */
@@ -150,14 +164,14 @@ const sessionId = String(parse.session_id || session.id || '').trim();
 
 let gmail = mergeGmailMeta(parse, session, $input.first().json);
 
-if ((!isValidThread(gmail.threadId) || !gmail.msgId) && sessionId) {
+if ((!canThreadReply(gmail.threadId, gmail.msgId)) && sessionId) {
   const fresh = await fetchSessionGmailMeta(sessionId, cfg);
   if (fresh) {
     gmail = mergeGmailMeta(gmail, fresh);
   }
 }
 
-if (!isValidThread(gmail.threadId) && sessionId) {
+if (!canThreadReply(gmail.threadId, gmail.msgId) && sessionId) {
   const sibling = await lookupSiblingSessionThread(
     sessionId,
     parse.candidate_email || session.candidate_email,
@@ -198,8 +212,7 @@ if (passed) {
   ];
 }
 
-const useThreadReply =
-  isValidThread(gmail.threadId) && Boolean(gmail.msgId);
+const useThreadReply = canThreadReply(gmail.threadId, gmail.msgId);
 const mailMode = useThreadReply ? 'thread_reply' : 'send';
 const defaultSubject = `Your assessment result — ${role.replace(/[\r\n]+/g, ' ').slice(0, 120)}`;
 const mailSubject =
@@ -253,13 +266,9 @@ const payload = {
   gmail_lookup_used_send_fallback: !useThreadReply,
 };
 
-if (useThreadReply) {
-  payload.gmail_thread_id = gmail.threadId;
-  payload.gmail_message_id = gmail.msgId;
-} else {
-  delete payload.gmail_thread_id;
-  delete payload.gmail_message_id;
-}
+payload.gmail_thread_id = useThreadReply ? gmail.threadId : '';
+payload.gmail_message_id = useThreadReply ? gmail.msgId : '';
+payload.use_thread_reply = useThreadReply;
 
 return [{ json: payload }];
 })();

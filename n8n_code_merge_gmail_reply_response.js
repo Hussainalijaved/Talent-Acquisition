@@ -54,7 +54,8 @@ const gmail = resolveGmailPayload(
   'MAIL - Notify candidate',
   'MAIL - Notify candidate1',
   'MAIL - Reply candidate (assessment result)',
-  'MAIL - Reply candidate (assessment result)1'
+  'MAIL - Reply candidate (assessment result)1',
+  'MAIL - Send candidate (assessment result)',
 );
 const ctx = pickSessionContext();
 const cfg = ctx.config || {};

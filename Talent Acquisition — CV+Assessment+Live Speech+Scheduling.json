@@ -1106,7 +1106,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// n8n: CODE - Merge Gmail reply response\r\n// Paste AFTER any Gmail \"Thread → Reply\" node.\r\n// Prepares Supabase PATCH so the next reply chains to this message.\r\n//\r\n// Wire:\r\n//   Gmail Thread Reply → this node → HTTP PATCH session gmail message\r\n//\r\n// Set HTTP PATCH node:\r\n//   URL:  {{ $json._gmail_patch_url }}\r\n//   Body: {{ $json._gmail_patch_body }}\r\n\r\nfunction pickSessionContext() {\r\n  const names = [\r\n    'CODE - Build assessment result mail',\r\n    'CODE - Build candidate slot mail',\r\n    'CODE - Build interview confirmed mail',\r\n    'CODE - Build Gmail thread reply context',\r\n    'CODE - Prep scheduling from PASS',\r\n    'CODE - Parse Result',\r\n    'HTTP - Fetch Session',\r\n  ];\r\n  let merged = {};\r\n  for (const name of names) {\r\n    try {\r\n      merged = { ...merged, ...($input.first().json || {}), ...$(name).first().json };\r\n    } catch (_) {}\r\n  }\r\n  return merged;\r\n}\r\n\r\nconst gmail = $input.first().json;\r\nconst ctx = pickSessionContext();\r\nconst cfg = ctx.config || {};\r\n\r\nconst msgId = String(gmail.id || gmail.messageId || '').trim();\r\nconst threadId = String(gmail.threadId || gmail.thread_id || ctx.gmail_thread_id || '').trim();\r\n\r\nconst sessionId = String(\r\n  ctx.session_id || ctx.session_db_id || ctx.id || ''\r\n).trim();\r\n\r\nif (!sessionId) {\r\n  throw new Error('Missing session_id — cannot update gmail_message_id after reply.');\r\n}\r\nif (!threadId) {\r\n  throw new Error('Missing gmail_thread_id — first shortlist mail must create the thread.');\r\n}\r\nif (!msgId) {\r\n  throw new Error('Gmail reply returned no message id.');\r\n}\r\n\r\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\r\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...ctx,\r\n      gmail_message_id: msgId,\r\n      gmail_thread_id: threadId,\r\n      _gmail_patch_url: `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`,\r\n      _gmail_patch_body: {\r\n        gmail_message_id: msgId,\r\n        gmail_thread_id: threadId,\r\n        updated_at: new Date().toISOString(),\r\n      },\r\n    },\r\n  },\r\n];"
+        "jsCode": "// n8n: CODE - Merge Gmail reply response\r\n// Paste AFTER any Gmail \"Thread → Reply\" node.\r\n// Prepares Supabase PATCH so the next reply chains to this message.\r\n//\r\n// Wire:\r\n//   Gmail Thread Reply → this node → HTTP PATCH session gmail message\r\n//\r\n// Set HTTP PATCH node:\r\n//   URL:  {{ $json._gmail_patch_url }}\r\n//   Body: {{ $json._gmail_patch_body }}\r\n\r\nfunction pickSessionContext() {\r\n  const names = [\r\n    'CODE - Build candidate slot mail',\r\n    'CODE - Build assessment result mail',\r\n    'CODE - Build interview confirmed mail',\r\n    'CODE - Build Gmail thread reply context',\r\n    'CODE - Prep scheduling from PASS',\r\n    'CODE - Parse Result',\r\n    'HTTP - SB GET session (slots)',\r\n    'HTTP - SB GET session (confirmed)',\r\n    'HTTP - Fetch Session',\r\n    'HTTP - Fetch Session1',\r\n  ];\r\n  let merged = {};\r\n  for (const name of names) {\r\n    try {\r\n      merged = { ...merged, ...($input.first().json || {}), ...$(name).first().json };\r\n    } catch (_) {}\r\n  }\r\n  return merged;\r\n}\r\n\r\nfunction resolveGmailPayload(input, ...mailNodeNames) {\r\n  if (input && (input.id || input.messageId || input.threadId || input.thread_id)) {\r\n    return input;\r\n  }\r\n  for (const name of mailNodeNames) {\r\n    if (!name) continue;\r\n    try {\r\n      const raw = $(name).first().json;\r\n      if (raw && (raw.id || raw.messageId || raw.threadId || raw.thread_id)) return raw;\r\n    } catch (_) {}\r\n  }\r\n  return input || {};\r\n}\r\n\r\nconst gmail = resolveGmailPayload(\r\n  $input.first().json,\r\n  'MAIL - Candidate slot options',\r\n  'MAIL - Candidate slot options1',\r\n  'MAIL - Candidate pitch mail',\r\n  'MAIL - Candidate pitch mail1',\r\n  'MAIL - Notify candidate',\r\n  'MAIL - Notify candidate1',\r\n  'MAIL - Reply candidate (assessment result)',\r\n  'MAIL - Reply candidate (assessment result)1',\r\n  'MAIL - Send candidate (assessment result)',\r\n);\r\nconst ctx = pickSessionContext();\r\nconst cfg = ctx.config || {};\r\n\r\nconst msgId = String(gmail.id || gmail.messageId || '').trim();\r\nconst threadId = String(gmail.threadId || gmail.thread_id || ctx.gmail_thread_id || '').trim();\r\n\r\nconst sessionId = String(\r\n  ctx.session_id || ctx.session_db_id || ctx.id || ''\r\n).trim();\r\n\r\nconst patchReady = Boolean(sessionId && threadId && msgId);\r\nif (!patchReady) {\r\n  return [\r\n    {\r\n      json: {\r\n        ...ctx,\r\n        _gmail_patch_skipped: true,\r\n        _gmail_patch_skip_reason: [\r\n          !sessionId ? 'missing session_id' : null,\r\n          !threadId ? 'missing gmail_thread_id' : null,\r\n          !msgId ? 'missing gmail message id' : null,\r\n        ]\r\n          .filter(Boolean)\r\n          .join('; '),\r\n        _gmail_patch_url: '',\r\n        _gmail_patch_body: {},\r\n      },\r\n    },\r\n  ];\r\n}\r\n\r\nconst b = String(cfg.supabase_url || '').replace(/\\/+$/, '');\r\nconst tb = cfg.table_assessment_sessions || 'assessment_sessions';\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...ctx,\r\n      gmail_message_id: msgId,\r\n      gmail_thread_id: threadId,\r\n      _gmail_patch_url: `${b}/rest/v1/${tb}?id=eq.${encodeURIComponent(sessionId)}`,\r\n      _gmail_patch_body: {\r\n        gmail_message_id: msgId,\r\n        gmail_thread_id: threadId,\r\n        updated_at: new Date().toISOString(),\r\n      },\r\n    },\r\n  },\r\n];\r\n"
       },
       "id": "09a5d6d7-67c2-42c7-aeca-bb11aa71ffdd",
       "name": "CODE - Merge Gmail reply response (result)",
@@ -1145,7 +1145,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// n8n: CODE - Build assessment result mail (PASS/FAIL — thread reply)\n// Place AFTER: IF - Assessment finished? (true branch)\n// Place BEFORE: MAIL - Reply candidate (assessment result)\n//\n// Gmail node settings:\n//   Resource:   thread\n//   Operation:  reply\n//   Thread ID:  {{ $json.gmail_thread_id }}\n//   Message ID: {{ $json.gmail_message_id }}\n//   Email Type: HTML\n//   Message:    {{ $json.mail_body_html }}\n\nfunction pickNodeJson(...names) {\n  for (const name of names) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object') return raw;\n    } catch (_) {}\n  }\n  return null;\n}\n\nfunction pickSessionRow() {\n  const built =\n    pickNodeJson(\n      'CODE - Build Speech LLM context',\n      'CODE - Build Speech LLM context1',\n      'CODE - Build LLM context',\n      'CODE - Build LLM context1'\n    ) || {};\n  if (built.session?.id) return built.session;\n\n  const fetchRaw = pickNodeJson(\n    'HTTP - Fetch Session',\n    'HTTP - Fetch Session1',\n    'HTTP - SB PATCH session interview_history',\n    'HTTP - SB PATCH session interview_history1'\n  );\n  const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;\n  if (row?.id) return row;\n\n  return {};\n}\n\nconst parse =\n  pickNodeJson(\n    'CODE - Pick Parse Result',\n    'CODE - Pick Parse Result1',\n    'CODE - Parse Speech Result',\n    'CODE - Parse Speech Result1',\n    'CODE - Parse Technical Result',\n    'CODE - Parse Technical Result1'\n  ) || $input.first().json || {};\n\nconst session = pickSessionRow();\nconst cfg = parse.config || session.config || {};\n\nconst threadId = String(\n  parse.gmail_thread_id || session.gmail_thread_id || ''\n).trim();\nconst msgId = String(\n  parse.gmail_message_id || session.gmail_message_id || ''\n).trim();\n\nif (!threadId || threadId.startsWith('draft-')) {\n  const sid = parse.session_id || session.id || 'unknown';\n  throw new Error(\n    'gmail_thread_id missing on session ' +\n      sid +\n      ' — CV screening shortlist mail must PATCH gmail_thread_id to assessment_sessions. ' +\n      'Check Supabase row, run supabase_gmail_thread_columns.sql, and verify CV Screening workflow: ' +\n      'MAIL - Email outreach agent (shortlist) → HTTP - SB PATCH session gmail thread.'\n  );\n}\nif (!msgId) {\n  throw new Error(\n    'gmail_message_id missing on session — re-run shortlist flow or set from first mail.'\n  );\n}\n\nconst result = String(parse.result || 'FAIL').toUpperCase();\nconst passed = result === 'PASS';\nconst score = parse.score ?? parse.average_score ?? '—';\nconst role = String(cfg.requisition_title || 'the role');\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\nconst feedback = String(parse.feedback || '').trim();\nconst sessionId = String(parse.session_id || session.id || '');\n\n// PASS: do not email the candidate here — interviewer pitch runs first; candidate gets\n// slot options only after POST /webhook/talent/scheduling-slots (Build candidate slot mail).\nif (passed) {\n  return [\n    {\n      json: {\n        ...parse,\n        session_id: sessionId,\n        skip_candidate_result_mail: true,\n        mail_stage: 'pass_deferred_to_scheduling',\n        result,\n        candidate_email: parse.candidate_email || session.candidate_email,\n        config: cfg,\n      },\n    },\n  ];\n}\n\nconst sectionTitle = 'Assessment Result';\nconst headline = `Thank you for completing the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`;\n\nconst nextStep =\n  '<p>Unfortunately you did not meet the pass threshold for this role at this time.</p>';\n\nconst mailBodyHtml = `<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"></head>\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\n    <tr><td align=\"center\">\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── ${sectionTitle} ──</p>\n          <p>Hi,</p>\n          <p>${headline}</p>\n          <p><strong>Overall score:</strong> ${score}/100 &nbsp;|&nbsp; <strong>Result:</strong> ${result}</p>\n          ${feedback ? `<p style=\"color:#475569;font-size:14px;\">${feedback.replace(/</g, '&lt;')}</p>` : ''}\n          ${nextStep}\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\n        </td></tr>\n      </table>\n    </td></tr>\n  </table>\n</body></html>`;\n\nreturn [\n  {\n    json: {\n      ...parse,\n      session_id: sessionId,\n      gmail_thread_id: threadId,\n      gmail_message_id: msgId,\n      mail_subject: session.mail_subject || parse.mail_subject || '',\n      mail_body_html: mailBodyHtml,\n      mail_stage: 'fail',\n      candidate_email: parse.candidate_email || session.candidate_email,\n      config: cfg,\n    },\n  },\n];\n"
+        "jsCode": "// n8n: CODE - Build assessment result mail (PASS/FAIL)\r\n// Place AFTER: IF - Result PASS? (false / FAIL branch)\r\n// Place BEFORE: IF - Result mail thread reply? → MAIL Reply OR MAIL Send\r\n//\r\n// Thread reply (preferred):\r\n//   Resource: thread | Operation: reply\r\n//   Thread ID: {{ $json.gmail_thread_id }}\r\n//   Message ID: {{ $json.gmail_message_id }}\r\n//\r\n// Send fallback (no gmail thread on session — e.g. manual shortlist):\r\n//   To: {{ $json.mail_to }}\r\n//   Subject: {{ $json.mail_subject }}\r\n//   Message: {{ $json.mail_body_html }}\r\n\r\nfunction pickNodeJson(...names) {\r\n  for (const name of names) {\r\n    if (!name) continue;\r\n    try {\r\n      const raw = $(name).first().json;\r\n      if (raw && typeof raw === 'object') return raw;\r\n    } catch (_) {}\r\n  }\r\n  return null;\r\n}\r\n\r\nfunction pickSessionRow() {\r\n  const built =\r\n    pickNodeJson(\r\n      'CODE - Build Speech LLM context',\r\n      'CODE - Build Speech LLM context1',\r\n      'CODE - Build LLM context',\r\n      'CODE - Build LLM context1'\r\n    ) || {};\r\n  if (built.session?.id) return built.session;\r\n\r\n  const fetchNames = [\r\n    'HTTP - Fetch Session Complete',\r\n    'HTTP - Fetch Session',\r\n    'HTTP - Fetch Session1',\r\n    'HTTP - SB PATCH session interview_history',\r\n    'HTTP - SB PATCH session interview_history1',\r\n    'HTTP - SB PATCH session',\r\n    'HTTP - SB PATCH session1',\r\n  ];\r\n  for (const name of fetchNames) {\r\n    const fetchRaw = pickNodeJson(name);\r\n    const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;\r\n    if (row?.id) return row;\r\n  }\r\n  return {};\r\n}\r\n\r\nfunction mergeGmailMeta(...sources) {\r\n  let threadId = '';\r\n  let msgId = '';\r\n  let subject = '';\r\n  for (const src of sources) {\r\n    if (!src || typeof src !== 'object') continue;\r\n    if (!threadId) threadId = String(src.gmail_thread_id || '').trim();\r\n    if (!msgId) msgId = String(src.gmail_message_id || '').trim();\r\n    if (!subject) subject = String(src.mail_subject || '').trim();\r\n  }\r\n  return { threadId, msgId, subject };\r\n}\r\n\r\nfunction isValidThread(id) {\r\n  const t = String(id || '').trim();\r\n  return t.length > 0 && !/^pending$/i.test(t) && !t.startsWith('draft-');\r\n}\r\n\r\nasync function fetchSessionGmailMeta(sessionId, cfg) {\r\n  const base = String(cfg.supabase_url || '').replace(/\\/+$/, '');\r\n  const key = String(cfg.supabase_key || '').trim();\r\n  const sid = String(sessionId || '').trim();\r\n  if (!base || !key || !sid) return null;\r\n  try {\r\n    const tb = cfg.table_assessment_sessions || 'assessment_sessions';\r\n    const url =\r\n      `${base}/rest/v1/${tb}?id=eq.${encodeURIComponent(sid)}` +\r\n      '&select=id,gmail_thread_id,gmail_message_id,mail_subject,candidate_email,requisition_id';\r\n    const res = await fetch(url, {\r\n      headers: { apikey: key, Authorization: `Bearer ${key}` },\r\n    });\r\n    if (!res.ok) return null;\r\n    const rows = await res.json();\r\n    return Array.isArray(rows) ? rows[0] : null;\r\n  } catch (_) {\r\n    return null;\r\n  }\r\n}\r\n\r\nasync function lookupSiblingSessionThread(sessionId, email, requisitionId, cfg) {\r\n  const base = String(cfg.supabase_url || '').replace(/\\/+$/, '');\r\n  const key = String(cfg.supabase_key || '').trim();\r\n  const em = String(email || '').trim().toLowerCase();\r\n  if (!base || !key || !em) return null;\r\n\r\n  const tb = cfg.table_assessment_sessions || 'assessment_sessions';\r\n  const req = String(requisitionId || '').trim();\r\n  const urls = [];\r\n  if (req) {\r\n    urls.push(\r\n      `${base}/rest/v1/${tb}?candidate_email=eq.${encodeURIComponent(em)}` +\r\n        `&requisition_id=eq.${encodeURIComponent(req)}` +\r\n        '&select=gmail_thread_id,gmail_message_id,mail_subject,id' +\r\n        '&order=updated_at.desc&limit=5'\r\n    );\r\n  }\r\n  urls.push(\r\n    `${base}/rest/v1/${tb}?candidate_email=eq.${encodeURIComponent(em)}` +\r\n      '&select=gmail_thread_id,gmail_message_id,mail_subject,id,requisition_id' +\r\n      '&order=updated_at.desc&limit=5'\r\n  );\r\n\r\n  for (const url of urls) {\r\n    try {\r\n      const res = await fetch(url, {\r\n        headers: { apikey: key, Authorization: `Bearer ${key}` },\r\n      });\r\n      if (!res.ok) continue;\r\n      const rows = await res.json();\r\n      if (!Array.isArray(rows)) continue;\r\n      for (const row of rows) {\r\n        if (String(row.id || '') === String(sessionId || '')) continue;\r\n        const threadId = String(row.gmail_thread_id || '').trim();\r\n        if (isValidThread(threadId)) return row;\r\n      }\r\n    } catch (_) {\r\n      /* next */\r\n    }\r\n  }\r\n  return null;\r\n}\r\n\r\nreturn (async () => {\r\nconst parse =\r\n  pickNodeJson(\r\n    'CODE - Pick Parse Result',\r\n    'CODE - Pick Parse Result1',\r\n    'CODE - Parse Live Speech Result',\r\n    'CODE - Parse Speech Result',\r\n    'CODE - Parse Speech Result1',\r\n    'CODE - Parse Technical Result',\r\n    'CODE - Parse Technical Result1'\r\n  ) || $input.first().json || {};\r\n\r\nconst session = pickSessionRow();\r\nconst cfg = parse.config || session.config || {};\r\nconst sessionId = String(parse.session_id || session.id || '').trim();\r\n\r\nlet gmail = mergeGmailMeta(parse, session, $input.first().json);\r\n\r\nif ((!isValidThread(gmail.threadId) || !gmail.msgId) && sessionId) {\r\n  const fresh = await fetchSessionGmailMeta(sessionId, cfg);\r\n  if (fresh) {\r\n    gmail = mergeGmailMeta(gmail, fresh);\r\n  }\r\n}\r\n\r\nif (!isValidThread(gmail.threadId) && sessionId) {\r\n  const sibling = await lookupSiblingSessionThread(\r\n    sessionId,\r\n    parse.candidate_email || session.candidate_email,\r\n    parse.requisition_id || session.requisition_id,\r\n    cfg\r\n  );\r\n  if (sibling) {\r\n    gmail = mergeGmailMeta(gmail, sibling);\r\n  }\r\n}\r\n\r\nconst result = String(parse.result || 'FAIL').toUpperCase();\r\nconst passed = result === 'PASS';\r\nconst score = parse.score ?? parse.average_score ?? '—';\r\nconst role = String(cfg.requisition_title || parse.requisition_title || 'the role');\r\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\r\nconst feedback = String(parse.feedback || '').trim();\r\nconst candidateEmail = String(\r\n  parse.candidate_email || session.candidate_email || ''\r\n)\r\n  .trim()\r\n  .toLowerCase();\r\n\r\n// PASS: candidate mail deferred to scheduling-slots webhook.\r\nif (passed) {\r\n  return [\r\n    {\r\n      json: {\r\n        ...parse,\r\n        session_id: sessionId,\r\n        skip_candidate_result_mail: true,\r\n        mail_stage: 'pass_deferred_to_scheduling',\r\n        result,\r\n        candidate_email: candidateEmail,\r\n        config: cfg,\r\n      },\r\n    },\r\n  ];\r\n}\r\n\r\nconst useThreadReply =\r\n  isValidThread(gmail.threadId) && Boolean(gmail.msgId);\r\nconst mailMode = useThreadReply ? 'thread_reply' : 'send';\r\nconst defaultSubject = `Your assessment result — ${role.replace(/[\\r\\n]+/g, ' ').slice(0, 120)}`;\r\nconst mailSubject =\r\n  gmail.subject ||\r\n  defaultSubject;\r\n\r\nconst sectionTitle = 'Assessment Result';\r\nconst headline = `Thank you for completing the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`;\r\n\r\nconst nextStep =\r\n  '<p>Unfortunately you did not meet the pass threshold for this role at this time.</p>';\r\n\r\nconst mailBodyHtml = `<!DOCTYPE html>\r\n<html><head><meta charset=\"UTF-8\"></head>\r\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\r\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\r\n    <tr><td align=\"center\">\r\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\r\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\r\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── ${sectionTitle} ──</p>\r\n          <p>Hi,</p>\r\n          <p>${headline}</p>\r\n          <p><strong>Overall score:</strong> ${score}/100 &nbsp;|&nbsp; <strong>Result:</strong> ${result}</p>\r\n          ${feedback ? `<p style=\"color:#475569;font-size:14px;\">${feedback.replace(/</g, '&lt;')}</p>` : ''}\r\n          ${nextStep}\r\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\r\n        </td></tr>\r\n      </table>\r\n    </td></tr>\r\n  </table>\r\n</body></html>`;\r\n\r\nif (!candidateEmail) {\r\n  throw new Error(\r\n    'candidate_email missing — cannot send assessment result mail for session ' +\r\n      (sessionId || 'unknown')\r\n  );\r\n}\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...parse,\r\n      session_id: sessionId,\r\n      mail_mode: mailMode,\r\n      mail_to: candidateEmail,\r\n      gmail_thread_id: useThreadReply ? gmail.threadId : undefined,\r\n      gmail_message_id: useThreadReply ? gmail.msgId : undefined,\r\n      mail_subject: mailSubject,\r\n      mail_body_html: mailBodyHtml,\r\n      mail_stage: 'fail',\r\n      candidate_email: candidateEmail,\r\n      config: cfg,\r\n      gmail_lookup_used_send_fallback: mailMode === 'send',\r\n    },\r\n  },\r\n];\r\n})();\r\n"
       },
       "id": "e58ba871-bb28-42f7-89e7-75e719af5e05",
       "name": "CODE - Build assessment result mail",
@@ -2598,6 +2598,63 @@
         -672,
         1216
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "mail-mode-thread",
+              "leftValue": "={{ $json.mail_mode }}",
+              "rightValue": "thread_reply",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f3a8c2e1-9b4d-4a7f-8e2c-1d5f6a7b8c9d",
+      "name": "IF - Result mail thread reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        736,
+        2576
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.mail_to || $json.candidate_email }}",
+        "subject": "={{ $json.mail_subject }}",
+        "emailType": "html",
+        "message": "={{ $json.mail_body_html }}",
+        "options": {}
+      },
+      "id": "c7d2e9f0-1a3b-4c5d-9e8f-7a6b5c4d3e2f",
+      "name": "MAIL - Send candidate (assessment result)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        848,
+        2688
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CcnDBdkBFC1XBUQb",
+          "name": "Gmail account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -3031,7 +3088,7 @@
       "main": [
         [
           {
-            "node": "MAIL - Reply candidate (assessment result)",
+            "node": "IF - Result mail thread reply?",
             "type": "main",
             "index": 0
           }
@@ -3516,6 +3573,35 @@
         [
           {
             "node": "CFG - Workflow configuration1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Result mail thread reply?": {
+      "main": [
+        [
+          {
+            "node": "MAIL - Reply candidate (assessment result)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MAIL - Send candidate (assessment result)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MAIL - Send candidate (assessment result)": {
+      "main": [
+        [
+          {
+            "node": "CODE - Merge Gmail reply response (result)",
             "type": "main",
             "index": 0
           }

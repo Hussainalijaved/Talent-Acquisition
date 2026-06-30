@@ -1,14 +1,16 @@
-// n8n: CODE - Build assessment result mail (PASS/FAIL — thread reply)
-// Place AFTER: IF - Assessment finished? (true branch)
-// Place BEFORE: MAIL - Reply candidate (assessment result)
+// n8n: CODE - Build assessment result mail (PASS/FAIL)
+// Place AFTER: IF - Result PASS? (false / FAIL branch)
+// Place BEFORE: IF - Result mail thread reply? → MAIL Reply OR MAIL Send
 //
-// Gmail node settings:
-//   Resource:   thread
-//   Operation:  reply
-//   Thread ID:  {{ $json.gmail_thread_id }}
+// Thread reply (preferred):
+//   Resource: thread | Operation: reply
+//   Thread ID: {{ $json.gmail_thread_id }}
 //   Message ID: {{ $json.gmail_message_id }}
-//   Email Type: HTML
-//   Message:    {{ $json.mail_body_html }}
+//
+// Send fallback (no gmail thread on session — e.g. manual shortlist):
+//   To: {{ $json.mail_to }}
+//   Subject: {{ $json.mail_subject }}
+//   Message: {{ $json.mail_body_html }}
 
 function pickNodeJson(...names) {
   for (const name of names) {
@@ -31,25 +33,111 @@ function pickSessionRow() {
     ) || {};
   if (built.session?.id) return built.session;
 
-  const fetchRaw = pickNodeJson(
+  const fetchNames = [
     'HTTP - Fetch Session Complete',
     'HTTP - Fetch Session',
     'HTTP - Fetch Session1',
     'HTTP - SB PATCH session interview_history',
     'HTTP - SB PATCH session interview_history1',
     'HTTP - SB PATCH session',
-    'HTTP - SB PATCH session1'
-  );
-  const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;
-  if (row?.id) return row;
-
+    'HTTP - SB PATCH session1',
+  ];
+  for (const name of fetchNames) {
+    const fetchRaw = pickNodeJson(name);
+    const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;
+    if (row?.id) return row;
+  }
   return {};
 }
 
+function mergeGmailMeta(...sources) {
+  let threadId = '';
+  let msgId = '';
+  let subject = '';
+  for (const src of sources) {
+    if (!src || typeof src !== 'object') continue;
+    if (!threadId) threadId = String(src.gmail_thread_id || '').trim();
+    if (!msgId) msgId = String(src.gmail_message_id || '').trim();
+    if (!subject) subject = String(src.mail_subject || '').trim();
+  }
+  return { threadId, msgId, subject };
+}
+
+function isValidThread(id) {
+  const t = String(id || '').trim();
+  return t.length > 0 && !/^pending$/i.test(t) && !t.startsWith('draft-');
+}
+
+async function fetchSessionGmailMeta(sessionId, cfg) {
+  const base = String(cfg.supabase_url || '').replace(/\/+$/, '');
+  const key = String(cfg.supabase_key || '').trim();
+  const sid = String(sessionId || '').trim();
+  if (!base || !key || !sid) return null;
+  try {
+    const tb = cfg.table_assessment_sessions || 'assessment_sessions';
+    const url =
+      `${base}/rest/v1/${tb}?id=eq.${encodeURIComponent(sid)}` +
+      '&select=id,gmail_thread_id,gmail_message_id,mail_subject,candidate_email,requisition_id';
+    const res = await fetch(url, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return Array.isArray(rows) ? rows[0] : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function lookupSiblingSessionThread(sessionId, email, requisitionId, cfg) {
+  const base = String(cfg.supabase_url || '').replace(/\/+$/, '');
+  const key = String(cfg.supabase_key || '').trim();
+  const em = String(email || '').trim().toLowerCase();
+  if (!base || !key || !em) return null;
+
+  const tb = cfg.table_assessment_sessions || 'assessment_sessions';
+  const req = String(requisitionId || '').trim();
+  const urls = [];
+  if (req) {
+    urls.push(
+      `${base}/rest/v1/${tb}?candidate_email=eq.${encodeURIComponent(em)}` +
+        `&requisition_id=eq.${encodeURIComponent(req)}` +
+        '&select=gmail_thread_id,gmail_message_id,mail_subject,id' +
+        '&order=updated_at.desc&limit=5'
+    );
+  }
+  urls.push(
+    `${base}/rest/v1/${tb}?candidate_email=eq.${encodeURIComponent(em)}` +
+      '&select=gmail_thread_id,gmail_message_id,mail_subject,id,requisition_id' +
+      '&order=updated_at.desc&limit=5'
+  );
+
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: { apikey: key, Authorization: `Bearer ${key}` },
+      });
+      if (!res.ok) continue;
+      const rows = await res.json();
+      if (!Array.isArray(rows)) continue;
+      for (const row of rows) {
+        if (String(row.id || '') === String(sessionId || '')) continue;
+        const threadId = String(row.gmail_thread_id || '').trim();
+        if (isValidThread(threadId)) return row;
+      }
+    } catch (_) {
+      /* next */
+    }
+  }
+  return null;
+}
+
+return (async () => {
 const parse =
   pickNodeJson(
     'CODE - Pick Parse Result',
     'CODE - Pick Parse Result1',
+    'CODE - Parse Live Speech Result',
     'CODE - Parse Speech Result',
     'CODE - Parse Speech Result1',
     'CODE - Parse Technical Result',
@@ -58,40 +146,42 @@ const parse =
 
 const session = pickSessionRow();
 const cfg = parse.config || session.config || {};
+const sessionId = String(parse.session_id || session.id || '').trim();
 
-const threadId = String(
-  parse.gmail_thread_id || session.gmail_thread_id || ''
-).trim();
-const msgId = String(
-  parse.gmail_message_id || session.gmail_message_id || ''
-).trim();
+let gmail = mergeGmailMeta(parse, session, $input.first().json);
 
-if (!threadId || threadId.startsWith('draft-')) {
-  const sid = parse.session_id || session.id || 'unknown';
-  throw new Error(
-    'gmail_thread_id missing on session ' +
-      sid +
-      ' — CV screening shortlist mail must PATCH gmail_thread_id to assessment_sessions. ' +
-      'Check Supabase row, run supabase_gmail_thread_columns.sql, and verify CV Screening workflow: ' +
-      'MAIL - Email outreach agent (shortlist) → HTTP - SB PATCH session gmail thread.'
-  );
+if ((!isValidThread(gmail.threadId) || !gmail.msgId) && sessionId) {
+  const fresh = await fetchSessionGmailMeta(sessionId, cfg);
+  if (fresh) {
+    gmail = mergeGmailMeta(gmail, fresh);
+  }
 }
-if (!msgId) {
-  throw new Error(
-    'gmail_message_id missing on session — re-run shortlist flow or set from first mail.'
+
+if (!isValidThread(gmail.threadId) && sessionId) {
+  const sibling = await lookupSiblingSessionThread(
+    sessionId,
+    parse.candidate_email || session.candidate_email,
+    parse.requisition_id || session.requisition_id,
+    cfg
   );
+  if (sibling) {
+    gmail = mergeGmailMeta(gmail, sibling);
+  }
 }
 
 const result = String(parse.result || 'FAIL').toUpperCase();
 const passed = result === 'PASS';
 const score = parse.score ?? parse.average_score ?? '—';
-const role = String(cfg.requisition_title || 'the role');
+const role = String(cfg.requisition_title || parse.requisition_title || 'the role');
 const org = String(cfg.organization_name || 'Talent Acquisition Team');
 const feedback = String(parse.feedback || '').trim();
-const sessionId = String(parse.session_id || session.id || '');
+const candidateEmail = String(
+  parse.candidate_email || session.candidate_email || ''
+)
+  .trim()
+  .toLowerCase();
 
-// PASS: do not email the candidate here — interviewer pitch runs first; candidate gets
-// slot options only after POST /webhook/talent/scheduling-slots (Build candidate slot mail).
+// PASS: candidate mail deferred to scheduling-slots webhook.
 if (passed) {
   return [
     {
@@ -101,12 +191,20 @@ if (passed) {
         skip_candidate_result_mail: true,
         mail_stage: 'pass_deferred_to_scheduling',
         result,
-        candidate_email: parse.candidate_email || session.candidate_email,
+        candidate_email: candidateEmail,
         config: cfg,
       },
     },
   ];
 }
+
+const useThreadReply =
+  isValidThread(gmail.threadId) && Boolean(gmail.msgId);
+const mailMode = useThreadReply ? 'thread_reply' : 'send';
+const defaultSubject = `Your assessment result — ${role.replace(/[\r\n]+/g, ' ').slice(0, 120)}`;
+const mailSubject =
+  gmail.subject ||
+  defaultSubject;
 
 const sectionTitle = 'Assessment Result';
 const headline = `Thank you for completing the assessment for <strong>${role.replace(/</g, '&lt;')}</strong>.`;
@@ -134,18 +232,29 @@ const mailBodyHtml = `<!DOCTYPE html>
   </table>
 </body></html>`;
 
+if (!candidateEmail) {
+  throw new Error(
+    'candidate_email missing — cannot send assessment result mail for session ' +
+      (sessionId || 'unknown')
+  );
+}
+
 return [
   {
     json: {
       ...parse,
       session_id: sessionId,
-      gmail_thread_id: threadId,
-      gmail_message_id: msgId,
-      mail_subject: session.mail_subject || parse.mail_subject || '',
+      mail_mode: mailMode,
+      mail_to: candidateEmail,
+      gmail_thread_id: useThreadReply ? gmail.threadId : undefined,
+      gmail_message_id: useThreadReply ? gmail.msgId : undefined,
+      mail_subject: mailSubject,
       mail_body_html: mailBodyHtml,
       mail_stage: 'fail',
-      candidate_email: parse.candidate_email || session.candidate_email,
+      candidate_email: candidateEmail,
       config: cfg,
+      gmail_lookup_used_send_fallback: mailMode === 'send',
     },
   },
 ];
+})();

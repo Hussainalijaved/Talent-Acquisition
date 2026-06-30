@@ -837,6 +837,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="job-display-styles.js"></script>
+    <script src="pass-threshold.js"></script>
     <script>
         if (window.pdfjsLib) {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -857,6 +858,7 @@
         let currentJob = null;
         let webhookUrl = '';
         let writtenQuestionBounds = { min: 4, max: 10 };
+        let passThresholdForJob = 60;
         let sbClient = null;
         let submitSucceeded = false;
         let submitAbort = null;
@@ -2246,11 +2248,12 @@
 
             sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-            const [jobRes, configRes, writtenMinRes, writtenMaxRes] = await Promise.all([
+            const [jobRes, configRes, writtenMinRes, writtenMaxRes, passTiersRes] = await Promise.all([
                 sbClient.from('jobs').select('*').eq('job_id', jobSlug).eq('status', 'open').maybeSingle(),
                 sbClient.from('app_config').select('value').eq('key', 'cv_ingest_webhook').maybeSingle(),
                 sbClient.from('app_config').select('value').eq('key', 'written_questions_min').maybeSingle(),
                 sbClient.from('app_config').select('value').eq('key', 'written_questions_max').maybeSingle(),
+                sbClient.from('app_config').select('value').eq('key', 'default_pass_score_thresholds').maybeSingle(),
             ]);
 
             if (jobRes.error) {
@@ -2278,6 +2281,20 @@
             };
             if (writtenQuestionBounds.min > writtenQuestionBounds.max) {
                 writtenQuestionBounds = { min: writtenQuestionBounds.max, max: writtenQuestionBounds.min };
+            }
+
+            if (window.TAPassThreshold) {
+                let tiers = null;
+                try {
+                    tiers = passTiersRes.data?.value
+                        ? window.TAPassThreshold.normalizePassThresholds(JSON.parse(passTiersRes.data.value))
+                        : null;
+                } catch (_) {
+                    tiers = null;
+                }
+                if (tiers) window.TAPassThreshold.setCachedThresholds(tiers);
+                else await window.TAPassThreshold.loadFromSupabase(sbClient);
+                passThresholdForJob = window.TAPassThreshold.resolvePassThresholdForTitle(currentJob.title);
             }
 
             document.title = 'Apply — ' + currentJob.title + ' | CONVO';
@@ -2389,12 +2406,8 @@
             if (currentJob.interviewer_email) {
                 formData.append('interviewer_email', currentJob.interviewer_email);
             }
-            if (currentJob.pass_score_threshold != null) {
-                formData.append('pass_score_threshold', String(currentJob.pass_score_threshold));
-            }
-            if (currentJob.fail_score_threshold != null) {
-                formData.append('fail_score_threshold', String(currentJob.fail_score_threshold));
-            }
+            formData.append('pass_score_threshold', String(passThresholdForJob));
+            formData.append('fail_score_threshold', '30');
             if (currentJob.cv_shortlist_threshold != null) {
                 formData.append('cv_shortlist_threshold', String(currentJob.cv_shortlist_threshold));
             }

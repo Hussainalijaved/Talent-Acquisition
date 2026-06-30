@@ -117,6 +117,52 @@ const is_duplicate = rows.some((r) => {
   return Boolean(r.fingerprint && r.fingerprint === fingerprint);
 });
 
+function detectSeniorityForPass(title) {
+  const t = String(title || '').toLowerCase();
+  if (/\b(intern|trainee|graduate|entry[\s-]?level)\b/.test(t)) return 'intern';
+  if (/\b(junior|jr\.?)\b/.test(t)) return 'junior';
+  if (/\b(senior|sr\.?|lead|principal|staff|architect|head)\b/.test(t)) return 'senior';
+  return 'mid';
+}
+
+function seniorityPassKeyForPass(seniority) {
+  const s = String(seniority || '').toLowerCase();
+  if (s === 'intern' || s === 'junior') return 'junior';
+  if (s === 'senior') return 'senior';
+  return 'mid';
+}
+
+function resolvePassThresholdForTitle(title, tiers) {
+  const t = tiers && typeof tiers === 'object' ? tiers : {};
+  const key = seniorityPassKeyForPass(detectSeniorityForPass(title));
+  const raw = Number(t[key] ?? t.mid ?? 60);
+  if (!Number.isFinite(raw)) return 60;
+  return Math.min(100, Math.max(0, Math.round(raw)));
+}
+
+function parsePassTiers(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(String(raw));
+  } catch (_) {
+    return null;
+  }
+}
+
+const jdTitleForPass =
+  intake.requisition_title ||
+  pick(webhook, 'requisition_title', 'job_title') ||
+  cfg.config?.requisition_title ||
+  '';
+
+const passFromIntake =
+  intake.pass_score_threshold ?? pickNum(webhook, 'pass_score_threshold');
+const passTiers =
+  parsePassTiers(cfg.config?.default_pass_score_thresholds) ||
+  parsePassTiers(intake.pass_score_thresholds) ||
+  { junior: 55, mid: 60, senior: 70 };
+
 const config = {
   ...(cfg.config || {}),
   requisition_title:
@@ -130,10 +176,8 @@ const config = {
     cfg.config?.interviewer_email ||
     '',
   pass_score_threshold:
-    intake.pass_score_threshold ??
-    pickNum(webhook, 'pass_score_threshold') ??
-    cfg.config?.pass_score_threshold ??
-    60,
+    passFromIntake ??
+    (jdTitleForPass ? resolvePassThresholdForTitle(jdTitleForPass, passTiers) : 60),
   fail_score_threshold:
     intake.fail_score_threshold ??
     pickNum(webhook, 'fail_score_threshold') ??

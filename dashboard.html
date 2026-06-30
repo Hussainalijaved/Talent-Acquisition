@@ -365,24 +365,12 @@
 
                                     <section class="job-form-section">
                                         <div class="job-form-section-title">CV screening</div>
-                                        <p class="job-form-section-hint">AI scores CV fit (0–100). Candidates at or above this threshold can be shortlisted for assessment.</p>
+                                        <p class="job-form-section-hint">Minimum CV fit score (0–100) to shortlist for assessment. Assessment pass threshold is set globally in Settings by role level.</p>
                                         <div class="job-form-row cols-2">
                                             <div class="form-group">
                                                 <label for="jobCvShortlistIn">CV shortlist threshold (%)</label>
                                                 <input id="jobCvShortlistIn" type="number" min="0" max="100" step="1" value="62" placeholder="62" />
                                                 <div class="form-hint">Default 62 — borderline REVIEW auto-shortlists at +16 (e.g. 78).</div>
-                                            </div>
-                                        </div>
-                                    </section>
-
-                                    <section class="job-form-section">
-                                        <div class="job-form-section-title">Assessment scoring</div>
-                                        <p class="job-form-section-hint">Combined score = 70% technical + 30% live speech. Candidate must meet the pass threshold to receive PASS.</p>
-                                        <div class="job-form-row cols-2">
-                                            <div class="form-group">
-                                                <label for="jobPassThresholdIn">Pass threshold (%)</label>
-                                                <input id="jobPassThresholdIn" type="number" min="0" max="100" step="1" value="60" placeholder="60" />
-                                                <div class="form-hint" id="jobPassThresholdHint">Pre-filled from Settings by job title level. You can override per job.</div>
                                             </div>
                                         </div>
                                     </section>
@@ -703,8 +691,8 @@
                         </div>
                     </div>
                     <p class="settings-scoring-intro">
-                        Combined score = <strong>70% technical + 30% voice</strong>. Candidate must meet the pass threshold to receive PASS.
-                        Per-job override remains on <strong>Create / Edit job</strong>.
+                        Combined score = <strong>70% technical + 30% voice</strong>. Pass threshold applies to all assessments and is chosen from job title level (Junior / Mid / Senior).
+                        CV shortlist threshold is set per job on <strong>Create / Edit job</strong>.
                     </p>
                     <div class="settings-scoring-tiers">
                         <div class="settings-tier-card settings-tier-junior">
@@ -734,7 +722,6 @@
                     </div>
                     <div class="form-actions settings-form-actions">
                         <button type="button" class="btn-primary" id="saveDefaultPassBtn" data-requires-perm="edit_jobs">Save defaults</button>
-                        <button type="button" class="btn-secondary" id="applyPassAllJobsBtn" data-requires-perm="edit_jobs">Apply by level to all jobs</button>
                     </div>
                     <p class="form-hint settings-status-note" id="assessmentScoringStatus"></p>
                 </div>
@@ -827,6 +814,7 @@
     <script src="final-score.js"></script>
     <script src="admin-auth.js"></script>
     <script src="job-display-styles.js"></script>
+    <script src="pass-threshold.js"></script>
     <script src="admin-panel.js"></script>
     <script>
         let sb = null;

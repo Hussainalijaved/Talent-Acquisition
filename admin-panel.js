@@ -32,6 +32,16 @@
     let globalPassThresholds = { ...DEFAULT_PASS_THRESHOLDS };
     let globalWrittenQMin = DEFAULT_WRITTEN_Q_MIN;
     let globalWrittenQMax = DEFAULT_WRITTEN_Q_MAX;
+
+    function pt() {
+        return typeof window !== 'undefined' ? window.TAPassThreshold : null;
+    }
+
+    function syncPassThresholdCache(thresholds) {
+        globalPassThresholds = thresholds;
+        globalPassThreshold = thresholds.mid ?? DEFAULT_PASS_FALLBACK;
+        pt()?.setCachedThresholds?.(thresholds);
+    }
     const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
     const BLOCKED_LOCAL = /^(noreply|no-reply|donotreply|support|info|admin|contact|hr|careers|jobs|hello)$/i;
     const BLOCKED_DOMAIN = /@(example\.com|test\.com|domain\.com|email\.com)$/i;
@@ -653,6 +663,7 @@
     }
 
     function seniorityPassKey(seniority) {
+        if (pt()) return pt().seniorityPassKey(seniority);
         const s = String(seniority || '').toLowerCase();
         if (s === 'intern' || s === 'junior') return 'junior';
         if (s === 'senior') return 'senior';
@@ -660,6 +671,7 @@
     }
 
     function resolveDefaultPassThresholdForTitle(title) {
+        if (pt()) return pt().resolvePassThresholdForTitle(title, globalPassThresholds);
         const key = seniorityPassKey(detectSeniority(title));
         return globalPassThresholds[key] ?? DEFAULT_PASS_THRESHOLDS[key] ?? DEFAULT_PASS_FALLBACK;
     }
@@ -669,6 +681,7 @@
     }
 
     function normalizePassThresholds(raw) {
+        if (pt()) return pt().normalizePassThresholds(raw);
         const src = raw && typeof raw === 'object' ? raw : {};
         return {
             junior: parseScoreThreshold(src.junior ?? src.intern, DEFAULT_PASS_THRESHOLDS.junior),
@@ -687,8 +700,7 @@
 
     function populatePassThresholdInputs(thresholds) {
         const t = normalizePassThresholds(thresholds);
-        globalPassThresholds = t;
-        globalPassThreshold = t.mid;
+        syncPassThresholdCache(t);
         const map = [
             ['admPassJunior', t.junior],
             ['admPassMid', t.mid],
@@ -698,33 +710,6 @@
             const el = document.getElementById(id);
             if (el) el.value = String(val);
         });
-    }
-
-    function prefillNewJobPassThreshold() {
-        const editId = document.getElementById('jobEditId')?.value;
-        if (editId) return;
-        const title = document.getElementById('jobTitleIn')?.value || '';
-        const threshold = resolveDefaultPassThresholdForTitle(title);
-        const el = document.getElementById('jobPassThresholdIn');
-        if (el) el.value = String(threshold);
-        updateJobPassThresholdHint(title);
-    }
-
-    function updateJobPassThresholdHint(title) {
-        const hint = document.getElementById('jobPassThresholdHint');
-        if (!hint) return;
-        const editId = document.getElementById('jobEditId')?.value;
-        if (editId) {
-            hint.textContent = 'Per-job override — change here or update level defaults in Settings.';
-            return;
-        }
-        const level = detectSeniority(title);
-        const key = seniorityPassKey(level);
-        const suggested = globalPassThresholds[key] ?? DEFAULT_PASS_THRESHOLDS[key];
-        const label = key === 'junior' ? 'Junior / Entry' : key === 'senior' ? 'Senior / Lead' : 'Mid-level';
-        hint.textContent = title.trim()
-            ? `Suggested for “${label}” (${level}): ${suggested}% — from Settings. You can override.`
-            : `Pre-filled from Settings by job title (Junior ${globalPassThresholds.junior}%, Mid ${globalPassThresholds.mid}%, Senior ${globalPassThresholds.senior}%).`;
     }
 
     function setAssessmentScoringStatus(text) {
@@ -815,6 +800,11 @@
     }
 
     async function loadAssessmentScoringConfig() {
+        if (pt() && deps?.sb) {
+            const loaded = await pt().loadFromSupabase(deps.sb);
+            populatePassThresholdInputs(loaded);
+            return globalPassThresholds;
+        }
         if (!deps?.sb) {
             populatePassThresholdInputs(globalPassThresholds);
             return globalPassThresholds;
@@ -866,6 +856,7 @@
         }
         globalPassThresholds = thresholds;
         globalPassThreshold = thresholds.mid;
+        syncPassThresholdCache(thresholds);
         if (deps.sb) {
             const payload = JSON.stringify(thresholds);
             const now = new Date().toISOString();
@@ -885,76 +876,9 @@
             await deps.auth.logAudit('save_scoring_default', 'app_config', PASS_THRESHOLDS_CONFIG_KEY, thresholds);
         }
         setAssessmentScoringStatus(
-            `Saved — Junior ${thresholds.junior}%, Mid ${thresholds.mid}%, Senior ${thresholds.senior}%. New jobs pre-fill by title.`
+            `Saved — Junior ${thresholds.junior}%, Mid ${thresholds.mid}%, Senior ${thresholds.senior}%. Applies to all new assessments by job title.`
         );
-        prefillNewJobPassThreshold();
         deps.banner('Pass thresholds saved.', 'ok');
-    }
-
-    async function applyPassThresholdToAllJobs() {
-        if (deps.auth && !deps.auth.can('edit_jobs')) {
-            deps.banner('You do not have permission to update jobs.', 'err');
-            return;
-        }
-        const thresholds = readPassThresholdInputs();
-        if (thresholds.senior < thresholds.mid || thresholds.mid < thresholds.junior) {
-            deps.banner('Senior threshold should be ≥ Mid ≥ Junior.', 'err');
-            return;
-        }
-        const jobCount = JOBS.length;
-        const msg =
-            `Apply level-based pass thresholds to all ${jobCount} job(s)?\n\n` +
-            `• Junior / Entry titles → ${thresholds.junior}%\n` +
-            `• Mid-level titles → ${thresholds.mid}%\n` +
-            `• Senior / Lead titles → ${thresholds.senior}%\n\n` +
-            'In-progress assessments keep the threshold from when they started.';
-        if (!confirm(msg)) return;
-
-        globalPassThresholds = thresholds;
-        globalPassThreshold = thresholds.mid;
-        if (deps.sb) {
-            const now = new Date().toISOString();
-            const { error: cfgErr } = await deps.sb.from('app_config').upsert(
-                [
-                    { key: PASS_THRESHOLDS_CONFIG_KEY, value: JSON.stringify(thresholds), updated_at: now },
-                    { key: DEFAULT_PASS_CONFIG_KEY, value: String(thresholds.mid), updated_at: now },
-                ],
-                { onConflict: 'key' }
-            );
-            if (cfgErr) {
-                deps.banner('Could not save defaults: ' + cfgErr.message, 'err');
-                return;
-            }
-
-            const counts = { junior: 0, mid: 0, senior: 0 };
-            for (const job of JOBS) {
-                const key = seniorityPassKey(detectSeniority(job.title));
-                const pass = thresholds[key];
-                counts[key] += 1;
-                const { error: jobErr } = await deps.sb
-                    .from('jobs')
-                    .update({ pass_score_threshold: pass, updated_at: now })
-                    .eq('id', job.id);
-                if (jobErr) {
-                    deps.banner('Update failed for “' + (job.title || job.id) + '”: ' + jobErr.message, 'err');
-                    return;
-                }
-            }
-            setAssessmentScoringStatus(
-                `Applied to ${jobCount} job(s): ${counts.junior} junior (${thresholds.junior}%), ` +
-                `${counts.mid} mid (${thresholds.mid}%), ${counts.senior} senior (${thresholds.senior}%).`
-            );
-        }
-
-        await loadJobs();
-        prefillNewJobPassThreshold();
-        if (deps.auth) {
-            await deps.auth.logAudit('apply_pass_threshold_all_jobs', 'jobs', 'all', {
-                ...thresholds,
-                job_count: jobCount,
-            });
-        }
-        deps.banner('Pass thresholds applied by job level.', 'ok');
     }
 
     async function loadJobs() {
@@ -1081,11 +1005,9 @@
         document.getElementById('jobStackIn').value = j.tech_stack || '';
         document.getElementById('jobSalaryIn').value = j.salary_range || '';
         document.getElementById('jobJdIn').value = j.jd_text || '';
-        document.getElementById('jobPassThresholdIn').value = String(parseScoreThreshold(j.pass_score_threshold, resolveDefaultPassThresholdForTitle(j.title)));
         document.getElementById('jobCvShortlistIn').value = String(parseScoreThreshold(j.cv_shortlist_threshold, 62));
         setSelectValue('jobDisplayStyleIn', window.TAJobStyles?.normalize(j.display_style) || 'hiring-top', 'hiring-top');
         updateJobDisplayStyleHint();
-        updateJobPassThresholdHint(j.title || '');
         clearJobFieldErrors();
         resetJobTemplateUi();
         deps.setView('jobs-create');
@@ -1140,10 +1062,6 @@
         const display_style = window.TAJobStyles?.normalize(
             document.getElementById('jobDisplayStyleIn')?.value || 'hiring-top'
         ) || 'hiring-top';
-        const pass_score_threshold = parseScoreThreshold(
-            document.getElementById('jobPassThresholdIn')?.value,
-            resolveDefaultPassThresholdForTitle(title)
-        );
         const cv_shortlist_threshold = parseScoreThreshold(
             document.getElementById('jobCvShortlistIn')?.value,
             62
@@ -1162,7 +1080,6 @@
             tech_stack,
             salary_range,
             display_style,
-            pass_score_threshold,
             cv_shortlist_threshold,
             updated_at: new Date().toISOString(),
         };
@@ -2152,10 +2069,8 @@
         const linkedJob = JOBS.find((j) => j.id === scrJobEl?.selectedOptions?.[0]?.dataset?.jobId);
         const wq = getWrittenQuestionBounds();
         const screenOpts = {
-            passScoreThreshold: linkedJob
-                ? parseScoreThreshold(linkedJob.pass_score_threshold, resolveDefaultPassThresholdForTitle(linkedJob.title))
-                : resolveDefaultPassThreshold(),
-            failScoreThreshold: linkedJob ? parseScoreThreshold(linkedJob.fail_score_threshold, 30) : null,
+            passScoreThreshold: resolveDefaultPassThresholdForTitle(linkedJob?.title || title),
+            failScoreThreshold: 30,
             cvShortlistThreshold: linkedJob ? parseScoreThreshold(linkedJob.cv_shortlist_threshold, 62) : null,
             requisitionId: linkedJob?.job_id || slugFromTitle(title),
             writtenQuestionsMin: wq.min,
@@ -3066,11 +2981,9 @@
             editingJobId = '';
             document.getElementById('jobForm').reset();
             document.getElementById('jobEditId').value = '';
-            document.getElementById('jobPassThresholdIn').value = String(resolveDefaultPassThreshold());
             document.getElementById('jobCvShortlistIn').value = '62';
             setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
-            updateJobPassThresholdHint('');
             clearJobFieldErrors();
             resetJobTemplateUi();
         });
@@ -3082,11 +2995,9 @@
             }
             editingJobId = '';
             document.getElementById('jobForm')?.reset();
-            document.getElementById('jobPassThresholdIn').value = String(resolveDefaultPassThreshold());
             document.getElementById('jobCvShortlistIn').value = '62';
             setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
-            updateJobPassThresholdHint('');
             setSelectValue('jobDisplayStyleIn', 'hiring-top', 'hiring-top');
             updateJobDisplayStyleHint();
             clearJobFieldErrors();
@@ -3095,7 +3006,6 @@
         bindJobTemplateUpload();
         bindJobFieldValidation();
         bindJobCreatePanelSync();
-        document.getElementById('jobTitleIn')?.addEventListener('input', () => prefillNewJobPassThreshold());
         bindSocialPostEvents();
         populateJobDisplayStyleSelect();
         document.getElementById('jobDisplayStyleIn')?.addEventListener('change', updateJobDisplayStyleHint);
@@ -3109,7 +3019,6 @@
         document.getElementById('onsiteForm')?.addEventListener('submit', saveOnsite);
         document.getElementById('saveWebhookBtn')?.addEventListener('click', saveWebhookConfig);
         document.getElementById('saveDefaultPassBtn')?.addEventListener('click', saveDefaultPassThreshold);
-        document.getElementById('applyPassAllJobsBtn')?.addEventListener('click', applyPassThresholdToAllJobs);
         document.getElementById('saveWrittenQuestionsBtn')?.addEventListener('click', saveWrittenQuestionConfig);
         document.getElementById('drawerDeleteBtn')?.addEventListener('click', () => {
             if (deps.activeCandidate) deleteCandidateRecord(deps.activeCandidate);
@@ -3149,7 +3058,6 @@
         onViewChange(view) {
             if (view === 'jobs' || view === 'jobs-create') loadJobs();
             if (view === 'jobs-create') {
-                prefillNewJobPassThreshold();
                 requestAnimationFrame(() => {
                     syncJobCreatePanelHeight();
                     setTimeout(syncJobCreatePanelHeight, 50);

@@ -5827,12 +5827,16 @@
                     if (left <= 0) {
                         clearCameraGrace();
                         window.TA_PROCTOR_ACTIVITY?.logEvent?.('camera_not_restored', null, { suspicious: true });
-                        // Log only — do not terminate.
+                        window.TA_PROCTOR_ACTIVITY?.logViolation?.('camera_not_restored');
+                        const violationCount = integrityViolationCountRef.current + 1;
+                        integrityViolationCountRef.current = violationCount;
+                        setIntegrityViolationCount(violationCount);
+                        terminateTestDueToCheating('camera_not_restored', violationCount);
                         return;
                     }
                     setCameraGraceSecondsLeft(left);
                 }, 1000);
-            }, [clearCameraGrace, pauseAssessmentTimerForCamera]);
+            }, [clearCameraGrace, pauseAssessmentTimerForCamera, terminateTestDueToCheating]);
 
             const setupProctorWatchers = useCallback((streams) => {
                 (proctorWatchCleanupRef.current || []).forEach((fn) => {

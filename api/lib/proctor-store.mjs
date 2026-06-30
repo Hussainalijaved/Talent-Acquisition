@@ -29,7 +29,7 @@ export function parseJsonSafe(raw, fallback) {
 
 export async function loadSession(sbUrl, sbKey, sessionId) {
     const res = await fetch(
-        `${sbUrl}/rest/v1/assessment_sessions?id=eq.${encodeURIComponent(sessionId)}&select=id,candidate_email,proctor_report,current_phase,config`,
+        `${sbUrl}/rest/v1/assessment_sessions?id=eq.${encodeURIComponent(sessionId)}&select=id,candidate_email,proctor_report,current_phase,config,requisition_id,screening`,
         { headers: buildHeaders(sbKey) }
     );
     if (!res.ok) {
@@ -53,6 +53,10 @@ export function normalizeReport(raw) {
     };
     const tabTotal = Number(base.tab_switches);
     if (Number.isFinite(tabTotal) && tabTotal >= 0) out.tab_switches = tabTotal;
+    if (Array.isArray(base.identity_checks)) out.identity_checks = base.identity_checks.slice();
+    if (base.identity_summary && typeof base.identity_summary === 'object') {
+        out.identity_summary = { ...base.identity_summary };
+    }
     return out;
 }
 

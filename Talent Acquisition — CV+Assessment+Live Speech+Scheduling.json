@@ -2990,6 +2990,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "CODE - Build assessment result mail",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -3040,13 +3047,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "CODE - Build assessment result mail",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "HTTP - Fetch Session": {

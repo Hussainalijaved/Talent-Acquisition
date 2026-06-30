@@ -32,10 +32,13 @@ function pickSessionRow() {
   if (built.session?.id) return built.session;
 
   const fetchRaw = pickNodeJson(
+    'HTTP - Fetch Session Complete',
     'HTTP - Fetch Session',
     'HTTP - Fetch Session1',
     'HTTP - SB PATCH session interview_history',
-    'HTTP - SB PATCH session interview_history1'
+    'HTTP - SB PATCH session interview_history1',
+    'HTTP - SB PATCH session',
+    'HTTP - SB PATCH session1'
   );
   const row = Array.isArray(fetchRaw) ? fetchRaw[0] : fetchRaw;
   if (row?.id) return row;

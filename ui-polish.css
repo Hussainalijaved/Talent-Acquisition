@@ -537,6 +537,95 @@ details[open] .proctor-timeline-chevron {
     background: #e0e7ff;
 }
 
+/* Identity verification (apply photo vs webcam) */
+.identity-verify-section {
+    margin-bottom: 1rem;
+}
+.identity-overall {
+    font-size: 0.875rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 0.5rem;
+    margin-bottom: 0.85rem;
+    border: 1px solid #e2e8f0;
+}
+.identity-verdict-match {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #065f46;
+}
+.identity-verdict-mismatch {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #991b1b;
+}
+.identity-verdict-neutral {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+    color: #475569;
+}
+.identity-verdict-review {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #92400e;
+}
+.identity-compare-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 0.85rem;
+}
+.identity-compare-card {
+    margin: 0;
+    padding: 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.55rem;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+.identity-compare-card figcaption {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.identity-compare-img {
+    width: 100%;
+    max-height: 160px;
+    object-fit: cover;
+    border-radius: 0.4rem;
+    border: 1px solid #cbd5e1;
+    background: #0f172a;
+}
+.identity-check-badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.2rem 0.55rem;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+}
+.identity-check-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+.identity-check-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+.identity-check-reason {
+    font-size: 0.75rem;
+    color: #64748b;
+    padding-left: 0.15rem;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    CONVO UI ENHANCEMENT LAYER — visual only, no behavior changes
    ═══════════════════════════════════════════════════════════════════════════ */

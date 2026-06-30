@@ -44,6 +44,7 @@
     screen_blank: 'Shared screen appears blank, minimized, or showing desktop only.',
     screen_content: 'Periodic shared-screen activity check.',
     webcam_content: 'Webcam monitoring snapshot captured.',
+    identity_check: 'Identity verification — comparing profile photo with webcam.',
     session_start: 'Proctored assessment monitoring started.',
     activity: 'Proctoring activity noted.',
   };
@@ -340,6 +341,24 @@
       });
     }
 
+    async runIdentityCheck(checkPoint) {
+      const sid = this.sessionId;
+      if (!sid) return;
+      const frame = await this.captureWebcamSnapshot();
+      if (!frame?.base64) return;
+      try {
+        await this.post({
+          action: 'identity_check',
+          check_point: checkPoint || 'start',
+          phase: this.getPhase?.(),
+          webcam_base64: frame.base64,
+          webcam_thumb_base64: frame.thumbBase64 || undefined,
+        });
+      } catch (err) {
+        console.warn('[proctor-activity] identity check failed:', err.message);
+      }
+    }
+
     start(options) {
       this.stop({ skipFinalize: true });
       this.sessionId = String(options?.sessionId || '').trim();
@@ -358,6 +377,7 @@
       this.blankTimer = setInterval(() => this.tickBlankCheck(), BLANK_CHECK_MS);
 
       setTimeout(() => void this.describeScreens({ suspicious: false }), 12000);
+      setTimeout(() => void this.runIdentityCheck('start'), 10000);
     }
 
     stop(opts) {
@@ -393,6 +413,7 @@
     logQuestionOpened: (n, label) => monitor.logQuestionOpened(n, label),
     logTestStarted: () => monitor.logTestStarted(),
     describeNow: (opts) => monitor.describeNow(opts),
+    runIdentityCheck: (checkPoint) => monitor.runIdentityCheck(checkPoint),
     summaryFor,
     isSuspicious,
   };

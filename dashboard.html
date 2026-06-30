@@ -2124,6 +2124,97 @@
             return html;
         }
 
+        function sessionProfilePhotoUrl(sess, merged) {
+            const cfg = parseJson(sess?.config);
+            const fromCfg = String(cfg.profile_photo_url || '').trim();
+            if (fromCfg) return fromCfg;
+            const screening = parseJson(sess?.screening);
+            const fromScreening = String(screening.profile_photo_url || '').trim();
+            if (fromScreening) return fromScreening;
+            return candidatePhotoUrl(merged?.notes);
+        }
+
+        function identityVerdictLabel(verdict) {
+            const v = String(verdict || '').toLowerCase();
+            if (v === 'match') return 'Likely same person';
+            if (v === 'mismatch') return 'Likely different person';
+            if (v === 'no_face') return 'Face not visible';
+            return 'Needs review';
+        }
+
+        function identityVerdictClass(verdict) {
+            const v = String(verdict || '').toLowerCase();
+            if (v === 'match') return 'identity-verdict-match';
+            if (v === 'mismatch') return 'identity-verdict-mismatch';
+            if (v === 'no_face') return 'identity-verdict-neutral';
+            return 'identity-verdict-review';
+        }
+
+        function renderIdentityVerification(sess, merged) {
+            const report = parseProctorReportRaw(sess);
+            const checks = Array.isArray(report?.identity_checks) ? report.identity_checks : [];
+            const summary = report?.identity_summary;
+            const referenceUrl = sessionProfilePhotoUrl(sess, merged);
+            if (!referenceUrl && !checks.length) return '';
+
+            let html = '<div class="section identity-verify-section"><div class="section-h">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' +
+                'Identity verification</div>';
+
+            if (summary?.overall_verdict) {
+                html += '<div class="identity-overall ' + identityVerdictClass(summary.overall_verdict) + '">' +
+                    '<strong>' + esc(identityVerdictLabel(summary.overall_verdict)) + '</strong>' +
+                    (summary.latest_confidence != null ? ' · Confidence ' + esc(String(summary.latest_confidence)) + '%' : '') +
+                    (summary.checks_count ? ' · ' + esc(String(summary.checks_count)) + ' check(s)' : '') +
+                    '</div>';
+            } else if (!checks.length && referenceUrl) {
+                html += '<p class="phase-empty">Reference photo on file — identity check runs when the candidate starts proctoring with webcam.</p>';
+            }
+
+            if (referenceUrl || checks.length) {
+                html += '<div class="identity-compare-grid">';
+                if (referenceUrl) {
+                    html += '<figure class="identity-compare-card"><figcaption>Reference (apply photo)</figcaption>' +
+                        '<img class="identity-compare-img" src="' + esc(referenceUrl) + '" alt="Reference photo" loading="lazy" /></figure>';
+                }
+                const latest = checks.length ? checks[checks.length - 1] : null;
+                if (latest?.snapshot_thumb) {
+                    html += '<figure class="identity-compare-card"><figcaption>Live webcam (' + esc(String(latest.check_point || 'check')) + ')</figcaption>' +
+                        '<img class="identity-compare-img" src="data:image/jpeg;base64,' + esc(latest.snapshot_thumb) + '" alt="Live snapshot" />' +
+                        '<span class="identity-check-badge ' + identityVerdictClass(latest.verdict) + '">' +
+                        esc(identityVerdictLabel(latest.verdict)) +
+                        (latest.confidence != null ? ' · ' + esc(String(latest.confidence)) + '%' : '') +
+                        '</span></figure>';
+                } else if (latest?.snapshot_path) {
+                    html += '<figure class="identity-compare-card"><figcaption>Live webcam (' + esc(String(latest.check_point || 'check')) + ')</figcaption>' +
+                        '<button type="button" class="proctor-snapshot-link identity-snapshot-btn" data-proctor-path="' +
+                        esc(latest.snapshot_path) + '" data-proctor-bucket="' +
+                        esc(latest.snapshot_bucket || 'proctor-snapshots') + '">View live snapshot</button>' +
+                        '<span class="identity-check-badge ' + identityVerdictClass(latest.verdict) + '">' +
+                        esc(identityVerdictLabel(latest.verdict)) + '</span></figure>';
+                }
+                html += '</div>';
+            }
+
+            if (checks.length) {
+                html += '<ul class="identity-check-list">';
+                checks.slice().reverse().slice(0, 6).forEach((c) => {
+                    html += '<li><span class="identity-check-badge ' + identityVerdictClass(c.verdict) + '">' +
+                        esc(String(c.check_point || 'check')) + ' · ' + esc(identityVerdictLabel(c.verdict)) +
+                        (c.confidence != null ? ' (' + esc(String(c.confidence)) + '%)' : '') +
+                        '</span>';
+                    if (Array.isArray(c.reasons) && c.reasons.length) {
+                        html += '<span class="identity-check-reason">' + esc(c.reasons.join(' · ')) + '</span>';
+                    }
+                    html += '</li>';
+                });
+                html += '</ul>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
         function parseProctorReportRaw(sess) {
             const raw = sess && sess.proctor_report;
             if (!raw) return null;
@@ -2221,6 +2312,7 @@
             if (isProctorProgressEvent(entry)) return true;
             if (entry.category === 'tab_switch') return true;
             if (entry.category === 'webcam_content') return true;
+            if (entry.category === 'identity_check') return true;
             if (entry.suspicious) return true;
             return ['webcam_lost', 'webcam_restored', 'camera_not_restored', 'screen_share_stopped'].indexOf(entry.category) >= 0;
         }
@@ -2259,6 +2351,7 @@
                 screen_blank: 'Blank / minimized screen',
                 screen_content: 'Screen activity',
                 webcam_content: 'Webcam snapshot',
+                identity_check: 'Identity verification',
                 session_start: 'Monitoring started',
                 activity: 'Activity',
             };
@@ -2342,11 +2435,13 @@
             });
         }
 
-        function renderProctorReport(sess) {
+        function renderProctorReport(sess, merged) {
             const report = parseProctorReportRaw(sess);
+            const identityHtml = renderIdentityVerification(sess, merged);
             const tabShiftCount = countProctorTabShifts(report);
             if (!report || (!report.summary && !(report.entries || []).length)) {
-                if (!tabShiftCount) return '';
+                if (!tabShiftCount && !identityHtml) return '';
+                if (!tabShiftCount && identityHtml) return identityHtml;
                 return '<div class="section proctor-report-section"><div class="section-h">' +
                     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>' +
                     'Proctoring activity</div>' +
@@ -2362,7 +2457,9 @@
             const startMs = proctorSessionStartMs(report, sess);
             const violationSummary = computeProctorViolationSummary(report);
 
-            let html = '<div class="section proctor-report-section"><div class="section-h">' +
+            let html = identityHtml;
+
+            html += '<div class="section proctor-report-section"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>' +
                 'Proctoring activity</div>';
 
@@ -2547,7 +2644,7 @@
                 '</div>';
 
             html += renderAssessmentReport(sess, { includeSpeechOverall: false });
-            html += renderProctorReport(sess);
+            html += renderProctorReport(sess, merged);
 
             if (merged) {
                 const n = merged.notes || {};
@@ -2712,7 +2809,7 @@
             // Interview history (assessment_sessions.interview_history)
             if (sess) {
                 html += renderAssessmentReport(sess);
-                html += renderProctorReport(sess);
+                html += renderProctorReport(sess, m);
             } else if (m.stage === 'ReviewQueue') {
                 html += '<div class="section"><div class="section-h">' +
                     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Assessment</div>' +

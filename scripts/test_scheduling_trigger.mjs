@@ -54,14 +54,26 @@ function workflowSchedulingChain(wf, label) {
     'CODE - Build assessment result mail',
     'MAIL - Reply candidate (assessment result)',
     'IF - Result PASS?',
-    'CODE - Prep scheduling from PASS',
-    'CODE - Build interviewer mail context',
   ];
+  const prepNode = names.has('CODE - Prep scheduling from PASS')
+    ? 'CODE - Prep scheduling from PASS'
+    : names.has('CODE - Prep scheduling from PASS1')
+      ? 'CODE - Prep scheduling from PASS1'
+      : null;
+  const interviewerCtx = names.has('CODE - Build interviewer mail context')
+    ? 'CODE - Build interviewer mail context'
+    : names.has('CODE - Build interviewer mail context1')
+      ? 'CODE - Build interviewer mail context1'
+      : null;
 
   for (const node of required) {
     if (names.has(node)) ok(`${label} has node "${node}"`);
     else fail(`${label} missing node "${node}"`);
   }
+  if (prepNode) ok(`${label} has node "${prepNode}"`);
+  else fail(`${label} missing Prep scheduling from PASS node`);
+  if (interviewerCtx) ok(`${label} has node "${interviewerCtx}"`);
+  else fail(`${label} missing Build interviewer mail context node`);
 
   const mailOut = wf.connections?.['MAIL - Reply candidate (assessment result)']?.main?.[0];
   if (!mailOut?.length) {
@@ -71,10 +83,23 @@ function workflowSchedulingChain(wf, label) {
   }
 
   const passOut = wf.connections?.['IF - Result PASS?']?.main?.[0]?.[0]?.node;
-  if (passOut === 'CODE - Prep scheduling from PASS') {
-    ok(`${label} PASS branch → Prep scheduling from PASS`);
+  const failOut = wf.connections?.['IF - Result PASS?']?.main?.[1]?.[0]?.node;
+  if (passOut === 'CODE - Prep scheduling from PASS' || passOut === 'CODE - Prep scheduling from PASS1') {
+    ok(`${label} PASS branch → ${passOut}`);
   } else if (names.has('IF - Result PASS?')) {
     fail(`${label} PASS branch`, `expected Prep scheduling, got ${passOut || 'none'}`);
+  }
+  if (failOut === 'CODE - Build assessment result mail') {
+    ok(`${label} FAIL branch → Build assessment result mail`);
+  } else if (names.has('IF - Result PASS?')) {
+    fail(`${label} FAIL branch`, `expected Build assessment result mail, got ${failOut || 'none'}`);
+  }
+
+  const finishedFalse = wf.connections?.['IF - Assessment finished?']?.main?.[1];
+  if (finishedFalse?.length) {
+    fail(`${label} IF Assessment finished false branch`, `should be empty, wired to ${finishedFalse.map((c) => c.node).join(', ')}`);
+  } else if (names.has('IF - Assessment finished?')) {
+    ok(`${label} IF Assessment finished false branch empty (correct)`);
   }
 }
 
@@ -199,8 +224,8 @@ async function main() {
     'Live Speech'
   );
   workflowSchedulingChain(
-    loadWorkflow('Talent Acquisition — Assessment + Speech + Scheduling.json'),
-    'Assessment + Speech + Scheduling'
+    loadWorkflow('Talent Acquisition — CV+Assessment+Live Speech+Scheduling.json'),
+    'CV+Assessment+Live Speech+Scheduling'
   );
 
   if (useProd) {

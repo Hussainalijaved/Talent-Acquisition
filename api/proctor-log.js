@@ -3,6 +3,7 @@
 //   { action: "event", session_id, phase?, category, summary, suspicious? }
 //   { action: "describe", session_id, phase?, screen_index?, frame_base64 }  — image discarded after AI
 //   { action: "finalize", session_id }
+//   { action: "identity_check", session_id, check_point?, webcam_base64, webcam_thumb_base64? }
 
 import {
     appendProctorEntry,
@@ -13,6 +14,7 @@ import {
     supabaseEnv,
     uploadProctorSnapshot,
 } from './lib/proctor-store.mjs';
+import { runIdentityCheck } from './lib/identity-verify.mjs';
 
 const VISION_MODEL = 'gemini-2.0-flash';
 const MAX_FRAME_BYTES = 900000;
@@ -386,6 +388,43 @@ export default async function handler(req, res) {
                 meta,
             });
             res.status(200).json({ ok: true, entry: result.entry, analysis });
+            return;
+        }
+
+        if (action === 'identity_check') {
+            const webcam = stripSnapshotBase64(body.webcam_base64 || body.webcamBase64);
+            const webcamThumb = stripSnapshotBase64(body.webcam_thumb_base64 || body.webcamThumbBase64);
+            if (!webcam || webcam.length < 500) {
+                res.status(400).json({ ok: false, error: 'webcam_frame_required' });
+                return;
+            }
+            try {
+                const result = await runIdentityCheck({
+                    sessionId,
+                    webcamBase64: webcam,
+                    webcamThumbBase64: webcamThumb,
+                    checkPoint: body.check_point || body.checkPoint || 'start',
+                    phase: body.phase,
+                    sbUrl,
+                    sbKey,
+                    apiKey: process.env.GEMINI_API_KEY,
+                });
+                if (result.skipped) {
+                    res.status(200).json({ ok: true, skipped: true, reason: result.reason });
+                    return;
+                }
+                res.status(200).json({
+                    ok: true,
+                    verdict: result.comparison.verdict,
+                    confidence: result.comparison.confidence,
+                    same_person: result.comparison.same_person,
+                    check: result.check,
+                    entry: result.entry,
+                });
+            } catch (err) {
+                console.warn('[proctor-log] identity_check failed:', err.message);
+                res.status(200).json({ ok: false, error: err.message || 'identity_check_failed' });
+            }
             return;
         }
 

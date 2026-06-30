@@ -148,6 +148,21 @@ const decidedCount = Number(
 const writtenCount =
   Number.isFinite(decidedCount) && decidedCount > 0 ? Math.round(decidedCount) : 5;
 
+const profile_photo_url = String(
+  notes.profile_photo_url ||
+    parse.profile_photo_url ||
+    intake.profile_photo_url ||
+    expand.profile_photo_url ||
+    ''
+).trim();
+
+const candidate_name = String(
+  notes.candidate_name ||
+    parse.candidate_name ||
+    intake.candidate_name ||
+    ''
+).trim();
+
 const sessionBody = {
   gmail_thread_id,
   candidate_email,
@@ -187,6 +202,8 @@ const sessionBody = {
     speech_phases: Number(cfg.speech_phases ?? 5),
     technical_weight: Number(cfg.technical_weight ?? 0.7),
     speech_weight: Number(cfg.speech_weight ?? 0.3),
+    ...(profile_photo_url ? { profile_photo_url } : {}),
+    ...(candidate_name ? { candidate_name } : {}),
   },
   interview_history: [
     {

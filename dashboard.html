@@ -1123,12 +1123,44 @@
             return '<span class="pill p-assess">' + esc(sess.status || '—') + '</span>';
         }
         const AV_COLORS = ['#475569', '#64748b', '#334155', '#1e40af', '#0369a1', '#0f766e', '#4b5563', '#52525b'];
+        function candidatePhotoUrl(notes) {
+            const n = parseJson(notes);
+            const url = String(n.profile_photo_url || '').trim();
+            return url || null;
+        }
+        function candidateDisplayName(m) {
+            const n = parseJson(m?.notes);
+            return String(n.candidate_name || '').trim() || '';
+        }
         function avatarFor(email) {
             const e = String(email || '?');
             let h = 0; for (let i = 0; i < e.length; i++) h = e.charCodeAt(i) + ((h << 5) - h);
             const color = AV_COLORS[Math.abs(h) % AV_COLORS.length];
             const init = e.trim().slice(0, 2).toUpperCase();
             return { color, init };
+        }
+        function avatarCellHtml(m) {
+            const photo = candidatePhotoUrl(m.notes);
+            const av = avatarFor(m.email);
+            if (photo) {
+                return '<img class="avatar avatar-photo" src="' + esc(photo) + '" alt="" loading="lazy" />';
+            }
+            return '<span class="avatar" style="background:' + av.color + '">' + esc(av.init) + '</span>';
+        }
+        function setDrawerAvatar(m) {
+            const el = document.getElementById('dAvatar');
+            if (!el) return;
+            const photo = candidatePhotoUrl(m.notes);
+            el.classList.remove('avatar-photo-wrap');
+            if (photo) {
+                el.style.background = 'var(--surface)';
+                el.innerHTML = '<img src="' + esc(photo) + '" alt="" loading="lazy" />';
+                el.classList.add('avatar-photo-wrap');
+            } else {
+                const av = avatarFor(m.email);
+                el.style.background = av.color;
+                el.textContent = av.init;
+            }
         }
         function roleLabel(r) { return String(r || '—').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); }
         function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
@@ -1442,9 +1474,12 @@
         }
 
         function rowHtml(m, i, withDate) {
-            const av = avatarFor(m.email);
+            const displayName = candidateDisplayName(m);
+            const emailLine = displayName
+                ? '<div class="c-email-text"><strong>' + esc(displayName) + '</strong><span class="c-email-sub">' + esc(m.email) + '</span></div>'
+                : '<span class="c-email-text">' + esc(m.email) + '</span>';
             return '<tr data-i="' + i + '">' +
-                '<td><div class="c-email"><span class="avatar" style="background:' + av.color + '">' + esc(av.init) + '</span>' + esc(m.email) + '</div></td>' +
+                '<td><div class="c-email">' + avatarCellHtml(m) + emailLine + '</div></td>' +
                 '<td class="c-role">' + esc(roleLabel(m.role)) + '</td>' +
                 '<td>' + scoreBadge(m.cvScore) + '</td>' +
                 '<td>' + stagePill(m.stage) + '</td>' +
@@ -2649,19 +2684,23 @@
         function openDrawer(m) {
             if (!m) return;
             if (window.TAAdmin) TAAdmin.setActiveCandidate(m);
-            const av = avatarFor(m.email);
-            document.getElementById('dAvatar').style.background = av.color;
-            document.getElementById('dAvatar').textContent = av.init;
-            document.getElementById('dTitle').textContent = m.email;
-            document.getElementById('dSub').innerHTML = roleLabel(m.role) + ' · Applied ' + fmtDate(m.created_at);
+            setDrawerAvatar(m);
+            const displayName = candidateDisplayName(m);
+            document.getElementById('dTitle').textContent = displayName || m.email;
+            document.getElementById('dSub').innerHTML =
+                (displayName ? esc(m.email) + ' · ' : '') +
+                roleLabel(m.role) + ' · Applied ' + fmtDate(m.created_at);
 
             const n = m.notes || {};
+            const photoUrl = candidatePhotoUrl(m.notes);
             const sess = canHaveAssessment(m.stage) ? m.session : null;
             let html = '';
 
             // Snapshot
             html += '<div class="section"><div class="section-h">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"/><path d="M9 7a3 3 0 0 1 6 0v4H9z"/></svg>Snapshot</div>' +
+                (photoUrl ? '<div class="drawer-photo-wrap"><img class="drawer-candidate-photo" src="' + esc(photoUrl) + '" alt="Candidate photo" loading="lazy" /></div>' : '') +
+                (displayName ? kv('Name', esc(displayName)) : '') +
                 kv('Stage', stagePill(m.stage)) +
                 kv('CV score', scoreBadge(m.cvScore)) +
                 kv('Recommendation', esc(String(n.recommendation || n.decision || '—').toUpperCase())) +

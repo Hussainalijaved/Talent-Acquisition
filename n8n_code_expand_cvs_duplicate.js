@@ -91,6 +91,8 @@ const email = String(
   .toLowerCase();
 
 const cv = String(intake.cv_text || pick(webhook, 'cv_text') || '').trim();
+const profile_photo_url = String(intake.profile_photo_url || pick(webhook, 'profile_photo_url') || '').trim();
+const candidate_name = String(intake.candidate_name || pick(webhook, 'candidate_name') || '').trim();
 const canon = String(cv || '').replace(/\s+/g, ' ').trim().slice(0, 6144);
 const fingerprint = `${email}|${canon}`;
 
@@ -161,6 +163,8 @@ return [
       config,
       candidate_email: email,
       cv_text: cv,
+      profile_photo_url,
+      candidate_name,
       fingerprint,
       is_duplicate,
       requisition_id: intake.requisition_id || pick(webhook, 'requisition_id') || '',

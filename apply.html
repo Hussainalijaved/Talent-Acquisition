@@ -718,7 +718,7 @@
                     </aside>
 
                     <section class="page-split-right apply-form-panel" id="applyFormPanel">
-                        <p class="col-heading">Your application</p>
+                        <p class="col-heading">Submit your application</p>
                         <div id="statusBox" class="status-box"></div>
 
                         <div id="submittingView" class="result-view">
@@ -734,51 +734,68 @@
                         </div>
 
                         <div id="formView" class="form-view">
+                            <p class="apply-form-intro">
+                                Upload or paste your CV, add a profile photo, and confirm your contact details.
+                                Our AI screens every application in about 30–90 seconds.
+                            </p>
                             <form id="applyForm">
-                                <div class="field">
-                                    <div class="step-label">
-                                        <span class="step-num">1</span>
-                                        <label class="field-label" for="cvFile">Upload CV (PDF)</label>
+                                <div class="apply-form-section">
+                                    <h3 class="apply-form-section-title">Your CV</h3>
+                                    <div class="cv-mode-tabs" role="tablist" aria-label="CV input method">
+                                        <button type="button" class="cv-mode-tab active" data-cv-mode="upload" role="tab" aria-selected="true">Upload PDF</button>
+                                        <button type="button" class="cv-mode-tab" data-cv-mode="paste" role="tab" aria-selected="false">Paste text</button>
                                     </div>
-                                    <div class="cv-upload-row" id="fileZone">
-                                        <input type="file" id="cvFile" class="cv-file-input" accept=".pdf,application/pdf" required />
-                                        <button type="button" class="btn cv-upload-btn" id="cvUploadBtn">Choose PDF</button>
-                                        <span class="file-name" id="fileName"></span>
+                                    <div id="cvUploadPanel">
+                                        <div class="cv-upload-row" id="fileZone">
+                                            <input type="file" id="cvFile" class="cv-file-input" accept=".pdf,application/pdf" required />
+                                            <button type="button" class="btn cv-upload-btn" id="cvUploadBtn">Choose PDF</button>
+                                            <span class="file-name" id="fileName"></span>
+                                        </div>
+                                        <p class="field-hint">We auto-detect your name, email, and phone from the PDF.</p>
                                     </div>
-                                    <p class="field-hint">Name, email &amp; phone auto-detected from your CV</p>
+                                    <div id="cvPastePanel" class="cv-paste-panel">
+                                        <textarea id="cvPasteText" class="cv-paste-area" placeholder="Paste your full CV here — contact details, experience, skills, education…" rows="8"></textarea>
+                                        <p class="field-hint">Include at least your name and email. We'll extract contact details from the text.</p>
+                                    </div>
                                 </div>
 
-                                <div class="field">
-                                    <div class="step-label">
-                                        <span class="step-num">2</span>
-                                        <label class="field-label" for="candName">Your name</label>
+                                <div class="apply-form-section">
+                                    <h3 class="apply-form-section-title">Profile photo</h3>
+                                    <div class="photo-upload-row">
+                                        <img id="photoPreview" class="photo-preview" alt="Profile preview" width="72" height="72" />
+                                        <div class="photo-upload-actions">
+                                            <input type="file" id="photoFile" class="cv-file-input" accept="image/jpeg,image/png,image/webp" />
+                                            <button type="button" class="btn cv-upload-btn" id="photoUploadBtn">Choose photo</button>
+                                            <span class="file-name" id="photoFileName"></span>
+                                            <p class="field-hint">Optional — JPG, PNG or WebP, max 2 MB. Shown to recruiters reviewing your application.</p>
+                                        </div>
                                     </div>
-                                    <input type="text" id="candName" readonly tabindex="-1" class="extract-readonly" placeholder="Detected from CV…" />
-                                    <p class="field-hint" id="nameHint">Shown for your review only — not stored</p>
                                 </div>
 
-                                <div class="field">
-                                    <div class="step-label">
-                                        <span class="step-num">3</span>
+                                <div class="apply-form-section">
+                                    <h3 class="apply-form-section-title">Contact details</h3>
+                                    <div class="field">
+                                        <label class="field-label" for="candName">Full name</label>
+                                        <input type="text" id="candName" placeholder="Your full name" autocomplete="name" />
+                                        <p class="field-hint" id="nameHint">Auto-filled from CV — edit if needed</p>
+                                    </div>
+                                    <div class="field">
+                                        <label class="field-label" for="email">Email address</label>
+                                        <input type="email" id="email" required placeholder="you@email.com" autocomplete="email" />
+                                        <p class="field-hint" id="emailHint">Required — we'll send your assessment link here</p>
+                                    </div>
+                                    <div class="field">
                                         <label class="field-label" for="candPhone">Phone number</label>
+                                        <input type="tel" id="candPhone" placeholder="Optional" autocomplete="tel" />
+                                        <p class="field-hint" id="phoneHint">Optional — auto-detected from CV when available</p>
                                     </div>
-                                    <input type="tel" id="candPhone" readonly tabindex="-1" class="extract-readonly" placeholder="Detected from CV…" />
-                                    <p class="field-hint" id="phoneHint">Shown for your review only — not stored</p>
-                                </div>
-
-                                <div class="field">
-                                    <div class="step-label">
-                                        <span class="step-num">4</span>
-                                        <label class="field-label" for="email">Your email</label>
-                                    </div>
-                                    <input type="email" id="email" required placeholder="you@email.com" autocomplete="email" />
-                                    <p class="field-hint" id="emailHint">Filled automatically after you upload your CV</p>
                                 </div>
 
                                 <button type="submit" class="btn" id="submitBtn">Submit application</button>
                                 <div class="trust-row" style="margin-top:16px">
-                                    <span>🔒 Secure</span>
+                                    <span>🔒 Secure upload</span>
                                     <span>⚡ AI screening</span>
+                                    <span>📷 Photo saved for recruiters</span>
                                 </div>
                             </form>
                         </div>
@@ -845,6 +862,10 @@
         let submitAbort = null;
         let progressTimer = null;
         let ignoreSubmitResult = false;
+        let cvMode = 'upload';
+        let pendingPhotoFile = null;
+        let photoPreviewUrl = null;
+        const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
         const SUBMIT_TIMEOUT_MS = 45000;
         const POLL_INTERVAL_MS = 3000;
         const POLL_MAX_MS = 180000;
@@ -868,6 +889,11 @@
         const nameHint = document.getElementById('nameHint');
         const phoneInput = document.getElementById('candPhone');
         const phoneHint = document.getElementById('phoneHint');
+        const cvPasteText = document.getElementById('cvPasteText');
+        const photoFile = document.getElementById('photoFile');
+        const photoUploadBtn = document.getElementById('photoUploadBtn');
+        const photoPreview = document.getElementById('photoPreview');
+        const photoFileName = document.getElementById('photoFileName');
 
         function sleep(ms) {
             return new Promise((resolve) => setTimeout(resolve, ms));
@@ -995,23 +1021,135 @@
             cvUploadBtn?.classList.remove('has-file');
             if (cvUploadBtn) cvUploadBtn.textContent = 'Choose PDF';
 
+            if (cvPasteText) cvPasteText.value = '';
+            setCvMode('upload');
+
+            if (photoPreviewUrl) {
+                URL.revokeObjectURL(photoPreviewUrl);
+                photoPreviewUrl = null;
+            }
+            pendingPhotoFile = null;
+            if (photoFile) photoFile.value = '';
+            if (photoPreview) {
+                photoPreview.src = '';
+                photoPreview.classList.remove('show');
+            }
+            if (photoFileName) photoFileName.textContent = '';
+            if (photoUploadBtn) photoUploadBtn.textContent = 'Choose photo';
+
             emailInput.value = '';
             emailInput.classList.remove('extracting', 'extracted');
             emailInput.placeholder = 'you@email.com';
-            emailHint.textContent = 'Filled automatically after you upload your CV';
+            emailHint.textContent = 'Required — we\'ll send your assessment link here';
             emailHint.className = 'field-hint';
 
             nameInput.value = '';
-            nameInput.placeholder = 'Detected from CV…';
+            nameInput.placeholder = 'Your full name';
             nameInput.classList.remove('extracted');
-            nameHint.textContent = 'Shown for your review only — not stored';
+            nameHint.textContent = 'Auto-filled from CV — edit if needed';
             nameHint.className = 'field-hint';
 
             phoneInput.value = '';
-            phoneInput.placeholder = 'Detected from CV…';
+            phoneInput.placeholder = 'Optional';
             phoneInput.classList.remove('extracted');
-            phoneHint.textContent = 'Shown for your review only — not stored';
+            phoneHint.textContent = 'Optional — auto-detected from CV when available';
             phoneHint.className = 'field-hint';
+        }
+
+        function setCvMode(mode) {
+            cvMode = mode === 'paste' ? 'paste' : 'upload';
+            document.querySelectorAll('.cv-mode-tab').forEach((tab) => {
+                const active = tab.dataset.cvMode === cvMode;
+                tab.classList.toggle('active', active);
+                tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            const uploadPanel = document.getElementById('cvUploadPanel');
+            const pastePanel = document.getElementById('cvPastePanel');
+            if (uploadPanel) uploadPanel.style.display = cvMode === 'upload' ? '' : 'none';
+            if (pastePanel) pastePanel.classList.toggle('show', cvMode === 'paste');
+            if (cvFile) cvFile.required = cvMode === 'upload';
+        }
+
+        function extractFieldsFromPastedText(text) {
+            const blob = String(text || '').trim();
+            const compact = blob.replace(/\s+/g, '');
+            const email = pickBestEmail(blob, compact, '', 'pasted-cv.txt') || '';
+            const name = extractNameFromCvText(blob, 'pasted-cv.txt', email);
+            const phone = extractPhoneFromCvText(blob, compact, []);
+            return { email, name, phone };
+        }
+
+        let pasteExtractTimer = null;
+        function schedulePasteExtraction() {
+            if (pasteExtractTimer) clearTimeout(pasteExtractTimer);
+            pasteExtractTimer = setTimeout(() => {
+                const text = cvPasteText?.value || '';
+                if (text.trim().length < 40) return;
+                const { email, name, phone } = extractFieldsFromPastedText(text);
+                if (email && !emailInput.value.trim()) {
+                    emailInput.value = email;
+                    emailInput.classList.add('extracted');
+                    emailHint.textContent = 'Email detected from pasted CV — edit if needed';
+                    emailHint.className = 'field-hint ok';
+                }
+                if (name && !nameInput.value.trim()) {
+                    setExtractField(nameInput, nameHint, name,
+                        'Name detected from pasted CV — edit if needed',
+                        'Enter your full name');
+                }
+                if (phone && !phoneInput.value.trim()) {
+                    setExtractField(phoneInput, phoneHint, phone,
+                        'Phone detected from pasted CV',
+                        'Optional');
+                }
+            }, 400);
+        }
+
+        function handlePhotoSelected(file) {
+            if (!file) {
+                pendingPhotoFile = null;
+                if (photoPreviewUrl) {
+                    URL.revokeObjectURL(photoPreviewUrl);
+                    photoPreviewUrl = null;
+                }
+                if (photoPreview) {
+                    photoPreview.src = '';
+                    photoPreview.classList.remove('show');
+                }
+                if (photoFileName) photoFileName.textContent = '';
+                if (photoUploadBtn) photoUploadBtn.textContent = 'Choose photo';
+                return;
+            }
+            if (file.size > MAX_PHOTO_BYTES) {
+                showStatus('Profile photo must be under 2 MB.', 'err');
+                if (photoFile) photoFile.value = '';
+                return;
+            }
+            pendingPhotoFile = file;
+            if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+            photoPreviewUrl = URL.createObjectURL(file);
+            if (photoPreview) {
+                photoPreview.src = photoPreviewUrl;
+                photoPreview.classList.add('show');
+            }
+            if (photoFileName) photoFileName.textContent = '✓ ' + file.name;
+            if (photoUploadBtn) photoUploadBtn.textContent = 'Change photo';
+        }
+
+        async function uploadCandidatePhoto(file, email) {
+            if (!sbClient || !file) return '';
+            const extRaw = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const ext = extRaw || 'jpg';
+            const safeKey = String(email || 'candidate').replace(/[^a-z0-9]/gi, '_').slice(0, 64) || 'candidate';
+            const path = safeKey + '/' + Date.now() + '.' + ext;
+            const { error } = await sbClient.storage.from('candidate-photos').upload(path, file, {
+                cacheControl: '3600',
+                upsert: true,
+                contentType: file.type || 'image/jpeg',
+            });
+            if (error) throw error;
+            const { data } = sbClient.storage.from('candidate-photos').getPublicUrl(path);
+            return data.publicUrl;
         }
 
         function showSubmittingView(email, fileNameText, phase) {
@@ -2015,11 +2153,24 @@
             }
 
             setExtractField(nameInput, nameHint, name,
-                'Name detected from your CV — shown only, not stored',
-                'Name not found in PDF');
+                'Name detected from your CV — edit if needed',
+                'Enter your full name');
             setExtractField(phoneInput, phoneHint, phone,
-                'Phone detected from your CV — shown only, not stored',
-                'Phone not found in PDF');
+                'Phone detected from your CV',
+                'Optional');
+        }
+
+        document.querySelectorAll('.cv-mode-tab').forEach((tab) => {
+            tab.addEventListener('click', () => setCvMode(tab.dataset.cvMode));
+        });
+        cvPasteText?.addEventListener('input', schedulePasteExtraction);
+
+        if (photoUploadBtn && photoFile) {
+            photoUploadBtn.addEventListener('click', () => {
+                if (submitSucceeded) resetApplyFormUi();
+                photoFile.click();
+            });
+            photoFile.addEventListener('change', () => handlePhotoSelected(photoFile.files[0]));
         }
 
         if (cvUploadBtn && cvFile) {
@@ -2128,11 +2279,24 @@
             }
 
             const email = emailInput.value.trim().toLowerCase();
-            const file = cvFile.files[0];
-            if (!email || !file) {
-                showStatus('Please upload your CV and confirm your email.', 'err');
+            const candidateName = nameInput.value.trim();
+            const file = cvMode === 'upload' ? cvFile.files[0] : null;
+            const pastedCv = cvMode === 'paste' ? (cvPasteText?.value || '').trim() : '';
+
+            if (!email) {
+                showStatus('Please enter your email address.', 'err');
                 return;
             }
+            if (cvMode === 'upload' && !file) {
+                showStatus('Please upload your CV (PDF) or switch to paste text.', 'err');
+                return;
+            }
+            if (cvMode === 'paste' && pastedCv.length < 80) {
+                showStatus('Please paste your full CV (at least a few lines with contact details).', 'err');
+                return;
+            }
+
+            const cvLabel = cvMode === 'upload' ? file.name : 'Pasted CV';
 
             if (await checkAlreadyApplied(email, currentJob.job_id)) {
                 showOutcome({
@@ -2152,10 +2316,25 @@
             const btn = document.getElementById('submitBtn');
             btn.disabled = true;
             btn.textContent = 'Submitting…';
-            showSubmittingView(email, file.name);
+            showSubmittingView(email, cvLabel);
+
+            let profilePhotoUrl = '';
+            if (pendingPhotoFile) {
+                try {
+                    profilePhotoUrl = await uploadCandidatePhoto(pendingPhotoFile, email);
+                } catch (photoErr) {
+                    btn.disabled = false;
+                    btn.textContent = 'Submit application';
+                    showStatus('Could not upload profile photo. Try a smaller image or submit without photo.', 'err');
+                    console.warn('Photo upload failed', photoErr);
+                    return;
+                }
+            }
 
             const formData = new FormData();
             formData.append('candidate_email', email);
+            if (candidateName) formData.append('candidate_name', candidateName);
+            if (profilePhotoUrl) formData.append('profile_photo_url', profilePhotoUrl);
             formData.append('requisition_title', currentJob.title);
             formData.append('requisition_requirements', currentJob.jd_text);
             formData.append('requisition_id', currentJob.job_id);
@@ -2173,7 +2352,11 @@
             }
             formData.append('written_questions_min', String(writtenQuestionBounds.min));
             formData.append('written_questions_max', String(writtenQuestionBounds.max));
-            formData.append('cv_file', file, file.name);
+            if (cvMode === 'upload') {
+                formData.append('cv_file', file, file.name);
+            } else {
+                formData.append('cv_text', pastedCv);
+            }
             formData.append('apply_source', 'careers_page');
 
             const submitStartedAt = Date.now();
@@ -2218,7 +2401,7 @@
             }
 
             if (uploadAccepted) {
-                await beginScreeningPoll(email, file.name, submitStartedAt);
+                await beginScreeningPoll(email, cvLabel, submitStartedAt);
             }
         });
 

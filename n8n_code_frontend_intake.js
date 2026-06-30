@@ -93,6 +93,8 @@ const candidate_email = pick(body, 'candidate_email', 'email').toLowerCase();
 const cv_text = String(pdf.text || pick(body, 'cv_text') || '').trim();
 const requisition_id = pick(body, 'requisition_id');
 const interviewer_email = pick(body, 'interviewer_email').toLowerCase();
+const profile_photo_url = pick(body, 'profile_photo_url');
+const candidate_name = pick(body, 'candidate_name');
 const pass_score_threshold = pickNum(body, 'pass_score_threshold');
 const fail_score_threshold = pickNum(body, 'fail_score_threshold');
 const cv_shortlist_threshold = pickNum(body, 'cv_shortlist_threshold');
@@ -128,6 +130,8 @@ return [
       pass_score_threshold,
       fail_score_threshold,
       cv_shortlist_threshold,
+      profile_photo_url,
+      candidate_name,
       jd_source: 'frontend_form',
     },
   },

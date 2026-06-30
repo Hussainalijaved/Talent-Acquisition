@@ -127,17 +127,24 @@ const mergedConfig = {
   written_questions_max: qBounds.max,
 };
 
+const profilePhotoUrl = String(base.profile_photo_url || '').trim();
+const candidateName = String(base.candidate_name || '').trim();
+
 return [{
   json: {
     ...base,
     config: mergedConfig,
     max_questions: written_question_count,
     written_question_count,
+    profile_photo_url: profilePhotoUrl || null,
+    candidate_name: candidateName || null,
     // IMPORTANT: spread parsed AI JSON `s` — NEVER use `...$` (n8n internal object).
     screening: {
       ...s,
       written_question_count,
       cv_thresholds: { shortlistMin, autoShortlist, autoReject },
+      ...(profilePhotoUrl ? { profile_photo_url: profilePhotoUrl } : {}),
+      ...(candidateName ? { candidate_name: candidateName } : {}),
     },
     score,
     decision,

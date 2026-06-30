@@ -9,50 +9,93 @@
     <link rel="stylesheet" href="convo-ui.css" />
     <link rel="stylesheet" href="ui-polish.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        .careers-hero-count {
-            margin-top: 24px;
-            font-size: 14px;
-            font-weight: 600;
-            opacity: 0.85;
-        }
-    </style>
 </head>
 <body class="convo-body careers-page">
     <header class="careers-site-header">
-    <nav class="convo-nav">
-        <div class="convo-shell convo-nav-inner">
-        <a href="careers.html" class="convo-nav-brand">
-            <span class="convo-nav-logo">CONVO</span>
-            <span class="convo-nav-tag">Careers</span>
-        </a>
-        <div class="convo-nav-actions">
-            <a href="index.html" class="convo-nav-link">Assessment portal</a>
-            <a href="dashboard.html" class="convo-nav-link">Talent Admin</a>
-        </div>
-        </div>
-    </nav>
-
-    <section class="convo-hero">
-        <div class="convo-hero-inner">
-            <p class="convo-hero-meta">Convo Pvt Ltd · Technology &amp; Innovation</p>
-            <h1 class="convo-hero-mega">CONVO</h1>
-            <p class="convo-hero-sub">Build what's next with us</p>
-            <p class="convo-hero-meta">We're hiring talented people who want to make an impact. Every application is reviewed by our AI screening — shortlisted candidates move to a technical assessment.</p>
-            <div class="convo-hero-pills">
-                <span class="convo-pill">Remote-friendly</span>
-                <span class="convo-pill">Fast hiring process</span>
-                <span class="convo-pill">Skills-based screening</span>
+        <nav class="convo-nav">
+            <div class="convo-shell convo-nav-inner">
+                <a href="careers.html" class="convo-nav-brand">
+                    <span class="convo-nav-logo">CONVO</span>
+                    <span class="convo-nav-tag">Careers</span>
+                </a>
+                <div class="convo-nav-actions">
+                    <a href="#open-roles" class="convo-nav-link">Open roles</a>
+                    <a href="index.html" class="convo-nav-link">Assessment portal</a>
+                    <a href="dashboard.html" class="convo-nav-link primary">Talent Admin</a>
+                </div>
             </div>
-            <p class="careers-hero-count" id="jobCount"></p>
-        </div>
-    </section>
+        </nav>
+
+        <section class="convo-hero careers-hero-pro">
+            <div class="convo-hero-inner careers-hero-grid">
+                <div class="careers-hero-copy">
+                    <p class="convo-hero-meta">Convo Pvt Ltd · Technology &amp; Innovation</p>
+                    <h1 class="convo-hero-mega">Build what's next with CONVO</h1>
+                    <p class="convo-hero-sub">We're hiring engineers, designers, and operators who care about craft.</p>
+                    <p class="convo-hero-meta careers-hero-lead">
+                        Every application is reviewed by our AI screening pipeline. Shortlisted candidates receive a structured technical assessment — fair, fast, and skills-based.
+                    </p>
+                    <div class="convo-hero-pills">
+                        <span class="convo-pill">Remote-friendly</span>
+                        <span class="convo-pill">Skills-based hiring</span>
+                        <span class="convo-pill">Transparent process</span>
+                    </div>
+                    <a href="#open-roles" class="convo-btn convo-btn-primary careers-hero-cta">View open positions</a>
+                </div>
+                <div class="careers-hero-stats" aria-label="Hiring highlights">
+                    <div class="careers-stat-card">
+                        <span class="careers-stat-val" id="statOpenRoles">—</span>
+                        <span class="careers-stat-label">Open roles</span>
+                    </div>
+                    <div class="careers-stat-card">
+                        <span class="careers-stat-val">AI</span>
+                        <span class="careers-stat-label">CV screening</span>
+                    </div>
+                    <div class="careers-stat-card">
+                        <span class="careers-stat-val">5+1</span>
+                        <span class="careers-stat-label">Assessment phases</span>
+                    </div>
+                </div>
+            </div>
+        </section>
     </header>
 
-    <main class="convo-wrap">
+    <section class="careers-values">
+        <div class="convo-shell careers-values-inner">
+            <article class="careers-value-card">
+                <span class="careers-value-icon" aria-hidden="true">⚡</span>
+                <h3>Fast, fair screening</h3>
+                <p>AI reviews every CV against the job description — no résumé black holes.</p>
+            </article>
+            <article class="careers-value-card">
+                <span class="careers-value-icon" aria-hidden="true">🎯</span>
+                <h3>Skills over pedigree</h3>
+                <p>Structured assessments measure what you can do, not where you studied.</p>
+            </article>
+            <article class="careers-value-card">
+                <span class="careers-value-icon" aria-hidden="true">🤝</span>
+                <h3>Human follow-up</h3>
+                <p>Strong matches move to recruiter review and live interviews with our team.</p>
+            </article>
+        </div>
+    </section>
+
+    <main class="convo-wrap" id="open-roles">
+        <div class="careers-roles-head">
+            <div>
+                <p class="careers-section-kicker">Open positions</p>
+                <h2 class="careers-section-title">Find your role</h2>
+                <p class="careers-section-sub" id="jobCount">Loading roles…</p>
+            </div>
+            <div class="careers-search-wrap">
+                <label class="visually-hidden" for="jobSearch">Search roles</label>
+                <input type="search" id="jobSearch" class="careers-search" placeholder="Search by title, department, or location…" autocomplete="off" />
+            </div>
+        </div>
+
         <div id="statusBox" class="convo-alert"></div>
-        <div id="jobsList" class="convo-jobs">
-            <div class="convo-card convo-card-pad">
+        <div id="jobsList" class="convo-jobs careers-jobs-grid">
+            <div class="convo-card convo-card-pad careers-skeleton-card">
                 <div class="convo-skeleton lg"></div>
                 <div class="convo-skeleton" style="width:55%"></div>
                 <div class="convo-skeleton" style="width:80%;margin-top:20px"></div>
@@ -60,8 +103,18 @@
         </div>
     </main>
 
-    <footer class="convo-footer">
-        © CONVO Pvt Ltd · <a href="index.html">Assessment portal</a> · <a href="apply.html">Apply</a>
+    <footer class="convo-footer careers-footer-pro">
+        <div class="convo-shell careers-footer-inner">
+            <div class="careers-footer-brand">
+                <strong>CONVO</strong>
+                <span>Technology &amp; Innovation</span>
+            </div>
+            <div class="careers-footer-links">
+                <a href="index.html">Assessment portal</a>
+                <a href="dashboard.html">Talent Admin</a>
+            </div>
+            <p class="careers-footer-copy">© CONVO Pvt Ltd · Equal opportunity employer</p>
+        </div>
     </footer>
 
     <script>
@@ -72,6 +125,9 @@
         const statusBox = document.getElementById('statusBox');
         const jobsList = document.getElementById('jobsList');
         const jobCount = document.getElementById('jobCount');
+        const jobSearch = document.getElementById('jobSearch');
+        const statOpenRoles = document.getElementById('statOpenRoles');
+        let allJobs = [];
 
         function showStatus(msg, type) {
             statusBox.textContent = msg;
@@ -89,6 +145,82 @@
             const t = String(text || '').replace(/\s+/g, ' ').trim();
             if (t.length <= max) return t;
             return t.slice(0, max).trim() + '…';
+        }
+
+        function formatPosted(iso) {
+            if (!iso) return '';
+            try {
+                return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+            } catch (_) {
+                return '';
+            }
+        }
+
+        function renderJobs(jobs) {
+            if (!jobs.length) {
+                jobsList.innerHTML =
+                    '<div class="cv-state empty-state careers-empty" role="status">' +
+                    '<div class="cv-state-icon" aria-hidden="true">🔍</div>' +
+                    '<h3 class="cv-state-title">No matching roles</h3>' +
+                    '<p class="cv-state-desc">Try a different search or check back soon for new openings.</p>' +
+                    '</div>';
+                jobCount.textContent = allJobs.length
+                    ? '0 of ' + allJobs.length + ' roles match your search'
+                    : 'No open roles at the moment';
+                return;
+            }
+
+            jobCount.textContent = jobs.length + ' open position' + (jobs.length === 1 ? '' : 's') +
+                (allJobs.length !== jobs.length ? ' (filtered from ' + allJobs.length + ')' : '');
+
+            jobsList.innerHTML = jobs
+                .map((job) => {
+                    const applyUrl = 'apply.html?job=' + encodeURIComponent(job.job_id) + '&apply=1';
+                    const meta = [
+                        job.location || 'Remote',
+                        job.employment_type || 'Full-time',
+                        job.department,
+                    ].filter(Boolean);
+                    const posted = formatPosted(job.created_at);
+                    return (
+                        '<article class="convo-job careers-job-card">' +
+                        '<div class="careers-job-main">' +
+                        '<div class="careers-job-top">' +
+                        '<h2>' + escapeHtml(job.title) + '</h2>' +
+                        (posted ? '<span class="careers-job-date">Posted ' + escapeHtml(posted) + '</span>' : '') +
+                        '</div>' +
+                        '<div class="convo-job-meta">' +
+                        meta.map((m) => '<span class="convo-meta-tag">' + escapeHtml(m) + '</span>').join('') +
+                        '</div>' +
+                        '<p class="convo-job-excerpt">' + escapeHtml(excerpt(job.jd_text, 280)) + '</p>' +
+                        '</div>' +
+                        '<div class="careers-job-actions">' +
+                        '<a class="convo-btn convo-btn-secondary careers-job-link" href="apply.html?job=' + encodeURIComponent(job.job_id) + '">View role</a>' +
+                        '<a class="convo-btn convo-btn-primary" href="' + applyUrl + '">Apply now</a>' +
+                        '</div>' +
+                        '</article>'
+                    );
+                })
+                .join('');
+        }
+
+        function filterJobs() {
+            const q = (jobSearch?.value || '').trim().toLowerCase();
+            if (!q) {
+                renderJobs(allJobs);
+                return;
+            }
+            const filtered = allJobs.filter((job) => {
+                const hay = [
+                    job.title,
+                    job.department,
+                    job.location,
+                    job.employment_type,
+                    job.jd_text,
+                ].join(' ').toLowerCase();
+                return hay.includes(q);
+            });
+            renderJobs(filtered);
         }
 
         async function loadJobs() {
@@ -111,41 +243,23 @@
             }
 
             if (!data || !data.length) {
-                jobCount.textContent = 'No open roles at the moment';
+                if (statOpenRoles) statOpenRoles.textContent = '0';
+                jobCount.textContent = 'No open roles at the moment — check back soon';
                 jobsList.innerHTML =
                     '<div class="cv-state empty-state" role="status">' +
                     '<div class="cv-state-icon" aria-hidden="true">📭</div>' +
                     '<h3 class="cv-state-title">No open positions right now</h3>' +
-                    '<p class="cv-state-desc">Check back soon — new roles are posted regularly.</p>' +
+                    '<p class="cv-state-desc">We post new roles regularly. Follow us or check back later.</p>' +
                     '</div>';
                 return;
             }
 
-            jobCount.textContent = data.length + ' open position' + (data.length === 1 ? '' : 's');
-
-            jobsList.innerHTML = data
-                .map((job) => {
-                    const applyUrl = 'apply.html?job=' + encodeURIComponent(job.job_id);
-                    const meta = [
-                        job.location || 'Remote',
-                        job.employment_type || 'Full-time',
-                        job.department,
-                    ].filter(Boolean);
-                    return (
-                        '<article class="convo-job">' +
-                        '<div>' +
-                        '<h2>' + escapeHtml(job.title) + '</h2>' +
-                        '<div class="convo-job-meta">' +
-                        meta.map((m) => '<span class="convo-meta-tag">' + escapeHtml(m) + '</span>').join('') +
-                        '</div>' +
-                        '<p class="convo-job-excerpt">' + escapeHtml(excerpt(job.jd_text, 300)) + '</p>' +
-                        '</div>' +
-                        '<a class="convo-btn convo-btn-primary" href="' + applyUrl + '">Apply</a>' +
-                        '</article>'
-                    );
-                })
-                .join('');
+            allJobs = data;
+            if (statOpenRoles) statOpenRoles.textContent = String(data.length);
+            renderJobs(allJobs);
         }
+
+        jobSearch?.addEventListener('input', filterJobs);
 
         loadJobs().catch((err) => {
             showStatus(err.message || 'Failed to load jobs.', 'err');

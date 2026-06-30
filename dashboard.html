@@ -2151,6 +2151,9 @@
         }
 
         function renderIdentityVerification(sess, merged) {
+            // Disabled for now — re-enable when apply-photo vs webcam verification is needed.
+            return '';
+            /*
             const report = parseProctorReportRaw(sess);
             const checks = Array.isArray(report?.identity_checks) ? report.identity_checks : [];
             const summary = report?.identity_summary;
@@ -2213,6 +2216,7 @@
 
             html += '</div>';
             return html;
+            */
         }
 
         function parseProctorReportRaw(sess) {
@@ -2312,7 +2316,7 @@
             if (isProctorProgressEvent(entry)) return true;
             if (entry.category === 'tab_switch') return true;
             if (entry.category === 'webcam_content') return true;
-            if (entry.category === 'identity_check') return true;
+            // if (entry.category === 'identity_check') return true;
             if (entry.suspicious) return true;
             return ['webcam_lost', 'webcam_restored', 'camera_not_restored', 'screen_share_stopped'].indexOf(entry.category) >= 0;
         }

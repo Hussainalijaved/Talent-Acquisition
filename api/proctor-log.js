@@ -14,7 +14,7 @@ import {
     supabaseEnv,
     uploadProctorSnapshot,
 } from './lib/proctor-store.mjs';
-import { runIdentityCheck } from './lib/identity-verify.mjs';
+// import { runIdentityCheck } from './lib/identity-verify.mjs';
 
 const VISION_MODEL = 'gemini-2.0-flash';
 const MAX_FRAME_BYTES = 900000;
@@ -392,6 +392,10 @@ export default async function handler(req, res) {
         }
 
         if (action === 'identity_check') {
+            // Disabled for now — re-enable when apply-photo vs webcam verification is needed.
+            res.status(200).json({ ok: true, skipped: true, reason: 'identity_check_disabled' });
+            return;
+            /*
             const webcam = stripSnapshotBase64(body.webcam_base64 || body.webcamBase64);
             const webcamThumb = stripSnapshotBase64(body.webcam_thumb_base64 || body.webcamThumbBase64);
             if (!webcam || webcam.length < 500) {
@@ -426,6 +430,7 @@ export default async function handler(req, res) {
                 res.status(200).json({ ok: false, error: err.message || 'identity_check_failed' });
             }
             return;
+            */
         }
 
         if (action === 'finalize') {

@@ -3,6 +3,9 @@
 
 import { runIdentityCheck } from './lib/identity-verify.mjs';
 
+// Disabled for now — re-enable when apply-photo vs webcam verification is needed.
+const IDENTITY_CHECK_ENABLED = false;
+
 function cors(res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -21,6 +24,11 @@ export default async function handler(req, res) {
     }
     if (req.method !== 'POST') {
         res.status(405).json({ ok: false, error: 'method_not_allowed' });
+        return;
+    }
+
+    if (!IDENTITY_CHECK_ENABLED) {
+        res.status(200).json({ ok: true, skipped: true, reason: 'identity_check_disabled' });
         return;
     }
 

@@ -5734,11 +5734,12 @@
 
             const stopProctorMedia = useCallback(async () => {
                 clearCameraGrace();
-                if (window.TA_PROCTOR_ACTIVITY?.runIdentityCheck) {
-                    try {
-                        await window.TA_PROCTOR_ACTIVITY.runIdentityCheck('end');
-                    } catch (_) { /* optional */ }
-                }
+                // Identity check disabled — re-enable via IDENTITY_CHECK_ENABLED in proctor-activity.js
+                // if (window.TA_PROCTOR_ACTIVITY?.runIdentityCheck) {
+                //     try {
+                //         await window.TA_PROCTOR_ACTIVITY.runIdentityCheck('end');
+                //     } catch (_) { /* optional */ }
+                // }
                 if (window.TA_PROCTOR_ACTIVITY) {
                     window.TA_PROCTOR_ACTIVITY.stop();
                 }

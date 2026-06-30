@@ -6,6 +6,8 @@
 
   const DESCRIBE_INTERVAL_MS = 90000;
   const BLANK_CHECK_MS = 45000;
+  // Disabled for now — re-enable when apply-photo vs webcam identity verification is needed.
+  const IDENTITY_CHECK_ENABLED = false;
   const SUSPICIOUS_CATEGORIES = new Set([
     'snipping_tool',
     'screenshot',
@@ -342,6 +344,7 @@
     }
 
     async runIdentityCheck(checkPoint) {
+      if (!IDENTITY_CHECK_ENABLED) return;
       const sid = this.sessionId;
       if (!sid) return;
       const frame = await this.captureWebcamSnapshot();
@@ -377,7 +380,7 @@
       this.blankTimer = setInterval(() => this.tickBlankCheck(), BLANK_CHECK_MS);
 
       setTimeout(() => void this.describeScreens({ suspicious: false }), 12000);
-      setTimeout(() => void this.runIdentityCheck('start'), 10000);
+      if (IDENTITY_CHECK_ENABLED) setTimeout(() => void this.runIdentityCheck('start'), 10000);
     }
 
     stop(opts) {

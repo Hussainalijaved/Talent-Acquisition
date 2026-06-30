@@ -5776,29 +5776,16 @@
             const recordIntegrityViolation = useCallback((reason) => {
                 if (PROCTORING_DISABLED) return;
                 const activeView = viewRef.current;
-                if (!['assessment', 'live-speech'].includes(activeView) || terminatingRef.current) return;
+                if (!['assessment', 'live-speech'].includes(activeView)) return;
                 const now = Date.now();
                 if (now - lastViolationAtRef.current < VIOLATION_DEBOUNCE_MS) return;
                 lastViolationAtRef.current = now;
-
+                // Log for admin visibility only — never terminate or warn the candidate.
                 window.TA_PROCTOR_ACTIVITY?.logViolation?.(reason);
-
                 const newCount = integrityViolationCountRef.current + 1;
                 integrityViolationCountRef.current = newCount;
                 setIntegrityViolationCount(newCount);
-
-                const reasonText = VIOLATION_LABELS[reason] || reason;
-                if (newCount >= MAX_INTEGRITY_VIOLATIONS) {
-                    terminateTestDueToCheating(reason, newCount);
-                    return;
-                }
-
-                const remaining = MAX_INTEGRITY_VIOLATIONS - newCount;
-                alert(
-                    `Integrity warning ${newCount} of ${MAX_INTEGRITY_VIOLATIONS - 1}: ${reasonText}. ` +
-                    `${remaining} more violation${remaining === 1 ? '' : 's'} will terminate and fail your assessment.`
-                );
-            }, [terminateTestDueToCheating]);
+            }, []);
 
             const logTabMonitoringOnly = useCallback((reason) => {
                 if (!isTabMonitoringActive()) return;
@@ -5840,12 +5827,12 @@
                     if (left <= 0) {
                         clearCameraGrace();
                         window.TA_PROCTOR_ACTIVITY?.logEvent?.('camera_not_restored', null, { suspicious: true });
-                        terminateTestDueToCheating('camera_not_restored', MAX_INTEGRITY_VIOLATIONS);
+                        // Log only — do not terminate.
                         return;
                     }
                     setCameraGraceSecondsLeft(left);
                 }, 1000);
-            }, [clearCameraGrace, pauseAssessmentTimerForCamera, terminateTestDueToCheating]);
+            }, [clearCameraGrace, pauseAssessmentTimerForCamera]);
 
             const setupProctorWatchers = useCallback((streams) => {
                 (proctorWatchCleanupRef.current || []).forEach((fn) => {

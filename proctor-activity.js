@@ -122,9 +122,21 @@
     async captureViolationSnapshots() {
       const streams = this.getStreams?.();
       if (!streams) return null;
-      const out = { screen: null, webcam: null, thumb: null, webcamThumb: null };
+      const out = { screen: null, webcam: null, thumb: null, webcamThumb: null, screenIndex: 0 };
       const screens = streams.screens || [];
-      if (screens[0]) {
+      let bestFrame = null;
+      for (let i = 0; i < screens.length; i += 1) {
+        const frame = await this.captureFrameFromStream(screens[i]);
+        if (!frame?.base64) continue;
+        if (!bestFrame || frame.brightness > bestFrame.brightness) {
+          bestFrame = { ...frame, screenIndex: i };
+        }
+      }
+      if (bestFrame) {
+        out.screen = bestFrame.base64;
+        out.thumb = bestFrame.thumbBase64 || null;
+        out.screenIndex = bestFrame.screenIndex;
+      } else if (screens[0]) {
         const frame = await this.captureFrameFromStream(screens[0]);
         if (frame?.base64) {
           out.screen = frame.base64;
@@ -164,10 +176,9 @@
         webcam_base64: snaps?.webcam || undefined,
         thumb_base64: snaps?.thumb || undefined,
         webcam_thumb_base64: snaps?.webcamThumb || undefined,
+        meta: snaps?.screenIndex != null ? { screen_index: snaps.screenIndex } : undefined,
       });
       if (reason === 'snipping_tool' || reason === 'screenshot') {
-        void this.describeNow({ suspicious: true });
-      } else if (reason === 'tab_switch' || reason === 'window_blur') {
         void this.describeNow({ suspicious: true });
       }
     }
@@ -293,6 +304,7 @@
             webcam_base64: webcamFrame?.base64 || undefined,
             webcam_thumb_base64: webcamFrame?.thumbBase64 || undefined,
             suspicious: !!opts?.suspicious,
+            trigger_category: opts?.triggerCategory || undefined,
           });
           this.lastDescribeAt = Date.now();
         }

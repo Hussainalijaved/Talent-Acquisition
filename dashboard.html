@@ -2229,12 +2229,13 @@
         }
 
         const PROCTOR_VIOLATION_GROUPS = [
-            { key: 'screenshot', label: 'Took a screenshot', categories: ['screenshot', 'snipping_tool', 'screenshot_tool'] },
-            { key: 'communication', label: 'Used communication applications', categories: ['communication_app', 'window_blur'] },
+            { key: 'focus', label: 'Left assessment / switched window', categories: ['tab_switch', 'window_blur'] },
+            { key: 'screenshot', label: 'Screenshot or screen capture', categories: ['screenshot', 'snipping_tool', 'screenshot_tool'] },
+            { key: 'communication', label: 'Used communication apps', categories: ['communication_app'] },
             { key: 'ai_tool', label: 'Used AI tools', categories: ['ai_tool'] },
-            { key: 'devtools', label: 'Developer tools / shortcuts', categories: ['devtools', 'blocked_shortcut', 'print_attempt'] },
+            { key: 'devtools', label: 'Developer tools / blocked shortcuts', categories: ['devtools', 'blocked_shortcut', 'print_attempt'] },
             { key: 'screen', label: 'Screen sharing issues', categories: ['screen_blank', 'screen_share_stopped', 'fullscreen_exit'] },
-            { key: 'webcam', label: 'Webcam issues', categories: ['webcam_lost', 'camera_not_restored'] },
+            { key: 'webcam', label: 'Webcam issues', categories: ['webcam_lost', 'webcam_no_signal', 'camera_not_restored'] },
         ];
 
         function proctorSessionStartMs(report, sess) {
@@ -2273,13 +2274,18 @@
                     total += count;
                 }
             });
-            const ungrouped = entries.filter((e) =>
+            const ungroupedEntries = entries.filter((e) =>
                 !PROCTOR_VIOLATION_GROUPS.some((g) => g.categories.indexOf(e.category) >= 0)
-            ).length;
-            if (ungrouped > 0) {
-                groups.push({ label: 'Other flagged activity', count: ungrouped });
-                total += ungrouped;
-            }
+            );
+            const byCategory = {};
+            ungroupedEntries.forEach((e) => {
+                const cat = String(e.category || 'other');
+                byCategory[cat] = (byCategory[cat] || 0) + 1;
+            });
+            Object.keys(byCategory).forEach((cat) => {
+                groups.push({ label: proctorTimelineLabel({ category: cat }), count: byCategory[cat] });
+                total += byCategory[cat];
+            });
             return { groups, total, flagged: Number(report && report.suspicious_count) || total };
         }
 
@@ -2302,7 +2308,11 @@
             if (cat === 'screen_blank') return 'Blank or minimized screen' + screen;
             if (cat === 'screen_share_stopped') return 'Stopped screen sharing';
             if (cat === 'webcam_lost') return 'Webcam turned off';
+            if (cat === 'webcam_no_signal') return 'Webcam blank or black screen';
             if (cat === 'camera_not_restored') return 'Webcam not restored';
+            if (cat === 'blocked_shortcut') return 'Blocked keyboard shortcut';
+            if (cat === 'print_attempt') return 'Print or save page attempt';
+            if (cat === 'fullscreen_exit') return 'Exited fullscreen';
             return (entry && entry.summary) ? String(entry.summary).split(' — ')[0].slice(0, 80) : cat || 'Activity';
         }
 

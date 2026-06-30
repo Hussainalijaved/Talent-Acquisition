@@ -5764,22 +5764,6 @@
                 }
             }, [stopProctorMedia]);
 
-            const logTabMonitoringOnly = useCallback((reason) => {
-                if (!isTabMonitoringActive()) return;
-                const isLeaveEvent = reason === 'tab_switch' || reason === 'window_blur';
-                if (!isLeaveEvent && (escExitRef.current || fullscreenRestoreInProgressRef.current)) return;
-                if (isLeaveEvent && fullscreenRestoreInProgressRef.current) return;
-                const now = Date.now();
-                if (now - lastTabLogAtRef.current < VIOLATION_DEBOUNCE_MS) return;
-                lastTabLogAtRef.current = now;
-                if (isLeaveEvent) {
-                    const next = tabSwitchCountRef.current + 1;
-                    tabSwitchCountRef.current = next;
-                    setTabSwitchCount(next);
-                }
-                window.TA_PROCTOR_ACTIVITY?.logViolation?.(reason);
-            }, [isTabMonitoringActive]);
-
             const recordIntegrityViolation = useCallback((reason) => {
                 if (PROCTORING_DISABLED) return;
                 const activeView = viewRef.current;
@@ -5806,6 +5790,26 @@
                     `${remaining} more violation${remaining === 1 ? '' : 's'} will terminate and fail your assessment.`
                 );
             }, [terminateTestDueToCheating]);
+
+            const logTabMonitoringOnly = useCallback((reason) => {
+                if (!isTabMonitoringActive()) return;
+                const isLeaveEvent = reason === 'tab_switch' || reason === 'window_blur';
+                if (!isLeaveEvent && (escExitRef.current || fullscreenRestoreInProgressRef.current)) return;
+                if (isLeaveEvent && fullscreenRestoreInProgressRef.current) return;
+                const now = Date.now();
+                if (now - lastTabLogAtRef.current < VIOLATION_DEBOUNCE_MS) return;
+                lastTabLogAtRef.current = now;
+                if (isLeaveEvent) {
+                    const next = tabSwitchCountRef.current + 1;
+                    tabSwitchCountRef.current = next;
+                    setTabSwitchCount(next);
+                }
+                if (viewRef.current === 'assessment') {
+                    recordIntegrityViolation(reason);
+                    return;
+                }
+                window.TA_PROCTOR_ACTIVITY?.logViolation?.(reason);
+            }, [isTabMonitoringActive, recordIntegrityViolation]);
 
             const startCameraGrace = useCallback((reason = 'stream_lost') => {
                 if (PROCTORING_DISABLED || terminatingRef.current || cameraGraceActiveRef.current) return;
@@ -5990,6 +5994,11 @@
                         escExitRef.current = true;
                         fullscreenRequiredRef.current = true;
                         setFullscreenRequired(true);
+                        if (viewRef.current === 'assessment' && !fullscreenRestoreInProgressRef.current) {
+                            recordIntegrityViolation('fullscreen_exit');
+                        } else if (viewRef.current === 'live-speech') {
+                            window.TA_PROCTOR_ACTIVITY?.logViolation?.('fullscreen_exit');
+                        }
                     } else {
                         escExitRef.current = false;
                         fullscreenRestoreInProgressRef.current = false;
@@ -6011,7 +6020,7 @@
                     document.removeEventListener('fullscreenchange', handleFullscreenChange);
                     document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
                 };
-            }, [view, logTabMonitoringOnly, syncFullscreenState, isTabMonitoringActive]);
+            }, [view, logTabMonitoringOnly, syncFullscreenState, isTabMonitoringActive, recordIntegrityViolation]);
 
             useEffect(() => {
                 const handleContextMenu = (e) => {

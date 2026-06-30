@@ -109,7 +109,7 @@ function screenPrefix(screenIdx) {
     return Number.isFinite(screenIdx) && screenIdx >= 0 ? `Screen ${screenIdx + 1}` : 'Screen';
 }
 
-function classifyScreenAnalysis(analysis, screenIdx, forceSuspicious) {
+function classifyScreenAnalysis(analysis, screenIdx, forceSuspicious, triggerCategory = null) {
     const prefix = screenPrefix(screenIdx);
     const apps = analysis.apps || [];
     const appLabel = apps.length ? ` (${apps.slice(0, 2).join(', ')})` : '';
@@ -117,7 +117,11 @@ function classifyScreenAnalysis(analysis, screenIdx, forceSuspicious) {
     let suspicious = !!forceSuspicious;
     let summary = `${prefix}: ${analysis.description}`;
 
-    if (analysis.ai_tool) {
+    if (triggerCategory) {
+        category = String(triggerCategory).slice(0, 64);
+        suspicious = true;
+        summary = enrichViolationSummary(category, screenIdx, analysis, buildViolationSummary(category, screenIdx, apps));
+    } else if (analysis.ai_tool) {
         category = 'ai_tool';
         suspicious = true;
         summary = `Used AI tool${appLabel} — ${analysis.description}`;
@@ -144,6 +148,33 @@ function classifyScreenAnalysis(analysis, screenIdx, forceSuspicious) {
 function mapKeyboardCategory(category) {
     if (category === 'screenshot' || category === 'snipping_tool') return 'screenshot_tool';
     return category;
+}
+
+const PRESERVE_VIOLATION_CATEGORY = new Set([
+    'tab_switch',
+    'window_blur',
+    'devtools',
+    'blocked_shortcut',
+    'print_attempt',
+    'screen_blank',
+    'screen_share_stopped',
+    'fullscreen_exit',
+    'webcam_lost',
+    'webcam_no_signal',
+    'camera_not_restored',
+    'screenshot_tool',
+]);
+
+function enrichViolationSummary(category, screenIdx, analysis, existingSummary) {
+    const apps = analysis?.apps || [];
+    let summary = String(existingSummary || '').trim() || buildViolationSummary(category, screenIdx, apps);
+    const desc = String(analysis?.description || '').trim();
+    if (desc && !summary.includes(desc)) {
+        summary += ` — ${desc}`;
+    } else if (apps.length && !summary.includes(apps[0])) {
+        summary = buildViolationSummary(category, screenIdx, apps);
+    }
+    return summary;
 }
 
 function buildViolationSummary(category, screenIdx, apps) {
@@ -262,16 +293,27 @@ export default async function handler(req, res) {
                 && !['test_started', 'question_opened', 'session_start'].includes(category)) {
                 try {
                     const analysis = await analyzeScreenWithGemini(apiKey, frame);
-                    const classified = classifyScreenAnalysis(analysis, screenIdx, suspicious);
-                    if (classified.category === 'ai_tool' || classified.category === 'communication_app') {
-                        category = classified.category;
-                        summary = classified.summary;
-                        meta = { ...meta, ...classified.meta };
-                    } else if (!summary) {
-                        summary = buildViolationSummary(category, screenIdx, analysis.apps);
-                    } else if (analysis.apps?.length) {
-                        meta.apps = analysis.apps;
-                        meta.app_name = analysis.apps[0];
+                    if (PRESERVE_VIOLATION_CATEGORY.has(category)) {
+                        summary = enrichViolationSummary(category, screenIdx, analysis, summary);
+                        if (analysis.apps?.length) {
+                            meta.apps = analysis.apps;
+                            meta.app_name = analysis.apps[0];
+                        }
+                        meta.ai_tool_detected = !!analysis.ai_tool;
+                        meta.communication_app_detected = !!analysis.communication_app;
+                        meta.assessment_focused = !!analysis.assessment_focused;
+                    } else {
+                        const classified = classifyScreenAnalysis(analysis, screenIdx, suspicious);
+                        if (classified.category === 'ai_tool' || classified.category === 'communication_app') {
+                            category = classified.category;
+                            summary = classified.summary;
+                            meta = { ...meta, ...classified.meta };
+                        } else if (!summary) {
+                            summary = buildViolationSummary(category, screenIdx, analysis.apps);
+                        } else if (analysis.apps?.length) {
+                            meta.apps = analysis.apps;
+                            meta.app_name = analysis.apps[0];
+                        }
                     }
                 } catch (err) {
                     console.warn('[proctor-log] frame classify failed:', err.message);
@@ -355,7 +397,8 @@ export default async function handler(req, res) {
 
             const screenIdx = Number(body.screen_index ?? body.screenIndex ?? 0);
             const forceSuspicious = !!body.suspicious;
-            const classified = classifyScreenAnalysis(analysis, screenIdx, forceSuspicious);
+            const triggerCategory = body.trigger_category || body.triggerCategory || null;
+            const classified = classifyScreenAnalysis(analysis, screenIdx, forceSuspicious, triggerCategory);
 
             if (!forceSuspicious && !classified.suspicious) {
                 res.status(200).json({ ok: true, skipped: true, analysis });

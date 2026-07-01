@@ -130,9 +130,11 @@
       this.micOpenWatchdogTimer = null;
       this.warmupMicOpenTimer = null;
       this.warmupMicOpenGen = 0;
-      this.questionPlaybackLeadInMs = 400;
+      this.questionPlaybackLeadInMs = 700;
       this.questionPlaybackLeadInTimer = null;
       this.questionPlaybackLeadInActive = false;
+      this.questionPrefetchBytes = 0;
+      this.questionPrefetchMinBytes = 9600;
     }
 
     clearQuestionPlaybackLeadIn() {
@@ -141,6 +143,7 @@
         this.questionPlaybackLeadInTimer = null;
       }
       this.questionPlaybackLeadInActive = false;
+      this.questionPrefetchBytes = 0;
     }
 
     clearPlayback() {
@@ -714,6 +717,7 @@
         this.onSilenceNudge?.({ stage, text: msg.text });
       }
       if (msg.type === 'next_question_ready') {
+        if (this.interviewEnded) return;
         this.closeMicForInterviewer();
         this.clearQuestionSafetyTimer();
         this.clearPlayback();
@@ -723,6 +727,7 @@
         this.lastOutputAudioAt = 0;
         this.playbackIdleSentForQ = null;
         this.questionAudioMissingSentForQ = null;
+        this.questionPrefetchBytes = 0;
         this.questionAudioWaitDeadline = Date.now() + 18000;
         if (msg.number >= 1) {
           this.pendingAnswerQ = msg.number;
@@ -811,8 +816,12 @@
       }
       if (msg.type === 'interview_closing') {
         this.processingAnswer = false;
-        // Keep the mic open until interview_complete — premature closing must not
-        // block the candidate from answering the final question.
+        this.interviewEnded = true;
+        this.answering = false;
+        this.awaitingAnswerPending = false;
+        this.clearQuestionSafetyTimer();
+        this.closeMicForInterviewer();
+        // Keep the mic closed — only the closing thank-you should play.
         this.onInterviewComplete(msg);
       }
       if (msg.type === 'interview_complete') {
@@ -906,18 +915,36 @@
     enqueuePlayback(b64, mimeType) {
       const rateMatch = /rate=(\d+)/i.exec(mimeType || '');
       const rate = rateMatch ? Number(rateMatch[1]) : OUTPUT_RATE;
+      let pcmBytes = 0;
+      try {
+        pcmBytes = Math.floor((atob(b64).length * 3) / 4);
+      } catch (_) {
+        pcmBytes = 0;
+      }
       this.playQueue.push({ b64, rate });
       if (this.questionPlaybackLeadInActive && !this.answering) {
+        this.questionPrefetchBytes += pcmBytes;
+        const readyToPlay = this.questionPrefetchBytes >= this.questionPrefetchMinBytes;
         if (!this.questionPlaybackLeadInTimer) {
           this.questionPlaybackLeadInTimer = setTimeout(() => {
             this.questionPlaybackLeadInTimer = null;
             this.questionPlaybackLeadInActive = false;
+            this.questionPrefetchBytes = 0;
             void this.drainPlayback();
           }, this.questionPlaybackLeadInMs);
         }
+        if (readyToPlay) {
+          if (this.questionPlaybackLeadInTimer) {
+            clearTimeout(this.questionPlaybackLeadInTimer);
+            this.questionPlaybackLeadInTimer = null;
+          }
+          this.questionPlaybackLeadInActive = false;
+          this.questionPrefetchBytes = 0;
+          void this.ensureAudioRunning().then(() => this.drainPlayback());
+        }
         return;
       }
-      void this.drainPlayback();
+      void this.ensureAudioRunning().then(() => this.drainPlayback());
     }
 
     async drainPlayback() {

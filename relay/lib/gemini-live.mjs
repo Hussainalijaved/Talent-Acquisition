@@ -31,7 +31,7 @@ const SETUP_TIMEOUT_MS = 15000;
 /** Gemini turnComplete often arrives before the last audio chunk — wait this long after the final chunk. */
 const TTS_AUDIO_QUIET_MS = 2000;
 /** Brief pause before Q1–Q5 TTS prompt so playback clears and the full question is spoken from the start. */
-const QUESTION_TTS_LEAD_IN_MS = 450;
+const QUESTION_TTS_LEAD_IN_MS = 750;
 /** Minimum PCM bytes (24 kHz mono int16) expected for a spoken question.
  *  24000 samples/s * 2 bytes = 48000 bytes per second of speech. We require a
  *  conservative MINIMUM so a clearly truncated ("half") reading is re-spoken,
@@ -225,6 +225,8 @@ export class GeminiLiveBridge {
     this.ttsLastPromptSentAt = 0;
     this.closingReprompts = 0;
     this.closingCompleteTimer = null;
+    this.closingTtsOnly = false;
+    this.closingDisplayText = '';
     // Speech Q1–Q5 only: realistic "repeat the question" + "continue in English"
     // handling. Both keep the candidate on the SAME question (no phase advance).
     this.questionRepeatUsed = {};        // legacy flag (kept for back-compat)
@@ -344,7 +346,7 @@ export class GeminiLiveBridge {
 
   tryOpenTtsAnswerWindow(qNum) {
     const questionText = this.questions[qNum - 1] || '';
-    if (this.answerPromptOpen || this.interviewEnded || this.closed) return;
+    if (this.answerPromptOpen || this.interviewEnded || this.closed || this.interviewClosing) return;
     if (this.ttsForQ !== qNum || !this.ttsTurnCompleteReceived) return;
 
     const sinceAudio = Date.now() - (this.lastModelAudioSentAt || 0);
@@ -355,8 +357,21 @@ export class GeminiLiveBridge {
       return;
     }
 
-    // Accept any completed TTS turn that produced audio — never re-speak a partial
-    // clip (that caused half-then-full double questions after submit).
+    const bytes = this.ttsAudioBytesThisTurn || 0;
+    const minBytes = this.minTtsBytesForQuestion(questionText, this.ttsSpeakOpts || {});
+    if (bytes < minBytes) {
+      const retries = this.questionSpeakRetries[qNum] || 0;
+      if (retries < 3) {
+        console.warn(
+          `[relay] Q${qNum} TTS too short (${bytes} < ${minBytes}) — re-speaking full question`
+        );
+        this.ttsTurnCompleteReceived = false;
+        this.clientPlaybackIdleForQ = 0;
+        this.queueRetryQuestionSpeak(qNum, questionText, { flushFirst: true, directOnly: true }, 400);
+        return;
+      }
+    }
+
     this.openTtsAnswerWindow(qNum, questionText);
   }
 
@@ -1445,6 +1460,22 @@ export class GeminiLiveBridge {
       return;
     }
 
+    if (this.closingTtsOnly) {
+      const hadAudio =
+        this.modelAudioThisTurn || (this.ttsAudioBytesThisTurn || 0) >= 2000;
+      this.closingTtsOnly = false;
+      this.modelBuf = '';
+      this.modelAudioThisTurn = false;
+      if (!hadAudio && this.closingReprompts < 2) {
+        this.closingReprompts += 1;
+        this.speakClosingDeterministic();
+        return;
+      }
+      if (this.closingCompleteTimer) clearTimeout(this.closingCompleteTimer);
+      this.closingCompleteTimer = setTimeout(() => this.finalizeInterviewClosing(), 3000);
+      return;
+    }
+
     if (this.interviewClosing && !this.interviewEnded) {
       const closingText = sanitizeTranscript(this.modelBuf, 'model').trim();
       this.modelBuf = '';
@@ -1522,6 +1553,22 @@ export class GeminiLiveBridge {
         this.ttsAwaitingTurnComplete = false;
         this.queueRetryQuestionSpeak(qNum, questionText, { flushFirst: true, directOnly: true }, 400);
         return;
+      }
+
+      const bytes = this.ttsAudioBytesThisTurn || 0;
+      const minBytes = this.minTtsBytesForQuestion(questionText, this.ttsSpeakOpts || {});
+      if (bytes < minBytes && !this.interviewEnded && !this.closed) {
+        const retries = this.questionSpeakRetries[qNum] || 0;
+        if (retries < 3) {
+          console.warn(
+            `[relay] Q${qNum} turnComplete with truncated TTS (${bytes} < ${minBytes}) — retrying`
+          );
+          this.ttsAwaitingTurnComplete = false;
+          this.ttsTurnCompleteReceived = false;
+          this.clientPlaybackIdleForQ = 0;
+          this.queueRetryQuestionSpeak(qNum, questionText, { flushFirst: true, directOnly: true }, 400);
+          return;
+        }
       }
 
       this.ttsAwaitingTurnComplete = false;
@@ -2537,6 +2584,36 @@ export class GeminiLiveBridge {
     this.pendingAudioChunks = [];
   }
 
+  speakClosingDeterministic() {
+    if (this.interviewEnded || this.closed) return;
+    const text =
+      String(this.context.closing_text || '').trim() ||
+      'Thank you for your time — that completes the voice interview.';
+    this.closingTtsOnly = true;
+    this.closingDisplayText = text;
+    this.warmupTtsOnly = false;
+    this.ttsOnlyTurn = false;
+    this.modelBuf = '';
+    this.modelAudioThisTurn = false;
+    this.ttsAudioBytesThisTurn = 0;
+    this.onEvent({
+      type: 'transcript',
+      speaker: 'model',
+      text,
+      partial: false,
+      closing: true,
+    });
+    this.sendSpokenPrompt(
+      'You are the interviewer speaking to the candidate. Read the following closing sentence out loud, word for word, in warm professional English. Do NOT ask any interview questions. Do NOT add greetings or extra sentences. Say ONLY this, then stop:\n' +
+        `"${text}"`,
+      { flushFirst: true }
+    );
+    if (this.closingCompleteTimer) clearTimeout(this.closingCompleteTimer);
+    this.closingCompleteTimer = setTimeout(() => {
+      if (!this.interviewEnded) this.finalizeInterviewClosing();
+    }, 15000);
+  }
+
   finishInterview() {
     if (this.interviewEnded || this.interviewClosing) return;
     if (this.answers.length < this.maxTurns) {
@@ -2556,11 +2633,12 @@ export class GeminiLiveBridge {
     this.allowModelAudio = true;
     this.pendingAudioChunks = [];
     this.flushClientPlayback();
-    this.onEvent({ type: 'interview_closing' });
-    this.sendClientText(
-      `The candidate has now answered all ${this.maxTurns} interview questions. Say ONE warm closing sentence in English only, such as: "Thank you for your time — that completes the voice interview." Do not ask any more questions. Do not add a second thank-you.`,
-      true
-    );
+    const closingText =
+      String(this.context.closing_text || '').trim() ||
+      'Thank you for your time — that completes the voice interview.';
+    this.closingDisplayText = closingText;
+    this.onEvent({ type: 'interview_closing', text: closingText });
+    this.speakClosingDeterministic();
   }
 
   finalizeInterviewClosing() {

@@ -3235,17 +3235,6 @@
                                 // Never move progress backwards (turn_complete can arrive after next_question_ready).
                                 setTurn((prev) => Math.max(Number(prev) || 0, capped));
                                 if (m) setMaxTurns(m);
-                                if (capped >= max && max >= 1) {
-                                    interviewCompleteRef.current = true;
-                                    setInterviewComplete(true);
-                                    setCanAnswer(false);
-                                    setIsAnswering(false);
-                                    setSavingAnswer(false);
-                                    setAnswerTimerActive(false);
-                                    setTimeLeft(null);
-                                    setLiveCaption('');
-                                    setSilenceHint('');
-                                }
                             },
                             onQuestion: ({ number, text, partial, follow_up, warmup }) => {
                                 const clean = cleanText(text, 'model');
@@ -3431,6 +3420,13 @@
                                     setIsAnswering(false);
                                     setAnswerTimerActive(false);
                                     setTimeLeft(null);
+                                    setClosingCaption(
+                                        String(msg?.text || '').trim() ||
+                                        'Thank you for your time — that completes the voice interview.'
+                                    );
+                                    setLiveQuestionCaption('');
+                                    setLiveCaption('');
+                                    setSilenceHint('');
                                     return;
                                 }
                                 interviewCompleteRef.current = true;

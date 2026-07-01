@@ -49,6 +49,37 @@ function slugFromTitle(title) {
     .slice(0, 64);
 }
 
+function normalizeWrittenQuestionBounds(rawMin, rawMax) {
+  let min = Number(rawMin);
+  let max = Number(rawMax);
+  if (!Number.isFinite(min)) min = 4;
+  if (!Number.isFinite(max)) max = 10;
+  min = Math.min(20, Math.max(1, Math.round(min)));
+  max = Math.min(20, Math.max(1, Math.round(max)));
+  if (min > max) [min, max] = [max, min];
+  return { min, max };
+}
+
+function clampWrittenQuestionCount(n, min, max) {
+  const bounds = normalizeWrittenQuestionBounds(min, max);
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return bounds.min;
+  return Math.min(bounds.max, Math.max(bounds.min, Math.round(v)));
+}
+
+function questionBoundsFromConfig(cfg) {
+  return normalizeWrittenQuestionBounds(cfg?.written_questions_min, cfg?.written_questions_max);
+}
+
+function resolveEffectiveWrittenMaxQuestions(cfg, sessionRow) {
+  const bounds = questionBoundsFromConfig(cfg || {});
+  const raw =
+    cfg?.written_question_count ??
+    cfg?.max_questions ??
+    sessionRow?.max_phases;
+  return clampWrittenQuestionCount(raw, bounds.min, bounds.max);
+}
+
 const parse =
   pickNodeJson('CODE - Parse CV screening outcome', 'CODE - Parse CV screening outcome1') || {};
 const expand =
@@ -138,15 +169,22 @@ const requisition_id =
 // Always null on insert — MAIL+PATCH sets the real Gmail thread on this new row only.
 const gmail_thread_id = null;
 
-const decidedCount = Number(
+const decidedRaw = Number(
   parse.written_question_count ??
     parse.max_questions ??
     cfg.written_question_count ??
     cfg.max_questions ??
     5
 );
-const writtenCount =
-  Number.isFinite(decidedCount) && decidedCount > 0 ? Math.round(decidedCount) : 5;
+const qBounds = questionBoundsFromConfig(parse.config || cfg || {});
+const writtenCount = resolveEffectiveWrittenMaxQuestions(
+  {
+    ...(parse.config || cfg || {}),
+    written_question_count: decidedRaw,
+    max_questions: decidedRaw,
+  },
+  { max_phases: decidedRaw }
+);
 
 const profile_photo_url = String(
   notes.profile_photo_url ||
@@ -185,8 +223,8 @@ const sessionBody = {
     gemini_model: cfg.gemini_model,
     max_questions: writtenCount,
     written_question_count: writtenCount,
-    written_questions_min: cfg.written_questions_min ?? 4,
-    written_questions_max: cfg.written_questions_max ?? 10,
+    written_questions_min: qBounds.min,
+    written_questions_max: qBounds.max,
     interviewer_email: interviewerForSession,
     supabase_url: cfg.supabase_url,
     supabase_key: cfg.supabase_key,

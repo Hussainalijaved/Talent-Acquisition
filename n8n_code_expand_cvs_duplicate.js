@@ -150,6 +150,40 @@ function parsePassTiers(raw) {
   }
 }
 
+function normalizeWrittenQuestionBounds(rawMin, rawMax) {
+  let min = Number(rawMin);
+  let max = Number(rawMax);
+  if (!Number.isFinite(min)) min = 4;
+  if (!Number.isFinite(max)) max = 10;
+  min = Math.min(20, Math.max(1, Math.round(min)));
+  max = Math.min(20, Math.max(1, Math.round(max)));
+  if (min > max) [min, max] = [max, min];
+  return { min, max };
+}
+
+async function loadWrittenBoundsFromAppConfig(cfgRoot) {
+  const c = cfgRoot?.config || cfgRoot || {};
+  const base = String(c.supabase_url || '').replace(/\/+$/, '');
+  const key = String(c.supabase_key || '').trim();
+  if (!base || !key) return null;
+  try {
+    const url =
+      `${base}/rest/v1/app_config?key=in.(written_questions_min,written_questions_max)&select=key,value`;
+    const res = await fetch(url, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    const map = Object.fromEntries((rows || []).map((r) => [r.key, r.value]));
+    return normalizeWrittenQuestionBounds(
+      map.written_questions_min,
+      map.written_questions_max
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
 const jdTitleForPass =
   intake.requisition_title ||
   pick(webhook, 'requisition_title', 'job_title') ||
@@ -162,7 +196,27 @@ const passTiers =
   parsePassTiers(cfg.config?.default_pass_score_thresholds) ||
   { junior: 55, mid: 60, senior: 70 };
 
-const config = {
+return (async () => {
+  let writtenMin =
+    intake.written_questions_min ??
+    pickInt(webhook, 'written_questions_min') ??
+    cfg.config?.written_questions_min;
+  let writtenMax =
+    intake.written_questions_max ??
+    pickInt(webhook, 'written_questions_max') ??
+    cfg.config?.written_questions_max;
+
+  if (writtenMin == null || writtenMax == null) {
+    const fromDb = await loadWrittenBoundsFromAppConfig(cfg);
+    if (fromDb) {
+      if (writtenMin == null) writtenMin = fromDb.min;
+      if (writtenMax == null) writtenMax = fromDb.max;
+    }
+  }
+
+  const writtenBounds = normalizeWrittenQuestionBounds(writtenMin ?? 4, writtenMax ?? 10);
+
+  const config = {
   ...(cfg.config || {}),
   requisition_title:
     intake.requisition_title || pick(webhook, 'requisition_title', 'job_title'),
@@ -188,16 +242,8 @@ const config = {
     pickNum(webhook, 'cv_shortlist_threshold') ??
     cfg.config?.cv_shortlist_threshold ??
     62,
-  written_questions_min:
-    intake.written_questions_min ??
-    pickInt(webhook, 'written_questions_min') ??
-    cfg.config?.written_questions_min ??
-    4,
-  written_questions_max:
-    intake.written_questions_max ??
-    pickInt(webhook, 'written_questions_max') ??
-    cfg.config?.written_questions_max ??
-    10,
+  written_questions_min: writtenBounds.min,
+  written_questions_max: writtenBounds.max,
 };
 
 return [
@@ -216,3 +262,4 @@ return [
     },
   },
 ];
+})();

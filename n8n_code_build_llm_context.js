@@ -39,6 +39,36 @@ if (typeof sessionConfig === 'string') {
 }
 if (!sessionConfig || typeof sessionConfig !== 'object') sessionConfig = {};
 
+function normalizeWrittenQuestionBounds(rawMin, rawMax) {
+  let min = Number(rawMin);
+  let max = Number(rawMax);
+  if (!Number.isFinite(min)) min = 4;
+  if (!Number.isFinite(max)) max = 10;
+  min = Math.min(20, Math.max(1, Math.round(min)));
+  max = Math.min(20, Math.max(1, Math.round(max)));
+  if (min > max) [min, max] = [max, min];
+  return { min, max };
+}
+
+function clampWrittenQuestionCount(n, min, max) {
+  const bounds = normalizeWrittenQuestionBounds(min, max);
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return bounds.min;
+  return Math.min(bounds.max, Math.max(bounds.min, Math.round(v)));
+}
+
+function resolveEffectiveWrittenMaxQuestions(cfg, sessionRow) {
+  const bounds = normalizeWrittenQuestionBounds(
+    cfg?.written_questions_min,
+    cfg?.written_questions_max
+  );
+  const raw =
+    cfg?.written_question_count ??
+    cfg?.max_questions ??
+    sessionRow?.max_phases;
+  return clampWrittenQuestionCount(raw, bounds.min, bounds.max);
+}
+
 const cfg = {
   ...norm.config,
   ...sessionConfig,
@@ -48,7 +78,19 @@ const cfg = {
     sessionConfig.requisition_requirements || norm.config?.requisition_requirements || '',
   groq_model:
     sessionConfig.groq_model || norm.config?.groq_model || 'llama-3.3-70b-versatile',
-  max_questions: Number(sessionConfig.max_questions || norm.config?.max_questions || 5),
+  max_questions: resolveEffectiveWrittenMaxQuestions(
+    {
+      ...sessionConfig,
+      ...norm.config,
+      max_questions: Number(sessionConfig.max_questions || norm.config?.max_questions || 5),
+      written_question_count: Number(
+        sessionConfig.written_question_count || sessionConfig.max_questions || norm.config?.max_questions || 5
+      ),
+      written_questions_min: sessionConfig.written_questions_min ?? norm.config?.written_questions_min,
+      written_questions_max: sessionConfig.written_questions_max ?? norm.config?.written_questions_max,
+    },
+    session
+  ),
   fail_score_threshold: Number(
     sessionConfig.fail_score_threshold ?? norm.config?.fail_score_threshold ?? 30
   ),
@@ -66,7 +108,7 @@ const cfg = {
 };
 
 const ph = Number(norm.current_phase || 1);
-const maxQ = Number(cfg.max_questions || 5);
+const maxQ = Number(cfg.max_questions || resolveEffectiveWrittenMaxQuestions(cfg, session));
 const isFinal = ph >= maxQ;
 const failThreshold = Number(cfg.fail_score_threshold ?? 30);
 

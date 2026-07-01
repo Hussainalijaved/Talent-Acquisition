@@ -620,6 +620,36 @@ function parseSessionConfig(raw) {
   return typeof raw === 'object' ? raw : {};
 }
 
+function normalizeWrittenQuestionBounds(rawMin, rawMax) {
+  let min = Number(rawMin);
+  let max = Number(rawMax);
+  if (!Number.isFinite(min)) min = 4;
+  if (!Number.isFinite(max)) max = 10;
+  min = Math.min(20, Math.max(1, Math.round(min)));
+  max = Math.min(20, Math.max(1, Math.round(max)));
+  if (min > max) [min, max] = [max, min];
+  return { min, max };
+}
+
+function clampWrittenQuestionCount(n, min, max) {
+  const bounds = normalizeWrittenQuestionBounds(min, max);
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return bounds.min;
+  return Math.min(bounds.max, Math.max(bounds.min, Math.round(v)));
+}
+
+function resolveEffectiveWrittenMaxQuestions(cfg, sessionRow) {
+  const bounds = normalizeWrittenQuestionBounds(
+    cfg?.written_questions_min,
+    cfg?.written_questions_max
+  );
+  const raw =
+    cfg?.written_question_count ??
+    cfg?.max_questions ??
+    sessionRow?.max_phases;
+  return clampWrittenQuestionCount(raw, bounds.min, bounds.max);
+}
+
 function resolveWorkflowConfig(current, session, built) {
   const cfgNode =
     pickNodeJson('CFG - Assessment Config', 'CFG - Assessment Config1') || {};
@@ -671,7 +701,7 @@ if (typeof history === 'string') {
 if (!Array.isArray(history)) history = [];
 
 const ph = Number(current.current_phase || 1);
-const maxQ = Number(cfg.max_questions || 5);
+const maxQ = resolveEffectiveWrittenMaxQuestions(cfg, session);
 const failThreshold = Number(cfg.fail_score_threshold ?? 30);
 const passThreshold = Number(cfg.pass_score_threshold ?? 60);
 const iso = new Date().toISOString();

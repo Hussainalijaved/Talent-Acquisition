@@ -4713,24 +4713,51 @@
             try { return JSON.parse(raw); } catch (e) { return {}; }
         };
 
-        /** Written (Phase 1) question count — per-candidate AI decision stored on session. */
+        /** Written (Phase 1) question count — per-candidate AI decision stored on session, clamped to admin bounds. */
+        const normalizeWrittenQuestionBounds = (rawMin, rawMax) => {
+            let min = Number(rawMin);
+            let max = Number(rawMax);
+            if (!Number.isFinite(min)) min = 4;
+            if (!Number.isFinite(max)) max = 10;
+            min = Math.min(20, Math.max(1, Math.round(min)));
+            max = Math.min(20, Math.max(1, Math.round(max)));
+            if (min > max) [min, max] = [max, min];
+            return { min, max };
+        };
+
+        const clampWrittenQuestionCount = (n, min, max) => {
+            const bounds = normalizeWrittenQuestionBounds(min, max);
+            const v = Number(n);
+            if (!Number.isFinite(v) || v <= 0) return bounds.min;
+            return Math.min(bounds.max, Math.max(bounds.min, Math.round(v)));
+        };
+
         const resolveTechMaxQuestions = (data) => {
             const cfg = parseSessionConfig(data?.config);
-            const fromDecided = Number(cfg.written_question_count);
-            if (Number.isFinite(fromDecided) && fromDecided > 0) return fromDecided;
-            const fromCfg = Number(cfg.max_questions);
-            if (Number.isFinite(fromCfg) && fromCfg > 0) return fromCfg;
+            const bounds = normalizeWrittenQuestionBounds(
+                cfg.written_questions_min,
+                cfg.written_questions_max
+            );
+            const clamp = (n) => {
+                const v = Number(n);
+                if (!Number.isFinite(v) || v <= 0) return null;
+                return clampWrittenQuestionCount(v, bounds.min, bounds.max);
+            };
+            const fromDecided = clamp(cfg.written_question_count);
+            if (fromDecided) return fromDecided;
+            const fromCfg = clamp(cfg.max_questions);
+            if (fromCfg) return fromCfg;
             const speechPhases = Number(cfg.speech_phases) || ASSESSMENT_PHASE_DEFAULTS.speech;
             const mp = Number(data?.max_phases);
             if (Number.isFinite(mp) && mp > 0) {
-                // Some rows store total phases (written + speech) in max_phases — split when obvious.
-                if (speechPhases > 0 && mp > speechPhases && mp <= speechPhases + 20) {
-                    const asWrittenOnly = mp - speechPhases;
-                    if (asWrittenOnly >= 1 && asWrittenOnly <= 20) return asWrittenOnly;
+                if (speechPhases > 0 && mp > speechPhases) {
+                    const asWrittenOnly = clamp(mp - speechPhases);
+                    if (asWrittenOnly) return asWrittenOnly;
                 }
-                return mp;
+                const asDirect = clamp(mp);
+                if (asDirect) return asDirect;
             }
-            return ASSESSMENT_PHASE_DEFAULTS.tech;
+            return bounds.min;
         };
 
         const isVoiceHistoryMode = (mode) => {

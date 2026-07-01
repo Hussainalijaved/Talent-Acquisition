@@ -16,8 +16,8 @@
     const DEFAULT_PASS_THRESHOLDS = { junior: 55, mid: 60, senior: 70 };
     const DEFAULT_WRITTEN_Q_MIN = 4;
     const DEFAULT_WRITTEN_Q_MAX = 10;
-    // Update when ngrok restarts (free tier gets a new subdomain each time).
-    const N8N_WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
+    // Production n8n on Railway (override via Admin → Settings → app_config if needed).
+    const N8N_WEBHOOK_BASE = 'https://n8n-production-af28.up.railway.app/webhook';
     const DEFAULT_JD_WEBHOOK_LOCAL = 'http://localhost:5678/webhook/talent/jd-generate';
     const DEFAULT_JD_WEBHOOK_PUBLIC = N8N_WEBHOOK_BASE + '/talent/jd-generate';
     let deps = null;
@@ -2794,7 +2794,7 @@
                 );
             } else if (!data.webhook_configured && !emailError) {
                 deps.banner(
-                    'Shortlisted — session created. Email not sent: set manual shortlist webhook in Settings (use ngrok /webhook/ URL, not localhost).',
+                    'Shortlisted — session created. Email not sent: set manual shortlist webhook in Settings (use Railway /webhook/ URL, not localhost).',
                     'err'
                 );
             } else if (emailError) {

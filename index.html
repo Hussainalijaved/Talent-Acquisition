@@ -1620,12 +1620,12 @@
             </div>
         );
 
-        // Update when ngrok restarts (free tier gets a new subdomain each time).
-        // Must match: ngrok URL + n8n path on TRG - Assessment Answer (assessment-answer).
-        const WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
-        // Live speech relay — production: set live_relay_url in n8n CFG (wss://your-relay.app/live)
-        // Local dev: cd relay && npm start → ws://localhost:8080/live
-        const LIVE_SPEECH_RELAY_FALLBACK = 'ws://localhost:8080/live';
+        // Production n8n on Railway — must match TRG webhook paths in active workflows.
+        const WEBHOOK_BASE = 'https://n8n-production-af28.up.railway.app/webhook';
+        // Live speech relay — n8n CFG live_relay_url is primary; fallback for production/local dev.
+        const LIVE_SPEECH_RELAY_FALLBACK = /localhost|127\.0\.0\.1/.test(location.hostname)
+            ? 'ws://localhost:8080/live'
+            : 'wss://talent-acquisition-production.up.railway.app/live';
 
         const Shell = ({ children, subtitle, footerNote, fullWidth = false, immersive = false, headerExtra = null }) => (
             <div className={`flex flex-col w-full ${immersive ? 'shell-immersive' : 'min-h-screen'}`}>

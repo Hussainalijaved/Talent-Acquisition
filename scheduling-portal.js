@@ -9,8 +9,8 @@
     const SUPABASE_ANON_KEY =
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZueHN0eWFkYWNnbnRuc3ZjdnpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwNjAwMjAsImV4cCI6MjA5MzYzNjAyMH0.4rJRI_f6HyQNGYLHaw2ZH6q7060ey8ftUVxzvzWEwD4';
 
-    // Update when ngrok restarts (free tier gets a new subdomain each time).
-    const N8N_WEBHOOK_BASE = 'https://randy-gaunt-bradley.ngrok-free.dev/webhook';
+    // Production n8n on Railway.
+    const N8N_WEBHOOK_BASE = 'https://n8n-production-af28.up.railway.app/webhook';
     const PORTAL_BASE = 'https://talent-acquisition-six.vercel.app';
     const SUCCESS_PAGE = PORTAL_BASE + '/scheduling-success.html';
 

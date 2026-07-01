@@ -57,6 +57,14 @@
         return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
     }
 
+    function resolvePassThreshold(cfg, sess) {
+        const title = String(cfg?.requisition_title || sess?.requisition_title || '').trim();
+        if (global.TAPassThreshold && title) {
+            return global.TAPassThreshold.resolvePassThresholdForTitle(title);
+        }
+        return Number(cfg?.pass_score_threshold ?? 60);
+    }
+
     function computeFinalOutcome(sess, hist, cfg) {
         hist = hist || parseHistory(sess);
         cfg = cfg || parseJson(sess?.config, {});
@@ -72,7 +80,7 @@
         const speechAvg = Number(sess?.speech_score) || avgPhaseScore(speechHist);
         const tw = Number(cfg.technical_weight ?? 0.7);
         const sw = Number(cfg.speech_weight ?? 0.3);
-        const pt = Number(cfg.pass_score_threshold ?? 60);
+        const pt = resolvePassThreshold(cfg, sess);
 
         let combined = null;
         if (techAvg != null && speechAvg != null) {

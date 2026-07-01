@@ -2670,7 +2670,7 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict",
+            "typeValidation": "loose",
             "version": 2
           },
           "conditions": [
@@ -2681,15 +2681,6 @@
               "operator": {
                 "type": "string",
                 "operation": "notEmpty"
-              }
-            },
-            {
-              "id": "not-skipped",
-              "leftValue": "={{ $json._skip_interviewer_confirmed_mail }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "notEquals"
               }
             }
           ],

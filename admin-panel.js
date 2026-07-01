@@ -2019,7 +2019,7 @@
         }
     }
 
-    async function screenOneCandidate(webhook, { email, title, requirements, interviewer, requisitionId, passScoreThreshold, failScoreThreshold, cvShortlistThreshold, writtenQuestionsMin, writtenQuestionsMax, file, cvText }) {
+    async function screenOneCandidate(webhook, { email, title, requirements, interviewer, requisitionId, failScoreThreshold, cvShortlistThreshold, writtenQuestionsMin, writtenQuestionsMax, defaultPassThresholds, file, cvText }) {
         const fd = new FormData();
         fd.append('candidate_email', email);
         fd.append('requisition_title', title);
@@ -2027,7 +2027,9 @@
         fd.append('requisition_id', requisitionId || slugFromTitle(title));
         fd.append('source', 'admin_cv_screen');
         if (interviewer) fd.append('interviewer_email', interviewer);
-        if (passScoreThreshold != null) fd.append('pass_score_threshold', String(passScoreThreshold));
+        if (defaultPassThresholds) {
+            fd.append('default_pass_score_thresholds', JSON.stringify(defaultPassThresholds));
+        }
         if (failScoreThreshold != null) fd.append('fail_score_threshold', String(failScoreThreshold));
         if (cvShortlistThreshold != null) fd.append('cv_shortlist_threshold', String(cvShortlistThreshold));
         if (writtenQuestionsMin != null) fd.append('written_questions_min', String(writtenQuestionsMin));
@@ -2069,7 +2071,7 @@
         const linkedJob = JOBS.find((j) => j.id === scrJobEl?.selectedOptions?.[0]?.dataset?.jobId);
         const wq = getWrittenQuestionBounds();
         const screenOpts = {
-            passScoreThreshold: resolveDefaultPassThresholdForTitle(linkedJob?.title || title),
+            defaultPassThresholds: globalPassThresholds,
             failScoreThreshold: 30,
             cvShortlistThreshold: linkedJob ? parseScoreThreshold(linkedJob.cv_shortlist_threshold, 62) : null,
             requisitionId: linkedJob?.job_id || slugFromTitle(title),

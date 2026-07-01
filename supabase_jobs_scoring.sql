@@ -1,5 +1,6 @@
--- Per-job assessment pass threshold (combined technical + voice score).
--- Run once in Supabase SQL Editor after supabase_jobs.sql / supabase_jobs_expand.sql
+-- DEPRECATED: use app_config.default_pass_score_thresholds (Settings → Assessment scoring).
+-- Per-job pass threshold removed — only cv_shortlist_threshold remains on jobs (see supabase_jobs_cv_scoring.sql).
+-- Optional cleanup: run supabase_jobs_drop_pass_threshold.sql
 
 alter table public.jobs
   add column if not exists pass_score_threshold integer not null default 60
@@ -8,6 +9,6 @@ alter table public.jobs
     check (fail_score_threshold >= 0 and fail_score_threshold <= 100);
 
 comment on column public.jobs.pass_score_threshold is
-  'Minimum combined assessment score (0–100) to PASS. Default 60.';
+  'DEPRECATED — ignored. Use app_config.default_pass_score_thresholds.';
 comment on column public.jobs.fail_score_threshold is
-  'Score below this (0–100) is a hard FAIL during phased assessment. Default 30.';
+  'DEPRECATED — ignored. Global fail threshold is set in workflow config.';

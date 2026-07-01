@@ -193,6 +193,11 @@ const sessionBody = {
     table_assessment_sessions: cfg.table_assessment_sessions,
     fail_score_threshold: cfg.fail_score_threshold ?? 30,
     pass_score_threshold: cfg.pass_score_threshold ?? 60,
+    default_pass_score_thresholds: cfg.default_pass_score_thresholds || {
+      junior: 55,
+      mid: 60,
+      senior: 70,
+    },
     timer_min_seconds: cfg.timer_min_seconds ?? 60,
     timer_max_seconds: cfg.timer_max_seconds ?? 600,
     speech_enabled:

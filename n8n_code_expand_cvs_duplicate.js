@@ -156,11 +156,10 @@ const jdTitleForPass =
   cfg.config?.requisition_title ||
   '';
 
-const passFromIntake =
-  intake.pass_score_threshold ?? pickNum(webhook, 'pass_score_threshold');
 const passTiers =
+  parsePassTiers(webhook.default_pass_score_thresholds) ||
+  parsePassTiers(intake.default_pass_score_thresholds) ||
   parsePassTiers(cfg.config?.default_pass_score_thresholds) ||
-  parsePassTiers(intake.pass_score_thresholds) ||
   { junior: 55, mid: 60, senior: 70 };
 
 const config = {
@@ -175,9 +174,10 @@ const config = {
     pick(webhook, 'interviewer_email') ||
     cfg.config?.interviewer_email ||
     '',
-  pass_score_threshold:
-    passFromIntake ??
-    (jdTitleForPass ? resolvePassThresholdForTitle(jdTitleForPass, passTiers) : 60),
+  default_pass_score_thresholds: passTiers,
+  pass_score_threshold: jdTitleForPass
+    ? resolvePassThresholdForTitle(jdTitleForPass, passTiers)
+    : resolvePassThresholdForTitle('', passTiers),
   fail_score_threshold:
     intake.fail_score_threshold ??
     pickNum(webhook, 'fail_score_threshold') ??

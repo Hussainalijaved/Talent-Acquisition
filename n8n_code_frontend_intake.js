@@ -99,6 +99,20 @@ const pass_score_threshold = pickNum(body, 'pass_score_threshold');
 const fail_score_threshold = pickNum(body, 'fail_score_threshold');
 const cv_shortlist_threshold = pickNum(body, 'cv_shortlist_threshold');
 
+function pickJson(body, ...keys) {
+  for (const k of keys) {
+    const v = body?.[k];
+    if (v == null || v === '') continue;
+    if (typeof v === 'object') return v;
+    try {
+      return JSON.parse(String(v));
+    } catch (_) {}
+  }
+  return null;
+}
+
+const default_pass_score_thresholds = pickJson(body, 'default_pass_score_thresholds');
+
 if (!requisition_title) {
   const hint = Object.keys(body).slice(0, 12).join(', ') || 'empty body';
   throw new Error(
@@ -127,9 +141,9 @@ return [
       cv_text,
       requisition_id,
       interviewer_email,
-      pass_score_threshold,
       fail_score_threshold,
       cv_shortlist_threshold,
+      default_pass_score_thresholds,
       profile_photo_url,
       candidate_name,
       jd_source: 'frontend_form',

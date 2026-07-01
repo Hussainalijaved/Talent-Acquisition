@@ -2254,6 +2254,24 @@
               "name": "table_assessment_sessions",
               "value": "assessment_sessions",
               "type": "string"
+            },
+            {
+              "id": "ls-cfg-18",
+              "name": "speech_timer_min_seconds",
+              "value": 30,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-19",
+              "name": "speech_timer_max_seconds",
+              "value": 120,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-20",
+              "name": "speech_answer_seconds",
+              "value": 75,
+              "type": "number"
             }
           ]
         },
@@ -2368,6 +2386,24 @@
               "name": "table_assessment_sessions",
               "value": "assessment_sessions",
               "type": "string"
+            },
+            {
+              "id": "ls-cfg-18",
+              "name": "speech_timer_min_seconds",
+              "value": 30,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-19",
+              "name": "speech_timer_max_seconds",
+              "value": 120,
+              "type": "number"
+            },
+            {
+              "id": "ls-cfg-20",
+              "name": "speech_answer_seconds",
+              "value": 75,
+              "type": "number"
             }
           ]
         },

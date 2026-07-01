@@ -63,6 +63,21 @@ function tierTimeRange(tier) {
   }
 }
 
+function speechTierTimeRange(tier) {
+  switch (String(tier || '').toUpperCase()) {
+    case 'A':
+      return [30, 45];
+    case 'B':
+      return [45, 75];
+    case 'C':
+      return [75, 105];
+    case 'D':
+      return [105, 120];
+    default:
+      return null;
+  }
+}
+
 // Infer a tier when the model omits or returns a junk tier
 function inferTierFromQuestion(questionText) {
   const q = String(questionText || '');
@@ -84,6 +99,43 @@ function inferTierFromQuestion(questionText) {
 // Deterministic per-question time: tier sets the band, question length positions
 // within it, the model's value (if sane) is blended in. Different questions →
 // different times, longer/harder questions → more seconds.
+// Voice interview per-question bounds (30s–2min).
+function speechTimerBounds(config) {
+  const min = Number(config?.speech_timer_min_seconds);
+  const max = Number(config?.speech_timer_max_seconds);
+  return {
+    min: Number.isFinite(min) && min > 0 ? min : 30,
+    max: Number.isFinite(max) && max > 0 ? max : 120,
+  };
+}
+
+function deriveSpeechTimeLimitSeconds(rawLlmTime, tier, questionText, config) {
+  const bounds = speechTimerBounds(config);
+  const usableTier =
+    speechTierTimeRange(tier) ? tier : inferTierFromQuestion(questionText);
+  let [lo, hi] = speechTierTimeRange(usableTier) || [45, 75];
+  lo = Math.max(bounds.min, lo);
+  hi = Math.min(bounds.max, hi);
+
+  const words = String(questionText || '').trim().split(/\s+/).filter(Boolean).length;
+  const span = Math.max(1, 50 - 12);
+  const t = Math.max(0, Math.min(1, (words - 12) / span));
+  let computed = lo + t * (hi - lo);
+
+  const llm = Number(rawLlmTime);
+  if (Number.isFinite(llm) && llm >= bounds.min && llm <= bounds.max) {
+    const blended = llm >= lo && llm <= hi ? (llm + computed) / 2 : llm;
+    computed = blended;
+  }
+
+  let sec = Math.round(computed / 5) * 5;
+  sec = Math.max(lo, Math.min(hi, sec));
+  return {
+    seconds: Math.min(bounds.max, Math.max(bounds.min, Math.round(sec))),
+    tier: usableTier,
+  };
+}
+
 function deriveTimeLimitSeconds(rawLlmTime, tier, questionText, config, phase) {
   const usableTier =
     tierTimeRange(tier) ? tier : inferTierFromQuestion(questionText);
@@ -929,7 +981,7 @@ if (isActualFinalPhase && !integrityTerminated) {
     if (!nextQ) nextQ = buildFirstSpeechQuestion(cfg, session, 1, history, maxQ);
     if (!nextQ) nextQ = buildFallbackSpeechQuestion(cfg, 1);
     const speechStartPhase = maxQ + 1;
-    const derived = deriveTimeLimitSeconds(180, 'B', nextQ, cfg, speechStartPhase);
+    const derived = deriveSpeechTimeLimitSeconds(content.time_limit_seconds, content.complexity_tier, nextQ, cfg);
     timeLimitSeconds = derived.seconds;
     complexityTier = derived.tier;
 

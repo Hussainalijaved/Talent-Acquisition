@@ -200,6 +200,9 @@ const sessionBody = {
     },
     timer_min_seconds: cfg.timer_min_seconds ?? 60,
     timer_max_seconds: cfg.timer_max_seconds ?? 600,
+    speech_timer_min_seconds: cfg.speech_timer_min_seconds ?? 30,
+    speech_timer_max_seconds: cfg.speech_timer_max_seconds ?? 120,
+    speech_answer_seconds: cfg.speech_answer_seconds ?? 75,
     speech_enabled:
       cfg.speech_enabled === true ||
       cfg.speech_enabled === 'true' ||

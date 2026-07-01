@@ -3056,7 +3056,13 @@
             const [warmupCaption, setWarmupCaption] = React.useState('');
             const [warmupAnswer, setWarmupAnswer] = React.useState('');
             const liveQuestionCaptionRef = React.useRef('');
-            const defaultAnswerSeconds = Number(context?.speech_answer_seconds || context?.config?.speech_answer_seconds || 120);
+            const defaultAnswerSeconds = Number(
+                context?.speech_answer_seconds ||
+                context?.config?.speech_answer_seconds ||
+                context?.speech_timer_max_seconds ||
+                context?.config?.speech_timer_max_seconds ||
+                75
+            );
             const [questionTimeLimit, setQuestionTimeLimit] = React.useState(defaultAnswerSeconds);
             const [timeLeft, setTimeLeft] = React.useState(null);
             const timerRef = React.useRef(null);
@@ -5584,7 +5590,7 @@
 
             const startSpeechPhaseTimer = useCallback(() => {
                 const row = pendingSpeechTimerRef.current;
-                const seconds = getAiTimeLimitSeconds(row) ?? 240;
+                const seconds = getAiTimeLimitSeconds(row) ?? 90;
                 applyTimerFromPhase({
                     time_limit_seconds: seconds,
                     deadline_at: new Date(Date.now() + seconds * 1000).toISOString(),

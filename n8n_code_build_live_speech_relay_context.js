@@ -146,7 +146,13 @@ return [
       assessment_mode: 'live_speech',
       max_questions: maxQ,
             speech_phases: speechTurns,
-      speech_answer_seconds: Number(cfg.speech_answer_seconds || sessCfg.speech_answer_seconds || 120),
+      speech_timer_min_seconds: Number(
+        cfg.speech_timer_min_seconds ?? sessCfg.speech_timer_min_seconds ?? 30
+      ),
+      speech_timer_max_seconds: Number(
+        cfg.speech_timer_max_seconds ?? sessCfg.speech_timer_max_seconds ?? 120
+      ),
+      speech_answer_seconds: Number(cfg.speech_answer_seconds ?? sessCfg.speech_answer_seconds ?? 75),
       silence_handling_enabled: cfg.silence_handling_enabled !== false,
       silence_nudge_seconds: Number(cfg.silence_nudge_seconds || sessCfg.silence_nudge_seconds || 5),
       silence_auto_submit_seconds: Number(cfg.silence_auto_submit_seconds || sessCfg.silence_auto_submit_seconds || 6),
@@ -184,6 +190,15 @@ return [
       supabase_key: supabaseKey,
       config: {
         ...sessCfg,
+        speech_timer_min_seconds: Number(
+          cfg.speech_timer_min_seconds ?? sessCfg.speech_timer_min_seconds ?? 30
+        ),
+        speech_timer_max_seconds: Number(
+          cfg.speech_timer_max_seconds ?? sessCfg.speech_timer_max_seconds ?? 120
+        ),
+        speech_answer_seconds: Number(
+          cfg.speech_answer_seconds ?? sessCfg.speech_answer_seconds ?? 75
+        ),
         supabase_url: supabaseUrl,
         supabase_key: supabaseKey,
         portal_base_url: portalBase,

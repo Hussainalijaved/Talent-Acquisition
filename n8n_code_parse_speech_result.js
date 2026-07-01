@@ -33,39 +33,42 @@ function mergeTabCountIntoProctorReport(session, tabCount) {
   };
 }
 
-function timerBounds(config) {
-  const min = Number(config?.timer_min_seconds);
-  const max = Number(config?.timer_max_seconds);
+function speechTimerBounds(config) {
+  const min = Number(config?.speech_timer_min_seconds);
+  const max = Number(config?.speech_timer_max_seconds);
   return {
-    min: Number.isFinite(min) && min > 0 ? min : 60,
-    max: Number.isFinite(max) && max > 0 ? max : 600,
+    min: Number.isFinite(min) && min > 0 ? min : 30,
+    max: Number.isFinite(max) && max > 0 ? max : 120,
   };
 }
 
 function clampSeconds(sec, config) {
-  const { min, max } = timerBounds(config);
+  const { min, max } = speechTimerBounds(config);
   return Math.min(max, Math.max(min, Math.round(sec)));
 }
 
 function tierTimeRange(tier) {
   switch (String(tier || '').toUpperCase()) {
     case 'A':
-      return [60, 120];
+      return [30, 45];
     case 'B':
-      return [150, 240];
+      return [45, 75];
     case 'C':
-      return [270, 390];
+      return [75, 105];
     case 'D':
-      return [420, 600];
+      return [105, 120];
     default:
-      return [120, 180];
+      return [45, 75];
   }
 }
 
 function deriveTimeLimitSeconds(rawLlmTime, tier, questionText, config) {
-  const [lo, hi] = tierTimeRange(tier) || [120, 180];
+  const bounds = speechTimerBounds(config);
+  const [loRaw, hiRaw] = tierTimeRange(tier) || [45, 75];
+  const lo = Math.max(bounds.min, loRaw);
+  const hi = Math.min(bounds.max, hiRaw);
   let sec = Number(rawLlmTime);
-  if (!Number.isFinite(sec) || sec <= 0) sec = 150;
+  if (!Number.isFinite(sec) || sec <= 0) sec = Math.round((lo + hi) / 2);
   sec = Math.max(lo, Math.min(hi, Math.round(sec)));
   return { seconds: clampSeconds(sec, config), tier: tier || 'B' };
 }

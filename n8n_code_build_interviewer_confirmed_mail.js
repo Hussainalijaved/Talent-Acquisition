@@ -12,6 +12,16 @@ function pickNodeJson(...names) {
   return null;
 }
 
+function parseJson(raw, fallback = {}) {
+  if (raw == null) return fallback;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return fallback;
+  }
+}
+
 function pickSessionRow() {
   const names = [
     'CODE - Scheduling confirmed from session',
@@ -21,6 +31,7 @@ function pickSessionRow() {
     'HTTP - Fetch Session1',
     'CODE - Parse candidate choice',
     'CODE - Prep scheduling from PASS',
+    'CODE - Prep scheduling from PASS1',
   ];
   for (const name of names) {
     const raw = pickNodeJson(name);
@@ -35,33 +46,27 @@ const ctx = pickNodeJson('CODE - Scheduling confirmed from session') || {};
 const base = { ...ctx, ...($input.first().json || {}) };
 const session = pickSessionRow();
 const cfg = {
-  ...(typeof session.config === 'object' ? session.config : {}),
+  ...parseJson(session.config, {}),
   ...(base.config || {}),
 };
+const screening = parseJson(session.screening, {});
 
 const threadId = String(
   session.interviewer_gmail_thread_id ||
     base.interviewer_gmail_thread_id ||
     ctx.interviewer_gmail_thread_id ||
+    screening.interviewer_gmail_thread_id ||
+    cfg.interviewer_gmail_thread_id ||
     ''
 ).trim();
 const msgId = String(
   session.interviewer_gmail_message_id ||
     base.interviewer_gmail_message_id ||
     ctx.interviewer_gmail_message_id ||
+    screening.interviewer_gmail_message_id ||
+    cfg.interviewer_gmail_message_id ||
     ''
 ).trim();
-
-if (!threadId) {
-  throw new Error(
-    'interviewer_gmail_thread_id missing — send interviewer pitch mail first (assessment PASS chain).'
-  );
-}
-if (!msgId) {
-  throw new Error(
-    'interviewer_gmail_message_id missing — PATCH after MAIL - Interviewer pitch mail.'
-  );
-}
 
 const role = String(cfg.requisition_title || base.requisition_title || 'the role');
 const candidateEmail = String(base.candidate_email || session.candidate_email || '');
@@ -73,6 +78,10 @@ const slotLabel = String(
     'scheduled time'
 );
 const org = String(cfg.organization_name || 'Talent Acquisition Team');
+const interviewerEmail = String(
+  base.interviewer_email || cfg.interviewer_email || session.interviewer_email || ''
+).trim();
+const sessionId = String(session.id || base.session_id || ctx.session_id || '').trim();
 
 const mailBodyHtml = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
@@ -93,16 +102,36 @@ const mailBodyHtml = `<!DOCTYPE html>
   </table>
 </body></html>`;
 
+const out = {
+  ...base,
+  session_id: sessionId,
+  interviewer_email: interviewerEmail,
+  mail_body_html: mailBodyHtml,
+  config: cfg,
+};
+
+// No interviewer pitch thread — skip Gmail reply (calendar + candidate mail still proceed).
+if (!threadId || !msgId) {
+  return [
+    {
+      json: {
+        ...out,
+        _skip_interviewer_confirmed_mail: true,
+        _skip_reason:
+          'interviewer_gmail_thread_id missing on session — PASS chain should run MAIL - Interviewer pitch mail and HTTP - PATCH interviewer thread (pitch) before scheduling confirm.',
+        _debug_session_id: sessionId,
+      },
+    },
+  ];
+}
+
 return [
   {
     json: {
-      ...base,
-      session_id: session.id || base.session_id || ctx.session_id,
-      interviewer_email: base.interviewer_email || cfg.interviewer_email,
+      ...out,
+      _skip_interviewer_confirmed_mail: false,
       interviewer_gmail_thread_id: threadId,
       interviewer_gmail_message_id: msgId,
-      mail_body_html: mailBodyHtml,
-      config: cfg,
     },
   },
 ];

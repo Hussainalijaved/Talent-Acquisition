@@ -964,11 +964,11 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('CFG - Assessment Config').first().json.supabase_key }}"
+              "value": "={{ $json._supabase_key }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('CFG - Assessment Config').first().json.supabase_key }}"
+              "value": "=Bearer {{ $json._supabase_key }}"
             },
             {
               "name": "Content-Type",
@@ -992,9 +992,7 @@
       "position": [
         1616,
         2352
-      ],
-      "alwaysOutputData": false,
-      "onError": "continueRegularOutput"
+      ]
     },
     {
       "parameters": {
@@ -1333,17 +1331,17 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{ $('CODE - Build interviewer mail context').first().json._scheduling_patch_url }}",
+        "url": "={{ $('CODE - Build interviewer mail context1').first().json._scheduling_patch_url }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('CFG - Assessment Config1').first().json.supabase_key }}"
+              "value": "={{ $('CODE - Build interviewer mail context1').first().json._supabase_key }}"
             },
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $('CFG - Assessment Config1').first().json.supabase_key }}"
+              "value": "=Bearer {{ $('CODE - Build interviewer mail context1').first().json._supabase_key }}"
             },
             {
               "name": "Content-Type",
@@ -1357,7 +1355,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ $('CODE - Build interviewer mail context').first().json._scheduling_patch_body }}",
+        "jsonBody": "={{ $('CODE - Build interviewer mail context1').first().json._scheduling_patch_body }}",
         "options": {}
       },
       "id": "ac7b56ee-b938-48cf-bd26-589cdd8988b3",
@@ -1686,7 +1684,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// n8n: CODE - Build interviewer confirmed mail (interviewer thread reply)\n// After CAL (or scheduling-confirmed webhook)\n\nfunction pickNodeJson(...names) {\n  for (const name of names) {\n    if (!name) continue;\n    try {\n      const raw = $(name).first().json;\n      if (raw && typeof raw === 'object') return raw;\n    } catch (_) {}\n  }\n  return null;\n}\n\nfunction pickSessionRow() {\n  const names = [\n    'CODE - Scheduling confirmed from session',\n    'HTTP - SB GET session (confirmed)',\n    'HTTP - SB GET session (slots)',\n    'HTTP - Fetch Session',\n    'HTTP - Fetch Session1',\n    'CODE - Parse candidate choice',\n    'CODE - Prep scheduling from PASS',\n  ];\n  for (const name of names) {\n    const raw = pickNodeJson(name);\n    if (!raw) continue;\n    const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);\n    if (row?.id) return row;\n  }\n  return {};\n}\n\nconst ctx = pickNodeJson('CODE - Scheduling confirmed from session') || {};\nconst base = { ...ctx, ...($input.first().json || {}) };\nconst session = pickSessionRow();\nconst cfg = {\n  ...(typeof session.config === 'object' ? session.config : {}),\n  ...(base.config || {}),\n};\n\nconst threadId = String(\n  session.interviewer_gmail_thread_id ||\n    base.interviewer_gmail_thread_id ||\n    ctx.interviewer_gmail_thread_id ||\n    ''\n).trim();\nconst msgId = String(\n  session.interviewer_gmail_message_id ||\n    base.interviewer_gmail_message_id ||\n    ctx.interviewer_gmail_message_id ||\n    ''\n).trim();\n\nif (!threadId) {\n  throw new Error(\n    'interviewer_gmail_thread_id missing — send interviewer pitch mail first (assessment PASS chain).'\n  );\n}\nif (!msgId) {\n  throw new Error(\n    'interviewer_gmail_message_id missing — PATCH after MAIL - Interviewer pitch mail.'\n  );\n}\n\nconst role = String(cfg.requisition_title || base.requisition_title || 'the role');\nconst candidateEmail = String(base.candidate_email || session.candidate_email || '');\nconst slotLabel = String(\n  base.selected_slot_label ||\n    base.slot_label ||\n    (typeof base.chosen_slot === 'object' ? base.chosen_slot?.label : base.chosen_slot) ||\n    base.start_iso ||\n    'scheduled time'\n);\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\n\nconst mailBodyHtml = `<!DOCTYPE html>\n<html><head><meta charset=\"UTF-8\"></head>\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\n    <tr><td align=\"center\">\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── Interview Confirmed ──</p>\n          <p>Hello,</p>\n          <p>Interview scheduled for <strong>${candidateEmail.replace(/</g, '&lt;')}</strong> — <strong>${role.replace(/</g, '&lt;')}</strong>.</p>\n          <p><strong>Time:</strong> ${slotLabel.replace(/</g, '&lt;')}</p>\n          <p>Calendar invite has been created. Candidate confirmation sent in their thread.</p>\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\n        </td></tr>\n      </table>\n    </td></tr>\n  </table>\n</body></html>`;\n\nreturn [\n  {\n    json: {\n      ...base,\n      session_id: session.id || base.session_id || ctx.session_id,\n      interviewer_email: base.interviewer_email || cfg.interviewer_email,\n      interviewer_gmail_thread_id: threadId,\n      interviewer_gmail_message_id: msgId,\n      mail_body_html: mailBodyHtml,\n      config: cfg,\n    },\n  },\n];\n"
+        "jsCode": "// n8n: CODE - Build interviewer confirmed mail (interviewer thread reply)\r\n// After CAL (or scheduling-confirmed webhook)\r\n\r\nfunction pickNodeJson(...names) {\r\n  for (const name of names) {\r\n    if (!name) continue;\r\n    try {\r\n      const raw = $(name).first().json;\r\n      if (raw && typeof raw === 'object') return raw;\r\n    } catch (_) {}\r\n  }\r\n  return null;\r\n}\r\n\r\nfunction parseJson(raw, fallback = {}) {\r\n  if (raw == null) return fallback;\r\n  if (typeof raw === 'object') return raw;\r\n  try {\r\n    return JSON.parse(raw);\r\n  } catch (_) {\r\n    return fallback;\r\n  }\r\n}\r\n\r\nfunction pickSessionRow() {\r\n  const names = [\r\n    'CODE - Scheduling confirmed from session',\r\n    'HTTP - SB GET session (confirmed)',\r\n    'HTTP - SB GET session (slots)',\r\n    'HTTP - Fetch Session',\r\n    'HTTP - Fetch Session1',\r\n    'CODE - Parse candidate choice',\r\n    'CODE - Prep scheduling from PASS',\r\n    'CODE - Prep scheduling from PASS1',\r\n  ];\r\n  for (const name of names) {\r\n    const raw = pickNodeJson(name);\r\n    if (!raw) continue;\r\n    const row = raw?.session_row || (Array.isArray(raw) ? raw[0] : raw);\r\n    if (row?.id) return row;\r\n  }\r\n  return {};\r\n}\r\n\r\nconst ctx = pickNodeJson('CODE - Scheduling confirmed from session') || {};\r\nconst base = { ...ctx, ...($input.first().json || {}) };\r\nconst session = pickSessionRow();\r\nconst cfg = {\r\n  ...parseJson(session.config, {}),\r\n  ...(base.config || {}),\r\n};\r\nconst screening = parseJson(session.screening, {});\r\n\r\nconst threadId = String(\r\n  session.interviewer_gmail_thread_id ||\r\n    base.interviewer_gmail_thread_id ||\r\n    ctx.interviewer_gmail_thread_id ||\r\n    screening.interviewer_gmail_thread_id ||\r\n    cfg.interviewer_gmail_thread_id ||\r\n    ''\r\n).trim();\r\nconst msgId = String(\r\n  session.interviewer_gmail_message_id ||\r\n    base.interviewer_gmail_message_id ||\r\n    ctx.interviewer_gmail_message_id ||\r\n    screening.interviewer_gmail_message_id ||\r\n    cfg.interviewer_gmail_message_id ||\r\n    ''\r\n).trim();\r\n\r\nconst role = String(cfg.requisition_title || base.requisition_title || 'the role');\r\nconst candidateEmail = String(base.candidate_email || session.candidate_email || '');\r\nconst slotLabel = String(\r\n  base.selected_slot_label ||\r\n    base.slot_label ||\r\n    (typeof base.chosen_slot === 'object' ? base.chosen_slot?.label : base.chosen_slot) ||\r\n    base.start_iso ||\r\n    'scheduled time'\r\n);\r\nconst org = String(cfg.organization_name || 'Talent Acquisition Team');\r\nconst interviewerEmail = String(\r\n  base.interviewer_email || cfg.interviewer_email || session.interviewer_email || ''\r\n).trim();\r\nconst sessionId = String(session.id || base.session_id || ctx.session_id || '').trim();\r\n\r\nconst mailBodyHtml = `<!DOCTYPE html>\r\n<html><head><meta charset=\"UTF-8\"></head>\r\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Segoe UI,Arial,sans-serif;\">\r\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:24px 16px;\">\r\n    <tr><td align=\"center\">\r\n      <table width=\"100%\" style=\"max-width:560px;background:#fff;border-radius:12px;padding:28px;\">\r\n        <tr><td style=\"color:#334155;font-size:15px;line-height:1.6;\">\r\n          <p style=\"margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;\">── Interview Confirmed ──</p>\r\n          <p>Hello,</p>\r\n          <p>Interview scheduled for <strong>${candidateEmail.replace(/</g, '&lt;')}</strong> — <strong>${role.replace(/</g, '&lt;')}</strong>.</p>\r\n          <p><strong>Time:</strong> ${slotLabel.replace(/</g, '&lt;')}</p>\r\n          <p>Calendar invite has been created. Candidate confirmation sent in their thread.</p>\r\n          <p>Best regards,<br>${org.replace(/</g, '&lt;')}</p>\r\n        </td></tr>\r\n      </table>\r\n    </td></tr>\r\n  </table>\r\n</body></html>`;\r\n\r\nconst out = {\r\n  ...base,\r\n  session_id: sessionId,\r\n  interviewer_email: interviewerEmail,\r\n  mail_body_html: mailBodyHtml,\r\n  config: cfg,\r\n};\r\n\r\n// No interviewer pitch thread — skip Gmail reply (calendar + candidate mail still proceed).\r\nif (!threadId || !msgId) {\r\n  return [\r\n    {\r\n      json: {\r\n        ...out,\r\n        _skip_interviewer_confirmed_mail: true,\r\n        _skip_reason:\r\n          'interviewer_gmail_thread_id missing on session — PASS chain should run MAIL - Interviewer pitch mail and HTTP - PATCH interviewer thread (pitch) before scheduling confirm.',\r\n        _debug_session_id: sessionId,\r\n      },\r\n    },\r\n  ];\r\n}\r\n\r\nreturn [\r\n  {\r\n    json: {\r\n      ...out,\r\n      _skip_interviewer_confirmed_mail: false,\r\n      interviewer_gmail_thread_id: threadId,\r\n      interviewer_gmail_message_id: msgId,\r\n    },\r\n  },\r\n];\r\n"
       },
       "id": "7cc35c07-a3b9-4b12-b236-8f48f4acdda9",
       "name": "CODE - Build interviewer confirmed mail",
@@ -2665,6 +2663,48 @@
           "name": "Gmail account"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "interviewer-thread-id",
+              "leftValue": "={{ $json.interviewer_gmail_thread_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "not-skipped",
+              "leftValue": "={{ $json._skip_interviewer_confirmed_mail }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-interviewer-thread-if-0001",
+      "name": "IF - Interviewer thread ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        96,
+        3056
+      ]
     }
   ],
   "pinData": {},
@@ -3286,7 +3326,7 @@
       "main": [
         [
           {
-            "node": "MAIL - Notify interviewer confirmed",
+            "node": "IF - Interviewer thread ready?",
             "type": "main",
             "index": 0
           }
@@ -3616,6 +3656,18 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "IF - Interviewer thread ready?": {
+      "main": [
+        [
+          {
+            "node": "MAIL - Notify interviewer confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
